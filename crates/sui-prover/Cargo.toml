@@ -1,0 +1,31 @@
+[package]
+name = "sui-prover"
+authors = ["Asymptotic <info@asymptotic.tech>"]
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+version = "0.0.1"
+
+[dependencies]
+itertools.workspace = true
+log.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+colored.workspace = true
+tracing.workspace = true
+regex.workspace = true
+codespan-reporting.workspace = true
+telemetry-subscribers.workspace = true
+
+move-core-types.workspace = true
+move-compiler.workspace = true
+move-prover-boogie-backend.workspace = true
+move-package.workspace = true
+move-model.workspace = true
+glob.workspace = true
+insta.workspace = true
+termcolor.workspace = true
+
+tokio = { workspace = true, features = ["full"] }
+
+openai_api_rust = "0.1.9"
