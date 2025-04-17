@@ -18,8 +18,12 @@ use move_model::{
         DatatypeId, EnumEnv, FunId, GlobalEnv, ModuleId, QualifiedId, QualifiedInstId, StructEnv,
         StructOrEnumEnv,
     },
+    pragmas::INTRINSIC_TYPE_MAP,
     ty::{Type, TypeDisplayContext, TypeInstantiationDerivation, TypeUnificationAdapter, Variance},
-    well_known::{ TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE },
+    well_known::{
+        TYPE_INFO_MOVE, TYPE_INFO_SPEC, TYPE_NAME_GET_MOVE, TYPE_NAME_GET_SPEC, TYPE_NAME_MOVE,
+        TYPE_NAME_SPEC, TYPE_SPEC_IS_STRUCT,
+    },
 };
 
 use crate::{
@@ -201,7 +205,7 @@ impl MonoAnalysisProcessor {
             .collect::<BTreeSet<_>>()
             .iter()
             .for_each(|tys| {
-                for ty in tys {
+                for ty in *tys {
                     analyzer.add_type_root(ty);
                 }
             });
@@ -246,7 +250,7 @@ impl Analyzer<'_> {
 
                     let info = spec_global_variable_analysis::get_info(&target.data);
                     for tys in info.all_vars() {
-                        for ty in &tys {
+                        for ty in tys {
                             self.add_type_root(ty)
                         }
                     }
@@ -423,6 +427,15 @@ impl Analyzer<'_> {
                             .get_target(&callee_env, &FunctionVariant::Baseline),
                         Some(actuals.clone()),
                     );
+
+                    if callee_env.get_qualified_id() == self.env.type_inv_qid() {
+                        if let Some((dt_qid, tys)) = actuals[0].get_datatype() {
+                            if let Some(inv_qid) = self.targets.get_inv_by_datatype(&dt_qid) {
+                                self.push_todo_fun(*inv_qid, tys.to_vec());
+                            }
+                        }
+                    }
+
                     // Mark the associated module to be instantiated with the given actuals.
                     // This will instantiate all functions in the module with matching number
                     // of type parameters.

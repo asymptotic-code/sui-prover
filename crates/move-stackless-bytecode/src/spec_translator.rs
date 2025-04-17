@@ -11,13 +11,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use move_model::{
     model::{DatatypeId, FunctionEnv, GlobalId, Loc, NodeId, QualifiedInstId},
+    pragmas::{
+        ABORTS_IF_IS_STRICT_PRAGMA, CONDITION_ABSTRACT_PROP, CONDITION_CONCRETE_PROP,
+        CONDITION_EXPORT_PROP, CONDITION_INJECTED_PROP,
+    },
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 
 use crate::{
     ast::{
-        Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel,
+        Condition, ConditionKind, Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel,
         Operation, TempIndex, TraceKind,
     },
     exp_generator::ExpGenerator,
@@ -315,9 +319,9 @@ impl<'a, 'b, T: ExpGenerator<'a>> SpecTranslator<'a, 'b, T> {
     //     )
     // }
 
-    fn translate_spec(&mut self, _for_call: bool) {
-        // let fun_env = self.fun_env;
-        // let env = fun_env.module_env.env;
+    fn translate_spec(&mut self, for_call: bool) {
+        let fun_env = self.fun_env;
+        let env = fun_env.module_env.env;
         // let spec = fun_env.get_spec();
 
         // A function which determines whether a condition is applicable in the context, which
@@ -345,7 +349,7 @@ impl<'a, 'b, T: ExpGenerator<'a>> SpecTranslator<'a, 'b, T> {
         //         concrete || !abstract_
         //     }
         // };
-        // let is_applicable = true;
+        let is_applicable = true;
 
         // // First process `let` so subsequently expressions can refer to them.
         // self.translate_lets(false, spec);
