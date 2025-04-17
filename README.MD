@@ -37,7 +37,7 @@
             "args": [],
             "stopOnEntry": false,
             // please add execution folder for prover
-            "cwd": "<>
+            "cwd": "<>"
         },
     ]
 }
