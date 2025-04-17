@@ -70,14 +70,15 @@ petgraph = "0.5.1"
 tokio = "1.43.0"
 datatest-stable = "0.3.2"
 
-move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-package = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
-move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "separation" }
+move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-package = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+
