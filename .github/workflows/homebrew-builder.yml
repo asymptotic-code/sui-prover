@@ -3,7 +3,7 @@ name: Create PR in Homebrew Repo to build binaries
 on:
   push:
     branches:
-      - next
+      - main
 
 jobs:
   create-pr:

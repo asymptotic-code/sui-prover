@@ -12,7 +12,7 @@ error: prover::ensures assertion does not hold
    │
    =     at tests/inputs/ints.fail.move:11: foo_spec
    =         x = ELIDEDu64
-   =     at tests/../../sui-framework/packages/move-stdlib/sources/u64.move:90
+   =     at sui-framework/packages/move-stdlib/sources/u64.move:90
    =         x = ELIDEDu64
    =     at tests/inputs/ints.fail.move:7: foo
    =         result = ELIDEDu64

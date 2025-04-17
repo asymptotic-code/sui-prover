@@ -1,14 +1,26 @@
 use clap::Args;
-use move_cli::base;
 use move_compiler::editions::{Edition, Flavor};
-use move_package::{source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig, LintFlag};
+use move_model::model::GlobalEnv;
+use move_package::{source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig, LintFlag, package_lock::PackageLock};
 use move_core_types::account_address::AccountAddress;
 use log::LevelFilter;
 use std::{collections::BTreeMap, path::{Path,PathBuf}};
 use codespan_reporting::term::termcolor::Buffer;
 use crate::llm_explain::explain_err;
-use crate::generator::{run_boogie_gen, run_move_prover_with_model};
-use crate::generator_options::Options;
+use crate::legacy_builder::ModelBuilderLegacy;
+
+use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::Options};
+
+pub fn move_model_for_package_legacy(
+    config: MoveBuildConfig,
+    path: &Path,
+) -> Result<GlobalEnv, anyhow::Error> {
+    let flags = config.compiler_flags();
+    let resolved_graph = config.resolution_graph_for_package(path, None, &mut Vec::new())?;
+    let _mutx = PackageLock::lock(); // held until function returns
+
+    ModelBuilderLegacy::create(resolved_graph).build_model(flags)
+}
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -65,7 +77,7 @@ pub struct GeneralConfig {
     pub split_paths: Option<usize>,
 }
 
-#[derive(Args)]
+#[derive(Args, Default)]
 #[clap(next_help_heading = "Build Options (subset of sui move build)")]
 pub struct BuildConfig {
     /// Installation directory for compiled artifacts. Defaults to current directory.
@@ -108,13 +120,14 @@ pub async fn execute(
     build_config: BuildConfig,
     boogie_config: Option<String>,
 ) -> anyhow::Result<()> {
-    let rerooted_path = base::reroot_path(path)?;
+    let rerooted_path = reroot_path(path)?;
     let move_build_config = resolve_lock_file_path(
         build_config.into(), 
         Some(&rerooted_path),
     )?;
 
-    let model = move_build_config.move_model_for_package_legacy(
+    let model = move_model_for_package_legacy(
+        move_build_config,
         &rerooted_path,
     )?;
     let mut options = Options::default();
@@ -146,14 +159,25 @@ pub async fn execute(
     Ok(())
 }
 
-fn resolve_lock_file_path(
+pub fn resolve_lock_file_path(
     mut build_config: MoveBuildConfig,
     package_path: Option<&Path>,
 ) -> Result<MoveBuildConfig, anyhow::Error> {
     if build_config.lock_file.is_none() {
-        let package_root = base::reroot_path(package_path)?;
+        let package_root = reroot_path(package_path)?;
         let lock_file_path = package_root.join(SourcePackageLayout::Lock.path());
         build_config.lock_file = Some(lock_file_path);
     }
     Ok(build_config)
+}
+
+pub fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
+    let path = path
+        .map(Path::canonicalize)
+        .unwrap_or_else(|| PathBuf::from(".").canonicalize())?;
+    // Always root ourselves to the package root, and then compile relative to that.
+    let rooted_path = SourcePackageLayout::try_find_root(&path)?;
+    std::env::set_current_dir(rooted_path).unwrap();
+
+    Ok(PathBuf::from("."))
 }

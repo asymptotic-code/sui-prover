@@ -8,11 +8,7 @@ use tracing::debug;
 mod prove;
 mod llm_explain;
 mod prompts;
-mod generator;
-mod generator_options;
-mod boogie_backend;
-
-bin_version::bin_version!();
+mod legacy_builder;
 
 #[derive(Parser)]
 #[clap(
@@ -20,7 +16,7 @@ bin_version::bin_version!();
     about = "Command-line tool for formal verification of Move code within Sui projects. When executed from the project's root directory, it attempts to prove all specifications annotated with #[spec(prove)]",
     rename_all = "kebab-case",
     author,
-    version = VERSION,
+    version = env!("CARGO_PKG_VERSION"),
 )]
 struct Args {
     /// Path to package directory with a Move.toml inside
@@ -48,13 +44,13 @@ async fn main() {
     let bin_name = env!("CARGO_BIN_NAME");
     let args = Args::parse();
 
-    let _guard = telemetry_subscribers::TelemetryConfig::new()
+    let _guard = telemetry_subscribers::TelemetryConfig::new("sui-prover")
         .with_log_file(&format!("{bin_name}.log"))
         .with_log_level("debug")
         .with_env()
         .init();
 
-    debug!("Sui-Prover CLI version: {VERSION}");
+    debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
     let result = execute(args.package_path.as_deref(), args.general_config, args.build_config, args.boogie_config).await;
 

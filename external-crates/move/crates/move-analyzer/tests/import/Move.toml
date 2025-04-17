@@ -1,6 +1,0 @@
-[package]
-name = "Import"
-edition = "2024.beta"
-
-[addresses]
-Import = "0xCAFE"

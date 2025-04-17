@@ -3,8 +3,9 @@ use glob;
 use move_compiler::editions::Flavor;
 use move_package::BuildConfig as MoveBuildConfig;
 use regex::Regex;
+use sui_prover::prove::move_model_for_package_legacy;
 use std::path::{Path, PathBuf};
-use sui_prover::{generator::run_move_prover_with_model, generator_options::Options};
+use move_prover_boogie_backend::{generator::run_move_prover_with_model, generator_options::Options};
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &PathBuf) -> String {
@@ -42,7 +43,8 @@ fn run_prover(file_path: &PathBuf) -> String {
         config.silence_warnings = false; // Disable warning suppression
 
         // Try to build the model
-        let result = match config.move_model_for_package_legacy(
+        let result = match move_model_for_package_legacy(
+            config,
             file_dir,
         ) {
             Ok(model) => {
