@@ -35,6 +35,7 @@ use log::{info, warn};
 use move_compiler::expansion;
 use move_ir_types::ast as IR;
 use num::BigUint;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 pub use move_binary_format::file_format::{AbilitySet, Visibility as FunctionVisibility};
@@ -913,6 +914,8 @@ impl GlobalEnv {
             if !*reported {
                 // Avoid showing the same message twice. This can happen e.g. because of
                 // duplication of expressions via schema inclusion.
+                diag.notes = diag.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+
                 if shown.insert(format!("{:?}", diag)) {
                     emit(writer, &Config::default(), &self.source_files, diag)
                         .expect("emit must not fail");
@@ -4122,4 +4125,14 @@ where
         }
         Ok(())
     }
+}
+
+fn filter_out_sensetives(input: &str) -> String {
+    if input.is_empty() {
+        return input.to_string();
+    }
+    let filter_regex = Regex::new(r"/Users/[^/]+/\.move/[^/]+/crates/([^/]+)/").unwrap();
+    filter_regex
+        .replace_all(&input,"$1/")
+        .to_string()
 }
