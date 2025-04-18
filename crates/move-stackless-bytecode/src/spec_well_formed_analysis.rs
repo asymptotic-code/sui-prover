@@ -102,7 +102,7 @@ impl SpecWellFormedAnalysisProcessor {
         return None;
     }
 
-    pub fn fing_operations_before_after_operation_in_node(&self, block_id: &BlockId, operation: &Operation, cfg: &StacklessControlFlowGraph, code: &[Bytecode], builder: &FunctionDataBuilder, before_targets: &[Operation], after_targets: &[Operation]) -> (BTreeSet<Loc>, BTreeSet<Loc>) {
+    pub fn fing_operations_before_after_operation_in_node(&self, block_id: &BlockId, operation: &Operation, cfg: &StacklessControlFlowGraph, code: &[Bytecode], builder: &FunctionDataBuilder, preconditions: &[Operation], postconditions: &[Operation]) -> (BTreeSet<Loc>, BTreeSet<Loc>) {
         let mut befores = BTreeSet::new();
         let mut afters = BTreeSet::new();
         let mut matched = false;
@@ -117,11 +117,11 @@ impl SpecWellFormedAnalysisProcessor {
                                 matched = true;
                             }
 
-                            if !matched && before_targets.contains(opr) {
+                            if !matched && postconditions.contains(opr) {
                                 befores.insert(builder.get_loc(*attr));
                             }
 
-                            if matched && after_targets.contains(opr) {
+                            if matched && preconditions.contains(opr) {
                                 afters.insert(builder.get_loc(*attr));
                             }
                         },
@@ -131,7 +131,7 @@ impl SpecWellFormedAnalysisProcessor {
             }
         }
     
-        return (befores, afters);
+        return (afters, befores);
     }
 
     pub fn get_return_variables(&self, func_env: &FunctionEnv, code: &[Bytecode]) -> Vec<Vec<Symbol>> {
@@ -399,7 +399,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
 
         let mut pre_matches_traversed = self.traverse_and_match_operations(true, &call_node_id, &graph, &cfg, code, &builder, &preconditions);
         let mut post_matches_traversed = self.traverse_and_match_operations(false, &call_node_id, &graph, &cfg, code, &builder, &postconditions);
-        let (mut pre_matches, mut post_matches) = self.fing_operations_before_after_operation_in_node(&call_node_id, &call_operation, &cfg, code, &builder, &postconditions, &preconditions);
+        let (mut pre_matches, mut post_matches) = self.fing_operations_before_after_operation_in_node(&call_node_id, &call_operation, &cfg, code, &builder, &preconditions, &postconditions);
 
         pre_matches.append(&mut pre_matches_traversed);
         post_matches.append(&mut post_matches_traversed);
