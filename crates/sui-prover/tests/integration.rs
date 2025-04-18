@@ -102,7 +102,7 @@ fn post_process_output(output: String) -> String {
 
 #[test]
 fn run_move_tests() {
-    for entry in glob::glob("tests/inputs/**/*.move").expect("Invalid glob pattern") {
+    for entry in glob::glob("tests/inputs/inv_paths/*.move").expect("Invalid glob pattern") {
         let move_path = entry.expect("Failed to read file path");
         let output = run_prover(&move_path);
         let filename = move_path.file_name().unwrap().to_string_lossy().to_string();

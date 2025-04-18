@@ -365,7 +365,10 @@ impl FunctionTargetsHolder {
                                         env.diag(
                                             Severity::Error,
                                             &func_env.get_loc(),
-                                            &format!("Duplicate target function: {}", function_name.value),
+                                            &format!(
+                                                "Duplicate target function: {}",
+                                                function_name.value
+                                            ),
                                         );
                                     } else {
                                         self.function_specs
@@ -376,9 +379,11 @@ impl FunctionTargetsHolder {
                                     env.diag(
                                         Severity::Error,
                                         &func_env.get_loc(),
-                                        &format!("Target function '{}' not found in module '{}'", 
+                                        &format!(
+                                            "Target function '{}' not found in module '{}'",
                                             function_name.value,
-                                            module.to_string()),
+                                            module.to_string()
+                                        ),
                                     );
                                 }
                             }
@@ -409,15 +414,132 @@ impl FunctionTargetsHolder {
             }
         }
 
-        func_env.get_name_str().strip_suffix("_inv").map(|name| {
-            if let Some(struct_env) = func_env
-                .module_env
-                .find_struct(func_env.symbol_pool().make(name))
-            {
-                self.datatype_invs
-                    .insert(struct_env.get_qualified_id(), func_env.get_qualified_id());
+        if let Some(spec_attr) = func_env
+            .get_toplevel_attributes()
+            .get_(&Verification(VerificationAttribute::SpecOnly))
+        {
+            let inner_attrs = match &spec_attr.value {
+                Attribute_::Parameterized(_, inner_attrs) => inner_attrs,
+                _ => &UniqueMap::new(),
+            };
+
+            let is_inv_target: bool =
+                inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("inv_target")));
+
+            if is_inv_target {
+                let function_spec = inner_attrs
+                    .get_(&AttributeName_::Unknown(Symbol::from("inv_target")))
+                    .unwrap();
+                println!("func_env: {}", func_env.get_full_name_str());
+                println!("Here: {:?}", function_spec);
+                if let Attribute_::Assigned(_, boxed_value) = &function_spec.value {
+                    if let AttributeValue_::ModuleAccess(spanned) = &boxed_value.value {
+                        if let ModuleAccess_::ModuleAccess(module_ident, struct_spanned) =
+                            &spanned.value
+                        {
+                            let address = module_ident.value.address;
+                            let module = &module_ident.value.module;
+                            let struct_name = &struct_spanned.value.as_str();
+
+                            let addr_bytes = address.into_addr_bytes();
+                            let module_name = ModuleName::from_address_bytes_and_name(
+                                addr_bytes,
+                                func_env.symbol_pool().make(&module.to_string()),
+                            );
+                            println!("Module name: {}::{}", address, module);
+                            println!("Struct name: {}", struct_name.to_string());
+
+                            if let Some(module_env) =
+                                func_env.module_env.env.find_module(&module_name)
+                            {
+                                if let Some(struct_env) = module_env.find_struct(func_env.symbol_pool().make(struct_name)) {
+                                    if self
+                                        .datatype_invs
+                                        .contains_right(&func_env.get_qualified_id())
+                                    {
+                                        let env = func_env.module_env.env;
+                                        env.diag(
+                                            Severity::Error,
+                                            &func_env.get_loc(),
+                                            &format!(
+                                                "Duplicate invariant function for struct: {}",
+                                                struct_name
+                                            ),
+                                        );
+                                    } else {
+                                        self.datatype_invs.insert(
+                                            struct_env.get_qualified_id(),
+                                            func_env.get_qualified_id(),
+                                        );
+                                    }
+                                } else {
+                                    let env = func_env.module_env.env;
+                                    let module_name = func_env
+                                        .module_env
+                                        .get_name()
+                                        .display(func_env.symbol_pool())
+                                        .to_string();
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "Target struct '{}' not found in module '{}'",
+                                            struct_name, module_name
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        func_env
+                            .get_name_str()
+                            .strip_suffix("_inv")
+                            .map(|name: &str| {
+                                println!("found _inv: {}", name);
+                                if let Some(struct_env) = func_env
+                                    .module_env
+                                    .find_struct(func_env.symbol_pool().make(name))
+                                {
+                                    if self
+                                        .datatype_invs
+                                        .contains_right(&func_env.get_qualified_id())
+                                    {
+                                        let env = func_env.module_env.env;
+                                        env.diag(
+                                            Severity::Error,
+                                            &func_env.get_loc(),
+                                            &format!(
+                                                "Duplicate invariant function for struct: {}",
+                                                struct_env.get_full_name_str()
+                                            ),
+                                        );
+                                    } else {
+                                        self.datatype_invs.insert(
+                                            struct_env.get_qualified_id(),
+                                            func_env.get_qualified_id(),
+                                        );
+                                    }
+                                } else {
+                                    let env = func_env.module_env.env;
+                                    let module_name = func_env
+                                        .module_env
+                                        .get_name()
+                                        .display(func_env.symbol_pool())
+                                        .to_string();
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "Target struct '{}' not found in module '{}'",
+                                            name, module_name
+                                        ),
+                                    );
+                                }
+                            });
+                    }
+                }
             }
-        });
+        }
     }
 
     /// Gets a function target for read-only consumption, for the given variant.
