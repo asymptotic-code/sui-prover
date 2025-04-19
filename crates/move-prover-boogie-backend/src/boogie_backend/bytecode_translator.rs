@@ -254,7 +254,7 @@ impl<'env> BoogieTranslator<'env> {
         let remove_function_id = FunId::new(self.env.symbol_pool().make("remove"));
         let insert_function_id = FunId::new(self.env.symbol_pool().make("insert"));
         let swap_remove_function_id = FunId::new(self.env.symbol_pool().make("swap_remove"));
-        let intrinsic_fun_ids: BTreeSet<_> = match self
+        let vector_intrinsic_fun_ids: BTreeSet<_> = match self
             .env
             .find_module_by_name(self.env.symbol_pool().make("vector"))
         {
@@ -276,6 +276,25 @@ impl<'env> BoogieTranslator<'env> {
             }
             None => BTreeSet::new(),
         };
+        let vec_set_intrinsic_fun_ids: BTreeSet<_> = match self
+            .env
+            .find_module_by_name(self.env.symbol_pool().make("vec_set"))
+        {
+            Some(vec_set_module) => vec!["get_idx_opt", "from_keys"]
+                .into_iter()
+                .map(|name| {
+                    vec_set_module
+                        .find_function(self.env.symbol_pool().make(name))
+                        .unwrap()
+                        .get_qualified_id()
+                })
+                .collect(),
+            None => BTreeSet::new(),
+        };
+
+        let intrinsic_fun_ids: BTreeSet<_> = vector_intrinsic_fun_ids
+            .union(&vec_set_intrinsic_fun_ids)
+            .collect();
 
         let mut translated_types = BTreeSet::new();
         let mut verified_functions_count = 0;

@@ -1144,6 +1144,17 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 {%- endfor %}
 
 // ==================================================================================
+// Native VecSet
+
+{%- for instance in vec_set_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native VecSet implementation for element type `{{instance.suffix}}`
+
+{{ native::vec_set_module(instance=instance) -}}
+{%- endfor %}
+
+// ==================================================================================
 // Native Table
 
 {%- for instance in table_key_instances %}
