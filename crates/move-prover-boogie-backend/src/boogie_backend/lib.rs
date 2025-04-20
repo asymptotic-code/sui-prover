@@ -205,6 +205,23 @@ pub fn add_prelude(
         // table_instances.append(&mut bv_table_instances);
     }
     context.insert("vec_instances", &vec_instances);
+
+    if let Some(vec_set_module_env) = env.find_module_by_name(env.symbol_pool().make("vec_set")) {
+        let vec_set_struct_env = vec_set_module_env
+            .find_struct(env.symbol_pool().make("VecSet"))
+            .unwrap();
+        let vec_set_instances = mono_info
+            .all_types
+            .iter()
+            .filter_map(|ty| match ty.get_datatype() {
+                Some((did, tys)) if did == vec_set_struct_env.get_qualified_id() => Some(&tys[0]),
+                _ => None,
+            })
+            .map(|ty| TypeInfo::new(env, options, ty, false))
+            .collect_vec();
+        context.insert("vec_set_instances", &vec_set_instances);
+    }
+
     context.insert("table_instances", &table_instances);
     let table_key_instances = mono_info
         .table_inst

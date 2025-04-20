@@ -334,6 +334,29 @@ $1_vector_index_of{{S}}(v: Vec ({{T}}), e: {{T}}) returns (res1: bool, res2: int
 }
 {% endmacro vector_module %}
 
+{# VecSet
+   =======
+#}
+
+{% macro vec_set_module(instance) %}
+{%- set T = instance.name -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
+    s: $2_vec_set_VecSet{{S}},
+    e: {{T}}
+) returns (res: $1_option_Option'u64') {
+    var res0: int;
+    res0 := $IndexOfVec{{S}}(s->$contents, e);
+    if (res0 >= 0) {
+        res := $1_option_Option'u64'(MakeVec1(res0));
+    } else {
+        res := $1_option_Option'u64'(EmptyVec());
+    }
+}
+
+{% endmacro vec_set_module %}
+
 {# Tables
    =======
 #}
