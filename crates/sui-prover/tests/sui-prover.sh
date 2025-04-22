@@ -58,12 +58,13 @@ cd ../..
 # sui-prover
 # cd ..
 
-git clone https://github.com/andrii-a8c/sui-kit.git sui-kit
+git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 cd sui-kit/examples
 
-cd amm
-sui-prover
-cd .. 
+# skip amm as it too long to run
+# cd amm
+# sui-prover
+# cd .. 
 
 cd guide
 sui-prover
