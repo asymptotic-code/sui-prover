@@ -168,20 +168,20 @@ impl BorrowInfo {
             "live_nodes",
             self.live_nodes
                 .iter()
-                .map(|node| format!("{}", node.display(func_target)))
+                .map(|node| format!("{}", node.display(func_target.func_env)))
                 .join(", "),
         );
         let borrows_str =
             |(node1, borrows): (&BorrowNode, &SetDomain<(BorrowNode, BorrowEdge)>)| {
                 format!(
                     "{} -> {{{}}}",
-                    node1.display(func_target),
+                    node1.display(func_target.func_env),
                     borrows
                         .iter()
                         .map(|(node2, edge)| format!(
                             "({}, {})",
                             edge.display(func_target.global_env()),
-                            node2.display(func_target)
+                            node2.display(func_target.func_env)
                         ))
                         .join(", ")
                 )
@@ -313,13 +313,31 @@ impl BorrowInfo {
                 let out_node = BorrowNode::Reference(*out);
                 self.add_node(out_node.clone());
                 for (in_node, edge) in edges.iter() {
-                    if let BorrowNode::Reference(in_idx) = in_node {
-                        let actual_in_node = BorrowNode::Reference(get_in(*in_idx));
-                        self.add_edge(
-                            actual_in_node,
-                            out_node.clone(),
-                            edge.instantiate(callee_targs),
-                        );
+                    match in_node {
+                        BorrowNode::Reference(in_idx) => {
+                            let actual_in_node = BorrowNode::Reference(get_in(*in_idx));
+                            self.add_edge(
+                                actual_in_node,
+                                out_node.clone(),
+                                edge.instantiate(callee_targs),
+                            );
+                        }
+                        BorrowNode::SpecGlobalRoot(..) => {
+                            self.add_edge(
+                                in_node.clone(),
+                                out_node.clone(),
+                                edge.instantiate(callee_targs),
+                            );
+                        }
+                        BorrowNode::LocalRoot(..)
+                        | BorrowNode::GlobalRoot(..)
+                        | BorrowNode::ReturnPlaceholder(..) => {
+                            unreachable!(
+                                "inconsistent borrow information: function {} cannot borrow node {}",
+                                callee_env.get_full_name_str(),
+                                in_node.display(callee_env),
+                            );
+                        }
                     }
                 }
             } else {

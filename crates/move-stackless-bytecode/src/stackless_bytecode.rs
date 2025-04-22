@@ -13,8 +13,8 @@ use move_binary_format::file_format::CodeOffset;
 use move_core_types::u256;
 use move_model::{
     model::{
-        DatatypeId, FunId, GlobalEnv, ModuleId, NodeId, QualifiedId, QualifiedInstId, RefType,
-        VariantId,
+        DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleId, NodeId, QualifiedId, QualifiedInstId,
+        RefType, VariantId,
     },
     ty::{Type, TypeDisplayContext},
 };
@@ -1115,13 +1115,13 @@ impl fmt::Display for OperationDisplay<'_> {
             WriteBack(node, edge) => write!(
                 f,
                 "write_back[{}{}]",
-                node.display(self.func_target),
+                node.display(self.func_target.func_env),
                 edge.display(self.func_target.global_env())
             )?,
             IsParent(node, edge) => write!(
                 f,
                 "is_parent[{}{}]",
-                node.display(self.func_target),
+                node.display(self.func_target.func_env),
                 edge.display(self.func_target.global_env())
             )?,
 
@@ -1298,18 +1298,15 @@ impl fmt::Display for Constant {
 /// A display object for a borrow node.
 pub struct BorrowNodeDisplay<'env> {
     node: &'env BorrowNode,
-    func_target: &'env FunctionTarget<'env>,
+    func_env: &'env FunctionEnv<'env>,
 }
 
 impl BorrowNode {
     /// Creates a format object for a borrow node in context of a function target.
-    pub fn display<'env>(
-        &'env self,
-        func_target: &'env FunctionTarget<'env>,
-    ) -> BorrowNodeDisplay<'env> {
+    pub fn display<'env>(&'env self, func_env: &'env FunctionEnv<'env>) -> BorrowNodeDisplay<'env> {
         BorrowNodeDisplay {
             node: self,
-            func_target,
+            func_env,
         }
     }
 }
@@ -1320,18 +1317,18 @@ impl fmt::Display for BorrowNodeDisplay<'_> {
         match self.node {
             GlobalRoot(s) => {
                 let ty = Type::Datatype(s.module_id, s.id, s.inst.to_owned());
-                let tctx = TypeDisplayContext::WithEnv {
-                    env: self.func_target.global_env(),
-                    type_param_names: None,
-                };
-                write!(f, "{}", ty.display(&tctx))?;
+                write!(
+                    f,
+                    "{}",
+                    ty.display(&self.func_env.get_named_type_display_ctx())
+                )?;
             }
             SpecGlobalRoot(tys) => {
                 write!(
                     f,
                     "GlobalSpecRoot({}, {})",
-                    tys[0].display(&self.func_target.global_env().get_type_display_ctx()),
-                    tys[1].display(&self.func_target.global_env().get_type_display_ctx()),
+                    tys[0].display(&self.func_env.get_named_type_display_ctx()),
+                    tys[1].display(&self.func_env.get_named_type_display_ctx()),
                 )?;
             }
             LocalRoot(idx) => {
