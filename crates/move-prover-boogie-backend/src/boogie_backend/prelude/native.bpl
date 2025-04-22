@@ -357,6 +357,42 @@ procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
 
 {% endmacro vec_set_module %}
 
+{# VecMap
+   =======
+#}
+
+{% macro vec_map_module(key_instance, value_instance) %}
+{%- set K = key_instance.name -%}
+{%- set V = value_instance.name -%}
+{%- set K_S = "'" ~ key_instance.suffix ~ "'" -%}
+{%- set S = "'" ~ key_instance.suffix ~ "_" ~ value_instance.suffix ~ "'" -%}
+
+function {:inline} $ContainsVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): bool {
+    (exists i: int :: $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k))
+}
+
+function $IndexOfVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): int;
+axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v, k)}
+    (var i := $IndexOfVecMap{{S}}(v, k);
+     if (!$ContainsVecMap{{S}}(v, k)) then i == -1
+     else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
+        (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
+
+procedure {:inline 1} $2_vec_map_get_idx_opt{{S}}(
+    m: $2_vec_map_VecMap{{S}},
+    k: {{K}}
+) returns (res: $1_option_Option'u64') {
+    var res0: int;
+    res0 := $IndexOfVecMap{{S}}(m->$contents, k);
+    if (res0 >= 0) {
+        res := $1_option_Option'u64'(MakeVec1(res0));
+    } else {
+        res := $1_option_Option'u64'(EmptyVec());
+    }
+}
+
+{% endmacro vec_map_module %}
+
 {# Tables
    =======
 #}

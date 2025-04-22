@@ -291,9 +291,31 @@ impl<'env> BoogieTranslator<'env> {
                 .collect(),
             None => BTreeSet::new(),
         };
+        let vec_map_intrinsic_fun_ids: BTreeSet<_> = match self
+            .env
+            .find_module_by_name(self.env.symbol_pool().make("vec_map"))
+        {
+            Some(vec_set_module) => vec![
+                "get_idx_opt",
+                "from_keys_values",
+                "into_keys_values",
+                "keys",
+            ]
+            .into_iter()
+            .map(|name| {
+                vec_set_module
+                    .find_function(self.env.symbol_pool().make(name))
+                    .unwrap()
+                    .get_qualified_id()
+            })
+            .collect(),
+            None => BTreeSet::new(),
+        };
 
         let intrinsic_fun_ids: BTreeSet<_> = vector_intrinsic_fun_ids
-            .union(&vec_set_intrinsic_fun_ids)
+            .iter()
+            .chain(&vec_set_intrinsic_fun_ids)
+            .chain(&vec_map_intrinsic_fun_ids)
             .collect();
 
         let mut translated_types = BTreeSet::new();

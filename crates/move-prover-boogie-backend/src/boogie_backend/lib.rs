@@ -222,6 +222,29 @@ pub fn add_prelude(
         context.insert("vec_set_instances", &vec_set_instances);
     }
 
+    if let Some(vec_map_module_env) = env.find_module_by_name(env.symbol_pool().make("vec_map")) {
+        let vec_map_struct_env = vec_map_module_env
+            .find_struct(env.symbol_pool().make("VecMap"))
+            .unwrap();
+        let vec_map_instances = mono_info
+            .all_types
+            .iter()
+            .filter_map(|ty| match ty.get_datatype() {
+                Some((did, tys)) if did == vec_map_struct_env.get_qualified_id() => {
+                    Some((&tys[0], &tys[1]))
+                }
+                _ => None,
+            })
+            .map(|(ty0, ty1)| {
+                (
+                    TypeInfo::new(env, options, ty0, false),
+                    TypeInfo::new(env, options, ty1, false),
+                )
+            })
+            .collect_vec();
+        context.insert("vec_map_instances", &vec_map_instances);
+    }
+
     context.insert("table_instances", &table_instances);
     let table_key_instances = mono_info
         .table_inst
