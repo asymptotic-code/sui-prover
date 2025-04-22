@@ -355,6 +355,19 @@ procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
     }
 }
 
+function $DisjointVecSet{{S}}(v: Vec ({{T}})): bool {
+    (forall i: int, j: int :: {$IsEqual{{S}}(ReadVec(v, i), ReadVec(v, j))}
+        InRangeVec(v, i) && InRangeVec(v, j) && i != j ==> !$IsEqual{{S}}(ReadVec(v, i), ReadVec(v, j)))
+}
+
+procedure {:inline 1} $2_vec_set_from_keys{{S}}(v: Vec ({{T}})) returns (res: $2_vec_set_VecSet{{S}}) {
+    if (!$DisjointVecSet{{S}}(v)) {
+        call $Abort(0);
+        return;
+    }
+    res := $2_vec_set_VecSet{{S}}(v);
+}
+
 {% endmacro vec_set_module %}
 
 {# VecMap
@@ -411,6 +424,32 @@ procedure {:inline 1} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}) returns (r
 procedure {:inline 1} $2_vec_map_into_keys_values{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res0: Vec ({{K}}), res1: Vec ({{V}})) {
     res0 := $VecMapKeys{{S}}(m->$contents);
     res1 := $VecMapValues{{S}}(m->$contents);
+}
+
+function $DisjointVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}})): bool {
+    (forall i: int, j: int :: {$IsEqual{{K_S}}(ReadVec(v, i)->$key, ReadVec(v, j)->$key)}
+        InRangeVec(v, i) && InRangeVec(v, j) && i != j ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, ReadVec(v, j)->$key))
+}
+
+function $VecMapFromKeysValues{{S}}(keys: Vec ({{K}}), values: Vec ({{V}})): Vec ($2_vec_map_Entry{{S}});
+axiom (forall keys: Vec ({{K}}), values: Vec ({{V}}) :: {$VecMapFromKeysValues{{S}}(keys, values)}
+    (var entries := $VecMapFromKeysValues{{S}}(keys, values);
+     LenVec(entries) == LenVec(keys) &&
+     (forall i: int :: InRangeVec(keys, i) ==>
+        $IsEqual{{K_S}}(ReadVec(entries, i)->$key, ReadVec(keys, i)) && $IsEqual{{V_S}}(ReadVec(entries, i)->$value, ReadVec(values, i)))));
+
+procedure {:inline 1} $2_vec_map_from_keys_values{{S}}(keys: Vec ({{K}}), values: Vec ({{V}})) returns (res: $2_vec_map_VecMap{{S}}) {
+    var entries: Vec ($2_vec_map_Entry{{S}});
+    if (LenVec(keys) != LenVec(values)) {
+        call $Abort(5);
+        return;
+    }
+    entries := $VecMapFromKeysValues{{S}}(keys, values);
+    if (!$DisjointVecMap{{S}}(entries)) {
+        call $Abort(0);
+        return;
+    }
+    res := $2_vec_map_VecMap{{S}}(entries);
 }
 
 {% endmacro vec_map_module %}

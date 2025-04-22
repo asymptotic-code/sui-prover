@@ -295,7 +295,7 @@ impl<'env> BoogieTranslator<'env> {
             .env
             .find_module_by_name(self.env.symbol_pool().make("vec_map"))
         {
-            Some(vec_set_module) => vec![
+            Some(vec_map_module) => vec![
                 "get_idx_opt",
                 "from_keys_values",
                 "into_keys_values",
@@ -303,7 +303,7 @@ impl<'env> BoogieTranslator<'env> {
             ]
             .into_iter()
             .map(|name| {
-                vec_set_module
+                vec_map_module
                     .find_function(self.env.symbol_pool().make(name))
                     .unwrap()
                     .get_qualified_id()
@@ -977,6 +977,44 @@ impl<'env> StructTranslator<'env> {
                             boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
                         );
                         sep = "  && ";
+                    }
+                    if let Some(vec_set_module_env) = self
+                        .parent
+                        .env
+                        .find_module_by_name(self.parent.env.symbol_pool().make("vec_set"))
+                    {
+                        if struct_env.get_qualified_id()
+                            == vec_set_module_env
+                                .find_struct(self.parent.env.symbol_pool().make("VecSet"))
+                                .unwrap()
+                                .get_qualified_id()
+                        {
+                            emitln!(
+                                writer,
+                                "{}$DisjointVecSet{}(s->$contents)",
+                                sep,
+                                boogie_inst_suffix(self.parent.env, self.type_inst)
+                            );
+                        }
+                    }
+                    if let Some(vec_map_module_env) = self
+                        .parent
+                        .env
+                        .find_module_by_name(self.parent.env.symbol_pool().make("vec_map"))
+                    {
+                        if struct_env.get_qualified_id()
+                            == vec_map_module_env
+                                .find_struct(self.parent.env.symbol_pool().make("VecMap"))
+                                .unwrap()
+                                .get_qualified_id()
+                        {
+                            emitln!(
+                                writer,
+                                "{}$DisjointVecMap{}(s->$contents)",
+                                sep,
+                                boogie_inst_suffix(self.parent.env, self.type_inst)
+                            );
+                        }
                     }
                 }
             },
