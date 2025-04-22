@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: Duplicate invariant declaration for struct: Bar
+   ┌─ tests/inputs/inv_paths/duplicate_target.move:29:5
+   │  
+29 │ ╭     fun foobar(bar: &Bar): bool {
+30 │ │         bar.get_values() < 250
+31 │ │     }
+   │ ╰─────^
