@@ -365,6 +365,7 @@ procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
 {%- set K = key_instance.name -%}
 {%- set V = value_instance.name -%}
 {%- set K_S = "'" ~ key_instance.suffix ~ "'" -%}
+{%- set V_S = "'" ~ value_instance.suffix ~ "'" -%}
 {%- set S = "'" ~ key_instance.suffix ~ "_" ~ value_instance.suffix ~ "'" -%}
 
 function {:inline} $ContainsVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): bool {
@@ -389,6 +390,27 @@ procedure {:inline 1} $2_vec_map_get_idx_opt{{S}}(
     } else {
         res := $1_option_Option'u64'(EmptyVec());
     }
+}
+
+function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
+axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
+    (var keys := $VecMapKeys{{S}}(v);
+     LenVec(keys) == LenVec(v) &&
+     (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{K_S}}(ReadVec(keys, i), ReadVec(v, i)->$key))));
+
+function $VecMapValues{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{V}});
+axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapValues{{S}}(v)}
+    (var values := $VecMapValues{{S}}(v);
+     LenVec(values) == LenVec(v) &&
+     (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{V_S}}(ReadVec(values, i), ReadVec(v, i)->$value))));
+
+procedure {:inline 1} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res: Vec ({{K}})) {
+    res := $VecMapKeys{{S}}(m->$contents);
+}
+
+procedure {:inline 1} $2_vec_map_into_keys_values{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res0: Vec ({{K}}), res1: Vec ({{V}})) {
+    res0 := $VecMapKeys{{S}}(m->$contents);
+    res1 := $VecMapValues{{S}}(m->$contents);
 }
 
 {% endmacro vec_map_module %}
