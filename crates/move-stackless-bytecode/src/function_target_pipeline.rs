@@ -444,8 +444,6 @@ impl FunctionTargetsHolder {
                                 addr_bytes,
                                 func_env.symbol_pool().make(&module.to_string()),
                             );
-                            println!("Module name: {}::{}", address, module);
-                            println!("Struct name: {}", struct_name);
 
                             if let Some(module_env) =
                                 func_env.module_env.env.find_module(&module_name)
@@ -501,7 +499,6 @@ impl FunctionTargetsHolder {
                     .get_name_str()
                     .strip_suffix("_inv")
                     .map(|name: &str| {
-                        println!("found _inv: {}", name);
                         if let Some(struct_env) = func_env
                             .module_env
                             .find_struct(func_env.symbol_pool().make(name))
