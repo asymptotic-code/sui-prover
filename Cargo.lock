@@ -2014,6 +2014,7 @@ dependencies = [
  "move-command-line-common",
  "move-compiler",
  "move-core-types",
+ "move-ir-types",
  "move-model 0.1.0",
  "move-stdlib",
  "move-symbol-pool",
