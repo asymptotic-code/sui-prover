@@ -5,8 +5,12 @@ edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 
 [dependencies]
-MoveStdlib = { local = "../move-stdlib" }
-MoveStdlib = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "emit-fix" }
+MoveStdlib = { 
+    git = "https://github.com/asymptotic-code/sui.git", 
+    subdir = "crates/sui-framework/packages/move-stdlib", 
+    rev = "emit-fix", 
+    override = true 
+}
 # Sui = { local = "../sui-framework" }
 
 # For remote import, use the `{ git = "...", subdir = "...", rev = "..." }`.
