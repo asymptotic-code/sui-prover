@@ -79,7 +79,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            output_path: "output.bpl".to_string(),
+            output_path: "output".to_string(),
             run_docgen: false,
             run_read_write_set: false,
             run_escape: false,

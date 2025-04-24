@@ -39,7 +39,7 @@ use crate::{
 
 /// A data structure which holds data for multiple function targets, and allows to
 /// manipulate them as part of a transformation pipeline.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
@@ -190,6 +190,26 @@ impl FunctionTargetsHolder {
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
+        }
+    }
+
+    pub fn for_one_spec(target: &QualifiedId<FunId>, instance: FunctionTargetsHolder) -> Self {
+        let mut focus_specs = BTreeSet::new();
+        focus_specs.insert(*target);
+
+        let mut no_specs = instance.no_focus_specs.clone();
+        no_specs.append(&mut instance.no_verify_specs.clone());
+        no_specs.remove(target);
+
+        Self {
+            targets: instance.targets,
+            function_specs: instance.function_specs,
+            no_verify_specs: no_specs.clone(),
+            no_focus_specs: no_specs.clone(),
+            focus_specs: focus_specs,
+            ignore_aborts: instance.ignore_aborts,
+            scenario_specs: instance.scenario_specs,
+            datatype_invs: instance.datatype_invs,
         }
     }
 
