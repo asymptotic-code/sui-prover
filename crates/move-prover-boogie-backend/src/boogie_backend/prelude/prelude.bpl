@@ -1155,6 +1155,17 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 {%- endfor %}
 
 // ==================================================================================
+// Native VecMap
+
+{%- for instance in vec_map_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native VecMap implementation for key type `{{instance.0.suffix}}` and value type `{{instance.1.suffix}}`
+
+{{ native::vec_map_module(key_instance=instance.0, value_instance=instance.1) -}}
+{%- endfor %}
+
+// ==================================================================================
 // Native Table
 
 {%- for instance in table_key_instances %}

@@ -1,7 +1,7 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
 expression: output
-snapshot_kind: text
 ---
 Verification successful
 warning: unused variable
@@ -13,19 +13,19 @@ warning: unused variable
   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
 warning: Consider moving pre-condition before function call
-   ┌─ tests/inputs/spec_well_formed/spec_well_formed_func_conditions.move:12:3
-   │
-12 │   ensures(true);
-   │   ^^^^^^^^^^^^^
-
-warning: Consider moving post-condition after target function call
    ┌─ tests/inputs/spec_well_formed/spec_well_formed_func_conditions.move:16:3
    │
 16 │   asserts(true);
    │   ^^^^^^^^^^^^^
 
-warning: Consider moving post-condition after target function call
+warning: Consider moving pre-condition before function call
    ┌─ tests/inputs/spec_well_formed/spec_well_formed_func_conditions.move:17:3
    │
 17 │   requires(true);
    │   ^^^^^^^^^^^^^^
+
+warning: Consider moving post-condition after target function call
+   ┌─ tests/inputs/spec_well_formed/spec_well_formed_func_conditions.move:12:3
+   │
+12 │   ensures(true);
+   │   ^^^^^^^^^^^^^
