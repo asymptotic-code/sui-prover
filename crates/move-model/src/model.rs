@@ -16,12 +16,7 @@
 //! - A `FunctionEnv` which is a reference to the data of some function in a module.
 
 use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    ffi::OsStr,
-    fmt::{self, Formatter},
-    rc::Rc,
+    any::{Any, TypeId}, cell::RefCell, collections::{BTreeMap, BTreeSet, VecDeque}, ffi::OsStr, fmt::{self, Formatter}, ops::Index, rc::Rc
 };
 
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
@@ -905,24 +900,22 @@ impl GlobalEnv {
         filter: F,
     ) {
         let mut shown = BTreeSet::new();
-        for (diag, reported) in self
-            .diags
-            .borrow_mut()
-            .iter_mut()
-            .filter(|(d, _)| filter(d))
-        {
-            if !*reported {
+        self.diags.borrow_mut().retain(|(diag, _)| {
+            if filter(diag) {
+                let mut d = diag.clone();
                 // Avoid showing the same message twice. This can happen e.g. because of
                 // duplication of expressions via schema inclusion.
-                diag.notes = diag.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+                d.notes = diag.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
                 if shown.insert(format!("{:?}", diag)) {
                     emit(writer, &Config::default(), &self.source_files, diag)
                         .expect("emit must not fail");
                 }
-                *reported = true;
+                false
+            } else {
+                true
             }
-        }
+        })
     }
 
     /// Adds a new module to the environment. StructData and FunctionData need to be provided

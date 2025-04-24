@@ -157,14 +157,15 @@ pub fn run_move_prover_with_model<W: WriteColor>(
                 + verify_duration.as_secs_f64()
         );
 
-        if env.has_errors() {
+        let is_error = env.has_errors();
+        env.report_diag(error_writer, options.prover.report_severity);
+
+        if is_error {
             has_errors = true;
         }
 
-        env.report_diag(error_writer, options.prover.report_severity);
-
         if has_target {
-            if env.has_errors() {
+            if is_error {
                 println!("❌ {file_name}");
             } else {
                 print!("\x1B[1A\x1B[2K");
