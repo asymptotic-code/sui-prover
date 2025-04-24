@@ -4144,8 +4144,8 @@ fn filter_out_sensetives(input: &str) -> String {
     if input.is_empty() {
         return input.to_string();
     }
-    let filter_regex = Regex::new(r"/Users/[^/]+/\.move/[^/]+/crates/([^/]+)/").unwrap();
+    let filter_regex = Regex::new(r"/home/[^/]+/\.move/[^/]+/crates/([^/]+)/").unwrap();
     filter_regex
-        .replace_all(&input,"$1/")
+        .replace_all(&input,"sui-framework/")
         .to_string()
 }
