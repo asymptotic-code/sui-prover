@@ -12,16 +12,10 @@ Go to [Sui Prover Documentation](https://info.asymptotic.tech/sui-prover) for mo
 brew install asymptotic-code/sui-prover/sui-prover
 ```
 
-### Update `Move.toml`
-
-Replace the `sui-framework` dependency with the Sui Prover fork:
+### Add the sui-prover packages dependency
 
 ```toml
-Sui = { 
-  git = "https://github.com/asymptotic-code/sui.git", 
-  subdir = "crates/sui-framework/packages/sui-framework", 
-  rev = "next" 
-}
+SuiProver = { git = "https://github.com/asymptotic-code/sui-prover.git", subdir = "packages/sui-prover", rev = "main", override = true}
 ```
 
 ## Basic Usage
