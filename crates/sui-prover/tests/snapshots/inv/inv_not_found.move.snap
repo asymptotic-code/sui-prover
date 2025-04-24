@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: Target struct 'foo' not found in module '0x42::inv_foo'
+   ┌─ tests/inputs/inv/inv_not_found.move:19:5
+   │  
+19 │ ╭     public fun foo_inv(bar: &Bar): bool {
+20 │ │         bar.x < 150
+21 │ │     }
+   │ ╰─────^
