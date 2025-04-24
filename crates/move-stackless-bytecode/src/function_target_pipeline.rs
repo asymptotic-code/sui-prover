@@ -441,22 +441,20 @@ impl FunctionTargetsHolder {
 
                 match Self::parse_module_access(function_spec, env) {
                     Some((module_name, struct_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            Self::process_inv(
-                                func_env,
-                                &module_env,
-                                env,
-                                &mut self.datatype_invs,
-                                struct_name,
-                            );
-                        }
+                        let module_env = env.find_module(&module_name).unwrap();
+
+                        Self::process_inv(
+                            func_env,
+                            &module_env,
+                            env,
+                            &mut self.datatype_invs,
+                            struct_name,
+                        );
                     }
                     None => {
                         let module_name = func_env
                             .module_env
-                            .get_name()
-                            .display(func_env.symbol_pool())
-                            .to_string();
+                            .get_full_name_str();
 
                         env.diag(
                             Severity::Error,
@@ -532,9 +530,8 @@ impl FunctionTargetsHolder {
         } else {
             let module_name = func_env
                 .module_env
-                .get_name()
-                .display(env.symbol_pool())
-                .to_string();
+                .get_full_name_str();
+            
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
