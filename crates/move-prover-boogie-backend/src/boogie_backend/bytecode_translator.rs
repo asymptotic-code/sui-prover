@@ -5,10 +5,12 @@
 //! This module translates the bytecode of a module to Boogie code.
 
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    iter,
+    cell::RefCell, 
+    collections::{BTreeMap, BTreeSet}, 
+    fs, 
+    iter, 
     str::FromStr,
+    path::Path,
 };
 
 use bimap::btree::BiBTreeMap;
@@ -80,6 +82,7 @@ pub struct BoogieTranslator<'env> {
     spec_translator: SpecTranslator<'env>,
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
+    output_path: String,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -105,6 +108,7 @@ impl<'env> BoogieTranslator<'env> {
     pub fn new(
         env: &'env GlobalEnv,
         options: &'env BoogieOptions,
+        output: String,
         targets: &'env FunctionTargetsHolder,
         writer: &'env CodeWriter,
         types: &'env RefCell<BiBTreeMap<Type, String>>,
@@ -116,10 +120,11 @@ impl<'env> BoogieTranslator<'env> {
             writer,
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
+            output_path: output,
         }
     }
 
-    pub fn translate(&mut self) {
+    pub fn translate(&mut self) -> anyhow::Result<BTreeSet<String>> {
         let writer = self.writer;
         let env = self.env;
 
@@ -319,11 +324,13 @@ impl<'env> BoogieTranslator<'env> {
             .collect();
 
         let mut translated_types = BTreeSet::new();
-        let mut verified_functions_count = 0;
         info!(
             "generating verification conditions for {:?} module(s)",
             self.env.get_module_count()
         );
+
+        let mut post_check_funcs: Vec<QualifiedId<FunId>> = vec![];
+
         for module_env in self.env.get_modules() {
             self.writer.set_location(&module_env.env.internal_loc());
 
@@ -368,86 +375,6 @@ impl<'env> BoogieTranslator<'env> {
                 }
             }
 
-            for ref fun_env in module_env.get_functions() {
-                if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
-                    continue;
-                }
-
-                if self.targets.is_spec(&fun_env.get_qualified_id()) {
-                    verified_functions_count += 1;
-
-                    if self
-                        .targets
-                        .scenario_specs()
-                        .contains(&fun_env.get_qualified_id())
-                    {
-                        if self.targets.has_target(
-                            fun_env,
-                            &FunctionVariant::Verification(VerificationFlavor::Regular),
-                        ) {
-                            let fun_target = self.targets.get_target(
-                                fun_env,
-                                &FunctionVariant::Verification(VerificationFlavor::Regular),
-                            );
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst: &[],
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
-                        }
-                        continue;
-                    }
-
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(
-                        fun_env,
-                        FunctionTranslationStyle::SpecNoAbortCheck,
-                    );
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
-                } else {
-                    let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
-                    if !verification_analysis::get_info(&fun_target).inlined {
-                        continue;
-                    }
-
-                    if let Some(spec_qid) =
-                        self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
-                    {
-                        if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst: &[],
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
-                        }
-                    } else {
-                        // This variant is inlined, so translate for all type instantiations.
-                        for type_inst in mono_info
-                            .funs
-                            .get(&(
-                                fun_target.func_env.get_qualified_id(),
-                                FunctionVariant::Baseline,
-                            ))
-                            .unwrap_or(&BTreeSet::new())
-                        {
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst,
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
-                        }
-                    }
-                }
-            }
-
             for ref struct_env in module_env.get_structs() {
                 if struct_env.is_native() {
                     continue;
@@ -479,10 +406,125 @@ impl<'env> BoogieTranslator<'env> {
                     }
                 }
             }
+
+            for ref fun_env in module_env.get_functions() {
+                if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    continue;
+                }
+
+                if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                    post_check_funcs.push(fun_env.get_qualified_id());
+                    continue;
+                }
+
+                let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
+                if !verification_analysis::get_info(&fun_target).inlined {
+                    continue;
+                }
+
+                if let Some(spec_qid) =
+                    self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
+                {
+                    if !self.targets.no_verify_specs().contains(spec_qid) {
+                        FunctionTranslator {
+                            parent: self,
+                            fun_target: &fun_target,
+                            type_inst: &[],
+                            style: FunctionTranslationStyle::Default,
+                        }
+                        .translate();
+                    }
+                } else {
+                    // This variant is inlined, so translate for all type instantiations.
+                    for type_inst in mono_info
+                        .funs
+                        .get(&(
+                            fun_target.func_env.get_qualified_id(),
+                            FunctionVariant::Baseline,
+                        ))
+                        .unwrap_or(&BTreeSet::new())
+                    {
+                        FunctionTranslator {
+                            parent: self,
+                            fun_target: &fun_target,
+                            type_inst,
+                            style: FunctionTranslationStyle::Default,
+                        }
+                        .translate();
+                    }
+                }
+            }
         }
-        // Emit any finalization items required by spec translation.
+
         self.spec_translator.finalize();
+        let mut verified_functions_count = 0;
+
+        let mut results = BTreeSet::new();
+
+        let output_dir = Path::new(&self.output_path);
+        if !output_dir.exists() {
+            fs::create_dir_all(output_dir).unwrap();
+        }
+        
+        for ref module_env in self.env.get_modules() {
+            writer.set_location(&module_env.env.internal_loc());
+
+            for ref fun_env in module_env.get_functions() {
+                if !post_check_funcs.contains(&fun_env.get_qualified_id()) {
+                    continue;
+                }
+
+                writer.set_function_pointer();
+                verified_functions_count += 1;
+
+                if self
+                    .targets
+                    .scenario_specs()
+                    .contains(&fun_env.get_qualified_id())
+                {
+                    if self.targets.has_target(
+                        fun_env,
+                        &FunctionVariant::Verification(VerificationFlavor::Regular),
+                    ) {
+                        let fun_target = self.targets.get_target(
+                            fun_env,
+                            &FunctionVariant::Verification(VerificationFlavor::Regular),
+                        );
+                        FunctionTranslator {
+                            parent: self,
+                            fun_target: &fun_target,
+                            type_inst: &[],
+                            style: FunctionTranslationStyle::Default,
+                        }
+                        .translate();
+                    }
+                } else {
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+                    self.translate_function_style(
+                        fun_env,
+                        FunctionTranslationStyle::SpecNoAbortCheck,
+                    );
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                }
+
+                if writer.is_func_result() {
+                    self.spec_translator.finalize();
+
+                    let file_name = format!("{}/{}.bpl", self.output_path, fun_env.get_formatted_full_name_str());
+                    let result = writer.get_result(); // Just return the result
+
+                    fs::write(file_name.clone(), result).unwrap();
+                    writer.remove_last_function();
+
+                    results.insert(file_name);
+                }
+            }
+        }
+
         info!("{} verification conditions", verified_functions_count);
+        Ok(results)
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {

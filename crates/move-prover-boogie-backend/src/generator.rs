@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeSet};
 
 use crate::generator_options::Options;
 use anyhow::anyhow;
@@ -105,7 +105,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     // Generate boogie code
     let now = Instant::now();
-    let (code_writer, types) = generate_boogie(env, &options, &targets)?;
+    let (code_writer, types, files) = generate_boogie(env, &options, &targets)?;
     let gen_duration = now.elapsed();
     check_errors(
         env,
@@ -116,7 +116,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     // Verify boogie code.
     let now = Instant::now();
-    verify_boogie(env, &options, &targets, code_writer, types)?;
+    verify_boogie(env, &options, &targets, code_writer, types, files)?;
     let verify_duration = now.elapsed();
 
     // Report durations.
@@ -171,13 +171,20 @@ pub fn generate_boogie(
     env: &GlobalEnv,
     options: &Options,
     targets: &FunctionTargetsHolder,
-) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
+) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>, BTreeSet<String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
     add_prelude(env, &options.backend, &writer)?;
-    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types);
-    translator.translate();
-    Ok((writer, types.into_inner()))
+    let mut translator = BoogieTranslator::new(
+        env, 
+        &options.backend,
+        options.output_path.clone(),
+        targets, 
+        &writer, 
+        &types, 
+    );
+    let files = translator.translate()?;
+    Ok((writer, types.into_inner(), files))
 }
 
 pub fn verify_boogie(
@@ -186,7 +193,9 @@ pub fn verify_boogie(
     targets: &FunctionTargetsHolder,
     writer: CodeWriter,
     types: BiBTreeMap<Type, String>,
+    files: BTreeSet<String>,
 ) -> anyhow::Result<()> {
+    /*
     let output_existed = std::path::Path::new(&options.output_path).exists();
     debug!("writing boogie to `{}`", &options.output_path);
     writer.process_result(|result| fs::write(&options.output_path, result))?;
@@ -203,6 +212,29 @@ pub fn verify_boogie(
             std::fs::remove_file(&options.output_path).unwrap_or_default();
         }
     }
+    Ok(())
+    */
+
+    if options.prover.generate_only {
+        return Ok(());
+    }
+
+    let boogie = BoogieWrapper {
+        env,
+        targets,
+        writer: &writer,
+        options: &options.backend,
+        types: &types,
+    };
+
+    for ref file in files {
+        boogie.call_boogie_and_verify_output(file)?;
+    }
+
+    if !options.backend.keep_artifacts {
+        std::fs::remove_dir_all(&options.output_path).unwrap_or_default();
+    }
+
     Ok(())
 }
 

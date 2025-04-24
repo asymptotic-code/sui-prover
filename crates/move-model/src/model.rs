@@ -1710,6 +1710,10 @@ impl<'env> ModuleEnv<'env> {
         &self.data.name
     }
 
+    pub fn get_string_name(&'env self) -> String {
+        self.symbol_pool().string(self.data.name.name()).to_string()
+    }
+
     /// Returns true if either the full name or simple name of this module matches the given string
     pub fn matches_name(&self, name: &str) -> bool {
         self.get_full_name_str() == name
@@ -3302,6 +3306,14 @@ impl<'env> FunctionEnv<'env> {
         format!(
             "{}::{}",
             self.module_env.get_name().display(self.symbol_pool()),
+            self.get_name_str()
+        )
+    }
+
+    pub fn get_formatted_full_name_str(&self) -> String {
+        format!(
+            "{}_{}",
+            self.module_env.get_string_name(),
             self.get_name_str()
         )
     }

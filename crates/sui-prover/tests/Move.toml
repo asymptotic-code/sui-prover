@@ -6,8 +6,6 @@ edition = "2024.beta"
 
 [dependencies]
 Sui = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "next", override = true }
-Prover = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/prover", rev = "next", override = true }
-MoveStdlib = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "next", override = true }
 
 [addresses]
 integration-test = "0x9"

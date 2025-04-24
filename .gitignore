@@ -53,5 +53,6 @@ lcov.info
 output.bpl
 *.bpl.log
 .sparse
+.run/
 
 crates/sui-prover/tests/sources/*

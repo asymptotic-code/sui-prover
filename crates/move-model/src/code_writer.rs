@@ -35,6 +35,8 @@ struct CodeWriterData {
 
     /// A map from label indices to the current position in output they are pointing to.
     label_map: BTreeMap<ByteIndex, ByteIndex>,
+
+    function_pointer: usize,
 }
 
 /// A helper to emit code. Supports indentation and maintains source to target location information.
@@ -58,6 +60,7 @@ impl CodeWriter {
             current_location: loc,
             output_location_map,
             label_map: Default::default(),
+            function_pointer: 0,
         }))
     }
 
@@ -120,6 +123,27 @@ impl CodeWriter {
         f(&output[0..j])
     }
 
+    pub fn set_function_pointer(&self) {
+        let mut data = self.0.borrow_mut();
+        data.function_pointer = data.output.len();
+    }
+
+    pub fn is_func_result(&self) -> bool {
+        let data = self.0.borrow();
+        data.function_pointer < data.output.len()
+    }
+
+    pub fn remove_last_function(&self) {
+        let mut data = self.0.borrow_mut();
+
+        if data.function_pointer == 0 {
+            return;
+        }
+
+        data.output = data.output[0..data.function_pointer].to_string();
+        data.function_pointer = 0;
+    }
+
     /// Extracts the output as a string. Leaves the writers data empty.
     pub fn extract_result(&self) -> String {
         let mut s = std::mem::take(&mut self.0.borrow_mut().output);
@@ -129,6 +153,11 @@ impl CodeWriter {
             s.push('\n');
         }
         s
+    }
+
+    /// Extracts the output as a string. Leaves the writers data empty.
+    pub fn get_result(&self) -> String {
+        self.0.borrow().output.trim_end().to_string()
     }
 
     /// Sets the current location. This location will be associated with all subsequently written
