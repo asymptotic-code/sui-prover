@@ -101,7 +101,7 @@ impl Default for Options {
             backend: BoogieOptions::default(),
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
-            mode: RunMode::Mono,
+            mode: RunMode::Spec,
         }
     }
 }

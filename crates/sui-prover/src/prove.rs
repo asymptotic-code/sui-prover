@@ -104,7 +104,7 @@ pub struct GeneralConfig {
     pub split_paths: Option<usize>,
 
     /// Boogie running mode
-    #[clap(name = "mode", long, short = 'm', global = true,  default_value_t = ProverRunMode::Mono)]
+    #[clap(name = "mode", long, short = 'm', global = true,  default_value_t = ProverRunMode::Spec)]
     pub mode: ProverRunMode,
 }
 
@@ -167,7 +167,7 @@ pub async fn execute(
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
-    options.backend.path_split = Some(general_config.split_paths.unwrap_or(4));
+    options.backend.path_split = general_config.split_paths;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
     options.mode = general_config.mode.into();
