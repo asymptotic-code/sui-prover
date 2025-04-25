@@ -333,6 +333,8 @@ pub enum BorrowEdge {
     EnumField(QualifiedInstId<DatatypeId>, usize, VariantId),
     /// Vector borrow with dynamic index.
     Index(IndexEdgeKind),
+    /// Dynamic field borrow with dynamic offset.
+    DynamicField(QualifiedInstId<DatatypeId>, Type, Type),
     /// Composed sequence of edges.
     Hyper(Vec<BorrowEdge>),
 }
@@ -349,11 +351,19 @@ impl BorrowEdge {
     pub fn instantiate(&self, params: &[Type]) -> Self {
         match self {
             Self::Field(qid, offset) => Self::Field(qid.instantiate_ref(params), *offset),
+            Self::EnumField(qid, offset, variant) => {
+                Self::EnumField(qid.instantiate_ref(params), *offset, *variant)
+            }
+            Self::DynamicField(qid, name_type, value_type) => Self::DynamicField(
+                qid.instantiate_ref(params),
+                name_type.instantiate(params),
+                value_type.instantiate(params),
+            ),
             Self::Hyper(edges) => {
                 let new_edges = edges.iter().map(|e| e.instantiate(params)).collect();
                 Self::Hyper(new_edges)
             }
-            _ => self.clone(),
+            Self::Direct | Self::Index(..) => self.clone(),
         }
     }
 }
@@ -1387,6 +1397,14 @@ impl std::fmt::Display for BorrowEdgeDisplay<'_> {
                     variant_env.get_name().display(self.env.symbol_pool()),
                     field_env.get_name().display(self.env.symbol_pool()),
                     field_type.display(&tctx),
+                )
+            }
+            DynamicField(_qid, name_type, value_type) => {
+                write!(
+                    f,
+                    ".dynamic_field({}, {})",
+                    name_type.display(&tctx),
+                    value_type.display(&tctx)
                 )
             }
             Index(_) => write!(f, "[]"),

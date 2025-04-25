@@ -469,6 +469,32 @@ axiom (
 );
 {% endmacro table_key_encoding %}
 
+{% macro table_is_valid_is_equal(instance) %}
+{%- set V = instance.name -%}
+{%- set Self = "Table int (" ~ V ~ ")" -%}
+{%- set S = "'" ~ "Table" ~ "'" ~ "int" ~ "_" ~ instance.suffix ~ "'" ~ "'" -%}
+{%- set SV = "'" ~ instance.suffix ~ "'" -%}
+
+{%- if options.native_equality -%}
+function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
+    t1 == t2
+}
+{%- else -%}
+function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
+    LenTable(t1) == LenTable(t2) &&
+    (forall k: int :: ContainsTable(t1, k) <==> ContainsTable(t2, k)) &&
+    (forall k: int :: ContainsTable(t1, k) ==> $IsEqual{{SV}}(GetTable(t1, k), GetTable(t2, k))) &&
+    (forall k: int :: ContainsTable(t2, k) ==> $IsEqual{{SV}}(GetTable(t1, k), GetTable(t2, k)))
+}
+{%- endif %}
+
+// Not inlined.
+function $IsValid'{{S}}'(t: {{Self}}): bool {
+    $IsValid'u64'(LenTable(t)) &&
+    (forall i: int:: ContainsTable(t, i) ==> $IsValid{{SV}}(GetTable(t, i)))
+}
+
+{% endmacro table_is_valid_is_equal %}
 
 {% macro table_module(impl, instance) %}
 {%- set K = instance.0.name -%}
@@ -496,6 +522,7 @@ function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
 }
 {%- else -%}
 function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
+    // TODO use $IsEqual'{{Self}}'(t1->$contents, t2->$contents)
     LenTable(t1->$contents) == LenTable(t2->$contents) &&
     (forall k: int :: ContainsTable(t1->$contents, k) <==> ContainsTable(t2->$contents, k)) &&
     (forall k: int :: ContainsTable(t1->$contents, k) ==> $IsEqual{{SV}}(GetTable(t1->$contents, k), GetTable(t2->$contents, k))) &&
@@ -505,6 +532,7 @@ function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
 
 // Not inlined.
 function $IsValid'{{Type}}{{S}}'(t: {{Type}}{{S}}): bool {
+    // TODO use $IsValid'{{Self}}'(t->$contents)
     $IsValid'u64'(LenTable(t->$contents)) &&
     (forall i: int:: ContainsTable(t->$contents, i) ==> $IsValid{{SV}}(GetTable(t->$contents, i)))
 }
@@ -603,6 +631,84 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 {%- endif %}
 
 {% endmacro table_module %}
+
+
+{# Dynamic fields
+   =======
+#}
+
+{% macro dynamic_field_module(impl, instance) %}
+{%- set K = instance.0.name -%}
+{%- set V = instance.1.name -%}
+{%- set Type = impl.struct_name -%}
+{%- set Self = "Table int (" ~ V ~ ")" -%}
+{%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
+{%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
+{%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
+
+{%- if impl.fun_add != "" %}
+procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
+    var enc_k: int;
+    var t: {{Type}};
+    enc_k := {{ENC}}(k);
+    t := $Dereference(m);
+    if (ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 100/*EALREADY_EXISTS*/));
+    } else {
+        m' := $UpdateMutation(m, $Update'{{Type}}'_dynamic_fields{{S}}(t, AddTable(t->$dynamic_fields{{S}}, enc_k, v)));
+    }
+}
+{%- endif %}
+
+{%- if impl.fun_borrow != "" %}
+procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
+    var enc_k: int;
+    enc_k := {{ENC}}(k);
+    if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
+    } else {
+        v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+    }
+}
+{%- endif %}
+
+{%- if impl.fun_borrow_mut != "" %}
+procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
+    var enc_k: int;
+    var t: {{Type}};
+    enc_k := {{ENC}}(k);
+    t := $Dereference(m);
+    if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
+    } else {
+        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), GetTable(t->$dynamic_fields{{S}}, enc_k));
+        m' := m;
+    }
+}
+{%- endif %}
+
+{%- if impl.fun_remove != "" %}
+procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: {{V}}, m': $Mutation({{Type}})) {
+    var enc_k: int;
+    var t: {{Type}};
+    enc_k := {{ENC}}(k);
+    t := $Dereference(m);
+    if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
+    } else {
+        v := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        m' := $UpdateMutation(m, $Update'{{Type}}'_dynamic_fields{{S}}(t, RemoveTable(t->$dynamic_fields{{S}}, enc_k)));
+    }
+}
+{%- endif %}
+
+{%- if impl.fun_exists_with_type != "" %}
+procedure {:inline 2} {{impl.fun_exists_with_type}}{{S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
+    r := ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+}
+{%- endif %}
+
+{% endmacro dynamic_field_module %}
 
 
 {# BCS

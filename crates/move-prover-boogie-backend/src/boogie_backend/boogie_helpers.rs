@@ -109,6 +109,30 @@ fn boogie_struct_field_name(field_env: &FieldEnv<'_>) -> String {
         .to_string()
 }
 
+pub fn boogie_dynamic_field_sel(env: &GlobalEnv, name: &Type, value: &Type) -> String {
+    format!("${}", boogie_dynamic_field_name(env, name, value))
+}
+
+pub fn boogie_dynamic_field_update(
+    struct_env: &StructEnv,
+    inst: &[Type],
+    name: &Type,
+    value: &Type,
+) -> String {
+    format!(
+        "$Update'{}'_{}",
+        boogie_type_suffix_for_struct(struct_env, inst, false),
+        boogie_dynamic_field_name(struct_env.module_env.env, name, value),
+    )
+}
+
+pub fn boogie_dynamic_field_name(env: &GlobalEnv, name: &Type, value: &Type) -> String {
+    format!(
+        "dynamic_fields{}",
+        boogie_inst_suffix(env, &[name.clone(), value.clone()]),
+    )
+}
+
 /// Return boogie name of given enum.
 pub fn boogie_enum_name(enum_env: &EnumEnv<'_>, inst: &[Type]) -> String {
     format!(
@@ -472,7 +496,7 @@ pub fn boogie_type_suffix_for_struct(
     //         boogie_inst_suffix_bv_pair(struct_env.module_env.env, inst, &[false, bv_flag])
     //     )
     // } else {
-        boogie_struct_name(struct_env, inst)
+    boogie_struct_name(struct_env, inst)
     // }
 }
 

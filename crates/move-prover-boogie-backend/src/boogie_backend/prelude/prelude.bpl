@@ -1176,6 +1176,14 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 {{ native::table_key_encoding(instance=instance) -}}
 {%- endfor %}
 
+{%- for instance in table_value_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native TableArray IsValid and IsEqual implementation for type `{{instance.suffix}}`
+
+{{ native::table_is_valid_is_equal(instance=instance) -}}
+{%- endfor %}
+
 {%- for impl in table_instances %}
 {%- for instance in impl.insts %}
 
@@ -1183,6 +1191,16 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 // Native Table implementation for type `({{instance.0.suffix}},{{instance.1.suffix}})`
 
 {{ native::table_module(impl=impl, instance=instance) -}}
+{%- endfor %}
+{%- endfor %}
+
+{%- for impl in dynamic_field_instances %}
+{%- for instance in impl.insts %}
+
+// ----------------------------------------------------------------------------------
+// Native dynamic fields implementation for type `({{instance.0.suffix}},{{instance.1.suffix}})`
+
+{{ native::dynamic_field_module(impl=impl, instance=instance) -}}
 {%- endfor %}
 {%- endfor %}
 

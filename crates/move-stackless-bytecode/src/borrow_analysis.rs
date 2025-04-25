@@ -19,6 +19,7 @@ use crate::{
     ast::TempIndex,
     dataflow_analysis::{DataflowAnalysis, TransferFunctions},
     dataflow_domains::{AbstractDomain, JoinResult, MapDomain, SetDomain},
+    dynamic_field_analysis,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     livevar_analysis::LiveVarAnnotation,
@@ -297,6 +298,7 @@ impl BorrowInfo {
         callee_summary: &BorrowInfo,
         ins: &[TempIndex],
         outs: &[TempIndex],
+        is_dynamic_field_borrow_mut: bool,
     ) {
         let get_in = |idx: usize| {
             assert!(
@@ -319,7 +321,11 @@ impl BorrowInfo {
                             self.add_edge(
                                 actual_in_node,
                                 out_node.clone(),
-                                edge.instantiate(callee_targs),
+                                if is_dynamic_field_borrow_mut {
+                                    edge.to_owned()
+                                } else {
+                                    edge.instantiate(callee_targs)
+                                },
                             );
                         }
                         BorrowNode::SpecGlobalRoot(..) => {
@@ -416,12 +422,20 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
         mut data: FunctionData,
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        let mut borrow_annotation = get_custom_annotation_or_none(func_env, &self.borrow_natives)
-            .unwrap_or_else(|| {
-                let func_target = FunctionTarget::new(func_env, &data);
-                let analyzer = BorrowAnalysis::new(&func_target, targets, &self.borrow_natives);
-                analyzer.analyze(&data.code)
-            });
+        let mut borrow_annotation = get_custom_annotation_or_none(
+            func_env,
+            &(0..func_env.get_type_parameter_count())
+                .into_iter()
+                .map(|i| Type::TypeParameter(i as u16))
+                .collect_vec(),
+            &func_env.get_parameter_types(),
+            &self.borrow_natives,
+        )
+        .unwrap_or_else(|| {
+            let func_target = FunctionTarget::new(func_env, &data);
+            let analyzer = BorrowAnalysis::new(&func_target, targets, &self.borrow_natives);
+            analyzer.analyze(&data.code)
+        });
 
         // Annotate function target with computed borrow data
         let fixedpoint = match scc_opt {
@@ -519,6 +533,8 @@ fn summarize_custom_borrow(
 
 fn get_custom_annotation_or_none(
     fun_env: &FunctionEnv,
+    type_inst: &[Type],
+    src_types: &[Type],
     borrow_natives: &Vec<String>,
 ) -> Option<BorrowAnnotation> {
     match get_custom_borrow_info_or_none(fun_env, borrow_natives) {
@@ -529,6 +545,30 @@ fn get_custom_annotation_or_none(
             } else if fun_env.is_well_known(BORROW_CHILD_OBJECT_MUT) {
                 // TODO: use table for dynamic fields--is that what we wabt
                 Some(summarize_custom_borrow(IndexEdgeKind::Table, &[0], &[0]))
+            } else if fun_env.is_well_known("dynamic_field::borrow_mut")
+                || fun_env.is_well_known("dynamic_field_object::borrow_mut")
+            {
+                let mut an = BorrowAnnotation::default();
+                let param_node = BorrowNode::Reference(0);
+                let return_node = BorrowNode::ReturnPlaceholder(0);
+                let object_type = &src_types[0];
+                let (struct_qid, struct_type_inst) =
+                    object_type.skip_reference().get_datatype().unwrap();
+                let edge = BorrowEdge::Hyper(vec![
+                    BorrowEdge::DynamicField(
+                        struct_qid.instantiate(struct_type_inst.to_vec()),
+                        type_inst[0].clone(),
+                        type_inst[1].clone(),
+                    ),
+                    BorrowEdge::Index(IndexEdgeKind::Table),
+                ]);
+                an.summary
+                    .borrowed_by
+                    .entry(param_node)
+                    .or_default()
+                    .insert((return_node, edge));
+                an.summary.consolidate();
+                Some(an)
             } else if fun_env.is_well_known("table::borrow_mut")
                 || fun_env.is_well_known("object_table::borrow_mut")
             {
@@ -742,7 +782,11 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             state.add_edge(
                                 src_node,
                                 dest_node,
-                                BorrowEdge::EnumField(mid.qualified_inst(*did, inst.to_owned()), i, *vid),
+                                BorrowEdge::EnumField(
+                                    mid.qualified_inst(*did, inst.to_owned()),
+                                    i,
+                                    *vid,
+                                ),
                             );
                         }
                     }
@@ -819,31 +863,38 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             }
                         }
 
-                        let callee_annotation =
-                            get_custom_annotation_or_none(callee_env, self.borrow_natives)
-                                .unwrap_or_else(|| {
-                                    let callee_info = if mid.qualified(*fid)
-                                        == self.func_target.func_env.get_qualified_id()
-                                    {
-                                        // self recursion (this is because we removed the current target from `self.targets`)
-                                        self.func_target.get_annotations().get::<BorrowAnnotation>()
-                                    } else {
-                                        let callee_target = self
-                                            .targets
-                                            .get_target(callee_env, &FunctionVariant::Baseline);
-                                        callee_target.get_annotations().get::<BorrowAnnotation>()
-                                    };
-                                    match callee_info {
-                                        None => {
-                                            // 1st iteration of the recursive case
-                                            BorrowAnnotation::default()
-                                        }
-                                        Some(annotation) => {
-                                            // non-recursive case or Nth iteration of fixedpoint (N >= 1)
-                                            annotation.clone()
-                                        }
-                                    }
-                                });
+                        let callee_annotation = get_custom_annotation_or_none(
+                            callee_env,
+                            &targs,
+                            &srcs
+                                .iter()
+                                .map(|x| self.func_target.get_local_type(*x).clone())
+                                .collect_vec(),
+                            self.borrow_natives,
+                        )
+                        .unwrap_or_else(|| {
+                            let callee_info = if mid.qualified(*fid)
+                                == self.func_target.func_env.get_qualified_id()
+                            {
+                                // self recursion (this is because we removed the current target from `self.targets`)
+                                self.func_target.get_annotations().get::<BorrowAnnotation>()
+                            } else {
+                                let callee_target = self
+                                    .targets
+                                    .get_target(callee_env, &FunctionVariant::Baseline);
+                                callee_target.get_annotations().get::<BorrowAnnotation>()
+                            };
+                            match callee_info {
+                                None => {
+                                    // 1st iteration of the recursive case
+                                    BorrowAnnotation::default()
+                                }
+                                Some(annotation) => {
+                                    // non-recursive case or Nth iteration of fixedpoint (N >= 1)
+                                    annotation.clone()
+                                }
+                            }
+                        });
 
                         state.instantiate(
                             callee_env,
@@ -851,6 +902,13 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             &callee_annotation.summary,
                             srcs,
                             dests,
+                            Some(callee_env.get_qualified_id())
+                                == self.func_target.global_env().dynamic_field_borrow_mut_qid()
+                                || Some(callee_env.get_qualified_id())
+                                    == self
+                                        .func_target
+                                        .global_env()
+                                        .dynamic_object_field_borrow_mut_qid(),
                         );
                     }
                     OpaqueCallBegin(_, _, _) | OpaqueCallEnd(_, _, _) => {
