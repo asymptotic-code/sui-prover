@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use codespan_reporting::diagnostic::Severity;
 use move_model::model::{FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId};
+use move_binary_format::file_format::Bytecode as MoveBytecode;
 
 use crate::{function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, stackless_bytecode::{Bytecode, Operation}};
 
@@ -73,6 +74,26 @@ impl SpecPurityAnalysis {
                     match operation {
                         Operation::Function(mod_id, func_id, _) => {
                             let module = env.get_module(*mod_id); 
+                            let func = module.get_function(func_id.clone());
+
+                            let func_bytecode: &[move_binary_format::file_format::Bytecode] = func.get_bytecode();
+                                let bytecode_purity = self.bytecode_purity(func_bytecode);
+
+                                if bytecode_purity {
+                                    // dbg!("bytecode purity");
+                                    continue;
+                            }
+
+                            // if module.get_full_name_str().contains("vec") && 
+                            //     (func.get_full_name_str().contains("contains") || func.get_full_name_str().contains("insert"))
+                            //  {
+                            //     dbg!(&module.get_full_name_str());
+                            //     dbg!(&func.get_full_name_str());
+
+                                
+                                
+                            // }
+
                             let module_name = env.symbol_pool().string(module.get_name().name());
 
                             if module_name.as_str() == GlobalEnv::PROVER_MODULE_NAME || module_name.as_str() == GlobalEnv::SPEC_MODULE_NAME {
@@ -105,6 +126,27 @@ impl SpecPurityAnalysis {
         }
 
         results
+    }
+
+    fn bytecode_purity(&self, bytecode:&[MoveBytecode]) -> bool {
+        dbg!(&bytecode);
+        for bc in bytecode {
+            match bc {
+                MoveBytecode::MutBorrowLoc(_) |
+                MoveBytecode::MutBorrowField(_) |
+                MoveBytecode::MutBorrowFieldGeneric(_) |
+                MoveBytecode::VecMutBorrow(_) |
+                MoveBytecode::WriteRef |
+                MoveBytecode::VecPushBack(_) |
+                MoveBytecode::VecPopBack(_) |
+                MoveBytecode::VecSwap(_) => {
+                    return false;
+                },
+                _ => {}
+            }
+        }
+        
+        true
     }
 
     fn analyse(&self, func_env: &FunctionEnv, targets: &FunctionTargetsHolder, data: &FunctionData) -> PurityVerificationInfo {
