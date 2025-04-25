@@ -126,13 +126,6 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         total_duration.as_secs_f64()
     );
 
-    println!(
-        "{:.3}s building, {:.3}s translation, {:.3}s verification",
-        build_duration.as_secs_f64(),
-        trafo_duration.as_secs_f64(),
-        total_duration.as_secs_f64()
-    );
-
     if !output_existed && !options.backend.keep_artifacts {
         std::fs::remove_dir_all(&options.output_path).unwrap_or_default();
     }
