@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use crate::generator_options::Options;
+use crate::generator_options::{Options, RunMode};
 use anyhow::anyhow;
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::{
@@ -107,11 +107,51 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     let output_existed = output_path.exists();
 
     if !output_existed {
-        fs::create_dir_all(output_path).unwrap();
+        fs::create_dir_all(output_path)?;
     }
 
-    // Generate boogie code independently per function target.
+    let now = Instant::now();
+
+    let has_errors = match options.mode {
+        RunMode::Spec => run_prover_spec_mode(env, error_writer, &options, &targets)?,
+        RunMode::Mono => run_prover_mono_mode(env, error_writer, &options, &targets)?,
+        RunMode::File => run_prover_file_mode(env, error_writer, &options, &targets)?,
+    };
+
+    let total_duration = now.elapsed();
+    info!(
+        "{:.3}s building, {:.3}s translation, {:.3}s verification",
+        build_duration.as_secs_f64(),
+        trafo_duration.as_secs_f64(),
+        total_duration.as_secs_f64()
+    );
+
+    println!(
+        "{:.3}s building, {:.3}s translation, {:.3}s verification",
+        build_duration.as_secs_f64(),
+        trafo_duration.as_secs_f64(),
+        total_duration.as_secs_f64()
+    );
+
+    if !output_existed && !options.backend.keep_artifacts {
+        std::fs::remove_dir_all(&options.output_path).unwrap_or_default();
+    }
+
+    if has_errors {
+        return Err(anyhow!("exiting with verification errors"));
+    }
+
+    Ok(())
+}
+
+pub fn run_prover_spec_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
     let mut has_errors = false;
+
     for target in targets.specs() {
         if !env.get_function(*target).module_env.is_target() || !targets.is_verified_spec(target) {
             continue;
@@ -128,10 +168,9 @@ pub fn run_move_prover_with_model<W: WriteColor>(
             println!("🔄 {file_name}");
         }
 
-        let now = Instant::now();
         let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
         let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
-        let gen_duration = now.elapsed();
+
         check_errors(
             env,
             &options,
@@ -139,23 +178,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
             "exiting with condition generation errors",
         )?;
 
-        // Verify boogie code.
-        let now = Instant::now();
         verify_boogie(env, &options, &new_targets, code_writer, types, file_name.clone())?;
-        let verify_duration = now.elapsed();
-
-        // Report durations.
-        info!(
-            "{:.3}s build, {:.3}s trafo, {:.3}s gen, {:.3}s verify, total {:.3}s",
-            build_duration.as_secs_f64(),
-            trafo_duration.as_secs_f64(),
-            gen_duration.as_secs_f64(),
-            verify_duration.as_secs_f64(),
-            build_duration.as_secs_f64()
-                + trafo_duration.as_secs_f64()
-                + gen_duration.as_secs_f64()
-                + verify_duration.as_secs_f64()
-        );
 
         let is_error = env.has_errors();
         env.report_diag(error_writer, options.prover.report_severity);
@@ -174,15 +197,53 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         }
     }
 
-    if !output_existed && !options.backend.keep_artifacts {
-        std::fs::remove_dir_all(&options.output_path).unwrap_or_default();
+    Ok(has_errors)
+}
+
+pub fn run_prover_mono_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
+    let (code_writer, types) = generate_boogie(env, &options, &targets)?;
+    check_errors(
+        env,
+        &options,
+        error_writer,
+        "exiting with condition generation errors",
+    )?;
+
+    verify_boogie(env, &options, &targets, code_writer, types, "output".to_string())?;
+
+    let errors = env.has_errors();
+    env.report_diag(error_writer, options.prover.report_severity);
+    if errors {
+        return Ok(true);
     }
 
-    if has_errors {
-        return Err(anyhow!("exiting with verification errors"));
-    }
+    for spec in targets.specs() {
+        let fun_env = env.get_function(*spec);
+        if targets.is_verified_spec(spec)
+            && targets.has_target(
+                &fun_env,
+                &FunctionVariant::Verification(VerificationFlavor::Regular),
+            )
+        {
+            println!("✅ {}", fun_env.get_full_name_str());
+        }
+    }    
 
-    Ok(())
+    Ok(false)
+}
+
+pub fn run_prover_file_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
+    panic!("File verification mode is not supported in this version of the prover.");
 }
 
 pub fn check_errors<W: WriteColor>(

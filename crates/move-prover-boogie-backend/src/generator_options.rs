@@ -36,6 +36,13 @@ static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
 /// Atomic used to detect whether we are running in test mode.
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum RunMode {
+    Spec,
+    Mono,
+    File,
+}
+
 /// Represents options provided to the tool. Most of those options are configured via a toml
 /// source; some over the command line flags.
 ///
@@ -74,6 +81,8 @@ pub struct Options {
     pub prover: ProverOptions,
     /// Options for the prover backend.
     pub backend: BoogieOptions,
+    /// Boogie run mode
+    pub mode: RunMode,
 }
 
 impl Default for Options {
@@ -92,6 +101,7 @@ impl Default for Options {
             backend: BoogieOptions::default(),
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
+            mode: RunMode::Mono,
         }
     }
 }

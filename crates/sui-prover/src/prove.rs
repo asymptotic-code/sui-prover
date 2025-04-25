@@ -1,4 +1,4 @@
-use clap::Args;
+use clap::{Args, ValueEnum};
 use move_compiler::editions::{Edition, Flavor};
 use move_model::model::GlobalEnv;
 use move_package::{source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig, LintFlag, package_lock::PackageLock};
@@ -9,7 +9,7 @@ use codespan_reporting::term::termcolor::Buffer;
 use crate::llm_explain::explain_err;
 use crate::legacy_builder::ModelBuilderLegacy;
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::Options};
+use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, RunMode}};
 
 pub fn move_model_for_package_legacy(
     config: MoveBuildConfig,
@@ -20,6 +20,33 @@ pub fn move_model_for_package_legacy(
     let _mutx = PackageLock::lock(); // held until function returns
 
     ModelBuilderLegacy::create(resolved_graph).build_model(flags)
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum ProverRunMode {
+    Spec,
+    Mono,
+    File,
+}
+
+impl From<ProverRunMode> for RunMode {
+    fn from(mode: ProverRunMode) -> Self {
+        match mode {
+            ProverRunMode::Spec => RunMode::Spec,
+            ProverRunMode::Mono => RunMode::Mono,
+            ProverRunMode::File => RunMode::File,
+        }
+    }
+}
+
+impl ToString for ProverRunMode {
+    fn to_string(&self) -> String {
+        match self {
+            ProverRunMode::Spec => "spec".to_string(),
+            ProverRunMode::Mono => "mono".to_string(),
+            ProverRunMode::File => "file".to_string(),
+        }
+    }
 }
 
 impl From<BuildConfig> for MoveBuildConfig {
@@ -75,6 +102,10 @@ pub struct GeneralConfig {
     /// Split verification into separate proof goals for each execution path
     #[clap(name = "split-paths", long, short = 's', global = true)]
     pub split_paths: Option<usize>,
+
+    /// Boogie running mode
+    #[clap(name = "mode", long, short = 'm', global = true,  default_value_t = ProverRunMode::Mono)]
+    pub mode: ProverRunMode,
 }
 
 #[derive(Args, Default)]
@@ -136,10 +167,11 @@ pub async fn execute(
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
-    options.backend.path_split = general_config.split_paths;
+    options.backend.path_split = Some(general_config.split_paths.unwrap_or(4));
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    
+    options.mode = general_config.mode.into();
+
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
         match run_move_prover_with_model(&model, &mut error_writer, options, None) {
