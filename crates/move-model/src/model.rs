@@ -905,10 +905,10 @@ impl GlobalEnv {
                 let mut d = diag.clone();
                 // Avoid showing the same message twice. This can happen e.g. because of
                 // duplication of expressions via schema inclusion.
-                d.notes = diag.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+                d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
-                if shown.insert(format!("{:?}", diag)) {
-                    emit(writer, &Config::default(), &self.source_files, diag)
+                if shown.insert(format!("{:?}", d)) {
+                    emit(writer, &Config::default(), &self.source_files, &d)
                         .expect("emit must not fail");
                 }
                 false

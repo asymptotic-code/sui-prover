@@ -245,8 +245,9 @@ pub fn check_errors<W: WriteColor>(
     error_writer: &mut W,
     msg: &'static str,
 ) -> anyhow::Result<()> {
+    let errors = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
-    if env.has_errors() {
+    if errors {
         Err(anyhow!(msg))
     } else {
         Ok(())
