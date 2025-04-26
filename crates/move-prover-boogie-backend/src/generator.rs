@@ -236,7 +236,56 @@ pub fn run_prover_file_mode<W: WriteColor>(
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
-    panic!("File verification mode is not supported in this version of the prover.");
+    let mut has_errors = false;
+
+    for target in targets.target_modules() {
+        let module_env = env.get_module(*target);
+        if !module_env.is_target() {
+            continue;
+        }
+        let file_name = module_env.get_full_name_str();
+
+        println!("🔄 {file_name}");
+
+        let new_targets = FunctionTargetsHolder::for_one_module(target, targets.clone(), env);
+        let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
+
+        check_errors(
+            env,
+            &options,
+            error_writer,
+            "exiting with condition generation errors",
+        )?;
+
+        verify_boogie(env, &options, &new_targets, code_writer, types, file_name.clone())?;
+
+        let is_error = env.has_errors();
+        env.report_diag(error_writer, options.prover.report_severity);
+
+        if is_error {
+            has_errors = true;
+        }
+
+        if is_error {
+            println!("❌ {file_name}");
+        } else {
+            print!("\x1B[1A\x1B[2K");
+            println!("✅ {file_name}");
+            for spec in new_targets.specs() {
+                let fun_env = env.get_function(*spec);
+                if new_targets.is_verified_spec(spec)
+                    && new_targets.has_target(
+                        &fun_env,
+                        &FunctionVariant::Verification(VerificationFlavor::Regular),
+                    )
+                {
+                    println!("  - {}", fun_env.get_full_name_str());
+                }
+            }   
+        }
+    }
+
+    Ok(has_errors)
 }
 
 pub fn check_errors<W: WriteColor>(

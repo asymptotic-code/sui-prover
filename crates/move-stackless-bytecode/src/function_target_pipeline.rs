@@ -29,7 +29,7 @@ use move_symbol_pool::Symbol;
 
 use move_model::{
     ast::ModuleName,
-    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, QualifiedId, StructEnv},
+    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId, StructEnv},
 };
 
 use crate::{
@@ -51,6 +51,7 @@ pub struct FunctionTargetsHolder {
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
+    target_modules: BTreeSet<ModuleId>
 }
 
 /// Describes a function verification flavor.
@@ -192,6 +193,7 @@ impl FunctionTargetsHolder {
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
+            target_modules: BTreeSet::new(),
         }
     }
 
@@ -212,6 +214,43 @@ impl FunctionTargetsHolder {
             ignore_aborts: instance.ignore_aborts,
             scenario_specs: instance.scenario_specs,
             datatype_invs: instance.datatype_invs,
+            target_modules: instance.target_modules
+        }
+    }
+
+    pub fn for_one_module(target: &ModuleId, instance: FunctionTargetsHolder, env: &GlobalEnv) -> Self {
+        let mut focus_specs = BTreeSet::new();
+        let mut no_focus_specs = BTreeSet::new();
+        no_focus_specs.append(&mut instance.no_focus_specs.clone());
+
+        let mut no_verify_specs: BTreeSet<QualifiedId<FunId>> = BTreeSet::new();
+        no_verify_specs.append(&mut instance.no_verify_specs.clone());
+        
+        for id in instance.focus_specs() {
+            if env.get_function(*id).module_env.get_id() == *target {
+                focus_specs.insert(*id);
+
+            } else {
+                no_focus_specs.insert(*id);
+            }
+        }
+
+        for (id, _) in instance.function_specs() {
+            if env.get_function(*id).module_env.get_id() != *target {
+                no_verify_specs.insert(*id);
+            }
+        }
+
+        Self {
+            focus_specs,
+            no_focus_specs,
+            no_verify_specs,
+            targets: instance.targets,
+            function_specs: instance.function_specs,
+            ignore_aborts: instance.ignore_aborts,
+            scenario_specs: instance.scenario_specs,
+            datatype_invs: instance.datatype_invs,
+            target_modules: instance.target_modules
         }
     }
 
@@ -263,6 +302,10 @@ impl FunctionTargetsHolder {
 
     pub fn scenario_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.scenario_specs
+    }
+
+    pub fn target_modules(&self) -> &BTreeSet<ModuleId> {
+        &self.target_modules
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
@@ -434,6 +477,8 @@ impl FunctionTargetsHolder {
                     }
                 }
             }
+            
+            self.target_modules.insert(func_env.module_env.get_id());
         }
 
         if let Some(spec_attr) = func_env
