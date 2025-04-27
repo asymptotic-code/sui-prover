@@ -811,7 +811,7 @@ impl<'env> StructTranslator<'env> {
         let struct_env = self.struct_env;
         let env = struct_env.module_env.env;
 
-        if struct_env.is_native() {
+        if struct_env.is_native() || struct_env.is_intrinsic() {
             return;
         }
 
