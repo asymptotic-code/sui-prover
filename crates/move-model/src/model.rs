@@ -1462,6 +1462,15 @@ impl GlobalEnv {
             .qualified(FunId::new(self.symbol_pool().make(fun_name)))
     }
 
+    fn get_fun_qid_opt(&self, module_name: &str, fun_name: &str) -> Option<QualifiedId<FunId>> {
+        self.find_module_by_name(self.symbol_pool().make(module_name))
+            .map(|module_env| {
+                module_env
+                    .get_id()
+                    .qualified(FunId::new(self.symbol_pool().make(fun_name)))
+            })
+    }
+
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
     const LOG_MODULE_NAME: &'static str = "log";
