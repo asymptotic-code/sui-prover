@@ -1,5 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
 expression: output
 ---
 exiting with verification errors
@@ -17,4 +18,4 @@ error: prover::ensures assertion does not hold
    =     at tests/inputs/print-ghost.move:8: foo
    =         x = true
    =         ghost<u64> = true
-   =     at sui-framework/packages/prover/sources/ghost.move:15: set_spec
+   =     at tests/../../../packages/prover/sources/ghost.move:15: set_spec

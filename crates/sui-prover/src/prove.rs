@@ -9,7 +9,7 @@ use codespan_reporting::term::termcolor::Buffer;
 use crate::llm_explain::explain_err;
 use crate::legacy_builder::ModelBuilderLegacy;
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::Options};
+use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, BoogieFileMode}};
 
 pub fn move_model_for_package_legacy(
     config: MoveBuildConfig,
@@ -75,6 +75,10 @@ pub struct GeneralConfig {
     /// Split verification into separate proof goals for each execution path
     #[clap(name = "split-paths", long, short = 's', global = true)]
     pub split_paths: Option<usize>,
+
+    /// Boogie running mode
+    #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
+    pub boogie_file_mode: BoogieFileMode,
 }
 
 #[derive(Args, Default)]
@@ -139,7 +143,8 @@ pub async fn execute(
     options.backend.path_split = general_config.split_paths;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    
+    options.boogie_file_mode = general_config.boogie_file_mode;
+
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
         match run_move_prover_with_model(&model, &mut error_writer, options, None) {

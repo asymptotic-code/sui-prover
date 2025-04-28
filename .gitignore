@@ -50,7 +50,7 @@ docs/content/references/framework/**
 
 lcov.info
 
-output.bpl
+output/
 *.bpl.log
 .sparse
 
