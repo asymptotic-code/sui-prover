@@ -1,4 +1,4 @@
-use clap::{Args, ValueEnum};
+use clap::Args;
 use move_compiler::editions::{Edition, Flavor};
 use move_model::model::GlobalEnv;
 use move_package::{source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig, LintFlag, package_lock::PackageLock};
@@ -9,7 +9,7 @@ use codespan_reporting::term::termcolor::Buffer;
 use crate::llm_explain::explain_err;
 use crate::legacy_builder::ModelBuilderLegacy;
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, RunMode}};
+use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, BoogieFileMode}};
 
 pub fn move_model_for_package_legacy(
     config: MoveBuildConfig,
@@ -20,33 +20,6 @@ pub fn move_model_for_package_legacy(
     let _mutx = PackageLock::lock(); // held until function returns
 
     ModelBuilderLegacy::create(resolved_graph).build_model(flags)
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-pub enum ProverRunMode {
-    Spec,
-    Mono,
-    File,
-}
-
-impl From<ProverRunMode> for RunMode {
-    fn from(mode: ProverRunMode) -> Self {
-        match mode {
-            ProverRunMode::Spec => RunMode::Spec,
-            ProverRunMode::Mono => RunMode::Mono,
-            ProverRunMode::File => RunMode::File,
-        }
-    }
-}
-
-impl ToString for ProverRunMode {
-    fn to_string(&self) -> String {
-        match self {
-            ProverRunMode::Spec => "spec".to_string(),
-            ProverRunMode::Mono => "mono".to_string(),
-            ProverRunMode::File => "file".to_string(),
-        }
-    }
 }
 
 impl From<BuildConfig> for MoveBuildConfig {
@@ -104,8 +77,8 @@ pub struct GeneralConfig {
     pub split_paths: Option<usize>,
 
     /// Boogie running mode
-    #[clap(name = "mode", long, short = 'm', global = true,  default_value_t = ProverRunMode::Spec)]
-    pub mode: ProverRunMode,
+    #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
+    pub boogie_file_mode: BoogieFileMode,
 }
 
 #[derive(Args, Default)]
@@ -170,7 +143,7 @@ pub async fn execute(
     options.backend.path_split = general_config.split_paths;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    options.mode = general_config.mode.into();
+    options.boogie_file_mode = general_config.boogie_file_mode;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

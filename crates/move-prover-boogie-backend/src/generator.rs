@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use crate::generator_options::{Options, RunMode};
+use crate::generator_options::{Options, BoogieFileMode};
 use anyhow::anyhow;
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::{
@@ -112,10 +112,10 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     let now = Instant::now();
 
-    let has_errors = match options.mode {
-        RunMode::Spec => run_prover_spec_mode(env, error_writer, &options, &targets)?,
-        RunMode::Mono => run_prover_mono_mode(env, error_writer, &options, &targets)?,
-        RunMode::File => run_prover_file_mode(env, error_writer, &options, &targets)?,
+    let has_errors = match options.boogie_file_mode {
+        BoogieFileMode::Function => run_prover_function_mode(env, error_writer, &options, &targets)?,
+        BoogieFileMode::Module => run_prover_module_mode(env, error_writer, &options, &targets)?,
+        BoogieFileMode::All => run_prover_all_mode(env, error_writer, &options, &targets)?,
     };
 
     let total_duration = now.elapsed();
@@ -137,7 +137,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     Ok(())
 }
 
-pub fn run_prover_spec_mode<W: WriteColor>(
+pub fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
@@ -193,7 +193,7 @@ pub fn run_prover_spec_mode<W: WriteColor>(
     Ok(has_errors)
 }
 
-pub fn run_prover_mono_mode<W: WriteColor>(
+pub fn run_prover_all_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
@@ -230,7 +230,7 @@ pub fn run_prover_mono_mode<W: WriteColor>(
     Ok(false)
 }
 
-pub fn run_prover_file_mode<W: WriteColor>(
+pub fn run_prover_module_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,

@@ -13,7 +13,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use clap::{Arg, Command};
+use clap::{Arg, Command, ValueEnum};
 use log::LevelFilter;
 use move_compiler::shared::NumericalAddress;
 use once_cell::sync::Lazy;
@@ -36,11 +36,21 @@ static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
 /// Atomic used to detect whether we are running in test mode.
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum RunMode {
-    Spec,
-    Mono,
-    File,
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BoogieFileMode {
+    Function,
+    Module,
+    All,
+}
+
+impl ToString for BoogieFileMode {
+    fn to_string(&self) -> String {
+        match self {
+            BoogieFileMode::Function => "function".to_string(),
+            BoogieFileMode::Module => "module".to_string(),
+            BoogieFileMode::All => "all".to_string(),
+        }
+    }
 }
 
 /// Represents options provided to the tool. Most of those options are configured via a toml
@@ -82,7 +92,7 @@ pub struct Options {
     /// Options for the prover backend.
     pub backend: BoogieOptions,
     /// Boogie run mode
-    pub mode: RunMode,
+    pub boogie_file_mode: BoogieFileMode,
 }
 
 impl Default for Options {
@@ -101,7 +111,7 @@ impl Default for Options {
             backend: BoogieOptions::default(),
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
-            mode: RunMode::Spec,
+            boogie_file_mode: BoogieFileMode::Function,
         }
     }
 }
