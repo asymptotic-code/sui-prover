@@ -9,6 +9,7 @@ mod prove;
 mod llm_explain;
 mod prompts;
 mod legacy_builder;
+mod build_config;
 
 #[derive(Parser)]
 #[clap(
