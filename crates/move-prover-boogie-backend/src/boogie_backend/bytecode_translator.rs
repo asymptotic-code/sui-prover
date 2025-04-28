@@ -245,78 +245,7 @@ impl<'env> BoogieTranslator<'env> {
 
         self.translate_ghost_global(&mono_info);
 
-        // let singleton_function_id = FunId::new(self.env.symbol_pool().make("singleton"));
-        let reverse_function_id = FunId::new(self.env.symbol_pool().make("reverse"));
-        let append_function_id = FunId::new(self.env.symbol_pool().make("append"));
-        let is_empty_function_id = FunId::new(self.env.symbol_pool().make("is_empty"));
-        let contains_function_id = FunId::new(self.env.symbol_pool().make("contains"));
-        let index_of_function_id = FunId::new(self.env.symbol_pool().make("index_of"));
-        let remove_function_id = FunId::new(self.env.symbol_pool().make("remove"));
-        let insert_function_id = FunId::new(self.env.symbol_pool().make("insert"));
-        let swap_remove_function_id = FunId::new(self.env.symbol_pool().make("swap_remove"));
-        let vector_intrinsic_fun_ids: BTreeSet<_> = match self
-            .env
-            .find_module_by_name(self.env.symbol_pool().make("vector"))
-        {
-            Some(vector_module) => {
-                vec![
-                    // singleton_function_id,
-                    reverse_function_id,
-                    append_function_id,
-                    is_empty_function_id,
-                    contains_function_id,
-                    index_of_function_id,
-                    remove_function_id,
-                    insert_function_id,
-                    swap_remove_function_id,
-                ]
-                .into_iter()
-                .map(|id| vector_module.get_id().qualified(id))
-                .collect()
-            }
-            None => BTreeSet::new(),
-        };
-        let vec_set_intrinsic_fun_ids: BTreeSet<_> = match self
-            .env
-            .find_module_by_name(self.env.symbol_pool().make("vec_set"))
-        {
-            Some(vec_set_module) => vec!["get_idx_opt", "from_keys"]
-                .into_iter()
-                .map(|name| {
-                    vec_set_module
-                        .find_function(self.env.symbol_pool().make(name))
-                        .unwrap()
-                        .get_qualified_id()
-                })
-                .collect(),
-            None => BTreeSet::new(),
-        };
-        let vec_map_intrinsic_fun_ids: BTreeSet<_> = match self
-            .env
-            .find_module_by_name(self.env.symbol_pool().make("vec_map"))
-        {
-            Some(vec_map_module) => vec![
-                "get_idx_opt",
-                "from_keys_values",
-                "into_keys_values",
-                "keys",
-            ]
-            .into_iter()
-            .map(|name| {
-                vec_map_module
-                    .find_function(self.env.symbol_pool().make(name))
-                    .unwrap()
-                    .get_qualified_id()
-            })
-            .collect(),
-            None => BTreeSet::new(),
-        };
-
-        let intrinsic_fun_ids: BTreeSet<_> = vector_intrinsic_fun_ids
-            .iter()
-            .chain(&vec_set_intrinsic_fun_ids)
-            .chain(&vec_map_intrinsic_fun_ids)
-            .collect();
+        let intrinsic_fun_ids = self.env.intrinsic_fun_ids();
 
         let mut translated_types = BTreeSet::new();
         let mut verified_functions_count = 0;
