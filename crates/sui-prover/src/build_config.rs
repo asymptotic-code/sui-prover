@@ -12,7 +12,7 @@ pub fn prover_implicit_deps() -> Dependencies {
     Dependency::Internal(InternalDependency {
             kind: DependencyKind::Git(GitInfo {
                 git_url: "https://github.com/asymptotic-code/sui-prover.git".to_string().into(),
-                git_rev: "main".to_string().into(),
+                git_rev: "dependencies-wip".to_string().into(),
                 subdir: "packages/sui-prover".to_string().into(),
             }),
             subst: None,
