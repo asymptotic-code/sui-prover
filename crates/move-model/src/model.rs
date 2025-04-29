@@ -3740,7 +3740,7 @@ impl<'env> FunctionEnv<'env> {
     /// The function must reside either in stdlib or extlib address domain.
     pub fn is_well_known(&self, name: &str) -> bool {
         let env = self.module_env.env;
-        if !self.is_native() {
+        if !self.is_native() && !self.is_intrinsic() {
             return false;
         }
         let addr = self.module_env.get_name().addr();
