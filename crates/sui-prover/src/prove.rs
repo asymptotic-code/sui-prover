@@ -6,8 +6,9 @@ use move_core_types::account_address::AccountAddress;
 use log::LevelFilter;
 use std::{collections::BTreeMap, path::{Path,PathBuf}};
 use codespan_reporting::term::termcolor::Buffer;
-use crate::llm_explain::explain_err;
+use crate::build_config::prover_implicit_deps;
 use crate::legacy_builder::ModelBuilderLegacy;
+use crate::llm_explain::explain_err;
 
 use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, BoogieFileMode}};
 
@@ -43,7 +44,7 @@ impl From<BuildConfig> for MoveBuildConfig {
             deps_as_root: config.deps_as_root,
             additional_named_addresses: config.additional_named_addresses,
             save_disassembly: false,
-            implicit_dependencies: BTreeMap::new(),
+            implicit_dependencies: prover_implicit_deps(),
         }
     }
 }
