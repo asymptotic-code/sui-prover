@@ -6,4 +6,4 @@ edition = "2024.beta"
 MoveStdlib = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "next", override = true }
 
 [addresses]
-prover = "0xf"
+prover = "0x0"

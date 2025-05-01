@@ -27,6 +27,8 @@ move-symbol-pool.workspace = true
 glob.workspace = true
 insta.workspace = true
 termcolor.workspace = true
+sha2.workspace = true
+petgraph.workspace = true
 
 tokio = { workspace = true, features = ["full"] }
 
