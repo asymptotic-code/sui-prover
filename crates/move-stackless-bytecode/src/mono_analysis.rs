@@ -218,6 +218,28 @@ impl MonoAnalysisProcessor {
             ..
         } = analyzer;
         info.all_types = done_types;
+
+        if let Some(vec_set_qid) = env.vec_set_qid() {
+            let vec_set_tys = info
+                .structs
+                .get(&vec_set_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone());
+            info.structs
+                .entry(env.option_qid().unwrap())
+                .or_default()
+                .extend(vec_set_tys);
+        }
+        if let Some(vec_map_qid) = env.vec_map_qid() {
+            let vec_map_tys = info
+                .structs
+                .get(&vec_map_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone());
+            info.structs
+                .entry(env.option_qid().unwrap())
+                .or_default()
+                .extend(vec_map_tys);
+        }
+
         env.set_extension(info);
     }
 }

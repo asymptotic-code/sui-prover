@@ -1488,6 +1488,7 @@ impl GlobalEnv {
     const VECTOR_MODULE_NAME: &'static str = "vector";
     const VEC_SET_MODULE_NAME: &'static str = "vec_set";
     const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
+    const OPTION_MODULE_NAME: &'static str = "option";
     const TABLE_MODULE_NAME: &'static str = "table";
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
@@ -1516,15 +1517,24 @@ impl GlobalEnv {
     const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
     const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
 
+    // vec_set struct name
+    const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
+
     // vec_set function names
     const VEC_SET_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_SET_FROM_KEYS_FUNCTION_NAME: &'static str = "from_keys";
+
+    // vec_map struct name
+    const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
 
     // vec_map function names
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
     const VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME: &'static str = "into_keys_values";
     const VEC_MAP_KEYS_FUNCTION_NAME: &'static str = "keys";
+
+    // option struct name
+    const OPTION_STRUCT_NAME: &'static str = "Option";
 
     // table/object_table struct names
     const TABLE_STRUCT_NAME: &'static str = "Table";
@@ -1657,6 +1667,11 @@ impl GlobalEnv {
         )
     }
 
+    // vec_set struct name
+    pub fn vec_set_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_STRUCT_NAME)
+    }
+
     // vec_set intrinsic functions
     pub fn vec_set_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
@@ -1670,6 +1685,11 @@ impl GlobalEnv {
             Self::VEC_SET_MODULE_NAME,
             Self::VEC_SET_FROM_KEYS_FUNCTION_NAME,
         )
+    }
+
+    // vec_map struct name
+    pub fn vec_map_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_STRUCT_NAME)
     }
 
     // vec_map intrinsic functions
@@ -1696,6 +1716,11 @@ impl GlobalEnv {
 
     pub fn vec_map_keys_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
+    }
+
+    // option struct name
+    pub fn option_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::OPTION_MODULE_NAME, Self::OPTION_STRUCT_NAME)
     }
 
     // table/object_table struct names
