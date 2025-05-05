@@ -14,6 +14,7 @@ clap.workspace = true
 colored.workspace = true
 tracing.workspace = true
 regex.workspace = true
+serde.workspace = true
 codespan-reporting.workspace = true
 telemetry-subscribers.workspace = true
 
@@ -22,9 +23,12 @@ move-compiler.workspace = true
 move-prover-boogie-backend.workspace = true
 move-package.workspace = true
 move-model.workspace = true
+move-symbol-pool.workspace = true
 glob.workspace = true
 insta.workspace = true
 termcolor.workspace = true
+sha2.workspace = true
+petgraph.workspace = true
 
 tokio = { workspace = true, features = ["full"] }
 
