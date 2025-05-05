@@ -233,7 +233,9 @@ impl MonoAnalysisProcessor {
             let vec_map_tys = info
                 .structs
                 .get(&vec_map_qid)
-                .map_or_else(BTreeSet::new, |set| set.clone());
+                .map_or_else(BTreeSet::new, |set| set.clone())
+                .into_iter()
+                .flat_map(|tys| tys.into_iter().map(|ty| vec![ty]));
             info.structs
                 .entry(env.option_qid().unwrap())
                 .or_default()
