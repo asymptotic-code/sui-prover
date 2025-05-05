@@ -6,8 +6,9 @@ use move_core_types::account_address::AccountAddress;
 use log::LevelFilter;
 use std::{collections::BTreeMap, path::{Path,PathBuf}};
 use codespan_reporting::term::termcolor::Buffer;
-use crate::llm_explain::explain_err;
+use crate::package_resolution_graph::resolution_graph_for_package;
 use crate::legacy_builder::ModelBuilderLegacy;
+use crate::llm_explain::explain_err;
 
 use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, BoogieFileMode}};
 
@@ -16,7 +17,7 @@ pub fn move_model_for_package_legacy(
     path: &Path,
 ) -> Result<GlobalEnv, anyhow::Error> {
     let flags = config.compiler_flags();
-    let resolved_graph = config.resolution_graph_for_package(path, None, &mut Vec::new())?;
+    let resolved_graph = resolution_graph_for_package(config, path, None, &mut Buffer::no_color())?;
     let _mutx = PackageLock::lock(); // held until function returns
 
     ModelBuilderLegacy::create(resolved_graph).build_model(flags)

@@ -18,4 +18,4 @@ error: prover::ensures assertion does not hold
    =     at tests/inputs/print-ghost.move:8: foo
    =         x = true
    =         ghost<u64> = true
-   =     at tests/../../../packages/prover/sources/ghost.move:15: set_spec
+   =     at prover/sources/ghost.move:15: set_spec
