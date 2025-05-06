@@ -71,14 +71,14 @@ tokio = "1.43.0"
 datatest-stable = "0.3.2"
 sha2 = "0.10.9"
 
-move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-package = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
-move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "dep-graph-fork" }
+move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-package = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
+move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "next"}
