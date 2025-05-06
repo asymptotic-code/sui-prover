@@ -2548,23 +2548,41 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                     UnpackVariant(mid, eid, vid, _inst, ref_type) => {
-                        assert_ne!(
-                            ref_type,
-                            &RefType::ByMutRef,
-                            "UnpackVariant with ByMutRef in {}",
-                            self.fun_target.func_env.get_full_name_str()
-                        );
-
                         let enum_env = env.get_module(*mid).into_enum(*eid);
                         let variant_env = enum_env.get_variant(*vid);
+                    
                         for (i, ref field_env) in variant_env.get_fields().enumerate() {
-                            emitln!(
-                                self.writer(),
-                                "{} := {}->{};",
-                                str_local(dests[i]),
-                                str_local(srcs[0]),
-                                boogie_enum_field_name(field_env)
+                            let dest_str = str_local(dests[i]);
+                            let src_str = str_local(srcs[0]);
+                            let field_name = boogie_enum_field_name(field_env);
+
+                            println!(
+                                "variant {:?} | {} := {}->{};",
+                                ref_type,
+                                dest_str,
+                                src_str,
+                                field_name
                             );
+
+                            if *ref_type == RefType::ByMutRef {
+                                emitln!(
+                                    self.writer(),
+                                    "{} := $ChildMutation({}, {}, $Dereference({})->{});",
+                                    dest_str,
+                                    src_str,
+                                    i,
+                                    src_str,
+                                    field_name
+                                );
+                            } else {
+                                emitln!(
+                                    self.writer(),
+                                    "{} := {}->{};",
+                                    dest_str,
+                                    src_str,
+                                    field_name
+                                );
+                            }
                         }
                     }
                     BorrowField(mid, sid, inst, field_offset) => {
