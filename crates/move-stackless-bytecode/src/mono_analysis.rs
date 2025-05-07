@@ -218,6 +218,30 @@ impl MonoAnalysisProcessor {
             ..
         } = analyzer;
         info.all_types = done_types;
+
+        if let Some(vec_set_qid) = env.vec_set_qid() {
+            let vec_set_tys = info
+                .structs
+                .get(&vec_set_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone());
+            info.structs
+                .entry(env.option_qid().unwrap())
+                .or_default()
+                .extend(vec_set_tys);
+        }
+        if let Some(vec_map_qid) = env.vec_map_qid() {
+            let vec_map_tys = info
+                .structs
+                .get(&vec_map_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone())
+                .into_iter()
+                .flat_map(|tys| tys.into_iter().map(|ty| vec![ty]));
+            info.structs
+                .entry(env.option_qid().unwrap())
+                .or_default()
+                .extend(vec_map_tys);
+        }
+
         env.set_extension(info);
     }
 }
@@ -287,7 +311,7 @@ impl Analyzer<'_> {
     fn analyze_fun(&mut self, target: FunctionTarget<'_>) {
         self.analyze_fun_types(&target, self.inst_opt.clone());
         // Analyze code.
-        if !target.func_env.is_native() {
+        if !target.func_env.is_native() && !target.func_env.is_intrinsic() {
             for bc in target.get_bytecode() {
                 self.analyze_bytecode(&target, bc);
             }
@@ -415,7 +439,7 @@ impl Analyzer<'_> {
                     }
                 };
 
-                if callee_env.is_native() && !actuals.is_empty() {
+                if (callee_env.is_native() || callee_env.is_intrinsic()) && !actuals.is_empty() {
                     self.info
                         .funs
                         .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
@@ -556,8 +580,10 @@ impl Analyzer<'_> {
                 .entry(struct_.get_qualified_id())
                 .or_default()
                 .insert(targs.to_owned());
-            for field in struct_.get_fields() {
-                self.add_type(&field.get_type().instantiate(targs));
+            if !struct_.is_intrinsic() {
+                for field in struct_.get_fields() {
+                    self.add_type(&field.get_type().instantiate(targs));
+                }
             }
         }
     }

@@ -529,6 +529,37 @@ fn get_custom_annotation_or_none(
             } else if fun_env.is_well_known(BORROW_CHILD_OBJECT_MUT) {
                 // TODO: use table for dynamic fields--is that what we wabt
                 Some(summarize_custom_borrow(IndexEdgeKind::Table, &[0], &[0]))
+            } else if fun_env.is_well_known("table::borrow_mut")
+                || fun_env.is_well_known("object_table::borrow_mut")
+            {
+                let mut an = BorrowAnnotation::default();
+                let param_node = BorrowNode::Reference(0);
+                let return_node = BorrowNode::ReturnPlaceholder(0);
+                let dt_qid = if fun_env.is_well_known("table::borrow_mut") {
+                    fun_env.module_env.env.table_qid().unwrap()
+                } else {
+                    fun_env.module_env.env.object_table_qid().unwrap()
+                };
+                let edge = BorrowEdge::Hyper(vec![
+                    BorrowEdge::Field(
+                        dt_qid.module_id.qualified_inst(
+                            dt_qid.id,
+                            (0..fun_env.get_type_parameter_count())
+                                .into_iter()
+                                .map(|i| Type::TypeParameter(i as u16))
+                                .collect(),
+                        ),
+                        1,
+                    ),
+                    BorrowEdge::Index(IndexEdgeKind::Table),
+                ]);
+                an.summary
+                    .borrowed_by
+                    .entry(param_node)
+                    .or_default()
+                    .insert((return_node, edge));
+                an.summary.consolidate();
+                Some(an)
             } else if fun_env.is_native() {
                 // non-borrow related native/intrinsic has no borrow semantics
                 Some(BorrowAnnotation::default())
