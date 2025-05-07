@@ -77,10 +77,7 @@ pub fn boogie_field_sel(field_env: &FieldEnv<'_>, _inst: &[Type]) -> String {
     let EnclosingEnv::Struct(struct_env) = &field_env.parent_env else {
         unreachable!();
     };
-    format!(
-        "${}",
-        field_env.get_name().display(struct_env.symbol_pool()),
-    )
+    format!("${}", boogie_struct_field_name(field_env))
 }
 
 /// Return field selector for given field.
@@ -92,8 +89,24 @@ pub fn boogie_field_update(field_env: &FieldEnv<'_>, inst: &[Type]) -> String {
     format!(
         "$Update'{}'_{}",
         suffix,
-        field_env.get_name().display(struct_env.symbol_pool()),
+        boogie_struct_field_name(field_env),
     )
+}
+
+fn boogie_struct_field_name(field_env: &FieldEnv<'_>) -> String {
+    let EnclosingEnv::Struct(struct_env) = &field_env.parent_env else {
+        unreachable!();
+    };
+    if (Some(struct_env.get_qualified_id()) == struct_env.module_env.env.table_qid()
+        || Some(struct_env.get_qualified_id()) == struct_env.module_env.env.object_table_qid())
+        && field_env.get_offset() == 1
+    {
+        return "contents".to_string();
+    }
+    field_env
+        .get_name()
+        .display(struct_env.symbol_pool())
+        .to_string()
 }
 
 /// Return boogie name of given enum.
