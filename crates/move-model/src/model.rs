@@ -16,12 +16,7 @@
 //! - A `FunctionEnv` which is a reference to the data of some function in a module.
 
 use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    ffi::OsStr,
-    fmt::{self, Formatter},
-    rc::Rc,
+    any::{Any, TypeId}, cell::RefCell, collections::{BTreeMap, BTreeSet, VecDeque}, ffi::OsStr, fmt::{self, Formatter}, ops::Index, rc::Rc
 };
 
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
@@ -905,24 +900,22 @@ impl GlobalEnv {
         filter: F,
     ) {
         let mut shown = BTreeSet::new();
-        for (diag, reported) in self
-            .diags
-            .borrow_mut()
-            .iter_mut()
-            .filter(|(d, _)| filter(d))
-        {
-            if !*reported {
+        self.diags.borrow_mut().retain(|(diag, _)| {
+            if filter(diag) {
+                let mut d = diag.clone();
                 // Avoid showing the same message twice. This can happen e.g. because of
                 // duplication of expressions via schema inclusion.
-                diag.notes = diag.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+                d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
-                if shown.insert(format!("{:?}", diag)) {
-                    emit(writer, &Config::default(), &self.source_files, diag)
+                if shown.insert(format!("{:?}", d)) {
+                    emit(writer, &Config::default(), &self.source_files, &d)
                         .expect("emit must not fail");
                 }
-                *reported = true;
+                false
+            } else {
+                true
             }
-        }
+        })
     }
 
     /// Adds a new module to the environment. StructData and FunctionData need to be provided
@@ -1462,9 +1455,21 @@ impl GlobalEnv {
             .qualified(FunId::new(self.symbol_pool().make(fun_name)))
     }
 
+    fn get_fun_qid_opt(&self, module_name: &str, fun_name: &str) -> Option<QualifiedId<FunId>> {
+        self.find_module_by_name(self.symbol_pool().make(module_name))
+            .map(|module_env| {
+                module_env
+                    .get_id()
+                    .qualified(FunId::new(self.symbol_pool().make(fun_name)))
+            })
+    }
+
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
     const LOG_MODULE_NAME: &'static str = "log";
+    const VECTOR_MODULE_NAME: &'static str = "vector";
+    const VEC_SET_MODULE_NAME: &'static str = "vec_set";
+    const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1480,6 +1485,26 @@ impl GlobalEnv {
     const LOG_TEXT_FUNCTION_NAME: &'static str = "text";
     const LOG_VAR_FUNCTION_NAME: &'static str = "var";
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
+
+    // Vector function names
+    const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
+    const VECTOR_APPEND_FUNCTION_NAME: &'static str = "append";
+    const VECTOR_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
+    const VECTOR_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    const VECTOR_INDEX_OF_FUNCTION_NAME: &'static str = "index_of";
+    const VECTOR_REMOVE_FUNCTION_NAME: &'static str = "remove";
+    const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
+    const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
+
+    // Vec_set function names
+    const VEC_SET_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
+    const VEC_SET_FROM_KEYS_FUNCTION_NAME: &'static str = "from_keys";
+
+    // Vec_map function names
+    const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
+    const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
+    const VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME: &'static str = "into_keys_values";
+    const VEC_MAP_KEYS_FUNCTION_NAME: &'static str = "keys";
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1548,6 +1573,114 @@ impl GlobalEnv {
 
     pub fn log_ghost_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::LOG_MODULE_NAME, Self::LOG_GHOST_FUNCTION_NAME)
+    }
+
+    // Vector intrinsic functions
+    pub fn vector_reverse_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_REVERSE_FUNCTION_NAME)
+    }
+
+    pub fn vector_append_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_APPEND_FUNCTION_NAME)
+    }
+
+    pub fn vector_is_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_IS_EMPTY_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vector_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_CONTAINS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vector_index_of_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_INDEX_OF_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vector_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_REMOVE_FUNCTION_NAME)
+    }
+
+    pub fn vector_insert_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_INSERT_FUNCTION_NAME)
+    }
+
+    pub fn vector_swap_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_SWAP_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    // Vec_set intrinsic functions
+    pub fn vec_set_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_SET_MODULE_NAME,
+            Self::VEC_SET_GET_IDX_OPT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_set_from_keys_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_SET_MODULE_NAME,
+            Self::VEC_SET_FROM_KEYS_FUNCTION_NAME,
+        )
+    }
+
+    // Vec_map intrinsic functions
+    pub fn vec_map_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_GET_IDX_OPT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_from_keys_values_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_into_keys_values_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_keys_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
+    }
+
+    pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
+        vec![
+            self.vector_reverse_qid(),
+            self.vector_append_qid(),
+            self.vector_is_empty_qid(),
+            self.vector_contains_qid(),
+            self.vector_index_of_qid(),
+            self.vector_remove_qid(),
+            self.vector_insert_qid(),
+            self.vector_swap_remove_qid(),
+            self.vec_set_get_idx_opt_qid(),
+            self.vec_set_from_keys_qid(),
+            self.vec_map_get_idx_opt_qid(),
+            self.vec_map_from_keys_values_qid(),
+            self.vec_map_into_keys_values_qid(),
+            self.vec_map_keys_qid(),
+        ]
+        .into_iter()
+        .filter_map(|x| x)
+        .collect()
     }
 
     fn add_stub_module(&mut self, module_symbol: Symbol) {

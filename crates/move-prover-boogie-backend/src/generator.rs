@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use crate::generator_options::Options;
+use crate::generator_options::{Options, BoogieFileMode};
 use anyhow::anyhow;
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::{
@@ -103,10 +103,103 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    // Generate boogie code
+    let output_path = std::path::Path::new(&options.output_path);
+    let output_existed = output_path.exists();
+
+    if !output_existed {
+        fs::create_dir_all(output_path)?;
+    }
+
     let now = Instant::now();
+
+    let has_errors = match options.boogie_file_mode {
+        BoogieFileMode::Function => run_prover_function_mode(env, error_writer, &options, &targets)?,
+        BoogieFileMode::Module => run_prover_module_mode(env, error_writer, &options, &targets)?,
+        BoogieFileMode::All => run_prover_all_mode(env, error_writer, &options, &targets)?,
+    };
+
+    let total_duration = now.elapsed();
+    info!(
+        "{:.3}s building, {:.3}s translation, {:.3}s verification",
+        build_duration.as_secs_f64(),
+        trafo_duration.as_secs_f64(),
+        total_duration.as_secs_f64()
+    );
+
+    if !output_existed && !options.backend.keep_artifacts {
+        std::fs::remove_dir_all(&options.output_path).unwrap_or_default();
+    }
+
+    if has_errors {
+        return Err(anyhow!("exiting with verification errors"));
+    }
+
+    Ok(())
+}
+
+pub fn run_prover_function_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
+    let mut has_errors = false;
+
+    for target in targets.specs() {
+        if !env.get_function(*target).module_env.is_target() || !targets.is_verified_spec(target) {
+            continue;
+        }
+
+        let fun_env = env.get_function(*target);
+        let has_target = targets.has_target(
+            &env.get_function(*target),
+            &FunctionVariant::Verification(VerificationFlavor::Regular),
+        );    
+        let file_name = fun_env.get_full_name_str();
+
+        if has_target {
+            println!("🔄 {file_name}");
+        }
+
+        let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
+        let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
+
+        check_errors(
+            env,
+            &options,
+            error_writer,
+            "exiting with condition generation errors",
+        )?;
+
+        verify_boogie(env, &options, &new_targets, code_writer, types, file_name.clone())?;
+
+        let is_error = env.has_errors();
+        env.report_diag(error_writer, options.prover.report_severity);
+
+        if is_error {
+            has_errors = true;
+        }
+
+        if has_target {
+            if is_error {
+                println!("❌ {file_name}");
+            } else {
+                print!("\x1B[1A\x1B[2K");
+                println!("✅ {file_name}");
+            }
+        }
+    }
+
+    Ok(has_errors)
+}
+
+pub fn run_prover_all_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
     let (code_writer, types) = generate_boogie(env, &options, &targets)?;
-    let gen_duration = now.elapsed();
     check_errors(
         env,
         &options,
@@ -114,29 +207,13 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
-    // Verify boogie code.
-    let now = Instant::now();
-    verify_boogie(env, &options, &targets, code_writer, types)?;
-    let verify_duration = now.elapsed();
+    verify_boogie(env, &options, &targets, code_writer, types, "output".to_string())?;
 
-    // Report durations.
-    info!(
-        "{:.3}s build, {:.3}s trafo, {:.3}s gen, {:.3}s verify, total {:.3}s",
-        build_duration.as_secs_f64(),
-        trafo_duration.as_secs_f64(),
-        gen_duration.as_secs_f64(),
-        verify_duration.as_secs_f64(),
-        build_duration.as_secs_f64()
-            + trafo_duration.as_secs_f64()
-            + gen_duration.as_secs_f64()
-            + verify_duration.as_secs_f64()
-    );
-    check_errors(
-        env,
-        &options,
-        error_writer,
-        "exiting with verification errors",
-    )?;
+    let errors = env.has_errors();
+    env.report_diag(error_writer, options.prover.report_severity);
+    if errors {
+        return Ok(true);
+    }
 
     for spec in targets.specs() {
         let fun_env = env.get_function(*spec);
@@ -146,11 +223,69 @@ pub fn run_move_prover_with_model<W: WriteColor>(
                 &FunctionVariant::Verification(VerificationFlavor::Regular),
             )
         {
-            println!("\x1b[32m✔\x1b[0m {}", fun_env.get_full_name_str());
+            println!("✅ {}", fun_env.get_full_name_str());
+        }
+    }    
+
+    Ok(false)
+}
+
+pub fn run_prover_module_mode<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
+    let mut has_errors = false;
+
+    for target in targets.target_modules() {
+        let module_env = env.get_module(*target);
+        if !module_env.is_target() {
+            continue;
+        }
+        let file_name = module_env.get_full_name_str();
+
+        println!("🔄 {file_name}");
+
+        let new_targets = FunctionTargetsHolder::for_one_module(target, targets.clone(), env);
+        let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
+
+        check_errors(
+            env,
+            &options,
+            error_writer,
+            "exiting with condition generation errors",
+        )?;
+
+        verify_boogie(env, &options, &new_targets, code_writer, types, file_name.clone())?;
+
+        let is_error = env.has_errors();
+        env.report_diag(error_writer, options.prover.report_severity);
+
+        if is_error {
+            has_errors = true;
+        }
+
+        if is_error {
+            println!("❌ {file_name}");
+        } else {
+            print!("\x1B[1A\x1B[2K");
+            println!("✅ {file_name}");
+            for spec in new_targets.specs() {
+                let fun_env = env.get_function(*spec);
+                if new_targets.is_verified_spec(spec)
+                    && new_targets.has_target(
+                        &fun_env,
+                        &FunctionVariant::Verification(VerificationFlavor::Regular),
+                    )
+                {
+                    println!("  - {}", fun_env.get_full_name_str());
+                }
+            }   
         }
     }
 
-    Ok(())
+    Ok(has_errors)
 }
 
 pub fn check_errors<W: WriteColor>(
@@ -159,8 +294,9 @@ pub fn check_errors<W: WriteColor>(
     error_writer: &mut W,
     msg: &'static str,
 ) -> anyhow::Result<()> {
+    let errors = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
-    if env.has_errors() {
+    if errors {
         Err(anyhow!(msg))
     } else {
         Ok(())
@@ -186,10 +322,14 @@ pub fn verify_boogie(
     targets: &FunctionTargetsHolder,
     writer: CodeWriter,
     types: BiBTreeMap<Type, String>,
+    target_name: String,
 ) -> anyhow::Result<()> {
-    let output_existed = std::path::Path::new(&options.output_path).exists();
-    debug!("writing boogie to `{}`", &options.output_path);
-    writer.process_result(|result| fs::write(&options.output_path, result))?;
+    let file_name = format!("{}/{}.bpl", options.output_path, target_name);
+
+    debug!("writing boogie to `{}`", &file_name);
+
+    writer.process_result(|result| fs::write(&file_name, result))?;
+    
     if !options.prover.generate_only {
         let boogie = BoogieWrapper {
             env,
@@ -198,11 +338,9 @@ pub fn verify_boogie(
             options: &options.backend,
             types: &types,
         };
-        boogie.call_boogie_and_verify_output(&options.output_path)?;
-        if !output_existed && !options.backend.keep_artifacts {
-            std::fs::remove_file(&options.output_path).unwrap_or_default();
-        }
+        boogie.call_boogie_and_verify_output(&file_name)?;
     }
+
     Ok(())
 }
 

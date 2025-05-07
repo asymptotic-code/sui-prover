@@ -61,18 +61,17 @@ cd ../..
 git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 cd sui-kit/examples
 
-# skip amm as it too long to run
-# cd amm
-# sui-prover
-# cd .. 
+cd amm
+sui-prover -s 4
+cd .. 
 
 cd guide
-sui-prover
+sui-prover -s 4
 cd ../../..
 
 git clone https://github.com/asymptotic-code/sui-prover-workshop.git prover-workshop
 cd prover-workshop
 
-sui-prover --split-paths=4
+sui-prover -s 2
 
 echo "All tests passed!"
