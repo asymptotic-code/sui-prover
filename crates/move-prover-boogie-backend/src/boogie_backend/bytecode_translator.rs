@@ -56,18 +56,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
-        boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_enum_field_name, boogie_enum_name,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
-        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
-        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
-        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
-        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
-        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
-        TypeIdentToken,
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -87,6 +76,8 @@ pub struct FunctionTranslator<'env> {
     fun_target: &'env FunctionTarget<'env>,
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
+    event_recomposition_fields: Vec<String>,
+    event_recomposition_command: Option<String>,
 }
 
 pub struct StructTranslator<'env> {
@@ -323,6 +314,8 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
+                                event_recomposition_command: None,
+                                event_recomposition_fields: vec![],
                             }
                             .translate();
                         }
@@ -352,6 +345,8 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
+                                event_recomposition_command: None,
+                                event_recomposition_fields: vec![],
                             }
                             .translate();
                         }
@@ -370,6 +365,8 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_target: &fun_target,
                                 type_inst,
                                 style: FunctionTranslationStyle::Default,
+                                event_recomposition_command: None,
+                                event_recomposition_fields: vec![],
                             }
                             .translate();
                         }
@@ -403,6 +400,8 @@ impl<'env> BoogieTranslator<'env> {
                             fun_target: &inv_fun_target,
                             type_inst,
                             style: FunctionTranslationStyle::Default,
+                            event_recomposition_command: None,
+                            event_recomposition_fields: vec![],
                         }
                         .translate();
                     }
@@ -609,6 +608,8 @@ impl<'env> BoogieTranslator<'env> {
                 fun_target: &fun_target,
                 type_inst: &[],
                 style,
+                event_recomposition_command: None,
+                event_recomposition_fields: vec![],
             }
             .translate();
         }
@@ -642,6 +643,8 @@ impl<'env> BoogieTranslator<'env> {
                         fun_target: &fun_target,
                         type_inst,
                         style,
+                        event_recomposition_command: None,
+                        event_recomposition_fields: vec![],
                     }
                     .translate();
                 });
@@ -719,6 +722,8 @@ impl<'env> BoogieTranslator<'env> {
                 fun_target: &ghost_global_fun_target,
                 type_inst,
                 style: FunctionTranslationStyle::Default,
+                event_recomposition_command: None,
+                event_recomposition_fields: vec![],
             }
             .translate();
         }
@@ -729,6 +734,8 @@ impl<'env> BoogieTranslator<'env> {
                 fun_target: &ghost_havoc_global_fun_target,
                 type_inst,
                 style: FunctionTranslationStyle::Default,
+                event_recomposition_command: None,
+                event_recomposition_fields: vec![],
             }
             .translate();
         }
@@ -2105,6 +2112,11 @@ impl<'env> FunctionTranslator<'env> {
                             str_local(reference),
                             str_local(value),
                         );
+                        if srcs.len() > 0 {
+                            if self.event_recomposition_command.is_some() && self.event_recomposition_fields.contains(&str_local(reference)) {
+                                emitln!(self.writer(), &self.event_recomposition_command.clone().unwrap())
+                            }
+                        }
                     }
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
@@ -2547,24 +2559,17 @@ impl<'env> FunctionTranslator<'env> {
                             args
                         );
                     }
-                    UnpackVariant(mid, eid, vid, _inst, ref_type) => {
+                    UnpackVariant(mid, eid, vid, inst, ref_type) => {
                         let enum_env = env.get_module(*mid).into_enum(*eid);
                         let variant_env = enum_env.get_variant(*vid);
-                    
+                        
                         for (i, ref field_env) in variant_env.get_fields().enumerate() {
                             let dest_str = str_local(dests[i]);
                             let src_str = str_local(srcs[0]);
                             let field_name = boogie_enum_field_name(field_env);
 
-                            println!(
-                                "variant {:?} | {} := {}->{};",
-                                ref_type,
-                                dest_str,
-                                src_str,
-                                field_name
-                            );
-
                             if *ref_type == RefType::ByMutRef {
+                                self.event_recomposition_fields.push(dest_str.clone());
                                 emitln!(
                                     self.writer(),
                                     "{} := $ChildMutation({}, {}, $Dereference({})->{});",
@@ -2583,6 +2588,26 @@ impl<'env> FunctionTranslator<'env> {
                                     field_name
                                 );
                             }
+                        }
+
+                        if *ref_type == RefType::ByMutRef {
+                            let contructor_args = self.event_recomposition_fields
+                                .iter()
+                                .map(|v| format!("$Dereference({})", v))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+
+                            // feat: create constructor name
+                            let constructor_name = boogie_enum_variant_ctor_name(&variant_env, inst);
+                            let f = format!("call {} := {}({});", str_local(srcs[1]), constructor_name, contructor_args);
+                            let s = format!(
+                                "{} := $UpdateMutation({}, {});",
+                                str_local(srcs[0]),
+                                str_local(srcs[0]),
+                                str_local(srcs[1]),
+                            );
+
+                            self.event_recomposition_command = Some(format!("{}\n{}", f, s));
                         }
                     }
                     BorrowField(mid, sid, inst, field_offset) => {
