@@ -2497,15 +2497,12 @@ impl<'env> FunctionTranslator<'env> {
                         let enum_env = env.get_module(*mid).into_enum(*eid);
                         let variant_env = enum_env.get_variant(*vid);
 
-                        let mut recomposition_fields: Vec<String> = vec![];
-
                         for (i, ref field_env) in variant_env.get_fields().enumerate() {
                             let dest_str = str_local(dests[i]);
                             let src_str = str_local(srcs[0]);
                             let field_name = boogie_enum_field_name(field_env);
 
                             if *ref_type == RefType::ByMutRef {
-                                recomposition_fields.push(dest_str.clone());
                                 emitln!(
                                     self.writer(),
                                     "{} := $ChildMutation({}, {}, $Dereference({})->{});",
