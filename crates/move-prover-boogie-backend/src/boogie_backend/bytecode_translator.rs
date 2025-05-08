@@ -3431,7 +3431,7 @@ impl<'env> FunctionTranslator<'env> {
                     }
                 }
 
-                emitln!(self.parent.writer, "call {temp_str} := {constructor_name}({});",  constructor_args.join(", "))
+                emitln!(self.parent.writer, "call {} := {}({});", temp_str, constructor_name, constructor_args.join(", "))
             }
             _ => {},
         }
