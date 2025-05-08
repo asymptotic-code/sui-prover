@@ -7,11 +7,10 @@ use move_model::model::{FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId};
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    stackless_bytecode::{Bytecode, Operation},
+    stackless_bytecode::{AttrId, Bytecode, Operation},
 };
 
-pub const NETWORK_MODULES: [&str; 1] = ["transfer"];
-// pub const NETWORK_MODULES: [&str; 2] = ["transfer", "event"];
+pub const NETWORK_MODULES: [&str; 2] = ["transfer", "event"];
 pub const SKIP_MODULES: [&str; 2] = [GlobalEnv::PROVER_MODULE_NAME, GlobalEnv::SPEC_MODULE_NAME];
 
 #[derive(Clone, Debug)]
@@ -79,8 +78,9 @@ impl SpecPurityAnalysis {
         None
     }
 
-    fn bytecode_purity(&self, bytecode: &[MoveBytecode]) -> bool {
-        for bc in bytecode {
+    fn bytecode_purity(&self, bytecode: &[MoveBytecode], target: &FunctionTarget) -> BTreeSet<Loc> {
+        let mut impure_locs = BTreeSet::new();
+        for (offset, bc) in bytecode.iter().enumerate() {
             match bc {
                 MoveBytecode::MutBorrowLoc(_)
                 | MoveBytecode::MutBorrowField(_)
@@ -90,13 +90,53 @@ impl SpecPurityAnalysis {
                 | MoveBytecode::VecPushBack(_)
                 | MoveBytecode::VecPopBack(_)
                 | MoveBytecode::VecSwap(_) => {
-                    return false;
+                    impure_locs.insert(target.get_bytecode_loc(AttrId::new(offset)));
                 }
                 _ => {}
             }
         }
 
-        true
+        impure_locs
+    }
+
+    fn check_bytecode_purity_for_spec(
+        &self,
+        func_env: &FunctionEnv,
+        targets: &FunctionTargetsHolder,
+        env: &GlobalEnv,
+    ) -> BTreeSet<Loc> {
+        let mut impure_locs = BTreeSet::new();
+
+        // Only run the bytecode purity analysis for spec functions
+        if targets.is_function_spec(&func_env.get_qualified_id()) {
+            // Get the actual bytecode from the function
+            let bytecode = func_env.get_bytecode();
+
+            // Create a function target to access bytecode locations
+            if let Some(target_data) =
+                targets.get_data(&func_env.get_qualified_id(), &FunctionVariant::Baseline)
+            {
+                let target = FunctionTarget::new(func_env, target_data);
+                impure_locs = self.bytecode_purity(bytecode, &target);
+
+                // Report errors for impure bytecode in spec functions
+                if !impure_locs.is_empty() {
+                    println!(
+                        "  Found {} mutable bytecode instructions",
+                        impure_locs.len()
+                    );
+                    for loc in impure_locs.iter() {
+                        env.diag(
+                            Severity::Error,
+                            loc,
+                            "Spec function contains mutable bytecode instructions",
+                        );
+                    }
+                }
+            }
+        }
+
+        impure_locs
     }
 
     pub fn process_calls(
@@ -161,14 +201,7 @@ impl SpecPurityAnalysis {
 
                             // Process mutable reference impurity
                             if annotation.is_mutable_reference {
-                                let func = module.get_function(func_id.clone());
-                                let func_bytecode: &[move_binary_format::file_format::Bytecode] =
-                                    func.get_bytecode();
-
-                                if !self.bytecode_purity(func_bytecode) {
-                                    println!("    Marking as impure because called function is using mutable references: {}::{}", module_name, function_name);
-                                    mutable_ref_results.insert(target.get_bytecode_loc(*attr));
-                                }
+                                mutable_ref_results.insert(target.get_bytecode_loc(*attr));
                             }
                         }
                         _ => {}
@@ -209,6 +242,9 @@ impl SpecPurityAnalysis {
         let (network_calls, mut_ref_calls) =
             self.process_calls(code, targets, &func_target, &env, &call_operation);
 
+        // Check bytecode purity for spec functions
+        let bytecode_impurities = self.check_bytecode_purity_for_spec(func_env, targets, &env);
+
         let is_spec = targets.is_function_spec(&func_env.get_qualified_id());
         if is_spec {
             println!("Inserting errors");
@@ -222,18 +258,11 @@ impl SpecPurityAnalysis {
                     );
                 }
             }
-            if !mutable_references.is_empty() {
-                println!("  Found {} direct mutable references", mutable_references.len());
-                for loc in mutable_references.iter() {
-                    env.diag(
-                        Severity::Error,
-                        loc,
-                        "Spec function has a mutable reference parameter",
-                    );
-                }
-            }
             if !mut_ref_calls.is_empty() {
-                println!("  Found {} calls with mutable references", mut_ref_calls.len());
+                println!(
+                    "  Found {} calls with mutable references",
+                    mut_ref_calls.len()
+                );
                 for loc in mut_ref_calls.iter() {
                     env.diag(
                         Severity::Error,
@@ -244,11 +273,9 @@ impl SpecPurityAnalysis {
             }
         }
 
-        let all_mutable_refs = !mutable_references.is_empty() || !mut_ref_calls.is_empty();
-
         PurityVerificationInfo {
             is_network_call: !network_calls.is_empty(),
-            is_mutable_reference: all_mutable_refs,
+            is_mutable_reference: !mutable_references.is_empty() || !bytecode_impurities.is_empty(),
         }
     }
 }
@@ -294,7 +321,8 @@ impl FunctionTargetProcessor for SpecPurityAnalysis {
                 None => false,
                 Some(old_annotation) => {
                     old_annotation.is_network_call == annotation_data.is_network_call
-                        && old_annotation.is_mutable_reference == annotation_data.is_mutable_reference
+                        && old_annotation.is_mutable_reference
+                            == annotation_data.is_mutable_reference
                 }
             },
         };
