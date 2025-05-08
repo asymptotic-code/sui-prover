@@ -39,7 +39,7 @@ impl FunctionTargetProcessor for MemoryInstrumentationProcessor {
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if func_env.is_native() {
+        if func_env.is_native() || func_env.is_intrinsic() {
             return data;
         }
         let borrow_annotation = data

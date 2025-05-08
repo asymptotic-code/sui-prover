@@ -16,7 +16,13 @@
 //! - A `FunctionEnv` which is a reference to the data of some function in a module.
 
 use std::{
-    any::{Any, TypeId}, cell::RefCell, collections::{BTreeMap, BTreeSet, VecDeque}, ffi::OsStr, fmt::{self, Formatter}, ops::Index, rc::Rc
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    ffi::OsStr,
+    fmt::{self, Formatter},
+    ops::Index,
+    rc::Rc,
 };
 
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
@@ -1464,12 +1470,27 @@ impl GlobalEnv {
             })
     }
 
+    fn get_struct_qid_opt(
+        &self,
+        module_name: &str,
+        struct_name: &str,
+    ) -> Option<QualifiedId<DatatypeId>> {
+        Some(
+            self.find_module_by_name(self.symbol_pool().make(module_name))?
+                .find_struct(self.symbol_pool().make(struct_name))?
+                .get_qualified_id(),
+        )
+    }
+
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
     const LOG_MODULE_NAME: &'static str = "log";
     const VECTOR_MODULE_NAME: &'static str = "vector";
     const VEC_SET_MODULE_NAME: &'static str = "vec_set";
     const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
+    const OPTION_MODULE_NAME: &'static str = "option";
+    const TABLE_MODULE_NAME: &'static str = "table";
+    const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1486,7 +1507,7 @@ impl GlobalEnv {
     const LOG_VAR_FUNCTION_NAME: &'static str = "var";
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
 
-    // Vector function names
+    // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
     const VECTOR_APPEND_FUNCTION_NAME: &'static str = "append";
     const VECTOR_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
@@ -1496,15 +1517,41 @@ impl GlobalEnv {
     const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
     const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
 
-    // Vec_set function names
+    // vec_set struct name
+    const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
+
+    // vec_set function names
     const VEC_SET_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_SET_FROM_KEYS_FUNCTION_NAME: &'static str = "from_keys";
 
-    // Vec_map function names
+    // vec_map struct name
+    const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
+
+    // vec_map function names
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
     const VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME: &'static str = "into_keys_values";
     const VEC_MAP_KEYS_FUNCTION_NAME: &'static str = "keys";
+
+    // option struct name
+    const OPTION_STRUCT_NAME: &'static str = "Option";
+
+    // table/object_table struct names
+    const TABLE_STRUCT_NAME: &'static str = "Table";
+    const OBJECT_TABLE_STRUCT_NAME: &'static str = "ObjectTable";
+
+    // table/object_table function names
+    const TABLE_NEW_FUNCTION_NAME: &'static str = "new";
+    const TABLE_ADD_FUNCTION_NAME: &'static str = "add";
+    const TABLE_BORROW_FUNCTION_NAME: &'static str = "borrow";
+    const TABLE_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
+    const TABLE_REMOVE_FUNCTION_NAME: &'static str = "remove";
+    const TABLE_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    const TABLE_LENGTH_FUNCTION_NAME: &'static str = "length";
+    const TABLE_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
+    const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
+    const TABLE_DROP_FUNCTION_NAME: &'static str = "drop";
+    const OBJECT_TABLE_VALUE_ID_FUNCTION_NAME: &'static str = "value_id";
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1575,7 +1622,7 @@ impl GlobalEnv {
         self.get_fun_qid(Self::LOG_MODULE_NAME, Self::LOG_GHOST_FUNCTION_NAME)
     }
 
-    // Vector intrinsic functions
+    // vector intrinsic functions
     pub fn vector_reverse_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_REVERSE_FUNCTION_NAME)
     }
@@ -1620,7 +1667,12 @@ impl GlobalEnv {
         )
     }
 
-    // Vec_set intrinsic functions
+    // vec_set struct name
+    pub fn vec_set_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_STRUCT_NAME)
+    }
+
+    // vec_set intrinsic functions
     pub fn vec_set_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::VEC_SET_MODULE_NAME,
@@ -1635,7 +1687,12 @@ impl GlobalEnv {
         )
     }
 
-    // Vec_map intrinsic functions
+    // vec_map struct name
+    pub fn vec_map_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_STRUCT_NAME)
+    }
+
+    // vec_map intrinsic functions
     pub fn vec_map_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::VEC_MAP_MODULE_NAME,
@@ -1661,6 +1718,140 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
     }
 
+    // option struct name
+    pub fn option_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::OPTION_MODULE_NAME, Self::OPTION_STRUCT_NAME)
+    }
+
+    // table/object_table struct names
+    pub fn table_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_STRUCT_NAME)
+    }
+
+    pub fn object_table_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::OBJECT_TABLE_STRUCT_NAME,
+        )
+    }
+
+    // table/object_table intrinsic functions
+    pub fn table_new_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_NEW_FUNCTION_NAME)
+    }
+
+    pub fn table_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_ADD_FUNCTION_NAME)
+    }
+
+    pub fn table_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_BORROW_FUNCTION_NAME)
+    }
+
+    pub fn table_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::TABLE_MODULE_NAME,
+            Self::TABLE_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn table_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_REMOVE_FUNCTION_NAME)
+    }
+
+    pub fn table_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_CONTAINS_FUNCTION_NAME)
+    }
+
+    pub fn table_length_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_LENGTH_FUNCTION_NAME)
+    }
+
+    pub fn table_is_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_IS_EMPTY_FUNCTION_NAME)
+    }
+
+    pub fn table_destroy_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::TABLE_MODULE_NAME,
+            Self::TABLE_DESTROY_EMPTY_FUNCTION_NAME,
+        )
+    }
+
+    pub fn table_drop_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::TABLE_DROP_FUNCTION_NAME)
+    }
+
+    pub fn object_table_new_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_NEW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_ADD_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_BORROW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_CONTAINS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_length_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_LENGTH_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_is_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_IS_EMPTY_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_destroy_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::TABLE_DESTROY_EMPTY_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_value_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::OBJECT_TABLE_VALUE_ID_FUNCTION_NAME,
+        )
+    }
+
     pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
         vec![
             self.vector_reverse_qid(),
@@ -1677,10 +1868,37 @@ impl GlobalEnv {
             self.vec_map_from_keys_values_qid(),
             self.vec_map_into_keys_values_qid(),
             self.vec_map_keys_qid(),
+            self.table_new_qid(),
+            self.table_add_qid(),
+            self.table_borrow_qid(),
+            self.table_borrow_mut_qid(),
+            self.table_remove_qid(),
+            self.table_contains_qid(),
+            self.table_length_qid(),
+            self.table_is_empty_qid(),
+            self.table_destroy_empty_qid(),
+            self.table_drop_qid(),
+            self.object_table_new_qid(),
+            self.object_table_add_qid(),
+            self.object_table_borrow_qid(),
+            self.object_table_borrow_mut_qid(),
+            self.object_table_remove_qid(),
+            self.object_table_contains_qid(),
+            self.object_table_length_qid(),
+            self.object_table_is_empty_qid(),
+            self.object_table_destroy_empty_qid(),
+            self.object_table_value_id_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
         .collect()
+    }
+
+    pub fn intrinsic_datatype_ids(&self) -> BTreeSet<QualifiedId<DatatypeId>> {
+        vec![self.table_qid(), self.object_table_qid()]
+            .into_iter()
+            .filter_map(|x| x)
+            .collect()
     }
 
     fn add_stub_module(&mut self, module_symbol: Symbol) {
@@ -3017,6 +3235,14 @@ impl<'env> StructEnv<'env> {
         }
     }
 
+    /// Determines whether this struct is intrinsic.
+    pub fn is_intrinsic(&self) -> bool {
+        self.module_env
+            .env
+            .intrinsic_datatype_ids()
+            .contains(&self.get_qualified_id())
+    }
+
     /// Get the abilities of this struct.
     pub fn get_abilities(&self) -> AbilitySet {
         match &self.data.info {
@@ -3528,11 +3754,18 @@ impl<'env> FunctionEnv<'env> {
         self.definition().is_native()
     }
 
+    pub fn is_intrinsic(&self) -> bool {
+        self.module_env
+            .env
+            .intrinsic_fun_ids()
+            .contains(&self.get_qualified_id())
+    }
+
     /// Returns true if this is the well-known native or intrinsic function of the given name.
     /// The function must reside either in stdlib or extlib address domain.
     pub fn is_well_known(&self, name: &str) -> bool {
         let env = self.module_env.env;
-        if !self.is_native() {
+        if !self.is_native() && !self.is_intrinsic() {
             return false;
         }
         let addr = self.module_env.get_name().addr();

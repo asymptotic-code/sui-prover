@@ -762,7 +762,7 @@ impl<'env> StructTranslator<'env> {
         let struct_env = self.struct_env;
         let env = struct_env.module_env.env;
 
-        if struct_env.is_native() {
+        if struct_env.is_native() || struct_env.is_intrinsic() {
             return;
         }
 
@@ -858,17 +858,8 @@ impl<'env> StructTranslator<'env> {
                         );
                         sep = "  && ";
                     }
-                    if let Some(vec_set_module_env) = self
-                        .parent
-                        .env
-                        .find_module_by_name(self.parent.env.symbol_pool().make("vec_set"))
-                    {
-                        if struct_env.get_qualified_id()
-                            == vec_set_module_env
-                                .find_struct(self.parent.env.symbol_pool().make("VecSet"))
-                                .unwrap()
-                                .get_qualified_id()
-                        {
+                    if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
+                        if struct_env.get_qualified_id() == vec_set_qid {
                             emitln!(
                                 writer,
                                 "{}$DisjointVecSet{}(s->$contents)",
@@ -877,17 +868,8 @@ impl<'env> StructTranslator<'env> {
                             );
                         }
                     }
-                    if let Some(vec_map_module_env) = self
-                        .parent
-                        .env
-                        .find_module_by_name(self.parent.env.symbol_pool().make("vec_map"))
-                    {
-                        if struct_env.get_qualified_id()
-                            == vec_map_module_env
-                                .find_struct(self.parent.env.symbol_pool().make("VecMap"))
-                                .unwrap()
-                                .get_qualified_id()
-                        {
+                    if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
+                        if struct_env.get_qualified_id() == vec_map_qid {
                             emitln!(
                                 writer,
                                 "{}$DisjointVecMap{}(s->$contents)",

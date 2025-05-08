@@ -479,208 +479,126 @@ axiom (
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
 
+datatype {{Type}}{{S}} {
+    {{Type}}{{S}}($id: $2_object_UID, $contents: {{Self}})
+}
+
+function {:inline} $Update'{{Type}}{{S}}'_id(s: {{Type}}{{S}}, x: $2_object_UID): {{Type}}{{S}} {
+    {{Type}}{{S}}(x, s->$contents)
+}
+function {:inline} $Update'{{Type}}{{S}}'_contents(s: {{Type}}{{S}}, x: {{Self}}): {{Type}}{{S}} {
+    {{Type}}{{S}}(s->$id, x)
+}
+
 {%- if options.native_equality -%}
-function $IsEqual'{{Type}}{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
+function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
     t1 == t2
 }
 {%- else -%}
-function $IsEqual'{{Type}}{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
-    LenTable(t1) == LenTable(t2) &&
-    (forall k: int :: ContainsTable(t1, k) <==> ContainsTable(t2, k)) &&
-    (forall k: int :: ContainsTable(t1, k) ==> GetTable(t1, k) == GetTable(t2, k)) &&
-    (forall k: int :: ContainsTable(t2, k) ==> GetTable(t1, k) == GetTable(t2, k))
+function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
+    LenTable(t1->$contents) == LenTable(t2->$contents) &&
+    (forall k: int :: ContainsTable(t1->$contents, k) <==> ContainsTable(t2->$contents, k)) &&
+    (forall k: int :: ContainsTable(t1->$contents, k) ==> $IsEqual{{SV}}(GetTable(t1->$contents, k), GetTable(t2->$contents, k))) &&
+    (forall k: int :: ContainsTable(t2->$contents, k) ==> $IsEqual{{SV}}(GetTable(t1->$contents, k), GetTable(t2->$contents, k)))
 }
 {%- endif %}
 
 // Not inlined.
-function $IsValid'{{Type}}{{S}}'(t: {{Self}}): bool {
-    $IsValid'u64'(LenTable(t)) &&
-    (forall i: int:: ContainsTable(t, i) ==> $IsValid{{SV}}(GetTable(t, i)))
+function $IsValid'{{Type}}{{S}}'(t: {{Type}}{{S}}): bool {
+    $IsValid'u64'(LenTable(t->$contents)) &&
+    (forall i: int:: ContainsTable(t->$contents, i) ==> $IsValid{{SV}}(GetTable(t->$contents, i)))
 }
 
 {%- if impl.fun_new != "" %}
-procedure {:inline 2} {{impl.fun_new}}{{S}}() returns (v: {{Self}}) {
-    v := EmptyTable();
+procedure {:inline 2} {{impl.fun_new}}{{S}}($ctx: $Mutation ($2_tx_context_TxContext))
+returns (t: {{Type}}{{S}}, $ctx': $Mutation ($2_tx_context_TxContext)) {
+    var uid: $2_object_UID;
+    t := {{Type}}{{S}}(uid, EmptyTable());
+    $ctx' := $ctx;
 }
 {%- endif %}
 
-{%- if impl.fun_destroy_empty != "" %}
-procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Self}}) {
-    if (LenTable(t) != 0) {
-        call $Abort($StdError(1/*INVALID_STATE*/, 102/*ENOT_EMPTY*/));
-    }
-}
-{%- endif %}
-
-{%- if impl.fun_len != "" %}
-procedure {:inline 2} {{impl.fun_len}}{{S}}(t: ({{Self}})) returns (l: int) {
-    l := LenTable(t);
-}
-{%- endif %}
-
-{%- if impl.fun_is_empty != "" %}
-procedure {:inline 2} {{impl.fun_is_empty}}{{S}}(t: ({{Self}})) returns (r: bool) {
-    r := LenTable(t) == 0;
-}
-{%- endif %}
-
-{%- if impl.fun_has_key != "" %}
-procedure {:inline 2} {{impl.fun_has_key}}{{S}}(t: ({{Self}}), k: {{K}}) returns (r: bool) {
-    r := ContainsTable(t, {{ENC}}(k));
-}
-{%- endif %}
-
-{%- if impl.fun_add_no_override != "" %}
-procedure {:inline 2} {{impl.fun_add_no_override}}{{S}}(m: $Mutation ({{Self}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Self}})) {
+{%- if impl.fun_add != "" %}
+procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}{{S}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}}{{S}})) {
     var enc_k: int;
-    var t: {{Self}};
+    var t: {{Type}}{{S}};
     enc_k := {{ENC}}(k);
     t := $Dereference(m);
-    if (ContainsTable(t, enc_k)) {
+    if (ContainsTable(t->$contents, enc_k)) {
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 100/*EALREADY_EXISTS*/));
     } else {
-        m' := $UpdateMutation(m, AddTable(t, enc_k, v));
-    }
-}
-{%- endif %}
-
-{%- if impl.fun_add_override_if_exists != "" %}
-procedure {:inline 2} {{impl.fun_add_override_if_exists}}{{S}}(m: $Mutation ({{Self}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Self}})) {
-    var enc_k: int;
-    var t: {{Self}};
-    enc_k := {{ENC}}(k);
-    t := $Dereference(m);
-    if (ContainsTable(t, enc_k)) {
-        m' := $UpdateMutation(m, UpdateTable(t, enc_k, v));
-    } else {
-        m' := $UpdateMutation(m, AddTable(t, enc_k, v));
-    }
-}
-{%- endif %}
-
-{%- if impl.fun_del_must_exist != "" %}
-procedure {:inline 2} {{impl.fun_del_must_exist}}{{S}}(m: $Mutation ({{Self}}), k: {{K}})
-returns (v: {{V}}, m': $Mutation({{Self}})) {
-    var enc_k: int;
-    var t: {{Self}};
-    enc_k := {{ENC}}(k);
-    t := $Dereference(m);
-    if (!ContainsTable(t, enc_k)) {
-        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
-    } else {
-        v := GetTable(t, enc_k);
-        m' := $UpdateMutation(m, RemoveTable(t, enc_k));
-    }
-}
-{%- endif %}
-
-{%- if impl.fun_del_return_key != "" %}
-procedure {:inline 2} {{impl.fun_del_return_key}}{{S}}(m: $Mutation ({{Self}}), k: {{K}})
-returns (k': {{K}}, v: {{V}}, m': $Mutation({{Self}})) {
-    var enc_k: int;
-    var t: {{Self}};
-    enc_k := {{ENC}}(k);
-    t := $Dereference(m);
-    if (!ContainsTable(t, enc_k)) {
-        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
-    } else {
-        k' := k;
-        v := GetTable(t, enc_k);
-        m' := $UpdateMutation(m, RemoveTable(t, enc_k));
+        m' := $UpdateMutation(m, $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, enc_k, v)));
     }
 }
 {%- endif %}
 
 {%- if impl.fun_borrow != "" %}
-procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Self}}, k: {{K}}) returns (v: {{V}}) {
+procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) returns (v: {{V}}) {
     var enc_k: int;
     enc_k := {{ENC}}(k);
-    if (!ContainsTable(t, enc_k)) {
+    if (!ContainsTable(t->$contents, enc_k)) {
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
-        v := GetTable(t, {{ENC}}(k));
+        v := GetTable(t->$contents, {{ENC}}(k));
     }
 }
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
-procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Self}}), k: {{K}})
-returns (dst: $Mutation ({{V}}), m': $Mutation ({{Self}})) {
+procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}{{S}}), k: {{K}})
+returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}}{{S}})) {
     var enc_k: int;
-    var t: {{Self}};
+    var t: {{Type}}{{S}};
     enc_k := {{ENC}}(k);
     t := $Dereference(m);
-    if (!ContainsTable(t, enc_k)) {
+    if (!ContainsTable(t->$contents, enc_k)) {
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
-        dst := $Mutation(m->l, ExtendVec(m->p, enc_k), GetTable(t, enc_k));
+        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), GetTable(t->$contents, enc_k));
         m' := m;
     }
 }
 {%- endif %}
 
-{%- if impl.fun_borrow_mut_with_default != "" %}
-procedure {:inline 2} {{impl.fun_borrow_mut_with_default}}{{S}}(m: $Mutation ({{Self}}), k: {{K}}, default: {{V}})
-returns (dst: $Mutation ({{V}}), m': $Mutation ({{Self}})) {
+{%- if impl.fun_remove != "" %}
+procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}{{S}}), k: {{K}})
+returns (v: {{V}}, m': $Mutation({{Type}}{{S}})) {
     var enc_k: int;
-    var t: {{Self}};
-    var t': {{Self}};
+    var t: {{Type}}{{S}};
     enc_k := {{ENC}}(k);
     t := $Dereference(m);
-    if (!ContainsTable(t, enc_k)) {
-        m' := $UpdateMutation(m, AddTable(t, enc_k, default));
-        t' := $Dereference(m');
-        dst := $Mutation(m'->l, ExtendVec(m'->p, enc_k), GetTable(t', enc_k));
+    if (!ContainsTable(t->$contents, enc_k)) {
+        call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
-        dst := $Mutation(m->l, ExtendVec(m->p, enc_k), GetTable(t, enc_k));
-        m' := m;
+        v := GetTable(t->$contents, enc_k);
+        m' := $UpdateMutation(m, $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, enc_k)));
     }
 }
 {%- endif %}
 
-{%- if impl.fun_spec_len != "" %}
-function {:inline} {{impl.fun_spec_len}}{{S}}(t: ({{Self}})): int {
-    LenTable(t)
+{%- if impl.fun_contains != "" %}
+procedure {:inline 2} {{impl.fun_contains}}{{S}}(t: ({{Type}}{{S}}), k: {{K}}) returns (r: bool) {
+    r := ContainsTable(t->$contents, {{ENC}}(k));
 }
 {%- endif %}
 
-{%- if impl.fun_spec_is_empty != "" %}
-function {:inline} {{impl.fun_spec_is_empty}}{{S}}(t: ({{Self}})): bool {
-    LenTable(t) == 0
+{%- if impl.fun_length != "" %}
+procedure {:inline 2} {{impl.fun_length}}{{S}}(t: ({{Type}}{{S}})) returns (l: int) {
+    l := LenTable(t->$contents);
 }
 {%- endif %}
 
-{%- if impl.fun_spec_has_key != "" %}
-function {:inline} {{impl.fun_spec_has_key}}{{S}}(t: ({{Self}}), k: {{K}}): bool {
-    ContainsTable(t, {{ENC}}(k))
+{%- if impl.fun_is_empty != "" %}
+procedure {:inline 2} {{impl.fun_is_empty}}{{S}}(t: ({{Type}}{{S}})) returns (r: bool) {
+    r := LenTable(t->$contents) == 0;
 }
 {%- endif %}
 
-{%- if impl.fun_spec_set != "" %}
-function {:inline} {{impl.fun_spec_set}}{{S}}(t: {{Self}}, k: {{K}}, v: {{V}}): {{Self}} {
-    (var enc_k := {{ENC}}(k);
-    if (ContainsTable(t, enc_k)) then
-        UpdateTable(t, enc_k, v)
-    else
-        AddTable(t, enc_k, v))
-}
-{%- endif %}
-
-{%- if impl.fun_spec_del != "" %}
-function {:inline} {{impl.fun_spec_del}}{{S}}(t: {{Self}}, k: {{K}}): {{Self}} {
-    RemoveTable(t, {{ENC}}(k))
-}
-{%- endif %}
-
-{%- if impl.fun_spec_get != "" %}
-function {:inline} {{impl.fun_spec_get}}{{S}}(t: {{Self}}, k: {{K}}): {{V}} {
-    GetTable(t, {{ENC}}(k))
-}
-{%- endif %}
-
-{%- if impl.fun_spec_new != "" %}
-function {:inline} {{impl.fun_spec_new}}{{S}}(): {{Self}} {
-    EmptyTable()
+{%- if impl.fun_destroy_empty != "" %}
+procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
+    if (LenTable(t->$contents) != 0) {
+        call $Abort($StdError(1/*INVALID_STATE*/, 102/*ENOT_EMPTY*/));
+    }
 }
 {%- endif %}
 
