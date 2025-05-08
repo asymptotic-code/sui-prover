@@ -1409,15 +1409,6 @@ impl<'a> StacklessBytecodeGenerator<'a> {
                     _ => unreachable!(),
                 };
                 let variant_temp_index = self.temp_stack.pop().unwrap();
-
-                let tmp_enum_val_index = self.temp_count;
-                self.temp_count += 1;
-                self.local_types.push(Type::Datatype(
-                    enum_env.module_env.get_id(),
-                    enum_env.get_id(),
-                    vec![], // type arguments if any
-                ));
-
                 for field_env in variant_env.get_fields() {
                     let field_temp_index = self.temp_count;
                     field_temp_indices.push(field_temp_index);
@@ -1434,7 +1425,7 @@ impl<'a> StacklessBytecodeGenerator<'a> {
                         ref_type,
                     ),
                     field_temp_indices,
-                    vec![variant_temp_index, tmp_enum_val_index],
+                    vec![variant_temp_index],
                 ));
             }
             MoveBytecode::UnpackVariantGeneric(vhiid)
