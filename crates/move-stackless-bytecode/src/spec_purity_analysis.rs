@@ -104,33 +104,16 @@ impl SpecPurityAnalysis {
         &self,
         func_env: &FunctionEnv,
         targets: &FunctionTargetsHolder,
-        env: &GlobalEnv,
     ) -> BTreeSet<Loc> {
         let mut impure_locs = BTreeSet::new();
 
-        // Only run the bytecode purity analysis for spec functions
-        if targets.is_function_spec(&func_env.get_qualified_id()) {
-            // Get the actual bytecode from the function
-            let bytecode = func_env.get_bytecode();
+        let bytecode = func_env.get_bytecode();
 
-            // Create a function target to access bytecode locations
-            if let Some(target_data) =
-                targets.get_data(&func_env.get_qualified_id(), &FunctionVariant::Baseline)
-            {
-                let target = FunctionTarget::new(func_env, target_data);
-                impure_locs = self.bytecode_purity(bytecode, &target);
-
-                // Report errors for impure bytecode in spec functions
-                if !impure_locs.is_empty() {
-                    for loc in impure_locs.iter() {
-                        env.diag(
-                            Severity::Error,
-                            loc,
-                            "Spec function contains mutable bytecode instructions",
-                        );
-                    }
-                }
-            }
+        if let Some(target_data) =
+            targets.get_data(&func_env.get_qualified_id(), &FunctionVariant::Baseline)
+        {
+            let target = FunctionTarget::new(func_env, target_data);
+            impure_locs = self.bytecode_purity(bytecode, &target);
         }
 
         impure_locs
@@ -218,12 +201,8 @@ impl SpecPurityAnalysis {
             None
         };
 
-        // Use process_calls instead of find_network_calls
         let (network_calls, mut_ref_calls) =
             self.process_calls(code, targets, &func_target, &env, &call_operation);
-
-        // Check bytecode purity for spec functions
-        let bytecode_impurities = self.check_bytecode_purity_for_spec(func_env, targets, &env);
 
         let is_spec = targets.is_function_spec(&func_env.get_qualified_id());
         if is_spec {
@@ -245,11 +224,21 @@ impl SpecPurityAnalysis {
                     );
                 }
             }
+            let bytecode_impurities = self.check_bytecode_purity_for_spec(func_env, targets);
+            if !bytecode_impurities.is_empty() {
+                for loc in bytecode_impurities.iter() {
+                    env.diag(
+                        Severity::Error,
+                        loc,
+                        "Spec function contains mutable bytecode instructions",
+                    );
+                }
+            }
         }
 
         PurityVerificationInfo {
             is_network_call: !network_calls.is_empty(),
-            is_mutable_reference: !mutable_references.is_empty() || !bytecode_impurities.is_empty(),
+            is_mutable_reference: !mutable_references.is_empty(),
         }
     }
 }
