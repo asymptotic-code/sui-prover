@@ -1,0 +1,73 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
+expression: output
+---
+Verification successful
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:16:33
+   │
+16 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                                 ^^^^^ Unused local variable 'green'. Consider removing or prefixing with an underscore: '_green'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:36:32
+   │
+36 │         Color::RGB{red, green, blue} => {
+   │                                ^^^^ Unused local variable 'blue'. Consider removing or prefixing with an underscore: '_blue'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:36:20
+   │
+36 │         Color::RGB{red, green, blue} => {
+   │                    ^^^ Unused local variable 'red'. Consider removing or prefixing with an underscore: '_red'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:39:20
+   │
+39 │         Color::Hex(x) => {
+   │                    ^ Unused local variable 'x'. Consider removing or prefixing with an underscore: '_x'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused assignment
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:18:13
+   │
+18 │             a = 2;
+   │             ^ Unused assignment for variable 'a'. Consider removing, replacing with '_', or prefixing with '_' (e.g., '_a')
+   │
+   = This warning can be suppressed with '#[allow(unused_assignment)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:16:44
+   │
+16 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                                        --- ^^^^ The variable 'blue' is never used mutably
+   │                                        │    
+   │                                        Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:16:24
+   │
+16 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                    --- ^^^ The variable 'red' is never used mutably
+   │                    │    
+   │                    Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused mutable reference '&mut'
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_complex.move:14:13
+   │
+14 │     let b = &mut a;
+   │             ^^^^^^ Mutable reference is never used mutably, consider switching to an immutable reference '&' instead
+   │
+   = This warning can be suppressed with '#[allow(unused_mut_ref)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

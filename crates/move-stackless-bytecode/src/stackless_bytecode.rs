@@ -329,6 +329,8 @@ pub enum BorrowEdge {
     Direct,
     /// Field borrow with static offset.
     Field(QualifiedInstId<DatatypeId>, usize),
+    /// enum handling
+    EnumField(QualifiedInstId<DatatypeId>, usize, VariantId),
     /// Vector borrow with dynamic index.
     Index(IndexEdgeKind),
     /// Composed sequence of edges.
@@ -1370,6 +1372,19 @@ impl std::fmt::Display for BorrowEdgeDisplay<'_> {
                 write!(
                     f,
                     ".{} ({})",
+                    field_env.get_name().display(self.env.symbol_pool()),
+                    field_type.display(&tctx),
+                )
+            }
+            EnumField(qid, field, vid) => {
+                let enum_env = self.env.get_enum_qid(qid.to_qualified_id());
+                let variant_env = enum_env.get_variant(*vid);
+                let field_env = variant_env.get_field_by_offset(*field);
+                let field_type = field_env.get_type().instantiate(&qid.inst);
+                write!(
+                    f,
+                    ".{} -> {} ({})",
+                    variant_env.get_name().display(self.env.symbol_pool()),
                     field_env.get_name().display(self.env.symbol_pool()),
                     field_type.display(&tctx),
                 )
