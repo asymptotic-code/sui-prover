@@ -44,7 +44,6 @@ impl SpecPurityAnalysis {
         if !targets.is_spec(&func_env.get_qualified_id()) {
             for param in func_env.get_parameters() {
                 if param.1.is_mutable_reference() {
-                    println!("  Found mutable reference parameter");
                     results.insert(func_env.get_loc());
                 }
             }
@@ -121,10 +120,6 @@ impl SpecPurityAnalysis {
 
                 // Report errors for impure bytecode in spec functions
                 if !impure_locs.is_empty() {
-                    println!(
-                        "  Found {} mutable bytecode instructions",
-                        impure_locs.len()
-                    );
                     for loc in impure_locs.iter() {
                         env.diag(
                             Severity::Error,
@@ -160,9 +155,6 @@ impl SpecPurityAnalysis {
                         Operation::Function(mod_id, func_id, _) => {
                             let module = env.get_module(*mod_id);
                             let module_name = env.symbol_pool().string(module.get_name().name());
-                            let function_name = module.get_function(*func_id).get_full_name_str();
-
-                            println!("Analyzing call to {}::{}", module_name, function_name);
 
                             if SKIP_MODULES.contains(&module_name.as_str()) {
                                 continue;
@@ -170,20 +162,12 @@ impl SpecPurityAnalysis {
 
                             // Process network calls
                             if NETWORK_MODULES.contains(&module_name.as_str()) {
-                                println!(
-                                    "    Marking as impure due to network module: {}",
-                                    module_name
-                                );
                                 network_results.insert(target.get_bytecode_loc(*attr));
                             }
 
                             let internal_data = targets
                                 .get_data(&mod_id.qualified(*func_id), &FunctionVariant::Baseline);
                             if internal_data.is_none() {
-                                println!(
-                                    "    No function data found for {}::{}",
-                                    module_name, function_name
-                                );
                                 continue;
                             }
 
@@ -195,7 +179,6 @@ impl SpecPurityAnalysis {
 
                             // Propagate network call impurity
                             if annotation.is_network_call {
-                                println!("    Marking as impure because called function is calling a network module: {}::{}", module_name, function_name);
                                 network_results.insert(target.get_bytecode_loc(*attr));
                             }
 
@@ -223,11 +206,6 @@ impl SpecPurityAnalysis {
         let env = func_env.module_env.env;
         let func_target = FunctionTarget::new(func_env, data);
 
-        println!(
-            "Starting analysis for function: {}",
-            func_env.get_full_name_str()
-        );
-
         let mutable_references = self.find_mutable_reference(&func_env, targets);
 
         let underlying_func_id = targets.get_fun_by_spec(&func_env.get_qualified_id());
@@ -247,9 +225,7 @@ impl SpecPurityAnalysis {
 
         let is_spec = targets.is_function_spec(&func_env.get_qualified_id());
         if is_spec {
-            println!("Inserting errors");
             if !network_calls.is_empty() {
-                println!("  Found {} network calls", network_calls.len());
                 for loc in network_calls.iter() {
                     env.diag(
                         Severity::Error,
@@ -259,10 +235,6 @@ impl SpecPurityAnalysis {
                 }
             }
             if !mut_ref_calls.is_empty() {
-                println!(
-                    "  Found {} calls with mutable references",
-                    mut_ref_calls.len()
-                );
                 for loc in mut_ref_calls.iter() {
                     env.diag(
                         Severity::Error,
@@ -288,32 +260,13 @@ impl FunctionTargetProcessor for SpecPurityAnalysis {
         mut data: FunctionData,
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        println!("Processing function: {}", func_env.get_full_name_str());
-
         let annotation = data.annotations.get::<PurityVerificationInfo>();
-
-        println!(
-            "  Existing annotation: {}",
-            if annotation.is_some() {
-                "found"
-            } else {
-                "not found"
-            }
-        );
 
         let annotation_data = if annotation.is_some() {
             annotation.unwrap().clone()
         } else {
-            println!("  Calculating new annotations");
             self.analyse(func_env, targets, &data)
         };
-
-        println!(
-            "  Annotation result for {}: network_call = {}, mutable_ref = {}",
-            func_env.get_full_name_str(),
-            annotation_data.is_network_call,
-            annotation_data.is_mutable_reference
-        );
 
         let fixedpoint = match scc_opt {
             None => true,
@@ -327,15 +280,8 @@ impl FunctionTargetProcessor for SpecPurityAnalysis {
             },
         };
 
-        println!("  Fixedpoint: {}", fixedpoint);
-
         data.annotations
             .set::<PurityVerificationInfo>(annotation_data, fixedpoint);
-
-        println!(
-            "  Stored annotation for function: {} \n",
-            func_env.get_full_name_str()
-        );
 
         data
     }
