@@ -88,7 +88,9 @@ impl SpecPurityAnalysis {
                 | MoveBytecode::WriteRef
                 | MoveBytecode::VecPushBack(_)
                 | MoveBytecode::VecPopBack(_)
-                | MoveBytecode::VecSwap(_) => {
+                | MoveBytecode::VecSwap(_)
+                | MoveBytecode::UnpackVariantMutRef(_)
+                | MoveBytecode::UnpackVariantGenericMutRef(_) => {
                     impure_locs.insert(target.get_bytecode_loc(AttrId::new(offset)));
                 }
                 _ => {}
