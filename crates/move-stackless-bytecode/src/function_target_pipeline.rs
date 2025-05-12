@@ -16,7 +16,7 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{AttributeName_, AttributeValue_, Attribute_, ModuleAccess_, ModuleIdent},
+    expansion::ast::{AttributeName_, AttributeValue_, Attribute_, ModuleAccess_},
     shared::{
         known_attributes::{KnownAttribute::Verification, VerificationAttribute},
         unique_map::UniqueMap,
@@ -29,7 +29,7 @@ use move_symbol_pool::Symbol;
 
 use move_model::{
     ast::ModuleName,
-    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId, StructEnv},
+    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
 };
 
 use crate::{
@@ -51,7 +51,7 @@ pub struct FunctionTargetsHolder {
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
-    target_modules: BTreeSet<ModuleId>
+    target_modules: BTreeSet<ModuleId>,
 }
 
 /// Describes a function verification flavor.
@@ -214,22 +214,25 @@ impl FunctionTargetsHolder {
             ignore_aborts: instance.ignore_aborts,
             scenario_specs: instance.scenario_specs,
             datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules
+            target_modules: instance.target_modules,
         }
     }
 
-    pub fn for_one_module(target: &ModuleId, instance: FunctionTargetsHolder, env: &GlobalEnv) -> Self {
+    pub fn for_one_module(
+        target: &ModuleId,
+        instance: FunctionTargetsHolder,
+        env: &GlobalEnv,
+    ) -> Self {
         let mut focus_specs = BTreeSet::new();
         let mut no_focus_specs = BTreeSet::new();
         no_focus_specs.append(&mut instance.no_focus_specs.clone());
 
         let mut no_verify_specs: BTreeSet<QualifiedId<FunId>> = BTreeSet::new();
         no_verify_specs.append(&mut instance.no_verify_specs.clone());
-        
+
         for id in instance.focus_specs() {
             if env.get_function(*id).module_env.get_id() == *target {
                 focus_specs.insert(*id);
-
             } else {
                 no_focus_specs.insert(*id);
             }
@@ -250,7 +253,7 @@ impl FunctionTargetsHolder {
             ignore_aborts: instance.ignore_aborts,
             scenario_specs: instance.scenario_specs,
             datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules
+            target_modules: instance.target_modules,
         }
     }
 
@@ -404,55 +407,27 @@ impl FunctionTargetsHolder {
                     .get_(&AttributeName_::Unknown(Symbol::from("target")))
                     .unwrap();
 
-                if let Attribute_::Assigned(_, boxed_value) = &function_spec.value {
-                    if let AttributeValue_::ModuleAccess(spanned) = &boxed_value.value {
-                        if let ModuleAccess_::ModuleAccess(module_ident, function_name) =
-                            &spanned.value
-                        {
-                            let address = module_ident.value.address;
-                            let module = &module_ident.value.module;
+                let env = func_env.module_env.env;
 
-                            let addr_bytes = address.into_addr_bytes();
-                            let module_name = ModuleName::from_address_bytes_and_name(
-                                addr_bytes,
-                                func_env.symbol_pool().make(&module.to_string()),
-                            );
+                match Self::parse_module_access(function_spec, env) {
+                    Some((module_name, fun_name)) => {
+                        let module_env = env.find_module(&module_name).unwrap();
+                        Self::process_spec(
+                            func_env,
+                            &module_env,
+                            env,
+                            &mut self.function_specs,
+                            fun_name,
+                        );
+                    }
+                    None => {
+                        let module_name = func_env.module_env.get_full_name_str();
 
-                            if let Some(module_env) =
-                                func_env.module_env.env.find_module(&module_name)
-                            {
-                                let func_sym = func_env.symbol_pool().make(&function_name.value);
-                                if let Some(target_func_env) = module_env.find_function(func_sym) {
-                                    let target_id = target_func_env.get_qualified_id();
-
-                                    if self.function_specs.contains_right(&target_id) {
-                                        let env = func_env.module_env.env;
-                                        env.diag(
-                                            Severity::Error,
-                                            &func_env.get_loc(),
-                                            &format!(
-                                                "Duplicate target function: {}",
-                                                function_name.value
-                                            ),
-                                        );
-                                    } else {
-                                        self.function_specs
-                                            .insert(func_env.get_qualified_id(), target_id);
-                                    }
-                                } else {
-                                    let env = func_env.module_env.env;
-                                    env.diag(
-                                        Severity::Error,
-                                        &func_env.get_loc(),
-                                        &format!(
-                                            "Target function '{}' not found in module '{}'",
-                                            function_name.value,
-                                            module.to_string()
-                                        ),
-                                    );
-                                }
-                            }
-                        }
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!("Error parsing module path '{}'", module_name),
+                        );
                     }
                 }
             } else {
@@ -477,7 +452,7 @@ impl FunctionTargetsHolder {
                     }
                 }
             }
-            
+
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
@@ -517,9 +492,7 @@ impl FunctionTargetsHolder {
                         );
                     }
                     None => {
-                        let module_name = func_env
-                            .module_env
-                            .get_full_name_str();
+                        let module_name = func_env.module_env.get_full_name_str();
 
                         env.diag(
                             Severity::Error,
@@ -570,6 +543,41 @@ impl FunctionTargetsHolder {
         None
     }
 
+    fn process_spec(
+        func_env: &FunctionEnv<'_>,
+        module_env: &ModuleEnv<'_>,
+        env: &GlobalEnv,
+        function_specs: &mut BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
+        func_name: String,
+    ) {
+        if let Some(target_func_env) =
+            module_env.find_function(func_env.symbol_pool().make(func_name.as_str()))
+        {
+            let target_id = target_func_env.get_qualified_id();
+
+            if function_specs.contains_right(&target_id) {
+                let env = func_env.module_env.env;
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!("Duplicate target function: {}", func_name),
+                );
+            } else {
+                function_specs.insert(func_env.get_qualified_id(), target_id);
+            }
+        } else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "Target function '{}' not found in module '{}'",
+                    func_name,
+                    module_env.get_full_name_str()
+                ),
+            );
+        }
+    }
+
     fn process_inv(
         func_env: &FunctionEnv<'_>,
         module_env: &ModuleEnv<'_>,
@@ -593,10 +601,8 @@ impl FunctionTargetsHolder {
                 datatype_invs.insert(struct_env.get_qualified_id(), func_env.get_qualified_id());
             }
         } else {
-            let module_name = func_env
-                .module_env
-                .get_full_name_str();
-            
+            let module_name = func_env.module_env.get_full_name_str();
+
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
