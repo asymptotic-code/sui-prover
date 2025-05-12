@@ -4531,8 +4531,9 @@ fn filter_out_sensetives(input: &str) -> String {
     if input.is_empty() {
         return input.to_string();
     }
-    let filter_regex = Regex::new(r"/Users/[^/]+/\.move/[^/]+/(?:crates|packages)/([^/]+)/").unwrap();
-    filter_regex
-        .replace_all(&input,"$1/")
-        .to_string()
+
+    let filter_regex =
+        Regex::new(r"/(?:Users|home)/[^/]+/\.move/[^/]+/(?:crates|packages)/([^/]+)/").unwrap();
+
+    filter_regex.replace_all(input, "$1/").to_string()
 }
