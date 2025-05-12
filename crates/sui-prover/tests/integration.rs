@@ -5,6 +5,7 @@ use move_package::BuildConfig as MoveBuildConfig;
 use regex::Regex;
 use sui_prover::prove::move_model_for_package_legacy;
 use std::path::{Path, PathBuf};
+use std::fs::{copy, create_dir_all, remove_file, remove_dir_all};
 use move_prover_boogie_backend::{generator::run_move_prover_with_model, generator_options::Options};
 
 /// Runs the prover on the given file path and returns the output as a string
@@ -14,7 +15,7 @@ fn run_prover(file_path: &PathBuf) -> String {
     let sources_dir = file_dir.join("sources");
     // create the sources_dir if it doesn't exist
     if !sources_dir.clone().exists() {
-        std::fs::create_dir_all(sources_dir.clone()).unwrap();
+        create_dir_all(sources_dir.clone()).unwrap();
     }
 
     // Extract the relative path from tests/inputs/
@@ -27,12 +28,11 @@ fn run_prover(file_path: &PathBuf) -> String {
 
     // Create parent directories if needed
     if let Some(parent_dir) = new_file_path.parent() {
-        std::fs::create_dir_all(parent_dir).unwrap();
+        create_dir_all(parent_dir).unwrap();
     }
 
-    std::fs::rename(file_path, &new_file_path).unwrap();
-
-    let new_file_path_clone = new_file_path.clone();
+    // Copy the file
+    copy(file_path, &new_file_path).unwrap();
 
     // Setup cleanup that will execute even in case of panic or early return
     let result = std::panic::catch_unwind(|| {
@@ -81,8 +81,12 @@ fn run_prover(file_path: &PathBuf) -> String {
         post_process_output(result)
     });
 
-    // rename the file_path to the original name
-    std::fs::rename(new_file_path_clone, file_path).unwrap();
+    // Remove the copied file
+    if new_file_path.exists() {
+        remove_file(&new_file_path).unwrap_or_else(|e| {
+            eprintln!("Failed to remove file {}: {}", new_file_path.display(), e);
+        });
+    }
 
     // Now handle the result of our operation
     match result {
@@ -100,8 +104,18 @@ fn post_process_output(output: String) -> String {
     re.replace_all(&output, "ELIDEDu64").to_string()
 }
 
+/// Clears all files in the sources directory
+fn clear_sources_directory() {
+    let sources_dir = Path::new("tests/sources");
+    if sources_dir.exists() {
+        let _ = remove_dir_all(sources_dir);
+    }
+}
+
 #[test]
 fn run_move_tests() {
+    clear_sources_directory();
+    
     for entry in glob::glob("tests/inputs/**/*.move").expect("Invalid glob pattern") {
         let move_path = entry.expect("Failed to read file path");
         let output = run_prover(&move_path);
