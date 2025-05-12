@@ -65,6 +65,10 @@ pub struct GeneralConfig {
     #[clap(name = "verbose", long, short = 'v', global = true)]
     pub verbose: bool,
 
+    /// Don't display counterexample trace
+    #[clap(name = "no-counterexample-trace", long, global = true)]
+    pub no_counterexample_trace: bool,
+
     /// Explain the proving outputs via LLM 
     #[clap(name = "explain", long, global = true)]
     pub explain: bool,
@@ -145,6 +149,7 @@ pub async fn execute(
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
     options.boogie_file_mode = general_config.boogie_file_mode;
+    options.backend.debug_trace = !general_config.no_counterexample_trace;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
