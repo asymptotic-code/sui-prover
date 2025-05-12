@@ -24,8 +24,7 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId,
-        QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -56,11 +55,13 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_enum_name_prefix, boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
 };
+
+use super::boogie_helpers::boogie_enum_field_sel;
 
 pub struct BoogieTranslator<'env> {
     env: &'env GlobalEnv,
@@ -1090,6 +1091,47 @@ impl<'env> EnumTranslator<'env> {
         }
 
         let suffix = boogie_enum_name(enum_env, self.type_inst);
+
+        for (pos, field_env) in enum_env.get_all_fields().enumerate() {
+            let field_name = field_env.get_name().display(env.symbol_pool()).to_string();
+            let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
+                unreachable!();
+            };
+            let variant_name = variant_env.get_name().display(env.symbol_pool()).to_string();
+
+            // Emit function signature
+            self.emit_function(
+                &format!(
+                    "$Update'{}'_{}_{}(s: {}, x: {}): {}",
+                    suffix,
+                    variant_name,
+                    field_name,
+                    enum_name,
+                    self.boogie_type_for_enum_field(
+                        &field_env.get_id(),
+                        env,
+                        &self.inst(&field_env.get_type())
+                    ),
+                    enum_name
+                ),
+                || {
+                    let args = enum_env
+                        .get_all_fields()
+                        .enumerate()
+                        .map(|(p, f)| {
+                            if f.get_name() == field_env.get_name() && f.get_id() == field_env.get_id() && pos == p {
+                                "x".to_string()
+                            } else {
+                                format!("s->{}", boogie_enum_field_name(&f))
+                            }
+                        })
+                        .chain(std::iter::once("s->$variant_id".to_string())) 
+                        .join(", ");
+
+                    emitln!(writer, "{}({})", enum_name, args);
+                },
+            );
+        }
 
         // Emit $IsValid function.
         self.emit_function_with_attr(
@@ -3412,31 +3454,6 @@ impl<'env> FunctionTranslator<'env> {
         emitln!(self.writer());
     }
 
-    fn add_write_back_temp_var(&self, edge: &BorrowEdge, src: &String, dst: &String) {
-        match edge {
-            BorrowEdge::EnumField(memory, offset, vid) => {
-                let memory = memory.to_owned().instantiate(self.type_inst);
-                let enum_env = &self.parent.env.get_enum_qid(memory.to_qualified_id());
-                let variant_env = &enum_env.get_variant(*vid);
-                let constructor_name = boogie_enum_variant_ctor_name(&variant_env, &[]);
-                let enum_name = boogie_enum_name_prefix(&enum_env);
-                let temp_str = format!("$temp_{}'{}'", 0, enum_name);
-
-                let mut constructor_args: Vec<String> = vec![];
-                for field in variant_env.get_fields() {
-                    if field.get_offset() == *offset {
-                        constructor_args.push(format!("$Dereference({})", src.clone()));
-                    } else {
-                        constructor_args.push(format!("{}->{}", dst, boogie_enum_field_name(&field)));
-                    }
-                }
-
-                emitln!(self.parent.writer, "call {} := {}({});", temp_str, constructor_name, constructor_args.join(", "))
-            }
-            _ => {},
-        }
-    }
-
     fn translate_write_back(&self, dest: &BorrowNode, edge: &BorrowEdge, src: TempIndex) {
         use BorrowNode::*;
         let writer = self.parent.writer;
@@ -3483,8 +3500,6 @@ impl<'env> FunctionTranslator<'env> {
                         format!("ReadVec({}->p, LenVec($t{}->p) + {})", src_str, idx, offset)
                     }
                 };
-
-                self.add_write_back_temp_var(edge, &src_str, &dst_value);
 
                 let update = if let BorrowEdge::Hyper(edges) = edge {
                     self.translate_write_back_update(
@@ -3571,12 +3586,39 @@ impl<'env> FunctionTranslator<'env> {
                         format!("{}({}, {})", update_fun, (*mk_dest)(), new_src)
                     }
                 }
-                BorrowEdge::EnumField(memory, _, vid) => {
+                BorrowEdge::EnumField(memory, offset, vid) => {
                     let memory = memory.to_owned().instantiate(self.type_inst);
                     let enum_env = &self.parent.env.get_enum_qid(memory.to_qualified_id());
-                    let enum_name = boogie_enum_name_prefix(&enum_env);
-                    let temp_str = format!("$temp_{}'{}'", 0, enum_name);
-                    temp_str
+                    let variant_env = &enum_env.get_variant(*vid);
+                    let field_env = &variant_env.get_field_by_offset(*offset);
+                    
+                    let update_fun = boogie_enum_field_update(field_env);
+                    let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
+
+                    let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
+                    let mut new_dest_needed = false;
+                    let new_src = self.translate_write_back_update(
+                        &mut || {
+                            new_dest_needed = true;
+                            format!("$$sel{}", at)
+                        },
+                        get_path_index,
+                        src,
+                        edges,
+                        at + 1,
+                    );
+                    if new_dest_needed {
+                        format!(
+                            "(var $$sel{} := {}; {}({}, {}))",
+                            at,
+                            new_dest,
+                            update_fun,
+                            (*mk_dest)(),
+                            new_src
+                        )
+                    } else {
+                        format!("{}({}, {})", update_fun, (*mk_dest)(), new_src)
+                    }
                 }
                 BorrowEdge::Index(index_edge_kind) => {
                     // Index edge is used for both vectors, tables, and custom native methods

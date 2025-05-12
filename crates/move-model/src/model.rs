@@ -2872,6 +2872,27 @@ impl<'env> EnumEnv<'env> {
             })
     }
 
+    pub fn get_all_fields(&'env self) -> impl Iterator<Item = FieldEnv<'env>> {
+        self.data
+            .variant_data
+            .values()
+            .sorted_by_key(|data| data.tag)
+            .flat_map(move |data| {
+                data
+                    .field_data
+                    .values()
+                    .sorted_by_key(|data| data.offset)
+                    .map(move |fdata| FieldEnv {
+                        parent_env: EnclosingEnv::Variant(VariantEnv {
+                                enum_env: self.clone(),
+                                data,
+                            }
+                        ),
+                        data: fdata,
+                    })
+            })
+    }
+
     /// Return the number of variants in the enum.
     pub fn get_variant_count(&self) -> usize {
         self.data.variant_data.len()
