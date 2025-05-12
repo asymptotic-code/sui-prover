@@ -1,0 +1,67 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
+expression: output
+---
+exiting with verification errors
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:14:33
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                                 ^^^^^ Unused local variable 'green'. Consider removing or prefixing with an underscore: '_green'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:29:9
+   │
+29 │     let before = *color_ref;
+   │         ^^^^^^ Unused local variable 'before'. Consider removing or prefixing with an underscore: '_before'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:14:44
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                                        --- ^^^^ The variable 'blue' is never used mutably
+   │                                        │    
+   │                                        Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:14:24
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                    --- ^^^ The variable 'red' is never used mutably
+   │                    │    
+   │                    Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:32:5
+   │
+32 │     ensures(color_ref == Color::RGB{ red: 211, green: 893, blue: 22 });
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:28: reset_color_spec
+   =         color_ref =
+   =           foo::Color::RGB{red = 1142u32, green = 894u32, blue = 28100u32}
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:29: reset_color_spec
+   =         color_ref =
+   =           foo::Color::RGB{red = 1142u32, green = 894u32, blue = 28100u32}
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:13: reset_color
+   =         color_ref =
+   =           foo::Color::RGB{red = 1142u32, green = 894u32, blue = 28100u32}
+   =         red#1#0 = 1142u32
+   =         blue#1#0 = 28100u32
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:15: reset_color
+   =         color_ref =
+   =           foo::Color::RGB{red = 2u32, green = 894u32, blue = 28100u32}
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:16: reset_color
+   =         color_ref = foo::Color::RGB{red = 2u32, green = 894u32, blue = 2u32}
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:13: reset_color
+   =         color_ref = foo::Color::RGB{red = 2u32, green = 894u32, blue = 2u32}
+   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:25: reset_color

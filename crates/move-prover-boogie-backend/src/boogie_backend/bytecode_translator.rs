@@ -24,8 +24,7 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId,
-        QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -56,22 +55,13 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
-        boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_enum_field_name, boogie_enum_name,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
-        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
-        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
-        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
-        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
-        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
-        TypeIdentToken,
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
 };
+
+use super::boogie_helpers::boogie_enum_field_sel;
 
 pub struct BoogieTranslator<'env> {
     env: &'env GlobalEnv,
@@ -318,13 +308,8 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_env,
                                 &FunctionVariant::Verification(VerificationFlavor::Regular),
                             );
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst: &[],
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
+                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
+                                .translate();
                         }
                         continue;
                     }
@@ -347,13 +332,8 @@ impl<'env> BoogieTranslator<'env> {
                         self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
                     {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst: &[],
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
+                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
+                                .translate();
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
@@ -365,13 +345,8 @@ impl<'env> BoogieTranslator<'env> {
                             ))
                             .unwrap_or(&BTreeSet::new())
                         {
-                            FunctionTranslator {
-                                parent: self,
-                                fun_target: &fun_target,
-                                type_inst,
-                                style: FunctionTranslationStyle::Default,
-                            }
-                            .translate();
+                            FunctionTranslator::new(self, &fun_target, type_inst, FunctionTranslationStyle::Default)
+                                .translate();
                         }
                     }
                 }
@@ -398,13 +373,8 @@ impl<'env> BoogieTranslator<'env> {
                         .get(&(inv_fun_env.get_qualified_id(), FunctionVariant::Baseline))
                         .unwrap_or(empty);
                     for type_inst in struct_type_instances.difference(inv_fun_type_instances) {
-                        FunctionTranslator {
-                            parent: self,
-                            fun_target: &inv_fun_target,
-                            type_inst,
-                            style: FunctionTranslationStyle::Default,
-                        }
-                        .translate();
+                        FunctionTranslator::new(self, &inv_fun_target, type_inst, FunctionTranslationStyle::Default)
+                            .translate();
                     }
                 }
             }
@@ -604,13 +574,8 @@ impl<'env> BoogieTranslator<'env> {
             || style == FunctionTranslationStyle::Opaque
         // this is for the $opaque signature
         {
-            FunctionTranslator {
-                parent: self,
-                fun_target: &fun_target,
-                type_inst: &[],
-                style,
-            }
-            .translate();
+            FunctionTranslator::new(self, &fun_target, &[], style)
+                .translate();
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
@@ -637,13 +602,8 @@ impl<'env> BoogieTranslator<'env> {
                         return;
                     }
 
-                    FunctionTranslator {
-                        parent: self,
-                        fun_target: &fun_target,
-                        type_inst,
-                        style,
-                    }
-                    .translate();
+                    FunctionTranslator::new(self, &fun_target, type_inst, style)
+                        .translate();
                 });
         }
     }
@@ -714,23 +674,13 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         for type_inst in ghost_global_type_instances {
-            FunctionTranslator {
-                parent: self,
-                fun_target: &ghost_global_fun_target,
-                type_inst,
-                style: FunctionTranslationStyle::Default,
-            }
-            .translate();
+            FunctionTranslator::new(self, &ghost_global_fun_target, type_inst, FunctionTranslationStyle::Default)
+                .translate();
         }
 
         for type_inst in &ghost_declare_global_mut_type_instances {
-            FunctionTranslator {
-                parent: self,
-                fun_target: &ghost_havoc_global_fun_target,
-                type_inst,
-                style: FunctionTranslationStyle::Default,
-            }
-            .translate();
+            FunctionTranslator::new(self, &ghost_havoc_global_fun_target, type_inst, FunctionTranslationStyle::Default)
+                .translate(); 
         }
     }
 
@@ -1142,6 +1092,47 @@ impl<'env> EnumTranslator<'env> {
 
         let suffix = boogie_enum_name(enum_env, self.type_inst);
 
+        for (pos, field_env) in enum_env.get_all_fields().enumerate() {
+            let field_name = field_env.get_name().display(env.symbol_pool()).to_string();
+            let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
+                unreachable!();
+            };
+            let variant_name = variant_env.get_name().display(env.symbol_pool()).to_string();
+
+            // Emit function signature
+            self.emit_function(
+                &format!(
+                    "$Update'{}'_{}_{}(s: {}, x: {}): {}",
+                    suffix,
+                    variant_name,
+                    field_name,
+                    enum_name,
+                    self.boogie_type_for_enum_field(
+                        &field_env.get_id(),
+                        env,
+                        &self.inst(&field_env.get_type())
+                    ),
+                    enum_name
+                ),
+                || {
+                    let args = enum_env
+                        .get_all_fields()
+                        .enumerate()
+                        .map(|(p, f)| {
+                            if f.get_name() == field_env.get_name() && f.get_id() == field_env.get_id() && pos == p {
+                                "x".to_string()
+                            } else {
+                                format!("s->{}", boogie_enum_field_name(&f))
+                            }
+                        })
+                        .chain(std::iter::once("s->$variant_id".to_string())) 
+                        .join(", ");
+
+                    emitln!(writer, "{}({})", enum_name, args);
+                },
+            );
+        }
+
         // Emit $IsValid function.
         self.emit_function_with_attr(
             "", // not inlined!
@@ -1264,6 +1255,20 @@ impl<'env> FunctionTranslator<'env> {
         let sid = self.fun_target.func_env.get_id();
         let param_oper = operation_map.get(&(mid, sid)).unwrap().get(i);
         matches!(param_oper, Some(&Bitwise))
+    }
+
+    pub fn new(
+        parent: &'env BoogieTranslator,
+        fun_target: &'env FunctionTarget<'env>,
+        type_inst: &'env [Type],
+        style: FunctionTranslationStyle,
+    ) -> Self {
+        Self {
+            parent,
+            fun_target,
+            type_inst,
+            style,
+        }
     }
 
     /// Return whether a specific TempIndex involves in bitwise operations
@@ -2080,11 +2085,12 @@ impl<'env> FunctionTranslator<'env> {
                     WriteRef => {
                         let reference = srcs[0];
                         let value = srcs[1];
+                        let field = str_local(reference);
                         emitln!(
                             self.writer(),
                             "{} := $UpdateMutation({}, {});",
-                            str_local(reference),
-                            str_local(reference),
+                            field,
+                            field,
                             str_local(value),
                         );
                     }
@@ -2529,24 +2535,34 @@ impl<'env> FunctionTranslator<'env> {
                             args
                         );
                     }
-                    UnpackVariant(mid, eid, vid, _inst, ref_type) => {
-                        assert_ne!(
-                            ref_type,
-                            &RefType::ByMutRef,
-                            "UnpackVariant with ByMutRef in {}",
-                            self.fun_target.func_env.get_full_name_str()
-                        );
-
+                    UnpackVariant(mid, eid, vid, inst, ref_type) => {
                         let enum_env = env.get_module(*mid).into_enum(*eid);
                         let variant_env = enum_env.get_variant(*vid);
+
                         for (i, ref field_env) in variant_env.get_fields().enumerate() {
-                            emitln!(
-                                self.writer(),
-                                "{} := {}->{};",
-                                str_local(dests[i]),
-                                str_local(srcs[0]),
-                                boogie_enum_field_name(field_env)
-                            );
+                            let dest_str = str_local(dests[i]);
+                            let src_str = str_local(srcs[0]);
+                            let field_name = boogie_enum_field_name(field_env);
+
+                            if *ref_type == RefType::ByMutRef {
+                                emitln!(
+                                    self.writer(),
+                                    "{} := $ChildMutation({}, {}, $Dereference({})->{});",
+                                    dest_str,
+                                    src_str,
+                                    i,
+                                    src_str,
+                                    field_name
+                                );
+                            } else {
+                                emitln!(
+                                    self.writer(),
+                                    "{} := {}->{};",
+                                    dest_str,
+                                    src_str,
+                                    field_name
+                                );
+                            }
                         }
                     }
                     BorrowField(mid, sid, inst, field_offset) => {
@@ -3484,6 +3500,7 @@ impl<'env> FunctionTranslator<'env> {
                         format!("ReadVec({}->p, LenVec($t{}->p) + {})", src_str, idx, offset)
                     }
                 };
+
                 let update = if let BorrowEdge::Hyper(edges) = edge {
                     self.translate_write_back_update(
                         &mut || dst_value.clone(),
@@ -3556,6 +3573,40 @@ impl<'env> FunctionTranslator<'env> {
                         at + 1,
                     );
                     let update_fun = boogie_field_update(field_env, &memory.inst);
+                    if new_dest_needed {
+                        format!(
+                            "(var $$sel{} := {}; {}({}, {}))",
+                            at,
+                            new_dest,
+                            update_fun,
+                            (*mk_dest)(),
+                            new_src
+                        )
+                    } else {
+                        format!("{}({}, {})", update_fun, (*mk_dest)(), new_src)
+                    }
+                }
+                BorrowEdge::EnumField(memory, offset, vid) => {
+                    let memory = memory.to_owned().instantiate(self.type_inst);
+                    let enum_env = &self.parent.env.get_enum_qid(memory.to_qualified_id());
+                    let variant_env = &enum_env.get_variant(*vid);
+                    let field_env = &variant_env.get_field_by_offset(*offset);
+                    
+                    let update_fun = boogie_enum_field_update(field_env);
+                    let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
+
+                    let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
+                    let mut new_dest_needed = false;
+                    let new_src = self.translate_write_back_update(
+                        &mut || {
+                            new_dest_needed = true;
+                            format!("$$sel{}", at)
+                        },
+                        get_path_index,
+                        src,
+                        edges,
+                        at + 1,
+                    );
                     if new_dest_needed {
                         format!(
                             "(var $$sel{} := {}; {}({}, {}))",
