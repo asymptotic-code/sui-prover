@@ -18,15 +18,5 @@ error: prover::ensures assertion does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/logging.move:11: foo_spec
-   =         x = ELIDEDu64
-   =     at sui-framework/packages/move-stdlib/sources/u64.move:90
-   =         x = ELIDEDu64
-   =     at tests/inputs/logging.move:7: foo
-   =         result = ELIDEDu64
-   =     at tests/inputs/logging.move:8: foo
-   =         res#1#0 = ELIDEDu64
-   =     at tests/inputs/logging.move:14: foo_spec
-   =         res_int#1#0 = 8856
-   =     at tests/inputs/logging.move:16: foo_spec
    =     Checking value of x
    =     at tests/inputs/logging.move:17: foo_spec

@@ -680,6 +680,7 @@ impl<'env> BoogieWrapper<'env> {
     ) -> Result<TraceEntry, ModelParseError> {
         if !self.options.debug_trace {
             match name {
+                "at" => Ok(TraceEntry::AtLocation(self.extract_loc(args)?)),
                 "info" => match value {
                     Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
                     None => Ok(TraceEntry::InfoLine("".to_string())),
