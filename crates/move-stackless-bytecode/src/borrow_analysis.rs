@@ -10,7 +10,7 @@ use itertools::Itertools;
 
 use move_binary_format::file_format::CodeOffset;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, QualifiedInstId},
+    model::{FunctionEnv, GlobalEnv, QualifiedInstId, RefType},
     ty::Type,
     well_known::{BORROW_CHILD_OBJECT_MUT, VECTOR_BORROW_MUT},
 };
@@ -727,6 +727,24 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             );
                         }
                         state.add_edge(src_node, dest_node, BorrowEdge::Direct);
+                    }
+                    UnpackVariant(mid, did, vid, inst, ref_type)
+                        if *ref_type == RefType::ByMutRef =>
+                    {
+                        for i in 0..dests.len() {
+                            let offset = dests[i];
+                            if !livevar_annotation_at.after.contains(&offset) {
+                                continue;
+                            }
+                            let dest_node = self.borrow_node(offset);
+                            let src_node = self.borrow_node(srcs[0]);
+                            state.add_node(dest_node.clone());
+                            state.add_edge(
+                                src_node,
+                                dest_node,
+                                BorrowEdge::EnumField(mid.qualified_inst(*did, inst.to_owned()), i, *vid),
+                            );
+                        }
                     }
                     BorrowField(mid, sid, inst, field)
                         if livevar_annotation_at.after.contains(&dests[0]) =>

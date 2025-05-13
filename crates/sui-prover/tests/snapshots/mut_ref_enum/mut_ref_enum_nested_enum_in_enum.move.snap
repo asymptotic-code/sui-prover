@@ -1,0 +1,31 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
+expression: output
+---
+Verification successful
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_enum_in_enum.move:19:37
+   │
+19 │         ColorTest::First{mut a, mut b} => {
+   │                                     ^ Unused local variable 'b'. Consider removing or prefixing with an underscore: '_b'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_enum_in_enum.move:52:29
+   │
+52 │         ColorTest::First{a, b} => {
+   │                             ^ Unused local variable 'b'. Consider removing or prefixing with an underscore: '_b'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_enum_in_enum.move:19:30
+   │
+19 │         ColorTest::First{mut a, mut b} => {
+   │                          --- ^ The variable 'a' is never used mutably
+   │                          │    
+   │                          Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
