@@ -678,61 +678,75 @@ impl<'env> BoogieWrapper<'env> {
         args: &str,
         value: Option<&str>,
     ) -> Result<TraceEntry, ModelParseError> {
-        match name {
-            "at" => Ok(TraceEntry::AtLocation(self.extract_loc(args)?)),
-            "track_local" => {
-                let (fun, idx, ty) = self.extract_fun_and_index(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::Temporary(fun, idx, ty, value))
+        if !self.options.debug_trace {
+            match name {
+                "at" => Ok(TraceEntry::AtLocation(self.extract_loc(args)?)),
+                "info" => match value {
+                    Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
+                    None => Ok(TraceEntry::InfoLine("".to_string())),
+                },
+                _ => Err(ModelParseError::new(&format!(
+                    "unrecognized augmented trace entry `{}`",
+                    name
+                ))),
             }
-            "track_return" => {
-                let (fun, idx, ty) = self.extract_fun_and_index(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::Result(fun, idx, ty, value))
-            }
-            "track_abort" => {
-                let fun = self.extract_fun(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::Abort(fun, value))
-            }
-            "track_exp" => {
-                let node_id = self.extract_node_id(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::Exp(node_id, value))
-            }
-            "track_exp_sub" => {
-                let node_id = self.extract_node_id(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::SubExp(node_id, value))
-            }
-            "track_global_mem" => {
-                let node_id = self.extract_node_id(args)?;
-                let value = self.extract_value(value)?;
-                Ok(TraceEntry::GlobalMem(node_id, value))
-            }
-            "info" => match value {
-                Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
-                None => Ok(TraceEntry::InfoLine("".to_string())),
-            },
-            "track_ghost" => {
-                let elems = args.split(',').collect_vec();
-                if elems.len() == 2 {
-                    Ok(TraceEntry::Ghost(
-                        self.extract_type(elems[0])
-                            .ok_or(ModelParseError("invalid ghost variable".to_string()))?,
-                        self.extract_type(elems[1]),
-                        self.extract_value(value)?,
-                    ))
-                } else {
-                    Err(ModelParseError(
-                        "invalid ghost type and value type".to_string(),
-                    ))
+        } else {
+            match name {
+                "at" => Ok(TraceEntry::AtLocation(self.extract_loc(args)?)),
+                "track_local" => {
+                    let (fun, idx, ty) = self.extract_fun_and_index(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::Temporary(fun, idx, ty, value))
                 }
+                "track_return" => {
+                    let (fun, idx, ty) = self.extract_fun_and_index(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::Result(fun, idx, ty, value))
+                }
+                "track_abort" => {
+                    let fun = self.extract_fun(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::Abort(fun, value))
+                }
+                "track_exp" => {
+                    let node_id = self.extract_node_id(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::Exp(node_id, value))
+                }
+                "track_exp_sub" => {
+                    let node_id = self.extract_node_id(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::SubExp(node_id, value))
+                }
+                "track_global_mem" => {
+                    let node_id = self.extract_node_id(args)?;
+                    let value = self.extract_value(value)?;
+                    Ok(TraceEntry::GlobalMem(node_id, value))
+                }
+                "info" => match value {
+                    Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
+                    None => Ok(TraceEntry::InfoLine("".to_string())),
+                },
+                "track_ghost" => {
+                    let elems = args.split(',').collect_vec();
+                    if elems.len() == 2 {
+                        Ok(TraceEntry::Ghost(
+                            self.extract_type(elems[0])
+                                .ok_or(ModelParseError("invalid ghost variable".to_string()))?,
+                            self.extract_type(elems[1]),
+                            self.extract_value(value)?,
+                        ))
+                    } else {
+                        Err(ModelParseError(
+                            "invalid ghost type and value type".to_string(),
+                        ))
+                    }
+                }
+                _ => Err(ModelParseError::new(&format!(
+                    "unrecognized augmented trace entry `{}`",
+                    name
+                ))),
             }
-            _ => Err(ModelParseError::new(&format!(
-                "unrecognized augmented trace entry `{}`",
-                name
-            ))),
         }
     }
 
