@@ -155,6 +155,22 @@ pub fn boogie_enum_variant_ctor_name(variant_env: &VariantEnv<'_>, inst: &[Type]
     )
 }
 
+pub fn boogie_enum_field_update(field_env: &FieldEnv<'_>) -> String {
+    let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
+        unreachable!();
+    };
+    format!(
+        "$Update'{}'_{}_{}",
+        boogie_enum_name_prefix(&variant_env.enum_env),
+        variant_env.get_name().display(variant_env.symbol_pool()),
+        field_env.get_name().display(variant_env.enum_env.symbol_pool()),
+    )
+}
+
+pub fn boogie_enum_field_sel(field_env: &FieldEnv<'_>, _inst: &[Type]) -> String {
+    format!("${}", boogie_enum_field_name(field_env))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FunctionTranslationStyle {
     Default,
