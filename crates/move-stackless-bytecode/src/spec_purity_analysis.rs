@@ -161,11 +161,9 @@ impl SpecPurityAnalysis {
                                 .annotations
                                 .get::<PurityVerificationInfo>();
                             
-                            let annotation_info = if let Some(info) = annotation {
-                                info
-                            } else {
-                                &PurityVerificationInfo::default()
-                            };
+                            let annotation_info = annotation
+                                .cloned()
+                                .unwrap_or_default();
 
                             // Propagate network call impurity
                             if annotation_info.is_network_call {
