@@ -54,6 +54,12 @@ fn run_prover(file_path: &PathBuf) -> String {
                 options.backend.use_array_theory = true;
                 options.backend.vc_timeout = 3000;
 
+                // Apply special settings based on filename
+                let file_name = relative_path.file_name().unwrap().to_string_lossy();
+                if file_name == "logging.move" {
+                    options.backend.debug_trace = false;
+                }
+
                 // Use a buffer to capture output instead of stderr
                 let mut error_buffer = Buffer::no_color();
 
