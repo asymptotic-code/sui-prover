@@ -610,6 +610,9 @@ impl Analyzer<'_> {
             BorrowEdge::Field(qid, _) => {
                 self.add_type_root(&qid.to_type());
             }
+            BorrowEdge::EnumField(qid, _, _) => {
+                self.add_type_root(&qid.to_type());
+            }
             BorrowEdge::Hyper(edges) => {
                 for item in edges {
                     self.add_types_in_borrow_edge(item);
