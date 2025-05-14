@@ -1,6 +1,5 @@
-module prover::datatype_invariant_tests;
+module 0x42::datatype_invariant_tests;
 
-#[spec_only]
 use prover::prover::requires;
 
 public struct Point<phantom T> has copy, drop {
