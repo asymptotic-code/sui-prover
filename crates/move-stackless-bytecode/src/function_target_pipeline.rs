@@ -44,7 +44,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
-    function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
+    function_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     no_focus_specs: BTreeSet<QualifiedId<FunId>>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
@@ -186,7 +186,7 @@ impl FunctionTargetsHolder {
     pub fn new() -> Self {
         Self {
             targets: BTreeMap::new(),
-            function_specs: BiBTreeMap::new(),
+            function_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             no_focus_specs: BTreeSet::new(),
             focus_specs: BTreeSet::new(),
@@ -271,17 +271,28 @@ impl FunctionTargetsHolder {
             .flat_map(|(id, vs)| vs.keys().map(move |v| (*id, v.clone())))
     }
 
-    pub fn function_specs(&self) -> &BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>> {
+    pub fn function_specs(&self) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
         &self.function_specs
     }
 
     pub fn get_fun_by_spec(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs.get_by_left(id)
+        self.function_specs
+            .iter()
+            .find_map(|(fun_id, specs)| {
+                if specs.contains(id) {
+                    Some(fun_id)
+                } else {
+                    None
+                }
+            })
     }
 
-    pub fn get_spec_by_fun(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs.get_by_right(id)
-    }
+    pub fn get_specs_by_fun(&self, id: &QualifiedId<FunId>) -> &BTreeSet<QualifiedId<FunId>> {
+        self.function_specs.get(id).unwrap_or_else(|| {
+            static EMPTY: BTreeSet<QualifiedId<FunId>> = BTreeSet::new();
+            &EMPTY
+        })
+}
 
     pub fn no_verify_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
         if self.focus_specs.is_empty() {
@@ -329,15 +340,19 @@ impl FunctionTargetsHolder {
 
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
-            .left_values()
+            .values()
+            .flat_map(|set| set.iter())
             .chain(self.scenario_specs.iter())
     }
 
     pub fn has_no_verify_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        match self.get_spec_by_fun(id) {
-            Some(spec_id) => self.no_verify_specs().contains(spec_id),
-            None => false,
+        for spec_id in self.get_specs_by_fun(id) {
+            if self.no_verify_specs().contains(spec_id) {
+                return true;
+            }
         }
+
+        false
     }
 
     pub fn get_inv_by_datatype(&self, id: &QualifiedId<DatatypeId>) -> Option<&QualifiedId<FunId>> {
@@ -358,10 +373,13 @@ impl FunctionTargetsHolder {
         caller_qid: &QualifiedId<FunId>,
         callee_qid: &QualifiedId<FunId>,
     ) -> Option<&QualifiedId<FunId>> {
-        match self.get_spec_by_fun(callee_qid) {
-            Some(spec_qid) if spec_qid != caller_qid => Some(spec_qid),
-            _ => None,
+        for spec_qid in self.get_specs_by_fun(callee_qid) {
+            if spec_qid != caller_qid {
+                return Some(spec_qid);
+            }
         }
+        
+        None
     }
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
@@ -412,11 +430,9 @@ impl FunctionTargetsHolder {
                 match Self::parse_module_access(function_spec, env) {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
-                        Self::process_spec(
+                        self.process_spec(
                             func_env,
                             &module_env,
-                            env,
-                            &mut self.function_specs,
                             fun_name,
                         );
                     }
@@ -442,10 +458,10 @@ impl FunctionTargetsHolder {
                         });
                 match target_func_env_opt {
                     Some(target_func_env) => {
-                        self.function_specs.insert(
-                            func_env.get_qualified_id(),
-                            target_func_env.get_qualified_id(),
-                        );
+                        self.function_specs
+                            .entry(target_func_env.get_qualified_id())
+                            .or_insert_with(BTreeSet::new)
+                            .insert(func_env.get_qualified_id());
                     }
                     None => {
                         self.scenario_specs.insert(func_env.get_qualified_id());
@@ -544,10 +560,9 @@ impl FunctionTargetsHolder {
     }
 
     fn process_spec(
+        &mut self,
         func_env: &FunctionEnv<'_>,
         module_env: &ModuleEnv<'_>,
-        env: &GlobalEnv,
-        function_specs: &mut BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
         func_name: String,
     ) {
         if let Some(target_func_env) =
@@ -555,18 +570,23 @@ impl FunctionTargetsHolder {
         {
             let target_id = target_func_env.get_qualified_id();
 
-            if function_specs.contains_right(&target_id) {
-                let env = func_env.module_env.env;
-                env.diag(
+            // add check if polymorphic
+            if target_func_env.get_type_parameter_count() == 0 && !self.function_specs.get(&target_id).is_none()
+            {
+                func_env.module_env.env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
                     &format!("Duplicate target function: {}", func_name),
                 );
-            } else {
-                function_specs.insert(func_env.get_qualified_id(), target_id);
+                return;
             }
+
+            self.function_specs
+                .entry(target_id)
+                .or_insert_with(BTreeSet::new)
+                .insert(func_env.get_qualified_id());
         } else {
-            env.diag(
+            func_env.module_env.env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
                 &format!(
@@ -743,13 +763,17 @@ impl FunctionTargetsHolder {
             }
         }
         writeln!(f, "Opaque specs:")?;
-        for (spec, fun) in self.function_specs.iter() {
-            writeln!(
-                f,
-                "  {} -> {}",
-                env.get_function(*spec).get_full_name_str(),
-                env.get_function(*fun).get_full_name_str()
-            )?;
+        for (spec, funs) in self.function_specs.iter() {
+            for fun in funs.iter() {
+                if self.is_verified_spec(fun) {
+                    writeln!(
+                        f,
+                        "  {} -> {}",
+                        env.get_function(*spec).get_full_name_str(),
+                        env.get_function(*fun).get_full_name_str()
+                    )?;
+                }
+            }
         }
         writeln!(f, "Focus specs:")?;
         for spec in self.focus_specs.iter() {

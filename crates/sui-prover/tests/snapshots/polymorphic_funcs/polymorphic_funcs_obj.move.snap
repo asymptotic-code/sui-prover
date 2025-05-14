@@ -1,0 +1,21 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 146
+expression: output
+---
+Verification successful
+warning: unused struct field
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj.move:17:5
+   │
+17 │     value: u8,
+   │     ^^^^^ The 'value' field of the 'Test2Obj' type is unused
+   │
+   = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused struct field
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj.move:12:5
+   │
+12 │     value: u64,
+   │     ^^^^^ The 'value' field of the 'TestObj' type is unused
+   │
+   = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

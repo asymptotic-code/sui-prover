@@ -300,56 +300,44 @@ impl<'env> BoogieTranslator<'env> {
                         .scenario_specs()
                         .contains(&fun_env.get_qualified_id())
                     {
-                        if self.targets.has_target(
-                            fun_env,
-                            &FunctionVariant::Verification(VerificationFlavor::Regular),
-                        ) {
-                            let fun_target = self.targets.get_target(
-                                fun_env,
-                                &FunctionVariant::Verification(VerificationFlavor::Regular),
-                            );
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
-                        }
+                        self.translate_as_scenario_spec(&fun_env);
                         continue;
                     }
 
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(
-                        fun_env,
-                        FunctionTranslationStyle::SpecNoAbortCheck,
-                    );
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
-                } else {
-                    let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
-                    if !verification_analysis::get_info(&fun_target).inlined {
-                        continue;
-                    }
-
-                    if let Some(spec_qid) =
-                        self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
-                    {
-                        if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
-                        }
-                    } else {
-                        // This variant is inlined, so translate for all type instantiations.
-                        for type_inst in mono_info
-                            .funs
-                            .get(&(
-                                fun_target.func_env.get_qualified_id(),
-                                FunctionVariant::Baseline,
-                            ))
-                            .unwrap_or(&BTreeSet::new())
-                        {
-                            FunctionTranslator::new(self, &fun_target, type_inst, FunctionTranslationStyle::Default)
-                                .translate();
-                        }
-                    }
+                    continue;
                 }
+
+                let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
+                if !verification_analysis::get_info(&fun_target).inlined {
+                    continue;
+                }
+
+                let specs_qids = self.targets.get_specs_by_fun(&fun_env.get_qualified_id());
+                if specs_qids.len() == 1 {
+                    if specs_qids.iter().any(|spec_qid: &QualifiedId<FunId>| !self.targets.no_verify_specs().contains(spec_qid)) {
+                        FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
+                            .translate();
+                    }
+                    continue;
+                }
+
+                // This variant is inlined, so translate for all type instantiations.
+                for type_inst in mono_info
+                    .funs
+                    .get(&(
+                        fun_env.get_qualified_id(),
+                        FunctionVariant::Baseline,
+                    ))
+                    .unwrap_or(&BTreeSet::new())
+                {
+                    FunctionTranslator::new(self, &fun_target, type_inst, FunctionTranslationStyle::Default)
+                        .translate();
+                }                
             }
 
             for ref struct_env in module_env.get_structs() {
@@ -384,8 +372,32 @@ impl<'env> BoogieTranslator<'env> {
         info!("{} verification conditions", verified_functions_count);
     }
 
+    fn translate_as_scenario_spec(&self, fun_env: &FunctionEnv) {
+        if !self.targets.has_target(
+            fun_env,
+            &FunctionVariant::Verification(VerificationFlavor::Regular),
+            )
+        {
+            return;
+        }
+
+        let fun_target = self.targets.get_target(
+            fun_env,
+            &FunctionVariant::Verification(VerificationFlavor::Regular),
+        );
+        FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
+            .translate();
+    }
+
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
         use Bytecode::*;
+
+        let underlying_fun_id = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()).unwrap();
+        let all_specs  = self.targets.get_specs_by_fun(underlying_fun_id);
+
+        if all_specs.len() > 1 && self.targets.no_verify_specs().contains(&fun_env.get_qualified_id()) {
+            return;
+        }
 
         if style == FunctionTranslationStyle::Default
             && (self
@@ -567,17 +579,11 @@ impl<'env> BoogieTranslator<'env> {
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
-        if style == FunctionTranslationStyle::Default
-            || style == FunctionTranslationStyle::Asserts
-            || style == FunctionTranslationStyle::Aborts
-            || style == FunctionTranslationStyle::SpecNoAbortCheck
-            || style == FunctionTranslationStyle::Opaque
-        // this is for the $opaque signature
-        {
-            FunctionTranslator::new(self, &fun_target, &[], style)
-                .translate();
-        }
 
+        // this is for the $opaque signature | generation in any case ?
+        FunctionTranslator::new(self, &fun_target, &[], style)
+            .translate();
+        
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
             mono_analysis::get_info(self.env)
                 .funs
@@ -1406,8 +1412,8 @@ impl<'env> FunctionTranslator<'env> {
         if self
             .parent
             .targets
-            .get_spec_by_fun(&self.fun_target.func_env.get_qualified_id())
-            .is_some()
+            .get_specs_by_fun(&self.fun_target.func_env.get_qualified_id())
+            .len() > 0
             && style == FunctionTranslationStyle::Default
         {
             return format!(
