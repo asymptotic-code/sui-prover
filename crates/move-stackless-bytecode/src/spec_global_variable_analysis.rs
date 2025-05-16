@@ -200,31 +200,31 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
-            if callee_id == fun_target.func_env.module_env.env.global_qid() {
+            let global_env = fun_target.func_env.module_env.env;
+
+            if callee_id == global_env.global_qid() {
                 return Some(SpecGlobalVariableInfo::singleton_imm(type_inst, &loc));
             }
 
-            if callee_id == fun_target.func_env.module_env.env.global_set_qid() {
+            if callee_id == global_env.global_set_qid() {
                 return Some(SpecGlobalVariableInfo::singleton_mut(type_inst, &loc));
             }
 
-            if callee_id == fun_target.func_env.module_env.env.global_borrow_mut_qid() {
+            if callee_id == global_env.global_borrow_mut_qid() {
                 return Some(SpecGlobalVariableInfo::singleton_mut(type_inst, &loc));
             }
 
-            if callee_id == fun_target.func_env.module_env.env.log_ghost_qid() {
+            if callee_id == global_env.log_ghost_qid() {
                 return Some(SpecGlobalVariableInfo::singleton_imm(type_inst, &loc));
-            }
+            } 
 
+            // todo: ask if correct 
             let fun_id_with_info = targets
-                .get_callee_spec_qid(&fun_target.func_env.get_qualified_id(), &callee_id)
+                .get_callee_spec_qid_generalized(&fun_target.func_env.get_qualified_id(), &callee_id, global_env)
                 .unwrap_or(&callee_id);
 
             // native or intrinsic functions are without specs do not have spec global variables
-            if fun_target
-                .func_env
-                .module_env
-                .env
+            if global_env
                 .get_function(*fun_id_with_info)
                 .is_native()
             {
@@ -240,7 +240,7 @@ pub fn collect_spec_global_variable_info(
                 Ok(inst_info) => Some(inst_info),
                 Err(conflicts) => {
                     for (tys, (mut_vars, imm_vars)) in conflicts {
-                        fun_target.func_env.module_env.env.add_diag(
+                        global_env.add_diag(
                             Diagnostic::new(Severity::Error)
                                 .with_code("E0015")
                                 .with_message(&format!(

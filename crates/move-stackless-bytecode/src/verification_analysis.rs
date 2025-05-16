@@ -431,11 +431,18 @@ impl VerificationAnalysisProcessor {
         for callee in fun_env.get_called_functions() {
             let callee_env = fun_env.module_env.env.get_function(callee);
             let bind = targets.clone();
-            for spec_id in bind.get_specs_by_fun(&callee) {
-                let is_verified = targets.is_verified_spec(spec_id);
-                let spec_env = fun_env.module_env.env.get_function(*spec_id);
-                Self::mark_inlined(&spec_env, targets);
-                if !is_verified {
+            if let Some(spec_map) = bind.function_specs().get(&callee) {
+                // TODO: ask if correct
+                let mut should_skip = false;
+                for spec_id in spec_map.values() {
+                    let is_verified = targets.is_verified_spec(spec_id);
+                    let spec_env = fun_env.module_env.env.get_function(*spec_id);
+                    Self::mark_inlined(&spec_env, targets);
+                    if !is_verified {
+                        should_skip = true;
+                    }
+                }
+                if should_skip {
                     continue;
                 }
             }

@@ -417,7 +417,7 @@ impl Analyzer<'_> {
                     }
                 }
 
-                for spec_qid in self.targets.get_specs_by_fun(&callee_env.get_qualified_id())
+                if let Some(spec_qid) = self.targets.get_spec_by_fun(&callee_env.get_qualified_id(), &actuals)
                 {
                     self.push_todo_fun(spec_qid.clone(), actuals.clone());
                     if spec_qid == &target.func_env.get_qualified_id()
@@ -470,8 +470,8 @@ impl Analyzer<'_> {
                         .insert(actuals);
                 } else if self
                     .targets
-                    .get_specs_by_fun(&callee_env.get_qualified_id())
-                    .len() == 0
+                    .get_spec_by_fun(&callee_env.get_qualified_id(), &actuals)
+                    .is_none()
                 {
                     // This call needs to be inlined, with targs instantiated by self.inst_opt.
                     // Schedule for later processing if this instance has not been processed yet.

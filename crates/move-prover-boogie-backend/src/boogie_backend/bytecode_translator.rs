@@ -35,7 +35,7 @@ use move_stackless_bytecode::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionTarget,
     function_target_pipeline::{
-        FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
+        FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor
     },
     livevar_analysis::LiveVarAnalysisProcessor,
     mono_analysis::{self, MonoInfo},
@@ -317,9 +317,9 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                let specs_qids = self.targets.get_specs_by_fun(&fun_env.get_qualified_id());
-                if specs_qids.len() == 1 {
-                    if specs_qids.iter().any(|spec_qid: &QualifiedId<FunId>| !self.targets.no_verify_specs().contains(spec_qid)) {
+                // todo: ask if correct
+                if  let Some(spec_id) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id(), &[]) {
+                    if !self.targets.no_verify_specs().contains(spec_id) {
                         FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
                             .translate();
                     }
@@ -391,13 +391,6 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
         use Bytecode::*;
-
-        let underlying_fun_id = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()).unwrap();
-        let all_specs  = self.targets.get_specs_by_fun(underlying_fun_id);
-
-        if all_specs.len() > 1 && self.targets.no_verify_specs().contains(&fun_env.get_qualified_id()) {
-            return;
-        }
 
         if style == FunctionTranslationStyle::Default
             && (self
@@ -1412,8 +1405,8 @@ impl<'env> FunctionTranslator<'env> {
         if self
             .parent
             .targets
-            .get_specs_by_fun(&self.fun_target.func_env.get_qualified_id())
-            .len() > 0
+            .get_spec_by_fun(&self.fun_target.func_env.get_qualified_id(), self.type_inst)
+            .is_some()
             && style == FunctionTranslationStyle::Default
         {
             return format!(

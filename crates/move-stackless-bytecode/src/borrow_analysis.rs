@@ -774,9 +774,10 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             let callee_qid = callee_env.get_qualified_id();
                             let fun_qid_with_info = self
                                 .targets
-                                .get_callee_spec_qid(
+                                .get_callee_spec_qid_generalized( // todo: ask if correct
                                     &self.func_target.func_env.get_qualified_id(),
                                     &callee_qid,
+                                    self.func_target.func_env.module_env.env,
                                 )
                                 .unwrap_or(&callee_qid);
                             let data = if fun_qid_with_info
