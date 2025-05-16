@@ -910,14 +910,26 @@ impl FunctionTargetPipeline {
             let src_idx = nodes.get(&fun_id).unwrap();
             let fun_env = env.get_function(fun_id);
             for callee in fun_env.get_called_functions() {
-                // TODO: ask if correct
-                let dst_qid = targets
-                    .get_callee_spec_qid_generalized(&fun_env.get_qualified_id(), &callee, env)
-                    .unwrap_or(&callee);
-                let dst_idx = nodes
-                    .get(dst_qid)
-                    .expect("callee is not in function targets");
-                graph.add_edge(*src_idx, *dst_idx, ());
+                // handle unwrap
+                let specs = targets.get_all_specs_by_fun(&fun_id);
+                if specs.is_none() {
+                    let dst_qid = &callee;
+                    let dst_idx = nodes
+                        .get(dst_qid)
+                        .expect("callee is not in function targets");
+                    graph.add_edge(*src_idx, *dst_idx, ());
+                    continue;
+                }
+
+                for tys in specs.unwrap().keys() {
+                    let dst_qid = targets
+                        .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee, tys)
+                        .unwrap_or(&callee);
+                    let dst_idx = nodes
+                        .get(dst_qid)
+                        .expect("callee is not in function targets");
+                    graph.add_edge(*src_idx, *dst_idx, ());
+                }
             }
         }
         graph

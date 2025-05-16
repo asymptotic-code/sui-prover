@@ -317,11 +317,12 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                // todo: ask if correct
-                if  let Some(spec_id) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id(), &[]) {
-                    if !self.targets.no_verify_specs().contains(spec_id) {
-                        FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                            .translate();
+                if  let Some(spec_set) = self.targets.get_all_specs_by_fun(&fun_env.get_qualified_id()) {
+                    for (tys, spec_id) in spec_set {
+                        if !self.targets.no_verify_specs().contains(spec_id) {
+                            FunctionTranslator::new(self, &fun_target, &tys, FunctionTranslationStyle::Default)
+                                .translate();
+                        }
                     }
                     continue;
                 }

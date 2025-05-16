@@ -218,9 +218,8 @@ pub fn collect_spec_global_variable_info(
                 return Some(SpecGlobalVariableInfo::singleton_imm(type_inst, &loc));
             } 
 
-            // todo: ask if correct 
             let fun_id_with_info = targets
-                .get_callee_spec_qid_generalized(&fun_target.func_env.get_qualified_id(), &callee_id, global_env)
+                .get_callee_spec_qid(&fun_target.func_env.get_qualified_id(), &callee_id, type_inst)
                 .unwrap_or(&callee_id);
 
             // native or intrinsic functions are without specs do not have spec global variables
