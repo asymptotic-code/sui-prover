@@ -461,7 +461,6 @@ impl FunctionTargetsHolder {
                     Some(target_func_env) => {
                         let tys = Self::find_used_type_parameters_in_target_call(func_env, &data, &target_func_env.get_qualified_id())
                             .expect("target function call should be found"); // todo update error
-                        println!("target call types: {:?} {}", tys, func_env.get_full_name_str());
                         self.function_specs
                             .entry(target_func_env.get_qualified_id())
                             .or_insert_with(BTreeMap::new)
@@ -606,7 +605,6 @@ impl FunctionTargetsHolder {
             let tys = Self::find_used_type_parameters_in_target_call(func_env, data, &target_func_env.get_qualified_id())
                 .expect("target function call should be found"); // todo update error
 
-            println!("target call types: {:?} {}", tys, func_env.get_full_name_str());
             if subset.get(&tys).is_some()
             {
                 func_env.module_env.env.diag(
