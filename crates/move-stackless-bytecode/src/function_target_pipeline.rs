@@ -382,36 +382,6 @@ impl FunctionTargetsHolder {
         }
     }
 
-    // first try to find by call tys if not then caller tys
-    pub fn get_callee_spec_qid_generalized(
-        &self,
-        caller_qid: &QualifiedId<FunId>,
-        callee_qid: &QualifiedId<FunId>,
-        env: &GlobalEnv,
-    ) -> Option<&QualifiedId<FunId>> {
-        let data = self.get_all_specs_by_fun(callee_qid);
-        if data.is_none() {
-            return None;
-        }
-
-        data.unwrap().iter().find_map(|(tys, spec_qid)| {
-            if tys.len() == 0 {
-                return Some(spec_qid);
-            }
-            let callee_env = env.get_function(*callee_qid);
-            let tys_callee = callee_env.get_type_parameters();
-            if tys_callee.len() == tys.len() {
-                return Some(spec_qid);
-            }
-            None
-        }).unwrap_or(data.unwrap().values().next().unwrap());
-
-        match self.get_spec_by_fun(callee_qid, &[]) {
-            Some(spec_qid) if spec_qid != caller_qid => Some(spec_qid),
-            _ => None,
-        }
-    }
-
     /// Adds a new function target. The target will be initialized from the Move byte code.
     pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
         let generator = StacklessBytecodeGenerator::new(func_env);
