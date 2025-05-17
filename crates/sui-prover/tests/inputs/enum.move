@@ -1,4 +1,4 @@
-module prover::enum_tests;
+module 0x42::enum_tests;
 
 public enum E {
   A(u64, u64),

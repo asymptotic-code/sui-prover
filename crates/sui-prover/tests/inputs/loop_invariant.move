@@ -1,11 +1,8 @@
-#[allow(unused)]
-module prover::loop_invariant_tests;
+module 0x42::loop_invariant_tests;
 
-#[spec_only]
-use std::integer::Integer;
-#[spec_only]
-use prover::prover::{requires, ensures, invariant, old};
 use prover::ghost;
+use prover::prover::{requires, ensures, invariant, old};
+use std::integer::Integer;
 
 #[spec(prove)]
 fun test0_spec(n: u64) {
@@ -129,7 +126,9 @@ fun test6_spec(n: u64) {
 
     invariant!(|| {
         ensures(i <= n);
-        ensures(ghost::global<SpecSum, Integer>() == ((i as u128) * ((i as u128) + 1) / 2).to_int());
+        ensures(
+            ghost::global<SpecSum, Integer>() == ((i as u128) * ((i as u128) + 1) / 2).to_int(),
+        );
     });
     while (i < n) {
         i = i + 1;
