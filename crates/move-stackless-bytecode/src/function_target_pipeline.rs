@@ -299,6 +299,22 @@ impl FunctionTargetsHolder {
         self.function_specs.get(id)
     }
 
+    pub fn get_tys_of_spec(
+        &self,
+        id: &QualifiedId<FunId>,
+    ) -> Option<&Vec<Type>> {
+        self.function_specs
+            .values()
+            .find_map(|specs| {
+                for (tys, spec_id) in specs.iter() {
+                    if spec_id == id {
+                       return Some(tys)
+                    }
+                }
+                None
+            })
+    }
+
     pub fn no_verify_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
         if self.focus_specs.is_empty() {
             &self.no_verify_specs

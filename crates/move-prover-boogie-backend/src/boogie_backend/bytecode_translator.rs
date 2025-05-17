@@ -304,11 +304,14 @@ impl<'env> BoogieTranslator<'env> {
                         continue;
                     }
 
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                    let target = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()).unwrap();
+                    let specs = self.targets.get_all_specs_by_fun(target).unwrap();
+
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default, true);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts, true);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts, true);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck, true);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque, specs.len() < 2);
                     continue;
                 }
 
@@ -390,7 +393,7 @@ impl<'env> BoogieTranslator<'env> {
             .translate();
     }
 
-    fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
+    fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle, generate_all: bool) {
         use Bytecode::*;
 
         if style == FunctionTranslationStyle::Default
@@ -574,18 +577,27 @@ impl<'env> BoogieTranslator<'env> {
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
 
-        // this is for the $opaque signature | generation in any case ?
-        FunctionTranslator::new(self, &fun_target, &[], style)
-            .translate();
-        
+        let empty_vec: Vec<Type> = Vec::new();
+        let tys = self.targets.get_tys_of_spec(&fun_env.get_qualified_id()).unwrap_or(&empty_vec);
+        if style == FunctionTranslationStyle::Opaque {
+            FunctionTranslator::new(self, &fun_target, tys, style).translate();
+        } else {
+            FunctionTranslator::new(self, &fun_target, &[], style).translate();
+        }
+
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
             mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
-                    *self
-                        .targets
-                        .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
-                        .unwrap(),
+                    if generate_all {
+                        *self
+                            .targets
+                            .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
+                            .unwrap()
+                        } else
+                        { 
+                            fun_target.func_env.get_qualified_id()
+                        },
                     FunctionVariant::Baseline,
                 ))
                 .unwrap_or(&BTreeSet::new())
@@ -598,7 +610,7 @@ impl<'env> BoogieTranslator<'env> {
                         .iter()
                         .enumerate()
                         .all(|(i, t)| matches!(t, Type::TypeParameter(idx) if *idx == i as u16));
-                    if is_none_inst {
+                    if is_none_inst || (type_inst == tys && style == FunctionTranslationStyle::Opaque) {
                         return;
                     }
 
@@ -1415,6 +1427,12 @@ impl<'env> FunctionTranslator<'env> {
                 boogie_function_name(self.fun_target.func_env, self.type_inst, style)
             );
         }
+
+        if style != FunctionTranslationStyle::Opaque {
+            let fun_name = boogie_function_name(self.fun_target.func_env, self.type_inst, style);
+            return format!("{}{}", fun_name, suffix)
+        }
+
         let fun_name = self
             .parent
             .targets

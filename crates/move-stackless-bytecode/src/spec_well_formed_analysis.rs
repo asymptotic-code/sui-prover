@@ -188,16 +188,6 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
         let spec_type_params = func_env.get_type_parameters();
         let underlying_type_params = underlying_func.get_type_parameters();
 
-        /*if spec_type_params.len() != underlying_type_params.len() {
-            env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                "Spec function have differ type params count than underlying func",
-            );
-
-            return data;
-        }*/
-
         if spec_params.len() != underlying_params.len() {
             env.diag(
                 Severity::Error,
@@ -208,19 +198,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             return data;
         }
 
-
         for i in 0..spec_params.len() {
-            // add handling to compare type params and params
-            // if spec_params[i].1 != underlying_params[i].1 {
-            //     env.diag(
-            //         Severity::Error,
-            //         &func_env.get_loc(),
-            //         "Spec function have differ params type than underlying func",
-            //     );
-
-            //     return data;
-            // }
-
             if spec_params[i].0 != underlying_params[i].0 {
                 let underlying_param_name = env.symbol_pool().string( underlying_params[i].0);
                 if !underlying_param_name.starts_with('_') {
@@ -320,30 +298,22 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
 
         // Arguments Checking
 
-        // for idx in 0..type_param_args.len() {
-        //     match type_param_args[idx] {
-        //         Type::TypeParameter(id) => {
-        //             if idx as u16 != id {
-        //                 env.diag(
-        //                     Severity::Error,
-        //                     &func_env.get_loc(),
-        //                     "Underlying func accepting type param from spec in wrong order",
-        //                 );
+        for idx in 0..type_param_args.len() {
+            match type_param_args[idx] {
+                Type::TypeParameter(id) => {
+                    if idx as u16 != id {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Underlying func accepting type param from spec in wrong order",
+                        );
 
-        //                 return data;
-        //             }
-        //         },
-        //         _ => {
-        //             env.diag(
-        //                 Severity::Error,
-        //                 &func_env.get_loc(),
-        //                 "Underlying func not accepting type param from spec",
-        //             );
-
-        //             return data;
-        //         },
-        //     }
-        // }
+                        return data;
+                    }
+                },
+                _ => {},
+            }
+        }
 
         let spec_params_symbols: Vec<Symbol> = spec_params.iter().map(|sd| sd.0).collect(); 
         for src in inputs {
