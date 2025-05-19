@@ -435,7 +435,7 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-        let omit_havok = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+        let omit_havoc = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -487,7 +487,7 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc.update_abort_action(|_| None));
-                        if omit_havok {
+                        if omit_havoc {
                             continue;
                         }
                         let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
@@ -535,7 +535,7 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc);
-                        if omit_havok {
+                        if omit_havoc {
                             continue;
                         }
                         let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
