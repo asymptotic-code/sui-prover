@@ -84,6 +84,10 @@ pub struct GeneralConfig {
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
+    
+    /// Omit using opaque for functions under verification
+    #[clap(name = "omit-opaque", long, global = true,  default_value_t = false)]
+    pub omit_opaque: bool,
 }
 
 #[derive(Args, Default)]
@@ -150,6 +154,7 @@ pub async fn execute(
     options.backend.string_options = boogie_config;
     options.boogie_file_mode = general_config.boogie_file_mode;
     options.backend.debug_trace = !general_config.no_counterexample_trace;
+    options.prover.omit_opaque = general_config.omit_opaque;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

@@ -89,6 +89,8 @@ pub struct ProverOptions {
     pub borrow_natives: Vec<String>,
     /// Whether to ban convertion from int to bv at the boogie backend
     pub ban_int_2_bv: bool,
+    /// Use function implementation instead of the function opaque
+    pub omit_opaque: bool,
 }
 
 // add custom struct for mutation options
@@ -123,6 +125,7 @@ impl Default for ProverOptions {
             skip_loop_analysis: false,
             borrow_natives: vec![],
             ban_int_2_bv: false,
+            omit_opaque: false,
         }
     }
 }

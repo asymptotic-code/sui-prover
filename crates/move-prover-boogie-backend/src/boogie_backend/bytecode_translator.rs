@@ -494,6 +494,9 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc.update_abort_action(|_| None));
+                        if ProverOptions::get(self.env).omit_opaque {
+                            continue;
+                        }
                         let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                         for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                             let havoc_kind = if callee_fun_env
@@ -539,6 +542,9 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc);
+                        if ProverOptions::get(self.env).omit_opaque {
+                            continue;
+                        }
                         let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                         for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                             let havoc_kind = if callee_fun_env
@@ -2358,7 +2364,10 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
-                                    fun_name = format!("{}{}", fun_name, "$opaque");
+                                    let use_impl = ProverOptions::get(self.parent.env).omit_opaque;
+                                    let verified = self.parent.targets.is_verified_spec(&self.fun_target.func_env.get_qualified_id()); 
+
+                                    fun_name = format!("{}{}", fun_name, if use_impl { if verified { "$impl" } else { "" } } else { "$opaque" });
                                 }
                             };
 
@@ -2499,15 +2508,17 @@ impl<'env> FunctionTranslator<'env> {
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
-                            for type_inst in
-                                spec_global_variable_analysis::get_info(&self.fun_target.data)
-                                    .mut_vars()
-                            {
-                                emitln!(
-                                    self.writer(),
-                                    "havoc {};",
-                                    boogie_spec_global_var_name(self.parent.env, type_inst),
-                                );
+                            if !ProverOptions::get(self.parent.env).omit_opaque {   
+                                for type_inst in
+                                    spec_global_variable_analysis::get_info(&self.fun_target.data)
+                                        .mut_vars()
+                                {
+                                    emitln!(
+                                        self.writer(),
+                                        "havoc {};",
+                                        boogie_spec_global_var_name(self.parent.env, type_inst),
+                                    );
+                                }
                             }
                         };
 
