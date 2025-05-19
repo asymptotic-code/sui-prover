@@ -306,12 +306,14 @@ impl<'env> BoogieTranslator<'env> {
 
                     let target = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()).unwrap();
                     let specs = self.targets.get_all_specs_by_fun(target).unwrap();
+                    let polymorphic = specs.len() > 1;
 
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default, true);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts, true);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts, true);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck, true);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque, specs.len() < 2);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default, polymorphic);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts, polymorphic);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts, polymorphic);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck, polymorphic);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque, polymorphic);
+
                     continue;
                 }
 
@@ -393,7 +395,7 @@ impl<'env> BoogieTranslator<'env> {
             .translate();
     }
 
-    fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle, generate_all: bool) {
+    fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle, polymorphic: bool) {
         use Bytecode::*;
 
         if style == FunctionTranslationStyle::Default
@@ -579,7 +581,7 @@ impl<'env> BoogieTranslator<'env> {
 
         let empty_vec: Vec<Type> = Vec::new();
         let tys = self.targets.get_tys_of_spec(&fun_env.get_qualified_id()).unwrap_or(&empty_vec);
-        if style == FunctionTranslationStyle::Opaque {
+        if style == FunctionTranslationStyle::Opaque && polymorphic {
             FunctionTranslator::new(self, &fun_target, tys, style).translate();
         } else {
             FunctionTranslator::new(self, &fun_target, &[], style).translate();
@@ -589,13 +591,13 @@ impl<'env> BoogieTranslator<'env> {
             mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
-                    if generate_all {
+                    if !polymorphic {
                         *self
                             .targets
                             .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
                             .unwrap()
                         } else
-                        { 
+                        {
                             fun_target.func_env.get_qualified_id()
                         },
                     FunctionVariant::Baseline,
@@ -610,7 +612,7 @@ impl<'env> BoogieTranslator<'env> {
                         .iter()
                         .enumerate()
                         .all(|(i, t)| matches!(t, Type::TypeParameter(idx) if *idx == i as u16));
-                    if is_none_inst || (type_inst == tys && style == FunctionTranslationStyle::Opaque) {
+                    if is_none_inst || (type_inst == tys && style == FunctionTranslationStyle::Opaque && polymorphic) {
                         return;
                     }
 
