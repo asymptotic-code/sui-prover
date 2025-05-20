@@ -114,6 +114,7 @@ fun emit_u64_spec(x: u64) {
     ghost::declare_global_mut<SpecSum, Integer>();
     let old_sum = *ghost::global<SpecSum, Integer>();
     emit_u64(x);
+    ghost::set<SpecSum, Integer>(&old_sum.add(x.to_int()));
     ensures(ghost::global<SpecSum, Integer>() == old_sum.add(x.to_int()));
 }
 
