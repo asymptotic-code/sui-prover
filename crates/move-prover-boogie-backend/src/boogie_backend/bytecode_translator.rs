@@ -1638,6 +1638,36 @@ impl<'env> FunctionTranslator<'env> {
                 self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
             );
         }
+        
+        // Add global ghost variables that can be used in this function
+        let ghost_vars = self.parent
+            .targets
+            .specs()
+            .map(|id| {
+                spec_global_variable_analysis::get_info(
+                    self.parent
+                        .targets
+                        .get_data(id, &FunctionVariant::Baseline)
+                        .unwrap(),
+                )
+                .all_vars()
+            })
+            .flatten()
+            .collect::<BTreeSet<_>>();
+            
+        // Only emit temp copies of ghost variables for non-ghost functions
+        if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
+             self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "var $temp_{}: {};",
+                    boogie_spec_global_var_name(self.parent.env, type_inst),
+                    boogie_type(env, &type_inst[1])
+                );
+            }
+        }
+        
         // Generate declarations for modifies condition.
         let mut mem_inst_seen = BTreeSet::new();
         for qid in fun_target.get_modify_ids() {
@@ -1697,6 +1727,34 @@ impl<'env> FunctionTranslator<'env> {
         // Initialize renamed parameters.
         for (idx, _) in proxied_parameters {
             emitln!(writer, "$t{} := _$t{};", idx, idx);
+        }
+        
+        // Initialize temp copies of ghost variables
+        if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
+             self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
+            let ghost_vars = self.parent
+                .targets
+                .specs()
+                .map(|id| {
+                    spec_global_variable_analysis::get_info(
+                        self.parent
+                            .targets
+                            .get_data(id, &FunctionVariant::Baseline)
+                            .unwrap(),
+                    )
+                    .all_vars()
+                })
+                .flatten()
+                .collect::<BTreeSet<_>>();
+                
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "$temp_{} := {};",
+                    boogie_spec_global_var_name(self.parent.env, type_inst),
+                    boogie_spec_global_var_name(self.parent.env, type_inst)
+                );
+            }
         }
 
         // Initial assumptions
@@ -1963,6 +2021,35 @@ impl<'env> FunctionTranslator<'env> {
                             .join(", "),
                     );
                 }
+                
+                // Sync any modified ghost variables back to their global versions
+                if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
+                     self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
+                    let ghost_vars = self.parent
+                        .targets
+                        .specs()
+                        .map(|id| {
+                            spec_global_variable_analysis::get_info(
+                                self.parent
+                                    .targets
+                                    .get_data(id, &FunctionVariant::Baseline)
+                                    .unwrap(),
+                            )
+                            .all_vars()
+                        })
+                        .flatten()
+                        .collect::<BTreeSet<_>>();
+                        
+                    for type_inst in ghost_vars {
+                        emitln!(
+                            self.writer(),
+                            "{} := $temp_{};",
+                            boogie_spec_global_var_name(self.parent.env, type_inst),
+                            boogie_spec_global_var_name(self.parent.env, type_inst)
+                        );
+                    }
+                }
+                
                 for (i, r) in rets.iter().enumerate() {
                     emitln!(self.writer(), "$ret{} := {};", i, str_local(*r));
                 }
@@ -2492,6 +2579,36 @@ impl<'env> FunctionTranslator<'env> {
                                 );
                             }
                         };
+
+                        if processed {
+                            // Skip ghost function calls themselves
+                            if !(module_env.get_function(*fid).get_qualified_id() == self.parent.env.global_qid() || 
+                                 module_env.get_function(*fid).get_qualified_id() == self.parent.env.havoc_global_qid()) {
+                                let ghost_vars = self.parent
+                                    .targets
+                                    .specs()
+                                    .map(|id| {
+                                        spec_global_variable_analysis::get_info(
+                                            self.parent
+                                                .targets
+                                                .get_data(id, &FunctionVariant::Baseline)
+                                                .unwrap(),
+                                        )
+                                        .all_vars()
+                                    })
+                                    .flatten()
+                                    .collect::<BTreeSet<_>>();
+                                    
+                                for type_inst in ghost_vars {
+                                    emitln!(
+                                        self.writer(),
+                                        "$temp_{} := {};",
+                                        boogie_spec_global_var_name(self.parent.env, type_inst),
+                                        boogie_spec_global_var_name(self.parent.env, type_inst)
+                                    );
+                                }
+                            }
+                        }
 
                         // Clear the last track location after function call, as the call inserted
                         // location tracks before it returns.
