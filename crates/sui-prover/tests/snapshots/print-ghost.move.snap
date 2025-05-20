@@ -10,11 +10,3 @@ error: prover::ensures assertion does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/print-ghost.move:12: foo_spec
-   =         x = true
-   =         ghost<u64> = true
-   =     at tests/inputs/print-ghost.move:14: foo_spec
-   =         x = true
-   =     at tests/inputs/print-ghost.move:8: foo
-   =         x = true
-   =         ghost<u64> = true
-   =     at prover/sources/ghost.move:15: set_spec
