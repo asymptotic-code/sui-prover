@@ -14,13 +14,11 @@ fun bar(x: &mut u8) {
 #[spec(prove)]
 fun foo_spec(x: &mut u8) {
     foo(x);
-    *x = 0;
-    ensures(x == 0);
 }
 
 #[spec(prove)]
 fun bar_spec(x: &mut u8) {
     bar(x);
 
-    ensures(x == 70); // issue, this will be 0
+    ensures(x == 70); // issue
 }

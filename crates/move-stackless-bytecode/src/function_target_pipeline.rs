@@ -396,7 +396,7 @@ impl FunctionTargetsHolder {
             let is_path_spec: bool =
                 inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("target")));
 
-            if inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("omit_opaque"))) {
+            if inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("no_opaque"))) {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 

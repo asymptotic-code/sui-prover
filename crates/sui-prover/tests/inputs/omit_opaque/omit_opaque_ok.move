@@ -11,11 +11,9 @@ fun bar(x: &mut u8) {
     foo(x);
 }
 
-#[spec(prove, omit_opaque)]
+#[spec(prove, no_opaque)]
 fun foo_spec(x: &mut u8) {
     foo(x);
-    *x = 0;
-    ensures(x == 0);
 }
 
 #[spec(prove)]

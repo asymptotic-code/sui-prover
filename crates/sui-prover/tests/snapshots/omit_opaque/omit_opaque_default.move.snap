@@ -5,19 +5,19 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures assertion does not hold
-   ┌─ tests/inputs/omit_opaque/omit_opaque_default.move:25:5
+   ┌─ tests/inputs/omit_opaque/omit_opaque_default.move:23:5
    │
-25 │     ensures(x == 70); // issue, this will be 0
+23 │     ensures(x == 70); // issue
    │     ^^^^^^^^^^^^^^^^
    │
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:22: bar_spec
+   =     at tests/inputs/omit_opaque/omit_opaque_default.move:20: bar_spec
    =         x = 21u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:23: bar_spec
+   =     at tests/inputs/omit_opaque/omit_opaque_default.move:21: bar_spec
    =         x = 21u8
    =     at tests/inputs/omit_opaque/omit_opaque_default.move:11: bar
    =         x = 21u8
    =     at tests/inputs/omit_opaque/omit_opaque_default.move:16: foo_spec
-   =         x = 0u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:19: foo_spec
-   =         x = 0u8
+   =         x = 71u8
+   =     at tests/inputs/omit_opaque/omit_opaque_default.move:17: foo_spec
+   =         x = 71u8
    =     at tests/inputs/omit_opaque/omit_opaque_default.move:12: bar
