@@ -55,7 +55,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -434,6 +434,8 @@ impl<'env> BoogieTranslator<'env> {
         let mut builder =
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
+
+        let omit_havoc = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -485,25 +487,27 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc.update_abort_action(|_| None));
-                        let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
-                        for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
-                            let havoc_kind = if callee_fun_env
-                                .get_return_type(ret_idx)
-                                .is_mutable_reference()
-                            {
-                                HavocKind::MutationAll
-                            } else {
-                                HavocKind::Value
-                            };
-                            builder.emit_havoc(*temp_idx, havoc_kind);
-                        }
-                        for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
-                            if callee_fun_env
-                                .get_local_type(param_idx)
-                                .is_mutable_reference()
-                            {
-                                builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
-                            };
+                        if !omit_havoc {
+                            let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                            for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
+                                let havoc_kind = if callee_fun_env
+                                    .get_return_type(ret_idx)
+                                    .is_mutable_reference()
+                                {
+                                    HavocKind::MutationAll
+                                } else {
+                                    HavocKind::Value
+                                };
+                                builder.emit_havoc(*temp_idx, havoc_kind);
+                            }
+                            for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
+                                if callee_fun_env
+                                    .get_local_type(param_idx)
+                                    .is_mutable_reference()
+                                {
+                                    builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                                };
+                            }
                         }
                     }
                     Ret(..) => {}
@@ -530,25 +534,27 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
                         builder.emit(bc);
-                        let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
-                        for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
-                            let havoc_kind = if callee_fun_env
-                                .get_return_type(ret_idx)
-                                .is_mutable_reference()
-                            {
-                                HavocKind::MutationValue
-                            } else {
-                                HavocKind::Value
-                            };
-                            builder.emit_havoc(*temp_idx, havoc_kind);
-                        }
-                        for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
-                            if callee_fun_env
-                                .get_local_type(param_idx)
-                                .is_mutable_reference()
-                            {
-                                builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
-                            };
+                        if !omit_havoc {
+                            let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                            for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
+                                let havoc_kind = if callee_fun_env
+                                    .get_return_type(ret_idx)
+                                    .is_mutable_reference()
+                                {
+                                    HavocKind::MutationValue
+                                } else {
+                                    HavocKind::Value
+                                };
+                                builder.emit_havoc(*temp_idx, havoc_kind);
+                            }
+                            for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
+                                if callee_fun_env
+                                    .get_local_type(param_idx)
+                                    .is_mutable_reference()
+                                {
+                                    builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                                };
+                            }
                         }
                     }
                     _ => builder.emit(
@@ -2321,10 +2327,12 @@ impl<'env> FunctionTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             );
 
+                            let id = &self.fun_target.func_env.get_qualified_id();
+
                             if self
                                 .parent
                                 .targets
-                                .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
+                                .get_fun_by_spec(id)
                                 == Some(&QualifiedId {
                                     module_id: *mid,
                                     id: *fid,
@@ -2340,7 +2348,10 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
-                                    fun_name = format!("{}{}", fun_name, "$opaque");
+                                    let use_impl = self.parent.targets.omits_opaque(id);
+                                    let verified = self.parent.targets.is_verified_spec(id);
+                                    let suffix = if use_impl { if verified { "$impl" } else { "" } } else { "$opaque" };
+                                    fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
 
@@ -2473,23 +2484,27 @@ impl<'env> FunctionTranslator<'env> {
                             }
                         }
 
+                        let id = &self.fun_target.func_env.get_qualified_id();
+
                         if self
                             .parent
                             .targets
-                            .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
+                            .get_fun_by_spec(id)
                             == Some(&mid.qualified(*fid))
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
-                            for type_inst in
-                                spec_global_variable_analysis::get_info(&self.fun_target.data)
-                                    .mut_vars()
-                            {
-                                emitln!(
-                                    self.writer(),
-                                    "havoc {};",
-                                    boogie_spec_global_var_name(self.parent.env, type_inst),
-                                );
+                            if !self.parent.targets.omits_opaque(id) {
+                                for type_inst in
+                                    spec_global_variable_analysis::get_info(&self.fun_target.data)
+                                        .mut_vars()
+                                {
+                                    emitln!(
+                                        self.writer(),
+                                        "havoc {};",
+                                        boogie_spec_global_var_name(self.parent.env, type_inst),
+                                    );
+                                }
                             }
                         };
 

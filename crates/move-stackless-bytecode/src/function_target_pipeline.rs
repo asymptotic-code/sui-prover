@@ -47,6 +47,7 @@ pub struct FunctionTargetsHolder {
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     no_focus_specs: BTreeSet<QualifiedId<FunId>>,
+    omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
@@ -189,6 +190,7 @@ impl FunctionTargetsHolder {
             function_specs: BiBTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             no_focus_specs: BTreeSet::new(),
+            omit_opaque_specs: BTreeSet::new(),
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
@@ -215,6 +217,7 @@ impl FunctionTargetsHolder {
             scenario_specs: instance.scenario_specs,
             datatype_invs: instance.datatype_invs,
             target_modules: instance.target_modules,
+            omit_opaque_specs: instance.omit_opaque_specs,
         }
     }
 
@@ -254,6 +257,7 @@ impl FunctionTargetsHolder {
             scenario_specs: instance.scenario_specs,
             datatype_invs: instance.datatype_invs,
             target_modules: instance.target_modules,
+            omit_opaque_specs: instance.omit_opaque_specs,
         }
     }
 
@@ -327,6 +331,10 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_focus_specs.contains(id)
     }
 
+    pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
+        self.omit_opaque_specs.contains(id)
+    }
+
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
             .left_values()
@@ -387,6 +395,10 @@ impl FunctionTargetsHolder {
                 inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("prove")));
             let is_path_spec: bool =
                 inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("target")));
+
+            if inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("no_opaque"))) {
+                self.omit_opaque_specs.insert(func_env.get_qualified_id());
+            }
 
             if !is_verify_spec && !is_focus_spec {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
