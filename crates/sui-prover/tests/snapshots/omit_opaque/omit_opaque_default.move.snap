@@ -1,6 +1,5 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 146
 expression: output
 ---
 exiting with verification errors
@@ -11,13 +10,3 @@ error: prover::ensures assertion does not hold
    │     ^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/omit_opaque/omit_opaque_default.move:20: bar_spec
-   =         x = 21u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:21: bar_spec
-   =         x = 21u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:11: bar
-   =         x = 21u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:16: foo_spec
-   =         x = 71u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:17: foo_spec
-   =         x = 71u8
-   =     at tests/inputs/omit_opaque/omit_opaque_default.move:12: bar
