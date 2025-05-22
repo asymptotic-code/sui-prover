@@ -10,25 +10,3 @@ error: prover::ensures assertion does not hold
    │     ^
    │
    =     at tests/inputs/inv/inv.ok.move:24: increment_spec
-   =         bar = inv_foo.Bar{x = 0u64}
-   =     at tests/inputs/inv/inv.ok.move:20: Bar_inv
-   =         result = true
-   =     at tests/inputs/inv/inv.ok.move:21: Bar_inv
-   =         bar = inv_foo.Bar{x = 0u64}
-   =     at tests/inputs/inv/inv.ok.move:25: increment_spec
-   =         bar = inv_foo.Bar{x = 0u64}
-   =     at tests/inputs/inv/inv.ok.move:15: increment
-   =         bar = inv_foo.Bar{x = 0u64}
-   =         value = ELIDEDu64
-   =     at tests/inputs/inv/inv.ok.move:7: set_value
-   =         bar = inv_foo.Bar{x = ELIDEDu64}
-   =         bar = inv_foo.Bar{x = ELIDEDu64}
-   =     at tests/inputs/inv/inv.ok.move:8: set_value
-   =         bar = inv_foo.Bar{x = ELIDEDu64}
-   =     at tests/inputs/inv/inv.ok.move:16: increment
-   =         bar = inv_foo.Bar{x = ELIDEDu64}
-   =     at tests/inputs/inv/inv.ok.move:26: increment_spec
-   =         bar = inv_foo.Bar{x = ELIDEDu64}
-   =     at tests/inputs/inv/inv.ok.move:20: Bar_inv
-   =         result = false
-   =     at tests/inputs/inv/inv.ok.move:21: Bar_inv
