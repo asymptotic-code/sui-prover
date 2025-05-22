@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+use prover::log;
 use prover::prover::ensures;
 
 public struct MyStruct<T> has copy, drop {
@@ -18,6 +18,7 @@ public fun foo(x: u64): MyStruct<u64> {
 #[spec(prove)]
 public fun foo_spec(x: u64): MyStruct<u64> {
     let res = foo(x);
+    log::var<MyStruct<u64>>(&res);
     ensures(res.b != x);
     res
 }

@@ -4,9 +4,9 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures assertion does not hold
-   ┌─ tests/inputs/reals.fail.move:20:3
+   ┌─ tests/inputs/reals.fail.move:21:3
    │
-20 │   ensures(y_real  != y_real);
+21 │   ensures(y_real  != y_real);
    │   ^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/reals.fail.move:16: foo_spec

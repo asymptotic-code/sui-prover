@@ -4,9 +4,15 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures assertion does not hold
-   ┌─ tests/inputs/print-ghost.move:15:5
+   ┌─ tests/inputs/print-ghost.move:17:5
    │
-15 │     ensures(ghost::global<u64, bool>() != true);
+17 │     ensures(ghost::global<u64, bool>() != true);
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
-   =     at tests/inputs/print-ghost.move:12: foo_spec
+   =     at tests/inputs/print-ghost.move:13: foo_spec
+   =         ghost<u64> = true
+   =     at tests/inputs/print-ghost.move:15: foo_spec
+   =         ghost<u64> = true
+   =     at tests/../../../packages/prover/sources/ghost.move:15: set_spec
+   =         ghost<u64> = true
+   =     at tests/inputs/print-ghost.move:17: foo_spec

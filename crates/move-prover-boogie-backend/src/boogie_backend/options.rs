@@ -161,7 +161,7 @@ impl Default for BoogieOptions {
             use_cvc5: false,
             cvc5_exe: read_env_var("CVC5_EXE"),
             boogie_flags: vec![],
-            debug_trace: false,
+            debug_trace: true,
             use_array_theory: false,
             generate_smt: false,
             native_equality: false,
