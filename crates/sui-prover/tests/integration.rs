@@ -2,11 +2,13 @@ use codespan_reporting::term::termcolor::Buffer;
 use glob;
 use move_compiler::editions::Flavor;
 use move_package::BuildConfig as MoveBuildConfig;
+use move_prover_boogie_backend::{
+    generator::run_move_prover_with_model, generator_options::Options,
+};
 use regex::Regex;
-use sui_prover::prove::move_model_for_package_legacy;
+use std::fs::{copy, create_dir_all, remove_dir_all, remove_file};
 use std::path::{Path, PathBuf};
-use std::fs::{copy, create_dir_all, remove_file, remove_dir_all};
-use move_prover_boogie_backend::{generator::run_move_prover_with_model, generator_options::Options};
+use sui_prover::prove::move_model_for_package_legacy;
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &PathBuf) -> String {
@@ -43,10 +45,7 @@ fn run_prover(file_path: &PathBuf) -> String {
         config.silence_warnings = false; // Disable warning suppression
 
         // Try to build the model
-        let result = match move_model_for_package_legacy(
-            config,
-            file_dir,
-        ) {
+        let result = match move_model_for_package_legacy(config, file_dir) {
             Ok(model) => {
                 // Create prover options
                 let mut options = Options::default();
@@ -54,11 +53,7 @@ fn run_prover(file_path: &PathBuf) -> String {
                 options.backend.use_array_theory = true;
                 options.backend.vc_timeout = 3000;
 
-                // Apply special settings based on filename
-                let file_name = relative_path.file_name().unwrap().to_string_lossy();
-                if file_name == "logging.move" {
-                    options.backend.debug_trace = false;
-                }
+                options.backend.debug_trace = false;
 
                 // Use a buffer to capture output instead of stderr
                 let mut error_buffer = Buffer::no_color();
@@ -121,7 +116,6 @@ fn clear_sources_directory() {
 #[test]
 fn run_move_tests() {
     clear_sources_directory();
-    
     for entry in glob::glob("tests/inputs/**/*.move").expect("Invalid glob pattern") {
         let move_path = entry.expect("Failed to read file path");
         let output = run_prover(&move_path);

@@ -685,6 +685,21 @@ impl<'env> BoogieWrapper<'env> {
                     Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
                     None => Ok(TraceEntry::InfoLine("".to_string())),
                 },
+                "track_ghost" => {
+                    let elems = args.split(',').collect_vec();
+                    if elems.len() == 2 {
+                        Ok(TraceEntry::Ghost(
+                            self.extract_type(elems[0])
+                                .ok_or(ModelParseError("invalid ghost variable".to_string()))?,
+                            self.extract_type(elems[1]),
+                            self.extract_value(value)?,
+                        ))
+                    } else {
+                        Err(ModelParseError(
+                            "invalid ghost type and value type".to_string(),
+                        ))
+                    }
+                }
                 _ => Err(ModelParseError::new(&format!(
                     "unrecognized augmented trace entry `{}`",
                     name

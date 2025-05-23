@@ -6,9 +6,6 @@ exiting with verification errors
 error: prover::asserts conditions are not complete
    ┌─ tests/inputs/opaque/double-wrap-buggy.move:14:1
    │  
- 6 │       x + y
-   │         - abort happened here with execution failure
-   ·  
 14 │ ╭ fun double_wrap_buggy_spec(x: u64): u64 {
 15 │ │     let result = double_wrap_buggy(x);
 16 │ │     ensures(result == x.to_int().mul((2 as u8).to_int()).to_u64());
@@ -17,11 +14,3 @@ error: prover::asserts conditions are not complete
    │ ╰─^
    │  
    =     at tests/inputs/opaque/double-wrap-buggy.move:14: double_wrap_buggy_spec
-   =         x = ELIDEDu64
-   =     at tests/inputs/opaque/double-wrap-buggy.move:15: double_wrap_buggy_spec
-   =         x = ELIDEDu64
-   =     at tests/inputs/opaque/double-wrap-buggy.move:10: double_wrap_buggy
-   =         x = ELIDEDu64
-   =         y = ELIDEDu64
-   =     at tests/inputs/opaque/double-wrap-buggy.move:6: add_wrap_buggy
-   =         ABORTED

@@ -46,21 +46,3 @@ error: prover::ensures assertion does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:28: reset_color_spec
-   =         color_ref =
-   =           foo::Color::RGB{red = 5853u32, green = 28100u32, blue = 30612u32}
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:29: reset_color_spec
-   =         color_ref =
-   =           foo::Color::RGB{red = 5853u32, green = 28100u32, blue = 30612u32}
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:13: reset_color
-   =         color_ref =
-   =           foo::Color::RGB{red = 5853u32, green = 28100u32, blue = 30612u32}
-   =         red#1#0 = 5853u32
-   =         blue#1#0 = 30612u32
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:15: reset_color
-   =         color_ref =
-   =           foo::Color::RGB{red = 2u32, green = 28100u32, blue = 30612u32}
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:16: reset_color
-   =         color_ref = foo::Color::RGB{red = 2u32, green = 28100u32, blue = 2u32}
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:13: reset_color
-   =         color_ref = foo::Color::RGB{red = 2u32, green = 28100u32, blue = 2u32}
-   =     at tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:25: reset_color
