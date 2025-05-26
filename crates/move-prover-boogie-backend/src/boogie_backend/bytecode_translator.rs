@@ -24,7 +24,8 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
+        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -55,7 +56,18 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
+        boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
+        boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
+        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
+        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
+        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
+        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
+        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
+        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
+        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
+        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
+        TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -308,8 +320,13 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_env,
                                 &FunctionVariant::Verification(VerificationFlavor::Regular),
                             );
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                         continue;
                     }
@@ -332,8 +349,13 @@ impl<'env> BoogieTranslator<'env> {
                         self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
                     {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
@@ -345,8 +367,13 @@ impl<'env> BoogieTranslator<'env> {
                             ))
                             .unwrap_or(&BTreeSet::new())
                         {
-                            FunctionTranslator::new(self, &fun_target, type_inst, FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                type_inst,
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                     }
                 }
@@ -373,8 +400,13 @@ impl<'env> BoogieTranslator<'env> {
                         .get(&(inv_fun_env.get_qualified_id(), FunctionVariant::Baseline))
                         .unwrap_or(empty);
                     for type_inst in struct_type_instances.difference(inv_fun_type_instances) {
-                        FunctionTranslator::new(self, &inv_fun_target, type_inst, FunctionTranslationStyle::Default)
-                            .translate();
+                        FunctionTranslator::new(
+                            self,
+                            &inv_fun_target,
+                            type_inst,
+                            FunctionTranslationStyle::Default,
+                        )
+                        .translate();
                     }
                 }
             }
@@ -435,7 +467,9 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-        let omit_havoc = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+        let omit_havoc = self
+            .targets
+            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -580,8 +614,7 @@ impl<'env> BoogieTranslator<'env> {
             || style == FunctionTranslationStyle::Opaque
         // this is for the $opaque signature
         {
-            FunctionTranslator::new(self, &fun_target, &[], style)
-                .translate();
+            FunctionTranslator::new(self, &fun_target, &[], style).translate();
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
@@ -608,8 +641,7 @@ impl<'env> BoogieTranslator<'env> {
                         return;
                     }
 
-                    FunctionTranslator::new(self, &fun_target, type_inst, style)
-                        .translate();
+                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
                 });
         }
     }
@@ -680,13 +712,23 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         for type_inst in ghost_global_type_instances {
-            FunctionTranslator::new(self, &ghost_global_fun_target, type_inst, FunctionTranslationStyle::Default)
-                .translate();
+            FunctionTranslator::new(
+                self,
+                &ghost_global_fun_target,
+                type_inst,
+                FunctionTranslationStyle::Default,
+            )
+            .translate();
         }
 
         for type_inst in &ghost_declare_global_mut_type_instances {
-            FunctionTranslator::new(self, &ghost_havoc_global_fun_target, type_inst, FunctionTranslationStyle::Default)
-                .translate(); 
+            FunctionTranslator::new(
+                self,
+                &ghost_havoc_global_fun_target,
+                type_inst,
+                FunctionTranslationStyle::Default,
+            )
+            .translate();
         }
     }
 
@@ -1103,7 +1145,10 @@ impl<'env> EnumTranslator<'env> {
             let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
                 unreachable!();
             };
-            let variant_name = variant_env.get_name().display(env.symbol_pool()).to_string();
+            let variant_name = variant_env
+                .get_name()
+                .display(env.symbol_pool())
+                .to_string();
 
             // Emit function signature
             self.emit_function(
@@ -1125,13 +1170,16 @@ impl<'env> EnumTranslator<'env> {
                         .get_all_fields()
                         .enumerate()
                         .map(|(p, f)| {
-                            if f.get_name() == field_env.get_name() && f.get_id() == field_env.get_id() && pos == p {
+                            if f.get_name() == field_env.get_name()
+                                && f.get_id() == field_env.get_id()
+                                && pos == p
+                            {
                                 "x".to_string()
                             } else {
                                 format!("s->{}", boogie_enum_field_name(&f))
                             }
                         })
-                        .chain(std::iter::once("s->$variant_id".to_string())) 
+                        .chain(std::iter::once("s->$variant_id".to_string()))
                         .join(", ");
 
                     emitln!(writer, "{}({})", enum_name, args);
@@ -1264,7 +1312,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     pub fn new(
-        parent: &'env BoogieTranslator,
+        parent: &'env BoogieTranslator<'env>,
         fun_target: &'env FunctionTarget<'env>,
         type_inst: &'env [Type],
         style: FunctionTranslationStyle,
@@ -1644,36 +1692,19 @@ impl<'env> FunctionTranslator<'env> {
                 self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
             );
         }
-        
+
         // Add global ghost variables that can be used in this function
-        let ghost_vars = self.parent
-            .targets
-            .specs()
-            .map(|id| {
-                spec_global_variable_analysis::get_info(
-                    self.parent
-                        .targets
-                        .get_data(id, &FunctionVariant::Baseline)
-                        .unwrap(),
-                )
-                .all_vars()
-            })
-            .flatten()
-            .collect::<BTreeSet<_>>();
-            
-        // Only emit temp copies of ghost variables for non-ghost functions
-        if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
-             self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
-            for type_inst in ghost_vars {
-                emitln!(
-                    writer,
-                    "var $temp_{}: {};",
-                    boogie_spec_global_var_name(self.parent.env, type_inst),
-                    boogie_type(env, &type_inst[1])
-                );
-            }
+        let ghost_vars = self.get_current_spec_ghost_vars();
+        for type_inst in ghost_vars {
+            let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+            emitln!(
+                writer,
+                "var $temp_{}: {};",
+                var_name,
+                boogie_type(env, &type_inst[1])
+            );
         }
-        
+
         // Generate declarations for modifies condition.
         let mut mem_inst_seen = BTreeSet::new();
         for qid in fun_target.get_modify_ids() {
@@ -1734,33 +1765,12 @@ impl<'env> FunctionTranslator<'env> {
         for (idx, _) in proxied_parameters {
             emitln!(writer, "$t{} := _$t{};", idx, idx);
         }
-        
-        // Initialize temp copies of ghost variables
-        if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
-             self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
-            let ghost_vars = self.parent
-                .targets
-                .specs()
-                .map(|id| {
-                    spec_global_variable_analysis::get_info(
-                        self.parent
-                            .targets
-                            .get_data(id, &FunctionVariant::Baseline)
-                            .unwrap(),
-                    )
-                    .all_vars()
-                })
-                .flatten()
-                .collect::<BTreeSet<_>>();
-                
-            for type_inst in ghost_vars {
-                emitln!(
-                    writer,
-                    "$temp_{} := {};",
-                    boogie_spec_global_var_name(self.parent.env, type_inst),
-                    boogie_spec_global_var_name(self.parent.env, type_inst)
-                );
-            }
+
+        // Initialize ghost variables
+        let ghost_vars = self.get_current_spec_ghost_vars();
+        for type_inst in ghost_vars {
+            let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+            emitln!(writer, "$temp_{} := {};", var_name, var_name);
         }
 
         // Initial assumptions
@@ -1829,6 +1839,44 @@ impl<'env> FunctionTranslator<'env> {
             if ty.is_reference() {
                 emitln!(writer, "assume $t{}->l == $Param({});", i, i);
             }
+        }
+    }
+
+    fn get_current_spec_ghost_vars(&self) -> BTreeSet<&Vec<Type>> {
+        if let Some(spec_id) = self
+            .parent
+            .targets
+            .get_spec_by_fun(&self.fun_target.func_env.get_qualified_id())
+        {
+            let spec_info = spec_global_variable_analysis::get_info(
+                self.parent
+                    .targets
+                    .get_data(spec_id, &FunctionVariant::Baseline)
+                    .unwrap(),
+            );
+
+            // Debug prints to investigate ghost variables
+            println!("=== Debug Ghost Variables ===");
+            println!(
+                "Current spec function: {}",
+                self.fun_target.func_env.get_full_name_str()
+            );
+
+            let display_ctx = TypeDisplayContext::WithEnv {
+                env: self.parent.env,
+                type_param_names: None,
+            };
+            println!("All ghost vars:");
+            for var in spec_info.all_vars() {
+                println!("  - Key type: {}", var[0].display(&display_ctx));
+                println!("    Value type: {}", var[1].display(&display_ctx));
+            }
+            println!("===========================");
+
+            // Get all ghost variables from the current spec function
+            spec_info.all_vars().collect()
+        } else {
+            BTreeSet::new()
         }
     }
 }
@@ -2027,25 +2075,15 @@ impl<'env> FunctionTranslator<'env> {
                             .join(", "),
                     );
                 }
-                
+
                 // Sync any modified ghost variables back to their global versions
-                if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() || 
-                     self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()) {
-                    let ghost_vars = self.parent
-                        .targets
-                        .specs()
-                        .map(|id| {
-                            spec_global_variable_analysis::get_info(
-                                self.parent
-                                    .targets
-                                    .get_data(id, &FunctionVariant::Baseline)
-                                    .unwrap(),
-                            )
-                            .all_vars()
-                        })
-                        .flatten()
-                        .collect::<BTreeSet<_>>();
-                        
+                if !(self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid()
+                    || self.fun_target.func_env.get_qualified_id()
+                        == self.parent.env.havoc_global_qid())
+                {
+                    let ghost_vars = self.get_current_spec_ghost_vars();
+                    dbg!(ghost_vars.len());
+
                     for type_inst in ghost_vars {
                         emitln!(
                             self.writer(),
@@ -2055,7 +2093,7 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                 }
-                
+
                 for (i, r) in rets.iter().enumerate() {
                     emitln!(self.writer(), "$ret{} := {};", i, str_local(*r));
                 }
@@ -2304,11 +2342,27 @@ impl<'env> FunctionTranslator<'env> {
                         if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
                             && self.style == FunctionTranslationStyle::Asserts
                         {
+                            let ghost_vars = self.get_current_spec_ghost_vars();
+                            let ghost_args = ghost_vars
+                                .iter()
+                                .map(|type_inst| {
+                                    let var_name =
+                                        boogie_spec_global_var_name(self.parent.env, type_inst);
+                                    format!("$temp_{}", var_name)
+                                })
+                                .join(", ");
+
+                            let all_args = if ghost_args.is_empty() {
+                                args_str.to_string()
+                            } else {
+                                format!("{}, {}", args_str, ghost_args)
+                            };
+
                             emitln!(
                                 self.writer(),
                                 "assert {{:msg \"assert_failed{}: prover::asserts assertion does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
-                                args_str,
+                                all_args,
                             );
                             processed = true;
                         }
@@ -2416,10 +2470,7 @@ impl<'env> FunctionTranslator<'env> {
 
                             let id = &self.fun_target.func_env.get_qualified_id();
 
-                            if self
-                                .parent
-                                .targets
-                                .get_fun_by_spec(id)
+                            if self.parent.targets.get_fun_by_spec(id)
                                 == Some(&QualifiedId {
                                     module_id: *mid,
                                     id: *fid,
@@ -2437,7 +2488,15 @@ impl<'env> FunctionTranslator<'env> {
                                 {
                                     let use_impl = self.parent.targets.omits_opaque(id);
                                     let verified = self.parent.targets.is_verified_spec(id);
-                                    let suffix = if use_impl { if verified { "$impl" } else { "" } } else { "$opaque" };
+                                    let suffix = if use_impl {
+                                        if verified {
+                                            "$impl"
+                                        } else {
+                                            ""
+                                        }
+                                    } else {
+                                        "$opaque"
+                                    };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
@@ -2573,11 +2632,7 @@ impl<'env> FunctionTranslator<'env> {
 
                         let id = &self.fun_target.func_env.get_qualified_id();
 
-                        if self
-                            .parent
-                            .targets
-                            .get_fun_by_spec(id)
-                            == Some(&mid.qualified(*fid))
+                        if self.parent.targets.get_fun_by_spec(id) == Some(&mid.qualified(*fid))
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
@@ -2597,23 +2652,13 @@ impl<'env> FunctionTranslator<'env> {
 
                         if processed {
                             // Skip ghost function calls themselves
-                            if !(module_env.get_function(*fid).get_qualified_id() == self.parent.env.global_qid() || 
-                                 module_env.get_function(*fid).get_qualified_id() == self.parent.env.havoc_global_qid()) {
-                                let ghost_vars = self.parent
-                                    .targets
-                                    .specs()
-                                    .map(|id| {
-                                        spec_global_variable_analysis::get_info(
-                                            self.parent
-                                                .targets
-                                                .get_data(id, &FunctionVariant::Baseline)
-                                                .unwrap(),
-                                        )
-                                        .all_vars()
-                                    })
-                                    .flatten()
-                                    .collect::<BTreeSet<_>>();
-                                    
+                            if !(module_env.get_function(*fid).get_qualified_id()
+                                == self.parent.env.global_qid()
+                                || module_env.get_function(*fid).get_qualified_id()
+                                    == self.parent.env.havoc_global_qid())
+                            {
+                                let ghost_vars = self.get_current_spec_ghost_vars();
+
                                 for type_inst in ghost_vars {
                                     emitln!(
                                         self.writer(),
@@ -3723,7 +3768,7 @@ impl<'env> FunctionTranslator<'env> {
                     let enum_env = &self.parent.env.get_enum_qid(memory.to_qualified_id());
                     let variant_env = &enum_env.get_variant(*vid);
                     let field_env = &variant_env.get_field_by_offset(*offset);
-                    
+
                     let update_fun = boogie_enum_field_update(field_env);
                     let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
 
