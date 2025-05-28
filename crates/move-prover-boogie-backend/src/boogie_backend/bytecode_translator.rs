@@ -1881,10 +1881,13 @@ impl<'env> FunctionTranslator<'env> {
                 .get_data(spec_id, &FunctionVariant::Baseline)
                 .unwrap(),
         );
-        spec_info.all_vars().map(|type_inst| {
-            // Instantiate each type in the type_inst with the concrete types
-            type_inst.iter().map(|ty| self.inst(ty)).collect()
-        }).collect()
+        spec_info
+            .all_vars()
+            .map(|type_inst| {
+                // Instantiate each type in the type_inst with the concrete types
+                type_inst.iter().map(|ty| self.inst(ty)).collect()
+            })
+            .collect()
     }
 }
 
@@ -2080,7 +2083,8 @@ impl<'env> FunctionTranslator<'env> {
                                 format!("{}t{}", prefix, i)
                             })
                             .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
-                                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
+                                let var_name =
+                                    boogie_spec_global_var_name(self.parent.env, &type_inst);
                                 format!("$ghost_{}", var_name)
                             }))
                             .join(", "),
@@ -2325,12 +2329,7 @@ impl<'env> FunctionTranslator<'env> {
                         if callee_env.get_qualified_id() == self.parent.env.global_qid() {
                             let var_name = boogie_spec_global_var_name(self.parent.env, inst);
 
-                            emitln!(
-                                self.writer(),
-                                "{} := $ghost_{};",
-                                dest_str,
-                                var_name
-                            );
+                            emitln!(self.writer(), "{} := $ghost_{};", dest_str, var_name);
                             processed = true;
                         }
 
@@ -2412,11 +2411,30 @@ impl<'env> FunctionTranslator<'env> {
                             {
                                 emitln!(self.writer(), "havoc $abort_flag;");
                             } else {
+                                let ghost_args = if !self.get_ghost_vars().is_empty() {
+                                    format!(
+                                        ", {}",
+                                        self.get_ghost_vars()
+                                            .into_iter()
+                                            .map(|type_inst| {
+                                                let var_name = boogie_spec_global_var_name(
+                                                    self.parent.env,
+                                                    &type_inst,
+                                                );
+                                                format!("$ghost_{}", var_name)
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    )
+                                } else {
+                                    String::new()
+                                };
                                 emitln!(
                                     self.writer(),
-                                    "call $abort_if_cond := {}({});",
+                                    "call $abort_if_cond := {}({}{});",
                                     self.function_variant_name(FunctionTranslationStyle::Aborts),
                                     args_str,
+                                    ghost_args,
                                 );
                                 emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
                             }
@@ -2539,7 +2557,36 @@ impl<'env> FunctionTranslator<'env> {
                                         &[false, bv_flag],
                                     );
                                 }
-                                emitln!(self.writer(), "call {}({});", fun_name, args_str);
+
+                                let mut ghost_args: String = String::new();
+                                if callee_env.get_qualified_id() != self.parent.env.requires_qid() {
+                                    ghost_args = if !self.get_ghost_vars().is_empty() {
+                                        format!(
+                                            ", {}",
+                                            self.get_ghost_vars()
+                                                .into_iter()
+                                                .map(|type_inst| {
+                                                    let var_name = boogie_spec_global_var_name(
+                                                        self.parent.env,
+                                                        &type_inst,
+                                                    );
+                                                    format!("$ghost_{}", var_name)
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        )
+                                    } else {
+                                        String::new()
+                                    };
+                                }
+
+                                emitln!(
+                                    self.writer(),
+                                    "call {}({}{});",
+                                    fun_name,
+                                    args_str,
+                                    ghost_args
+                                );
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
                                 let bv_flag = !srcs.is_empty() && compute_flag(srcs[0]);
@@ -2609,12 +2656,37 @@ impl<'env> FunctionTranslator<'env> {
                                         );
                                     }
                                 }
+
+                                let mut ghost_args: String = String::new();
+
+                                if fun_name.ends_with("$opaque") || fun_name.ends_with("$aborts") {
+                                    ghost_args = if !self.get_ghost_vars().is_empty() {
+                                        format!(
+                                            ", {}",
+                                            self.get_ghost_vars()
+                                                .into_iter()
+                                                .map(|type_inst| {
+                                                    let var_name = boogie_spec_global_var_name(
+                                                        self.parent.env,
+                                                        &type_inst,
+                                                    );
+                                                    format!("$ghost_{}", var_name)
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        )
+                                    } else {
+                                        String::new()
+                                    };
+                                }
+
                                 emitln!(
                                     self.writer(),
-                                    "call {} := {}({});",
+                                    "call {} := {}({}{});",
                                     dest_str,
                                     fun_name,
-                                    args_str
+                                    args_str,
+                                    ghost_args
                                 );
                             }
                         }
@@ -3590,9 +3662,24 @@ impl<'env> FunctionTranslator<'env> {
                         .contains(&self.fun_target.func_env.get_qualified_id())
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
+                    let ghost_args = if !self.get_ghost_vars().is_empty() {
+                        format!(
+                            ", {}",
+                            self.get_ghost_vars()
+                                .into_iter()
+                                .map(|type_inst| {
+                                    let var_name =
+                                        boogie_spec_global_var_name(self.parent.env, &type_inst);
+                                    format!("$ghost_{}", var_name)
+                                })
+                                .join(", ")
+                        )
+                    } else {
+                        String::new()
+                    };
                     emitln!(
                         self.writer(),
-                        "call $abort_if_cond := {}({});",
+                        "call $abort_if_cond := {}({}{});",
                         self.function_variant_name(FunctionTranslationStyle::Aborts),
                         (0..fun_target.get_parameter_count())
                             .map(|i| {
@@ -3604,6 +3691,7 @@ impl<'env> FunctionTranslator<'env> {
                                 format!("{}t{}", prefix, i)
                             })
                             .join(", "),
+                        ghost_args,
                     );
                     emitln!(
                         self.writer(),
