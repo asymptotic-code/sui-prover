@@ -1588,15 +1588,14 @@ impl<'env> FunctionTranslator<'env> {
             || self.style == FunctionTranslationStyle::Aborts
             || self.style == FunctionTranslationStyle::Opaque
         {
-            let ghost_vars = self.get_current_spec_ghost_vars();
-            println!("Ghost vars: {:?}", ghost_vars.len());
+            let ghost_vars = self.get_ghost_vars();
             if !ghost_vars.is_empty() {
                 format!(
                     ", {}",
                     ghost_vars
-                        .iter()
+                        .into_iter()
                         .map(|type_inst| {
-                            let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+                            let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
                             format!("$ghost_{}: {}", var_name, boogie_type(env, &type_inst[1]))
                         })
                         .join(", ")
@@ -1723,9 +1722,9 @@ impl<'env> FunctionTranslator<'env> {
         if self.style == FunctionTranslationStyle::Default
             || self.style == FunctionTranslationStyle::SpecNoAbortCheck
         {
-            let ghost_vars = self.get_current_spec_ghost_vars();
+            let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
-                let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
                 dbg!(&var_name);
                 emitln!(
                     writer,
@@ -1799,9 +1798,9 @@ impl<'env> FunctionTranslator<'env> {
 
         // Initialize ghost variables
 
-        let ghost_vars = self.get_current_spec_ghost_vars();
+        let ghost_vars = self.get_ghost_vars();
         for type_inst in ghost_vars {
-            let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+            let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
             emitln!(writer, "$ghost_{} := {};", var_name, var_name);
         }
 
@@ -1874,7 +1873,7 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
-    fn get_current_spec_ghost_vars(&self) -> BTreeSet<&Vec<Type>> {
+    fn get_ghost_vars(&self) -> BTreeSet<Vec<Type>> {
         let spec_id = &self.fun_target.func_env.get_qualified_id();
         let spec_info = spec_global_variable_analysis::get_info(
             self.parent
@@ -1882,27 +1881,10 @@ impl<'env> FunctionTranslator<'env> {
                 .get_data(spec_id, &FunctionVariant::Baseline)
                 .unwrap(),
         );
-
-        // Debug prints to investigate ghost variables
-        println!("=== Debug Ghost Variables ===");
-        println!(
-            "Current spec function: {}",
-            self.fun_target.func_env.get_full_name_str()
-        );
-
-        let display_ctx = TypeDisplayContext::WithEnv {
-            env: self.parent.env,
-            type_param_names: None,
-        };
-        println!("All ghost vars:");
-        for var in spec_info.all_vars() {
-            println!("  - Key type: {}", var[0].display(&display_ctx));
-            println!("    Value type: {}", var[1].display(&display_ctx));
-        }
-        println!("===========================");
-
-        // Get all ghost variables from the current spec function
-        spec_info.all_vars().collect()
+        spec_info.all_vars().map(|type_inst| {
+            // Instantiate each type in the type_inst with the concrete types
+            type_inst.iter().map(|ty| self.inst(ty)).collect()
+        }).collect()
     }
 }
 
@@ -2097,6 +2079,10 @@ impl<'env> FunctionTranslator<'env> {
                                 };
                                 format!("{}t{}", prefix, i)
                             })
+                            .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
+                                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
+                                format!("$ghost_{}", var_name)
+                            }))
                             .join(", "),
                     );
                 }
@@ -2255,29 +2241,6 @@ impl<'env> FunctionTranslator<'env> {
                         // special casing for type reflection
                         let mut processed = false;
 
-                        if self.style == FunctionTranslationStyle::Asserts
-                            || self.style == FunctionTranslationStyle::Aborts
-                            || self.style == FunctionTranslationStyle::Opaque
-                        {
-                            let ghost_vars = self.get_current_spec_ghost_vars();
-                            let ghost_args = ghost_vars
-                                .iter()
-                                .map(|type_inst| {
-                                    let var_name =
-                                        boogie_spec_global_var_name(self.parent.env, type_inst);
-                                    format!("$ghost_{}", var_name)
-                                })
-                                .join(", ");
-
-                            if !ghost_args.is_empty() {
-                                if args_str.is_empty() {
-                                    args_str = ghost_args;
-                                } else {
-                                    args_str = format!("{}, {}", args_str, ghost_args);
-                                }
-                            }
-                        }
-
                         // TODO(mengxu): change it to a better address name instead of extlib
                         if env.get_extlib_address() == *module_env.get_name().addr() {
                             let qualified_name = format!(
@@ -2359,6 +2322,18 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
+                        if callee_env.get_qualified_id() == self.parent.env.global_qid() {
+                            let var_name = boogie_spec_global_var_name(self.parent.env, inst);
+
+                            emitln!(
+                                self.writer(),
+                                "{} := $ghost_{};",
+                                dest_str,
+                                var_name
+                            );
+                            processed = true;
+                        }
+
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             emitln!(
                                 self.writer(),
@@ -2372,27 +2347,11 @@ impl<'env> FunctionTranslator<'env> {
                         if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
                             && self.style == FunctionTranslationStyle::Asserts
                         {
-                            let ghost_vars = self.get_current_spec_ghost_vars();
-                            let ghost_args = ghost_vars
-                                .iter()
-                                .map(|type_inst| {
-                                    let var_name =
-                                        boogie_spec_global_var_name(self.parent.env, type_inst);
-                                    format!("$ghost_{}", var_name)
-                                })
-                                .join(", ");
-
-                            let all_args = if ghost_args.is_empty() {
-                                args_str.to_string()
-                            } else {
-                                format!("({}) && ({})", args_str, ghost_args)
-                            };
-
                             emitln!(
                                 self.writer(),
                                 "assert {{:msg \"assert_failed{}: prover::asserts assertion does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
-                                all_args,
+                                args_str.to_string(),
                             );
                             processed = true;
                         }
@@ -2687,14 +2646,14 @@ impl<'env> FunctionTranslator<'env> {
                                 || module_env.get_function(*fid).get_qualified_id()
                                     == self.parent.env.havoc_global_qid())
                             {
-                                let ghost_vars = self.get_current_spec_ghost_vars();
+                                let ghost_vars = self.get_ghost_vars();
 
                                 for type_inst in ghost_vars {
                                     emitln!(
                                         self.writer(),
                                         "$ghost_{} := {};",
-                                        boogie_spec_global_var_name(self.parent.env, type_inst),
-                                        boogie_spec_global_var_name(self.parent.env, type_inst)
+                                        boogie_spec_global_var_name(self.parent.env, &type_inst),
+                                        boogie_spec_global_var_name(self.parent.env, &type_inst)
                                     );
                                 }
                             }
