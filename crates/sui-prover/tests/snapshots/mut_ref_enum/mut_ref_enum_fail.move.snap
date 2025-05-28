@@ -39,7 +39,7 @@ warning: unused 'mut' modifiers
    │
    = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: prover::ensures assertion does not hold
+error: prover::ensures does not hold
    ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_fail.move:32:5
    │
 32 │     ensures(color_ref == Color::RGB{ red: 211, green: 893, blue: 22 });

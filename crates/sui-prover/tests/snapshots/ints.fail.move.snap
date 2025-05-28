@@ -3,7 +3,7 @@ source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
 exiting with verification errors
-error: prover::ensures assertion does not hold
+error: prover::ensures does not hold
    ┌─ tests/inputs/ints.fail.move:16:3
    │
 16 │   ensures(res_int != x_int.add(1u64.to_int()));

@@ -24,7 +24,8 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
+        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -55,7 +56,18 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob, boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return, boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken
+        boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
+        boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
+        boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
+        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
+        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
+        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
+        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
+        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
+        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
+        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
+        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
+        TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -308,8 +320,13 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_env,
                                 &FunctionVariant::Verification(VerificationFlavor::Regular),
                             );
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                         continue;
                     }
@@ -332,8 +349,13 @@ impl<'env> BoogieTranslator<'env> {
                         self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
                     {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
@@ -345,8 +367,13 @@ impl<'env> BoogieTranslator<'env> {
                             ))
                             .unwrap_or(&BTreeSet::new())
                         {
-                            FunctionTranslator::new(self, &fun_target, type_inst, FunctionTranslationStyle::Default)
-                                .translate();
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                type_inst,
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
                         }
                     }
                 }
@@ -373,8 +400,13 @@ impl<'env> BoogieTranslator<'env> {
                         .get(&(inv_fun_env.get_qualified_id(), FunctionVariant::Baseline))
                         .unwrap_or(empty);
                     for type_inst in struct_type_instances.difference(inv_fun_type_instances) {
-                        FunctionTranslator::new(self, &inv_fun_target, type_inst, FunctionTranslationStyle::Default)
-                            .translate();
+                        FunctionTranslator::new(
+                            self,
+                            &inv_fun_target,
+                            type_inst,
+                            FunctionTranslationStyle::Default,
+                        )
+                        .translate();
                     }
                 }
             }
@@ -435,7 +467,9 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-        let omit_havoc = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+        let omit_havoc = self
+            .targets
+            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -580,8 +614,7 @@ impl<'env> BoogieTranslator<'env> {
             || style == FunctionTranslationStyle::Opaque
         // this is for the $opaque signature
         {
-            FunctionTranslator::new(self, &fun_target, &[], style)
-                .translate();
+            FunctionTranslator::new(self, &fun_target, &[], style).translate();
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
@@ -608,8 +641,7 @@ impl<'env> BoogieTranslator<'env> {
                         return;
                     }
 
-                    FunctionTranslator::new(self, &fun_target, type_inst, style)
-                        .translate();
+                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
                 });
         }
     }
@@ -680,13 +712,23 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         for type_inst in ghost_global_type_instances {
-            FunctionTranslator::new(self, &ghost_global_fun_target, type_inst, FunctionTranslationStyle::Default)
-                .translate();
+            FunctionTranslator::new(
+                self,
+                &ghost_global_fun_target,
+                type_inst,
+                FunctionTranslationStyle::Default,
+            )
+            .translate();
         }
 
         for type_inst in &ghost_declare_global_mut_type_instances {
-            FunctionTranslator::new(self, &ghost_havoc_global_fun_target, type_inst, FunctionTranslationStyle::Default)
-                .translate(); 
+            FunctionTranslator::new(
+                self,
+                &ghost_havoc_global_fun_target,
+                type_inst,
+                FunctionTranslationStyle::Default,
+            )
+            .translate();
         }
     }
 
@@ -1103,7 +1145,10 @@ impl<'env> EnumTranslator<'env> {
             let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
                 unreachable!();
             };
-            let variant_name = variant_env.get_name().display(env.symbol_pool()).to_string();
+            let variant_name = variant_env
+                .get_name()
+                .display(env.symbol_pool())
+                .to_string();
 
             // Emit function signature
             self.emit_function(
@@ -1125,13 +1170,16 @@ impl<'env> EnumTranslator<'env> {
                         .get_all_fields()
                         .enumerate()
                         .map(|(p, f)| {
-                            if f.get_name() == field_env.get_name() && f.get_id() == field_env.get_id() && pos == p {
+                            if f.get_name() == field_env.get_name()
+                                && f.get_id() == field_env.get_id()
+                                && pos == p
+                            {
                                 "x".to_string()
                             } else {
                                 format!("s->{}", boogie_enum_field_name(&f))
                             }
                         })
-                        .chain(std::iter::once("s->$variant_id".to_string())) 
+                        .chain(std::iter::once("s->$variant_id".to_string()))
                         .join(", ");
 
                     emitln!(writer, "{}({})", enum_name, args);
@@ -2207,7 +2255,7 @@ impl<'env> FunctionTranslator<'env> {
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures assertion does not hold\"}} {};",
+                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
                                 args_str,
                             );
@@ -2329,10 +2377,7 @@ impl<'env> FunctionTranslator<'env> {
 
                             let id = &self.fun_target.func_env.get_qualified_id();
 
-                            if self
-                                .parent
-                                .targets
-                                .get_fun_by_spec(id)
+                            if self.parent.targets.get_fun_by_spec(id)
                                 == Some(&QualifiedId {
                                     module_id: *mid,
                                     id: *fid,
@@ -2350,7 +2395,15 @@ impl<'env> FunctionTranslator<'env> {
                                 {
                                     let use_impl = self.parent.targets.omits_opaque(id);
                                     let verified = self.parent.targets.is_verified_spec(id);
-                                    let suffix = if use_impl { if verified { "$impl" } else { "" } } else { "$opaque" };
+                                    let suffix = if use_impl {
+                                        if verified {
+                                            "$impl"
+                                        } else {
+                                            ""
+                                        }
+                                    } else {
+                                        "$opaque"
+                                    };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
@@ -2486,11 +2539,7 @@ impl<'env> FunctionTranslator<'env> {
 
                         let id = &self.fun_target.func_env.get_qualified_id();
 
-                        if self
-                            .parent
-                            .targets
-                            .get_fun_by_spec(id)
-                            == Some(&mid.qualified(*fid))
+                        if self.parent.targets.get_fun_by_spec(id) == Some(&mid.qualified(*fid))
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
@@ -3606,7 +3655,7 @@ impl<'env> FunctionTranslator<'env> {
                     let enum_env = &self.parent.env.get_enum_qid(memory.to_qualified_id());
                     let variant_env = &enum_env.get_variant(*vid);
                     let field_env = &variant_env.get_field_by_offset(*offset);
-                    
+
                     let update_fun = boogie_enum_field_update(field_env);
                     let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
 

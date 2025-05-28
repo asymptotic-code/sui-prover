@@ -11,7 +11,7 @@ warning: unused variable
    │
    = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: prover::ensures assertion does not hold
+error: prover::ensures does not hold
    ┌─ tests/inputs/logging.move:17:5
    │
 17 │     ensures(res_int == 0u64.to_int());
