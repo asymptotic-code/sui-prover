@@ -1,0 +1,81 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 146
+expression: output
+---
+exiting with verification errors
+warning: unused struct field
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:17:5
+   │
+17 │     value: u8,
+   │     ^^^^^ The 'value' field of the 'Test2Obj' type is unused
+   │
+   = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused struct field
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:12:5
+   │
+12 │     value: u64,
+   │     ^^^^^ The 'value' field of the 'TestObj' type is unused
+   │
+   = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:29:5
+   │
+29 │     ensures(false);
+   │     ^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:25: get_id_empty_spec
+   =         obj = foo.EmptyObj{id = object.UID{id = object.ID{bytes = 0x7794}}}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:28: get_id_empty_spec
+   =         obj = foo.EmptyObj{id = object.UID{id = object.ID{bytes = 0x7794}}}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:21: get_id
+   =         obj = foo.EmptyObj{id = object.UID{id = object.ID{bytes = 0x7794}}}
+   =     at sui-framework/packages/sui-framework/sources/object.move:190: id
+   =         obj = foo.EmptyObj{id = object.UID{id = object.ID{bytes = 0x7794}}}
+   =     at sui-framework-specs/sources/object.move:8: borrow_uid_spec
+   =         result = object.UID{id = object.ID{bytes = 0x28d2}}
+   =     at sui-framework-specs/sources/object.move:9: borrow_uid_spec
+   =         result = object.ID{bytes = 0x28d2}
+   =     at sui-framework/packages/sui-framework/sources/object.move:191: id
+   =         result = object.ID{bytes = 0x28d2}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:22: get_id
+   =         id#1#0 = object.ID{bytes = 0x28d2}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:29: get_id_empty_spec
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:38:5
+   │
+38 │     ensures(false);
+   │     ^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:34: get_id_test_spec
+   =         obj =
+   =           foo.TestObj{
+   =             id = object.UID{id = object.ID{bytes = 0x16dd}},
+   =             value = ELIDEDu64}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:37: get_id_test_spec
+   =         obj =
+   =           foo.TestObj{
+   =             id = object.UID{id = object.ID{bytes = 0x16dd}},
+   =             value = ELIDEDu64}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:21: get_id
+   =         obj =
+   =           foo.TestObj{
+   =             id = object.UID{id = object.ID{bytes = 0x16dd}},
+   =             value = ELIDEDu64}
+   =     at sui-framework/packages/sui-framework/sources/object.move:190: id
+   =         obj =
+   =           foo.TestObj{
+   =             id = object.UID{id = object.ID{bytes = 0x16dd}},
+   =             value = ELIDEDu64}
+   =     at sui-framework-specs/sources/object.move:8: borrow_uid_spec
+   =         result = object.UID{id = object.ID{bytes = 0x28d2}}
+   =     at sui-framework-specs/sources/object.move:9: borrow_uid_spec
+   =         result = object.ID{bytes = 0x28d2}
+   =     at sui-framework/packages/sui-framework/sources/object.move:191: id
+   =         result = object.ID{bytes = 0x28d2}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:22: get_id
+   =         id#1#0 = object.ID{bytes = 0x28d2}
+   =     at tests/inputs/polymorphic_funcs/polymorphic_funcs_obj_fail.move:38: get_id_test_spec
