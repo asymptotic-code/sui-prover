@@ -11,7 +11,7 @@ warning: unused alias
   │
   = This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: prover::ensures assertion does not hold
+error: prover::ensures does not hold
    ┌─ tests/inputs/prettyprint-enum.move:23:5
    │
 23 │     ensures(res == MyEnum::A(x));
