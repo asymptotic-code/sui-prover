@@ -1640,7 +1640,6 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }))
             .join(", ");
-        println!("Style: {:?} {} {}", &self.style, &args, &ghost_args);
         (format!("{}{}", args, ghost_args), rets)
     }
 
@@ -1725,7 +1724,6 @@ impl<'env> FunctionTranslator<'env> {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
                 let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
-                dbg!(&var_name);
                 emitln!(
                     writer,
                     "var $ghost_{}: {};",
@@ -1797,11 +1795,14 @@ impl<'env> FunctionTranslator<'env> {
         }
 
         // Initialize ghost variables
-
-        let ghost_vars = self.get_ghost_vars();
-        for type_inst in ghost_vars {
-            let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
-            emitln!(writer, "$ghost_{} := {};", var_name, var_name);
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::SpecNoAbortCheck
+        {
+            let ghost_vars = self.get_ghost_vars();
+            for type_inst in ghost_vars {
+                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
+                emitln!(writer, "$ghost_{} := {};", var_name, var_name);
+            }
         }
 
         // Initial assumptions
@@ -2659,7 +2660,11 @@ impl<'env> FunctionTranslator<'env> {
 
                                 let mut ghost_args: String = String::new();
 
-                                if fun_name.ends_with("$opaque") || fun_name.ends_with("$aborts") {
+                                if fun_name.ends_with("$opaque")
+                                    || fun_name.ends_with("$aborts")
+                                    || (self.style == FunctionTranslationStyle::Default
+                                        && !fun_name.ends_with("$impl"))
+                                {
                                     ghost_args = if !self.get_ghost_vars().is_empty() {
                                         format!(
                                             ", {}",
@@ -2710,26 +2715,6 @@ impl<'env> FunctionTranslator<'env> {
                                 }
                             }
                         };
-
-                        if processed {
-                            // Skip ghost function calls themselves
-                            if !(module_env.get_function(*fid).get_qualified_id()
-                                == self.parent.env.global_qid()
-                                || module_env.get_function(*fid).get_qualified_id()
-                                    == self.parent.env.havoc_global_qid())
-                            {
-                                let ghost_vars = self.get_ghost_vars();
-
-                                for type_inst in ghost_vars {
-                                    emitln!(
-                                        self.writer(),
-                                        "$ghost_{} := {};",
-                                        boogie_spec_global_var_name(self.parent.env, &type_inst),
-                                        boogie_spec_global_var_name(self.parent.env, &type_inst)
-                                    );
-                                }
-                            }
-                        }
 
                         // Clear the last track location after function call, as the call inserted
                         // location tracks before it returns.
