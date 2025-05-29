@@ -1,7 +1,7 @@
 module 0x42::foo;
 
 use prover::ghost;
-use prover::prover::{ensures, asserts, requires};
+use prover::prover::{asserts, requires};
 
 public struct Counter {}
 

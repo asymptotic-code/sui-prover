@@ -2,37 +2,4 @@
 source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
-exiting with verification errors
-warning: unused alias
-  ┌─ tests/inputs/ghost/ghost-global-mut.move:4:22
-  │
-4 │ use prover::prover::{ensures, asserts, requires};
-  │                      ^^^^^^^ Unused 'use' of alias 'ensures'. Consider removing it
-  │
-  = This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
-
-error: prover::asserts conditions are not complete
-   ┌─ tests/inputs/ghost/ghost-global-mut.move:15:1
-   │  
-15 │ ╭ public fun foo_spec(x: &mut u64): u64 {
-16 │ │     ghost::declare_global_mut<Counter, u64>();
-17 │ │     requires(ghost::global<Counter, u64>() == x);
-18 │ │ 
-   · │
-22 │ │     res
-23 │ │ }
-   │ ╰─^
-   · │
-29 │       asserts(*x < std::u64::max_value!());
-   │               -- abort happened here with code 0x1E
-   │  
-   =     at tests/inputs/ghost/ghost-global-mut.move:15: foo_spec
-   =         x = ELIDEDu64
-   =         ghost<foo::Counter> = ELIDEDu64
-   =     at tests/inputs/ghost/ghost-global-mut.move:17: foo_spec
-   =         x = ELIDEDu64
-   =     at tests/inputs/ghost/ghost-global-mut.move:9: foo
-   =         x = ELIDEDu64
-   =         ghost<foo::Counter> = ELIDEDu64
-   =     at tests/inputs/ghost/ghost-global-mut.move:29: bar_spec
-   =         ABORTED
+Verification successful
