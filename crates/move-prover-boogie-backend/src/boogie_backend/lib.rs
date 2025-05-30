@@ -19,6 +19,7 @@ use move_model::{
     ty::{PrimitiveType, Type},
 };
 use move_stackless_bytecode::{
+    dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::FunctionVariant,
     mono_analysis::{self, MonoInfo},
 };
@@ -72,6 +73,18 @@ struct TableImpl {
     fun_destroy_empty: String,
     fun_drop: String,
     fun_value_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+struct DynamicFieldInfo {
+    struct_name: String,
+    insts: Vec<(TypeInfo, TypeInfo)>,
+    fun_add: String,
+    fun_borrow: String,
+    fun_borrow_mut: String,
+    fun_remove: String,
+    // fun_exists: String,
+    fun_exists_with_type: String,
 }
 
 /// Help generating vector functions for bv types
@@ -182,6 +195,23 @@ pub fn add_prelude(
             false,
         ));
     }
+    let mut dynamic_field_instances = vec![];
+    for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
+        let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
+        if mono_info
+            .structs
+            .get(&struct_qid)
+            .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
+        {
+            dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
+                env, options, info.0, info.1, false,
+            ));
+            dynamic_field_instances.push(DynamicFieldInfo::object_dynamic_field(
+                env, options, info.0, info.1, false,
+            ));
+        }
+    }
+
     // let mut table_instances = mono_info
     //     .table_inst
     //     .iter()
@@ -252,13 +282,32 @@ pub fn add_prelude(
     }
 
     context.insert("table_instances", &table_instances);
+    context.insert("dynamic_field_instances", &dynamic_field_instances);
     let table_key_instances = table_instances
         .iter()
         .flat_map(|table| table.insts.iter().map(|(kty, _)| kty))
+        .chain(
+            dynamic_field_instances
+                .iter()
+                .flat_map(|dynamic_field| dynamic_field.insts.iter().map(|(kty, _)| kty)),
+        )
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect_vec();
     context.insert("table_key_instances", &table_key_instances);
+    let table_value_instances = table_instances
+        .iter()
+        .flat_map(|table| table.insts.iter().map(|(_, vty)| vty))
+        .chain(
+            dynamic_field_instances
+                .iter()
+                .flat_map(|dynamic_field| dynamic_field.insts.iter().map(|(_, vty)| vty)),
+        )
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect_vec();
+    context.insert("table_value_instances", &table_value_instances);
+
     let filter_native = |module: &str| {
         mono_info
             .native_inst
@@ -469,6 +518,91 @@ impl TableImpl {
             fun_destroy_empty: Self::triple_opt_to_name(env, env.object_table_destroy_empty_qid()),
             fun_drop: "".to_string(),
             fun_value_id: Self::triple_opt_to_name(env, env.object_table_value_id_qid()),
+        }
+    }
+
+    fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
+        triple_opt
+            .map(|fun_qid| {
+                let fun = env.get_function(fun_qid);
+                format!(
+                    "${}_{}_{}",
+                    fun.module_env.get_name().addr().to_str_radix(16),
+                    fun.module_env.get_name().name().display(fun.symbol_pool()),
+                    fun.get_name_str(),
+                )
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl DynamicFieldInfo {
+    fn dynamic_field(
+        env: &GlobalEnv,
+        options: &BoogieOptions,
+        tp: &Type,
+        name_value_infos: &BTreeSet<NameValueInfo>,
+        bv_flag: bool,
+    ) -> Self {
+        let insts = name_value_infos
+            .iter()
+            .filter_map(|name_value_info| name_value_info.as_name_value())
+            .unique()
+            .map(|(name, value)| {
+                (
+                    TypeInfo::new(env, options, name, false),
+                    TypeInfo::new(env, options, value, bv_flag),
+                )
+            })
+            .collect();
+
+        DynamicFieldInfo {
+            struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
+            insts,
+            fun_add: Self::triple_opt_to_name(env, env.dynamic_field_add_qid()),
+            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
+            fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
+            fun_remove: Self::triple_opt_to_name(env, env.dynamic_field_remove_qid()),
+            fun_exists_with_type: Self::triple_opt_to_name(
+                env,
+                env.dynamic_field_exists_with_type_qid(),
+            ),
+        }
+    }
+
+    fn object_dynamic_field(
+        env: &GlobalEnv,
+        options: &BoogieOptions,
+        tp: &Type,
+        name_value_infos: &BTreeSet<NameValueInfo>,
+        bv_flag: bool,
+    ) -> Self {
+        let insts = name_value_infos
+            .iter()
+            .filter_map(|name_value_info| name_value_info.as_name_value())
+            .unique()
+            .map(|(name, value)| {
+                (
+                    TypeInfo::new(env, options, name, false),
+                    TypeInfo::new(env, options, value, bv_flag),
+                )
+            })
+            .collect();
+
+        DynamicFieldInfo {
+            struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
+            insts,
+            fun_add: Self::triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
+            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
+            fun_borrow_mut: Self::triple_opt_to_name(
+                env,
+                env.dynamic_object_field_borrow_mut_qid(),
+            ),
+            fun_remove: Self::triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
+            fun_exists_with_type: Self::triple_opt_to_name(
+                env,
+                env.dynamic_object_field_exists_with_type_qid(),
+            ),
         }
     }
 
