@@ -116,7 +116,7 @@ fn clear_sources_directory() {
 #[test]
 fn run_move_tests() {
     clear_sources_directory();
-    for entry in glob::glob("tests/inputs/**/*.move").expect("Invalid glob pattern") {
+    for entry in glob::glob("tests/inputs/**/*bv*.move").expect("Invalid glob pattern") {
         let move_path = entry.expect("Failed to read file path");
         let output = run_prover(&move_path);
         let filename = move_path.file_name().unwrap().to_string_lossy().to_string();

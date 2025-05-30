@@ -1327,7 +1327,7 @@ impl<'env> FunctionTranslator<'env> {
 
     /// Return whether a specific TempIndex involves in bitwise operations
     pub fn bv_flag(&self, num_oper: &NumOperation) -> bool {
-        *num_oper == Bitwise
+        false // BV_FIX: deactivating the flag
     }
 
     /// Return whether a return value at position i involves in bitwise operation
@@ -2840,7 +2840,7 @@ impl<'env> FunctionTranslator<'env> {
                             let num_oper = global_state
                                 .get_temp_index_oper(mid, fid, src, baseline_flag)
                                 .unwrap();
-                            let bv_flag = self.bv_flag(num_oper);
+                            let bv_flag = false; // BV_FIX: replaced self.bv_flag(num_oper);
                             if bv_flag {
                                 let src_type = self.get_local_type(src);
                                 let base = boogie_num_type_base(&src_type);

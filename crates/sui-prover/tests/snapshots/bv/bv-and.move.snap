@@ -1,0 +1,36 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/bv/bv-and.move:25:5
+   │
+25 │     ensures(res == 1u64);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/bv/bv-and.move:22: foo2_spec
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/bv/bv-and.move:27:5
+   │
+27 │     ensures(res == 0u64);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/bv/bv-and.move:22: foo2_spec
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/bv/bv-and.move:25:5
+   │
+25 │     ensures(res == 1u64);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/bv/bv-and.move:22: foo2_spec
+
+error: prover::ensures assertion does not hold
+   ┌─ tests/inputs/bv/bv-and.move:27:5
+   │
+27 │     ensures(res == 0u64);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/bv/bv-and.move:22: foo2_spec
