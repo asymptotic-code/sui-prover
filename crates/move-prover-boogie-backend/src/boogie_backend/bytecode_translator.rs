@@ -1586,7 +1586,6 @@ impl<'env> FunctionTranslator<'env> {
 
         let ghost_args = if self.style == FunctionTranslationStyle::Asserts
             || self.style == FunctionTranslationStyle::Aborts
-            || self.style == FunctionTranslationStyle::Opaque
         {
             let ghost_vars = self.get_ghost_vars();
             if !ghost_vars.is_empty() {
@@ -1718,9 +1717,7 @@ impl<'env> FunctionTranslator<'env> {
         }
 
         // Add global ghost variables that can be used in this function
-        if self.style == FunctionTranslationStyle::Default
-            || self.style == FunctionTranslationStyle::SpecNoAbortCheck
-        {
+        if self.style == FunctionTranslationStyle::Default {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
                 let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
@@ -1795,9 +1792,7 @@ impl<'env> FunctionTranslator<'env> {
         }
 
         // Initialize ghost variables
-        if self.style == FunctionTranslationStyle::Default
-            || self.style == FunctionTranslationStyle::SpecNoAbortCheck
-        {
+        if self.style == FunctionTranslationStyle::Default {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
                 let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
@@ -2327,7 +2322,10 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if callee_env.get_qualified_id() == self.parent.env.global_qid() {
+                        if callee_env.get_qualified_id() == self.parent.env.global_qid()
+                            && (self.style == FunctionTranslationStyle::Asserts
+                                || self.style == FunctionTranslationStyle::Aborts)
+                        {
                             let var_name = boogie_spec_global_var_name(self.parent.env, inst);
 
                             emitln!(self.writer(), "{} := $ghost_{};", dest_str, var_name);
