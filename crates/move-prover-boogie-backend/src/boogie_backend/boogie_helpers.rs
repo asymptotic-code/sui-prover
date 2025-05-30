@@ -56,11 +56,11 @@ pub fn boogie_struct_name_bv(struct_env: &StructEnv<'_>, inst: &[Type], _bv_flag
     //     let type_fun = if bv_flag { boogie_bv_type } else { boogie_type };
     //     format!("Table int ({})", type_fun(env, &inst[1]))
     // } else {
-        format!(
-            "{}{}",
-            boogie_struct_name_prefix(struct_env),
-            boogie_inst_suffix(struct_env.module_env.env, inst)
-        )
+    format!(
+        "{}{}",
+        boogie_struct_name_prefix(struct_env),
+        boogie_inst_suffix(struct_env.module_env.env, inst)
+    )
     // }
 }
 
@@ -163,7 +163,9 @@ pub fn boogie_enum_field_update(field_env: &FieldEnv<'_>) -> String {
         "$Update'{}'_{}_{}",
         boogie_enum_name_prefix(&variant_env.enum_env),
         variant_env.get_name().display(variant_env.symbol_pool()),
-        field_env.get_name().display(variant_env.enum_env.symbol_pool()),
+        field_env
+            .get_name()
+            .display(variant_env.enum_env.symbol_pool()),
     )
 }
 
@@ -334,33 +336,34 @@ pub fn boogie_type(env: &GlobalEnv, ty: &Type) -> String {
 /// Return boogie type for a local with given signature token.
 /// TODO(tengzhang): combine with boogie_type later
 pub fn boogie_bv_type(env: &GlobalEnv, ty: &Type) -> String {
-    use PrimitiveType::*;
-    use Type::*;
-    match ty {
-        Primitive(p) => match p {
-            U8 => "bv8".to_string(),
-            U16 => "bv16".to_string(),
-            U32 => "bv32".to_string(),
-            U64 => "bv64".to_string(),
-            U128 => "bv128".to_string(),
-            U256 => "bv256".to_string(),
-            Address => "int".to_string(),
-            Signer => "$signer".to_string(),
-            Bool => "bool".to_string(),
-            Range | EventStore => panic!("unexpected type"),
-            Num => "<<num is not unsupported here>>".to_string(),
-        },
-        Vector(et) => format!("Vec ({})", boogie_bv_type(env, et)),
-        Datatype(mid, did, inst) => match env.get_struct_or_enum_qid(mid.qualified(*did)) {
-            StructOrEnumEnv::Struct(struct_env) => boogie_struct_name_bv(&struct_env, inst, true),
-            StructOrEnumEnv::Enum(enum_env) => boogie_enum_name(&enum_env, inst),
-        },
-        Reference(_, bt) => format!("$Mutation ({})", boogie_bv_type(env, bt)),
-        TypeParameter(idx) => boogie_type_param(env, *idx),
-        Fun(..) | Tuple(..) | TypeDomain(..) | ResourceDomain(..) | Error | Var(..) => {
-            format!("<<unsupported: {:?}>>", ty)
-        }
-    }
+    boogie_type(env, ty)
+    // use PrimitiveType::*;
+    // use Type::*;
+    // match ty {
+    //     Primitive(p) => match p {
+    //         U8 => "bv8".to_string(),
+    //         U16 => "bv16".to_string(),
+    //         U32 => "bv32".to_string(),
+    //         U64 => "bv64".to_string(),
+    //         U128 => "bv128".to_string(),
+    //         U256 => "bv256".to_string(),
+    //         Address => "int".to_string(),
+    //         Signer => "$signer".to_string(),
+    //         Bool => "bool".to_string(),
+    //         Range | EventStore => panic!("unexpected type"),
+    //         Num => "<<num is not unsupported here>>".to_string(),
+    //     },
+    //     Vector(et) => format!("Vec ({})", boogie_bv_type(env, et)),
+    //     Datatype(mid, did, inst) => match env.get_struct_or_enum_qid(mid.qualified(*did)) {
+    //         StructOrEnumEnv::Struct(struct_env) => boogie_struct_name_bv(&struct_env, inst, true),
+    //         StructOrEnumEnv::Enum(enum_env) => boogie_enum_name(&enum_env, inst),
+    //     },
+    //     Reference(_, bt) => format!("$Mutation ({})", boogie_bv_type(env, bt)),
+    //     TypeParameter(idx) => boogie_type_param(env, *idx),
+    //     Fun(..) | Tuple(..) | TypeDomain(..) | ResourceDomain(..) | Error | Var(..) => {
+    //         format!("<<unsupported: {:?}>>", ty)
+    //     }
+    // }
 }
 
 pub fn boogie_type_param(_env: &GlobalEnv, idx: u16) -> String {
@@ -377,6 +380,7 @@ pub fn boogie_temp_from_suffix(_env: &GlobalEnv, suffix: &str, instance: usize) 
 
 /// Generate number literals that may comes with a bv suffix in the boogie code
 pub fn boogie_num_literal(num: &String, base: usize, bv_flag: bool) -> String {
+    let bv_flag = false;
     if bv_flag {
         format!("{}bv{}", num, base)
     } else {
@@ -416,6 +420,8 @@ pub fn boogie_num_type_base(ty: &Type) -> String {
 pub fn boogie_type_suffix_bv(env: &GlobalEnv, ty: &Type, bv_flag: bool) -> String {
     use PrimitiveType::*;
     use Type::*;
+
+    let bv_flag = false;
 
     match ty {
         Primitive(p) => match p {
@@ -472,7 +478,7 @@ pub fn boogie_type_suffix_for_struct(
     //         boogie_inst_suffix_bv_pair(struct_env.module_env.env, inst, &[false, bv_flag])
     //     )
     // } else {
-        boogie_struct_name(struct_env, inst)
+    boogie_struct_name(struct_env, inst)
     // }
 }
 
