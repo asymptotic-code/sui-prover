@@ -1491,6 +1491,8 @@ impl GlobalEnv {
     const OPTION_MODULE_NAME: &'static str = "option";
     const TABLE_MODULE_NAME: &'static str = "table";
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
+    const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
+    const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1552,6 +1554,14 @@ impl GlobalEnv {
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
     const TABLE_DROP_FUNCTION_NAME: &'static str = "drop";
     const OBJECT_TABLE_VALUE_ID_FUNCTION_NAME: &'static str = "value_id";
+
+    const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
+    const DYNAMIC_FIELD_BORROW_FUNCTION_NAME: &'static str = "borrow";
+    const DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
+    const DYNAMIC_FIELD_REMOVE_FUNCTION_NAME: &'static str = "remove";
+    const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
+    const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
+    const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1852,6 +1862,104 @@ impl GlobalEnv {
         )
     }
 
+    pub fn dynamic_field_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_ADD_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_exists_with_type_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_ADD_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_exists_with_type_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
+        )
+    }
+
     pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
         vec![
             self.vector_reverse_qid(),
@@ -1888,6 +1996,20 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_destroy_empty_qid(),
             self.object_table_value_id_qid(),
+            self.dynamic_field_add_qid(),
+            self.dynamic_field_borrow_qid(),
+            self.dynamic_field_borrow_mut_qid(),
+            self.dynamic_field_remove_qid(),
+            self.dynamic_field_exists_qid(),
+            self.dynamic_field_remove_if_exists_qid(),
+            self.dynamic_field_exists_with_type_qid(),
+            self.dynamic_object_field_add_qid(),
+            self.dynamic_object_field_borrow_qid(),
+            self.dynamic_object_field_borrow_mut_qid(),
+            self.dynamic_object_field_remove_qid(),
+            self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_remove_if_exists_qid(),
+            self.dynamic_object_field_exists_with_type_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)

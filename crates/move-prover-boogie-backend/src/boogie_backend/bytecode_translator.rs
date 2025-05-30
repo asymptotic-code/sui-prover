@@ -33,6 +33,7 @@ use move_model::{
 };
 use move_stackless_bytecode::{
     ast::{TempIndex, TraceKind},
+    dynamic_field_analysis,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionTarget,
     function_target_pipeline::{
@@ -58,7 +59,8 @@ use crate::boogie_backend::{
     boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
+        boogie_declare_global, boogie_dynamic_field_sel, boogie_enum_field_name,
+        boogie_enum_field_update, boogie_enum_name, boogie_enum_name_prefix,
         boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
         boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
         boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
@@ -826,26 +828,41 @@ impl<'env> StructTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
+        let struct_type = Type::Datatype(
+            struct_env.module_env.get_id(),
+            struct_env.get_id(),
+            self.type_inst.to_owned(),
+        );
+        let dynamic_field_info = dynamic_field_analysis::get_env_info(self.parent.env);
+        let dynamic_field_names_values = dynamic_field_info
+            .dynamic_field_names_values(&struct_type)
+            .collect_vec();
+
         // Emit data type
         let struct_name = boogie_struct_name(struct_env, self.type_inst);
         emitln!(writer, "datatype {} {{", struct_name);
 
         // Emit constructor
-        let fields = struct_env
-            .get_fields()
-            .map(|field| {
-                format!(
-                    "${}: {}",
-                    field.get_name().display(env.symbol_pool()),
-                    self.boogie_type_for_struct_field(
-                        &field.get_id(),
-                        env,
-                        &self.inst(&field.get_type())
-                    )
+        let fields = struct_env.get_fields().map(|field| {
+            format!(
+                "${}: {}",
+                field.get_name().display(env.symbol_pool()),
+                self.boogie_type_for_struct_field(
+                    &field.get_id(),
+                    env,
+                    &self.inst(&field.get_type())
                 )
-            })
-            .join(", ");
-        emitln!(writer, "    {}({})", struct_name, fields);
+            )
+        });
+        let dynamic_fields = dynamic_field_names_values.iter().map(|(name, value)| {
+            format!(
+                "{}: (Table int {})",
+                boogie_dynamic_field_sel(self.parent.env, name, value),
+                boogie_type(env, value),
+            )
+        });
+        let all_fields = fields.chain(dynamic_fields).join(", ");
+        emitln!(writer, "    {}({})", struct_name, all_fields);
         emitln!(writer, "}");
 
         let suffix = boogie_type_suffix_for_struct(struct_env, self.type_inst, false);
@@ -868,18 +885,54 @@ impl<'env> StructTranslator<'env> {
                     struct_name
                 ),
                 || {
+                    let args = fields.iter().enumerate().map(|(p, f)| {
+                        if p == pos {
+                            "x".to_string()
+                        } else {
+                            format!("s->{}", boogie_field_sel(f, self.type_inst))
+                        }
+                    });
+                    let dynamic_field_args =
+                        dynamic_field_names_values.iter().map(|(name, value)| {
+                            format!(
+                                "s->{}",
+                                boogie_dynamic_field_sel(self.parent.env, name, value)
+                            )
+                        });
+                    let all_args = args.chain(dynamic_field_args).join(", ");
+                    emitln!(writer, "{}({})", struct_name, all_args);
+                },
+            );
+        }
+        for (pos, (name, value)) in dynamic_field_names_values.iter().enumerate() {
+            self.emit_function(
+                &format!(
+                    "{}(s: {}, x: (Table int {})): {}",
+                    boogie_dynamic_field_update(struct_env, self.type_inst, name, value),
+                    struct_name,
+                    boogie_type(env, value),
+                    struct_name
+                ),
+                || {
                     let args = fields
                         .iter()
-                        .enumerate()
-                        .map(|(p, f)| {
-                            if p == pos {
-                                "x".to_string()
-                            } else {
-                                format!("s->{}", boogie_field_sel(f, self.type_inst))
-                            }
-                        })
-                        .join(", ");
-                    emitln!(writer, "{}({})", struct_name, args);
+                        .map(|f| format!("s->{}", boogie_field_sel(f, self.type_inst)));
+                    let dynamic_field_args =
+                        dynamic_field_names_values
+                            .iter()
+                            .enumerate()
+                            .map(|(p, (n, v))| {
+                                if p == pos {
+                                    "x".to_string()
+                                } else {
+                                    format!(
+                                        "s->{}",
+                                        boogie_dynamic_field_sel(self.parent.env, n, v)
+                                    )
+                                }
+                            });
+                    let all_args = args.chain(dynamic_field_args).join(", ");
+                    emitln!(writer, "{}({})", struct_name, all_args);
                 },
             );
         }
@@ -3830,6 +3883,47 @@ impl<'env> FunctionTranslator<'env> {
                     let update_fun = boogie_enum_field_update(field_env);
                     let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
 
+                    let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
+                    let mut new_dest_needed = false;
+                    let new_src = self.translate_write_back_update(
+                        &mut || {
+                            new_dest_needed = true;
+                            format!("$$sel{}", at)
+                        },
+                        get_path_index,
+                        src,
+                        edges,
+                        at + 1,
+                    );
+                    if new_dest_needed {
+                        format!(
+                            "(var $$sel{} := {}; {}({}, {}))",
+                            at,
+                            new_dest,
+                            update_fun,
+                            (*mk_dest)(),
+                            new_src
+                        )
+                    } else {
+                        format!("{}({}, {})", update_fun, (*mk_dest)(), new_src)
+                    }
+                }
+                BorrowEdge::DynamicField(struct_qid, name_type, value_type) => {
+                    let struct_env = &self.parent.env.get_struct_qid(struct_qid.to_qualified_id());
+                    let instantiated_struct_qid = struct_qid.to_owned().instantiate(self.type_inst);
+                    let instantiated_name_type = name_type.instantiate(self.type_inst);
+                    let instantiated_value_type = value_type.instantiate(self.type_inst);
+                    let sel_fun = boogie_dynamic_field_sel(
+                        self.parent.env,
+                        &instantiated_name_type,
+                        &instantiated_value_type,
+                    );
+                    let update_fun = boogie_dynamic_field_update(
+                        &struct_env,
+                        &instantiated_struct_qid.inst,
+                        &instantiated_name_type,
+                        &instantiated_value_type,
+                    );
                     let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
                     let mut new_dest_needed = false;
                     let new_src = self.translate_write_back_update(

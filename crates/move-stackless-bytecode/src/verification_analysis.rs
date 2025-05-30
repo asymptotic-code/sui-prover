@@ -107,14 +107,14 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 && Self::is_within_verification_scope(fun_env)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
-                let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
-                if dynamic_loc.is_some() {
-                    env.diag(
-                        Severity::Error,
-                        &dynamic_loc.unwrap(),
-                        "Function uses unsupported dynamic fields",
-                    );
-                }
+                // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
+                // if dynamic_loc.is_some() {
+                //     env.diag(
+                //         Severity::Error,
+                //         &dynamic_loc.unwrap(),
+                //         "Function uses unsupported dynamic fields",
+                //     );
+                // }
             }
             return data;
         }
@@ -442,40 +442,40 @@ impl VerificationAnalysisProcessor {
         }
     }
 
-    pub fn find_dynamics_in_function(
-        &self, 
-        func_env: &FunctionEnv,
-        data: &FunctionData,
-    ) -> Option<Loc> {
-        let env = func_env.module_env.env;
-        let target = FunctionTarget::new(func_env, data);
+    // pub fn find_dynamics_in_function(
+    //     &self, 
+    //     func_env: &FunctionEnv,
+    //     data: &FunctionData,
+    // ) -> Option<Loc> {
+    //     let env = func_env.module_env.env;
+    //     let target = FunctionTarget::new(func_env, data);
 
-        for cp in target.get_bytecode() {
-            match cp {
-                Bytecode::Call(attr, _, operation, _, _) => {
-                    match operation {
-                        Operation::Function(mod_id, _, _) => {
-                            let module_name = env
-                                .symbol_pool()
-                                .string(env
-                                    .get_module(*mod_id)
-                                    .get_name()
-                                    .name()
-                                );
+    //     for cp in target.get_bytecode() {
+    //         match cp {
+    //             Bytecode::Call(attr, _, operation, _, _) => {
+    //                 match operation {
+    //                     Operation::Function(mod_id, _, _) => {
+    //                         let module_name = env
+    //                             .symbol_pool()
+    //                             .string(env
+    //                                 .get_module(*mod_id)
+    //                                 .get_name()
+    //                                 .name()
+    //                             );
 
-                            if ["dynamic_field", "dynamic_object_field"].contains(&module_name.as_str()) {
-                                return Some(target.get_bytecode_loc(*attr)); 
-                            }
-                        },
-                        _ => {}
-                    };
-                },
-                _ => {},
-            }
-        }
+    //                         if ["dynamic_field", "dynamic_object_field"].contains(&module_name.as_str()) {
+    //                             return Some(target.get_bytecode_loc(*attr)); 
+    //                         }
+    //                     },
+    //                     _ => {}
+    //                 };
+    //             },
+    //             _ => {},
+    //         }
+    //     }
 
-        None
-    }
+    //     None
+    // }
 }
 
 // /// This impl block contains functions on global invariant applicability analysis
