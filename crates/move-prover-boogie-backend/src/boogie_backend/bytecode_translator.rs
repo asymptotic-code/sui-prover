@@ -2581,10 +2581,9 @@ impl<'env> FunctionTranslator<'env> {
 
                                 emitln!(
                                     self.writer(),
-                                    "call {}({}{});",
+                                    "call {}({});",
                                     fun_name,
-                                    args_str,
-                                    ghost_args
+                                    args_str
                                 );
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
@@ -2685,11 +2684,10 @@ impl<'env> FunctionTranslator<'env> {
 
                                 emitln!(
                                     self.writer(),
-                                    "call {} := {}({}{});",
+                                    "call {} := {}({});",
                                     dest_str,
                                     fun_name,
-                                    args_str,
-                                    ghost_args
+                                    args_str
                                 );
                             }
                         }
