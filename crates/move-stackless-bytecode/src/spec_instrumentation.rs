@@ -16,7 +16,7 @@ use move_model::{
     model::{
         DatatypeId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleId, QualifiedId, QualifiedInstId,
     },
-    ty::{Type, TypeDisplayContext, BOOL_TYPE, NUM_TYPE},
+    ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE, NUM_TYPE},
 };
 
 use crate::{
@@ -232,7 +232,7 @@ impl<'a> Instrumenter<'a> {
         // into `Assign(r, c); Jump(AbortLabel)`, as well as `Call(..)` into `Call(..);
         // OnAbort(AbortLabel, r)`. The `OnAbort` is a new instruction: if the last
         // call aborted, it stores the abort code in `r` and jumps to the label.
-        let abort_local = builder.new_temp(NUM_TYPE.clone());
+        let abort_local = builder.new_temp(Type::Primitive(PrimitiveType::U64));
         let abort_label = builder.new_label();
 
         // Translate the specification. This deals with elimination of `old(..)` expressions,

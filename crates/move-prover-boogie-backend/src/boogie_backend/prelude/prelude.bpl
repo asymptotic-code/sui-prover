@@ -43,6 +43,9 @@ function {:inline} $IsEqual'$1_integer_Integer'(x: int, y: int): bool {
 procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y: bool) {
     y := true;
 }
+
+{%- if false -%}
+
 procedure {:inline 1} $1_integer_from_u8(x: int) returns (y: int) {
     y := x;
 }
@@ -79,6 +82,48 @@ procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: int) {
 procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: int) {
     y := x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936;
 }
+
+{%- else %}
+
+procedure {:inline 1} $1_integer_from_u8(x: bv8) returns (y: int) {
+    y := $bv2int.8(x);
+}
+procedure {:inline 1} $1_integer_from_u16(x: bv16) returns (y: int) {
+    y := $bv2int.16(x);
+}
+procedure {:inline 1} $1_integer_from_u32(x: bv32) returns (y: int) {
+    y := $bv2int.32(x);
+}
+procedure {:inline 1} $1_integer_from_u64(x: bv64) returns (y: int) {
+    y := $bv2int.64(x);
+}
+procedure {:inline 1} $1_integer_from_u128(x: bv128) returns (y: int) {
+    y := $bv2int.128(x);
+}
+procedure {:inline 1} $1_integer_from_u256(x: bv256) returns (y: int) {
+    y := $bv2int.256(x);
+}
+procedure {:inline 1} $1_integer_to_u8(x: int) returns (y: bv8) {
+    y := $int2bv.8(x);
+}
+procedure {:inline 1} $1_integer_to_u16(x: int) returns (y: bv16) {
+    y := $int2bv.16(x);
+}
+procedure {:inline 1} $1_integer_to_u32(x: int) returns (y: bv32) {
+    y := $int2bv.32(x);
+}
+procedure {:inline 1} $1_integer_to_u64(x: int) returns (y: bv64) {
+    y := $int2bv.64(x);
+}
+procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: bv128) {
+    y := $int2bv.128(x);
+}
+procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: bv256) {
+    y := $int2bv.256(x);
+}
+
+{%- endif %}
+
 procedure {:inline 1} $1_integer_add(x: int, y: int) returns (z: int) {
     z := x + y;
 }

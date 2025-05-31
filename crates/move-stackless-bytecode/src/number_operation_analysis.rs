@@ -24,12 +24,10 @@ use crate::{
 };
 use itertools::Either;
 use move_binary_format::file_format::CodeOffset;
-use move_model::{
-    model::{FunId, GlobalEnv, ModuleId},
-};
+use move_model::model::{FunId, GlobalEnv, ModuleId};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    str,
+    fmt, str,
 };
 
 static CONFLICT_ERROR_MSG: &str = "cannot appear in both arithmetic and bitwise operation";
@@ -110,6 +108,18 @@ impl FunctionTargetProcessor for NumberOperationProcessor {
 
     fn name(&self) -> String {
         "number_operation_analysis".to_string()
+    }
+
+    fn dump_result(
+        &self,
+        f: &mut fmt::Formatter,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+    ) -> fmt::Result {
+        let state = env
+            .get_extension::<GlobalNumberOperationState>()
+            .expect("number operation analysis not run");
+        state.dump(env, targets, f)
     }
 }
 
@@ -304,7 +314,12 @@ impl NumberOperationAnalysis<'_> {
             {
                 global_state
                     .get_mut_non_param_local_map(mid, fid, baseline_flag)
-                    .insert(i, Bottom);
+                    .insert(
+                        i,
+                        GlobalNumberOperationState::get_default_operation_for_type(
+                            &self.func_target.get_local_type(i),
+                        ),
+                    );
             }
         }
     }

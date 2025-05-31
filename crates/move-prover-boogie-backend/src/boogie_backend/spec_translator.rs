@@ -18,9 +18,7 @@ use move_model::{
     ast::Value,
     code_writer::CodeWriter,
     emit, emitln,
-    model::{
-        DatatypeId, FieldId, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId,
-    },
+    model::{DatatypeId, FieldId, FunctionEnv, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
@@ -52,6 +50,8 @@ pub struct SpecTranslator<'env> {
     options: &'env BoogieOptions,
     /// The code writer.
     writer: &'env CodeWriter,
+    /// If we are translating in the context of a function, the function environment.
+    func_env: Option<&'env FunctionEnv<'env>>,
     /// If we are translating in the context of a type instantiation, the type arguments.
     type_inst: Vec<Type>,
     /// Counter for creating new variables.
@@ -94,6 +94,7 @@ impl<'env> SpecTranslator<'env> {
             env,
             options,
             writer,
+            func_env: None,
             type_inst: vec![],
             fresh_var_count: Default::default(),
             lifted_choice_infos: Default::default(),
@@ -342,16 +343,12 @@ impl<'env> SpecTranslator<'env> {
 // ===========
 
 impl<'env> SpecTranslator<'env> {
-    pub(crate) fn translate(&self, exp: &Exp, type_inst: &[Type]) {
+    pub(crate) fn translate(&self, exp: &Exp, func_env: &FunctionEnv, type_inst: &[Type]) {
         *self.fresh_var_count.borrow_mut() = 0;
-        if type_inst.is_empty() {
-            self.translate_exp(exp)
-        } else {
-            // Use a clone with the given type instantiation.
-            let mut trans = self.clone();
-            trans.type_inst = type_inst.to_owned();
-            trans.translate_exp(exp)
-        }
+        let mut trans = self.clone();
+        trans.func_env = Some(func_env);
+        trans.type_inst = type_inst.to_owned();
+        trans.translate_exp(exp);
     }
 
     fn inst(&self, ty: &Type) -> Type {
@@ -1346,9 +1343,16 @@ impl<'env> SpecTranslator<'env> {
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number state");
         let ty = self.get_node_type(exp.node_id());
-        let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
         match exp.as_ref() {
             ExpData::Temporary(_, idx) => {
+                let bv_flag = global_state
+                    .get_temp_index_oper(
+                        self.func_env.unwrap().module_env.get_id(),
+                        self.func_env.unwrap().get_id(),
+                        *idx,
+                        false,
+                    )
+                    .is_some();
                 // For the special case of a temporary which can represent a
                 // &mut, skip the normal translation of `exp` which would do automatic
                 // dereferencing. Instead let boogie_well_formed_expr handle the
@@ -1382,6 +1386,7 @@ impl<'env> SpecTranslator<'env> {
                 }
             }
             ExpData::LocalVar(_, sym) => {
+                let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
                 // For specification locals (which never can be references) directly emit them.
                 let check = boogie_well_formed_expr_bv(
                     self.env,
@@ -1392,6 +1397,7 @@ impl<'env> SpecTranslator<'env> {
                 emit!(self.writer, &check);
             }
             _ => {
+                let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
                 let check =
                     boogie_well_formed_expr_bv(self.env, "$val", ty.skip_reference(), bv_flag);
                 emit!(self.writer, "(var $val := ");
