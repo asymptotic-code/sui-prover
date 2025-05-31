@@ -7,13 +7,14 @@
 //! which will be used later when the correct number type (int or bv<N>) in the boogie program
 
 use crate::ast::{PropertyValue, TempIndex};
+use crate::function_target_pipeline::FunctionTargetsHolder;
 use itertools::Itertools;
 use move_model::{
     ast::Value,
-    model::{DatatypeId, FieldId, FunId, FunctionEnv, ModuleId, NodeId, StructEnv},
+    model::{DatatypeId, FieldId, FunId, FunctionEnv, GlobalEnv, ModuleId, NodeId, StructEnv},
     ty::Type,
 };
-use std::{collections::BTreeMap, str};
+use std::{collections::BTreeMap, fmt, str};
 
 static PARSING_ERROR: &str = "error happened when parsing the bv pragma";
 
@@ -86,6 +87,21 @@ impl GlobalNumberOperationState {
             bv_temp_vec = idx_vec;
         }
         bv_temp_vec
+    }
+
+    /// Determine the default NumOperation for a given type
+    /// Returns Arithmetic for number types, Bottom for non-number types
+    pub fn get_default_operation_for_type(ty: &Type) -> NumOperation {
+        let base_type = match ty {
+            Type::Reference(_, tr) => tr,
+            Type::Vector(tr) => tr,
+            _ => ty,
+        };
+        if base_type.is_number() {
+            NumOperation::Arithmetic
+        } else {
+            NumOperation::Bottom
+        }
     }
 
     pub fn get_ret_map(&self) -> &FuncOperationMap {
@@ -214,18 +230,7 @@ impl GlobalNumberOperationState {
                 // If not appearing in the pragma, mark it as Arithmetic or Bottom
                 // Similar logic when populating ret_operation_map below
                 let local_ty = func_env.get_local_type(i);
-                let arith_flag = if let Type::Reference(_, tr) = local_ty {
-                    tr.is_number()
-                } else if let Type::Vector(tr) = local_ty {
-                    tr.is_number()
-                } else {
-                    local_ty.is_number()
-                };
-                if arith_flag {
-                    default_map.insert(i, Arithmetic);
-                } else {
-                    default_map.insert(i, Bottom);
-                }
+                default_map.insert(i, Self::get_default_operation_for_type(&local_ty));
             }
         }
 
@@ -235,18 +240,7 @@ impl GlobalNumberOperationState {
                 default_ret_operation_map.insert(i, Bitwise);
             } else {
                 let ret_ty = func_env.get_return_type(i);
-                let arith_flag = if let Type::Reference(_, tr) = ret_ty {
-                    tr.is_number()
-                } else if let Type::Vector(tr) = ret_ty {
-                    tr.is_number()
-                } else {
-                    ret_ty.is_number()
-                };
-                if arith_flag {
-                    default_ret_operation_map.insert(i, Arithmetic);
-                } else {
-                    default_ret_operation_map.insert(i, Bottom);
-                }
+                default_ret_operation_map.insert(i, Self::get_default_operation_for_type(&ret_ty));
             }
         }
 
@@ -278,18 +272,10 @@ impl GlobalNumberOperationState {
                 field_oper_map.insert(field.get_id(), Bitwise);
             } else {
                 let field_ty = field.get_type();
-                let arith_flag = if let Type::Reference(_, tr) = field_ty {
-                    tr.is_number()
-                } else if let Type::Vector(tr) = field_ty {
-                    tr.is_number()
-                } else {
-                    field_ty.is_number()
-                };
-                if arith_flag {
-                    field_oper_map.insert(field.get_id(), Arithmetic);
-                } else {
-                    field_oper_map.insert(field.get_id(), Bottom);
-                }
+                field_oper_map.insert(
+                    field.get_id(),
+                    Self::get_default_operation_for_type(&field_ty),
+                );
             }
         }
         self.struct_operation_map.insert((mid, sid), field_oper_map);
@@ -325,5 +311,96 @@ impl GlobalNumberOperationState {
     /// Gets the number operation of the given node, if available.
     pub fn get_node_num_oper_opt(&self, node_id: NodeId) -> Option<NumOperation> {
         self.exp_operation_map.get(&node_id).copied()
+    }
+
+    /// Dump the analysis results in a human-readable format
+    pub fn dump(
+        &self,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+        f: &mut fmt::Formatter,
+    ) -> fmt::Result {
+        writeln!(f, "\n\n==== number-operation-analysis result ====\n")?;
+
+        let format_operation = |op: &NumOperation| match op {
+            NumOperation::Bottom => "Bottom",
+            NumOperation::Arithmetic => "Arithmetic",
+            NumOperation::Bitwise => "Bitwise",
+        };
+
+        // Print function analysis results
+        for module_env in env.get_modules() {
+            let mid = module_env.get_id();
+            writeln!(f, "module {} = {{", module_env.get_full_name_str())?;
+
+            for func_env in module_env.get_functions() {
+                let fid = func_env.get_id();
+                let baseline_flag = targets.is_verified_spec(&func_env.get_qualified_id());
+                writeln!(f, "  fun {} = {{", func_env.get_full_name_str())?;
+
+                // Print parameters
+                let param_count = func_env.get_parameter_count();
+                if param_count > 0 {
+                    writeln!(f, "    parameters:")?;
+                    for i in 0..param_count {
+                        let operation = self
+                            .get_temp_index_oper(mid, fid, i, baseline_flag)
+                            .unwrap();
+                        let param_name = func_env.get_local_name(i);
+                        writeln!(
+                            f,
+                            "      {}: {}",
+                            param_name.display(env.symbol_pool()),
+                            format_operation(operation)
+                        )?;
+                    }
+                }
+
+                // Print local variables
+                let locals = self.get_non_param_local_map(mid, fid, baseline_flag);
+                if !locals.is_empty() {
+                    writeln!(f, "    locals:")?;
+                    for (&idx, operation) in locals {
+                        if idx >= param_count {
+                            writeln!(f, "      local[{}]: {}", idx, format_operation(operation))?;
+                        }
+                    }
+                }
+
+                // Print return values
+                let ret_map = self.ret_operation_map.get(&(mid, fid)).unwrap();
+                if !ret_map.is_empty() {
+                    writeln!(f, "    returns:")?;
+                    for (i, operation) in ret_map {
+                        writeln!(f, "      return[{}]: {}", i, format_operation(operation))?;
+                    }
+                }
+
+                writeln!(f, "  }}")?;
+            }
+
+            // Print structs for this module
+            for struct_env in module_env.get_structs() {
+                let sid = struct_env.get_id();
+                writeln!(f, "  struct {} = {{", struct_env.get_full_name_str())?;
+
+                let field_map = self.struct_operation_map.get(&(mid, sid)).unwrap();
+                for field_env in struct_env.get_fields() {
+                    let field_id = field_env.get_id();
+                    let operation = field_map.get(&field_id).unwrap();
+                    writeln!(
+                        f,
+                        "    {}: {}",
+                        field_env.get_name().display(env.symbol_pool()),
+                        format_operation(operation)
+                    )?;
+                }
+                writeln!(f, "  }}")?;
+            }
+
+            writeln!(f, "}}")?;
+        }
+
+        Ok(())
     }
 }
