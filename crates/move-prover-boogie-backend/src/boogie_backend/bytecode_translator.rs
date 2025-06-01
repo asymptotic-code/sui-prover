@@ -59,17 +59,17 @@ use crate::boogie_backend::{
     boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_dynamic_field_sel, boogie_enum_field_name,
-        boogie_enum_field_update, boogie_enum_name, boogie_enum_name_prefix,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
-        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
-        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
-        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
-        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
-        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
-        TypeIdentToken,
+        boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
+        boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
+        boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type,
+        boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name,
+        boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name,
+        boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
+        boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name,
+        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
+        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
+        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
+        FunctionTranslationStyle, TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -2632,12 +2632,7 @@ impl<'env> FunctionTranslator<'env> {
                                     };
                                 }
 
-                                emitln!(
-                                    self.writer(),
-                                    "call {}({});",
-                                    fun_name,
-                                    args_str
-                                );
+                                emitln!(self.writer(), "call {}({});", fun_name, args_str);
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
                                 let bv_flag = !srcs.is_empty() && compute_flag(srcs[0]);
