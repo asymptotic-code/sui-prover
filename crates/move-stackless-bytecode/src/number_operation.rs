@@ -97,11 +97,12 @@ impl GlobalNumberOperationState {
             Type::Vector(tr) => tr,
             _ => ty,
         };
-        if base_type.is_number() {
-            NumOperation::Arithmetic
-        } else {
-            NumOperation::Bottom
-        }
+        // if base_type.is_number() {
+        //     NumOperation::Arithmetic
+        // } else {
+        //     NumOperation::Bottom
+        // }
+        NumOperation::Bitwise
     }
 
     pub fn get_ret_map(&self) -> &FuncOperationMap {

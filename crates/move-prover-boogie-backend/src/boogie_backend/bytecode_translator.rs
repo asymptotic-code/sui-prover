@@ -3506,7 +3506,7 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        emitln!(self.writer(), "{} := $abort_code;", code_str);
+                        emitln!(self.writer(), "{} := $int2bv.64($abort_code);", code_str);
                         self.track_abort(&code_str);
                         emitln!(self.writer(), "goto L{};", target.as_usize());
                         self.writer().unindent();
@@ -3559,7 +3559,7 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&self.fun_target.func_env.get_loc()),
                     );
                 }
-                emitln!(self.writer(), "$abort_code := {};", str_local(*src));
+                emitln!(self.writer(), "$abort_code := $bv2int.64({});", str_local(*src));
                 emitln!(self.writer(), "$abort_flag := true;");
                 emitln!(self.writer(), "return;")
             }
