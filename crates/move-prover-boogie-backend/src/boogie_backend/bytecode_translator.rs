@@ -1770,7 +1770,9 @@ impl<'env> FunctionTranslator<'env> {
         }
 
         // Add global ghost variables that can be used in this function
-        if self.style == FunctionTranslationStyle::Default {
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
                 let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
@@ -1845,7 +1847,9 @@ impl<'env> FunctionTranslator<'env> {
         }
 
         // Initialize ghost variables
-        if self.style == FunctionTranslationStyle::Default {
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
                 let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
