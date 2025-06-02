@@ -601,7 +601,7 @@ impl<'env> BoogieTranslator<'env> {
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
-        let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
+        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
         let mut dummy_targets = FunctionTargetsHolder::new();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
@@ -1968,12 +1968,12 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&loc),
                         info
                     );
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target.func_env, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Assume => {
                     emit!(self.writer(), "assume ");
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target.func_env, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Modifies => {
@@ -1992,13 +1992,13 @@ impl<'env> FunctionTranslator<'env> {
                         let val_str = boogie_temp(env, ty, 0, bv_flag);
                         emitln!(self.writer(), "havoc {};", val_str);
                         emit!(self.writer(), "{} := $ResourceUpdate({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target.func_env, self.type_inst);
                         emitln!(self.writer(), ", {});", val_str);
                     });
                     emitln!(self.writer(), "} else {");
                     self.writer().with_indent(|| {
                         emit!(self.writer(), "{} := $ResourceRemove({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target.func_env, self.type_inst);
                         emitln!(self.writer(), ");");
                     });
                     emitln!(self.writer(), "}");
@@ -3559,7 +3559,11 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&self.fun_target.func_env.get_loc()),
                     );
                 }
-                emitln!(self.writer(), "$abort_code := $bv2int.64({});", str_local(*src));
+                emitln!(
+                    self.writer(),
+                    "$abort_code := $bv2int.64({});",
+                    str_local(*src)
+                );
                 emitln!(self.writer(), "$abort_flag := true;");
                 emitln!(self.writer(), "return;")
             }

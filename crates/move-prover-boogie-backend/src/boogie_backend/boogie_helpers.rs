@@ -557,7 +557,6 @@ pub fn boogie_equality_for_type(env: &GlobalEnv, eq: bool, ty: &Type, bv_flag: b
 /// Create boogie well-formed boolean expression
 /// TODO(tengzhang): combine with boogie_well_formed_expr
 pub fn boogie_well_formed_expr_bv(env: &GlobalEnv, name: &str, ty: &Type, bv_flag: bool) -> String {
-    let bv_flag = true;
     let target = if ty.is_reference() {
         format!("$Dereference({})", name)
     } else {
