@@ -1616,7 +1616,7 @@ impl<'env> FunctionTranslator<'env> {
             .expect("global number operation state");
         let mid = fun_target.func_env.module_env.get_id();
         let fid = fun_target.func_env.get_id();
-        let args = (0..fun_target.get_parameter_count())
+        let regular_args = (0..fun_target.get_parameter_count())
             .map(|i| {
                 let ty = self.get_local_type(i);
                 // Boogie does not allow to assign to parameters, so we need to proxy them.
@@ -1635,29 +1635,32 @@ impl<'env> FunctionTranslator<'env> {
                     self.boogie_type_for_fun(env, &ty, num_oper)
                 )
             })
-            .join(", ");
+            .collect::<Vec<_>>();
 
         let ghost_args = if self.style == FunctionTranslationStyle::Asserts
             || self.style == FunctionTranslationStyle::Aborts
         {
             let ghost_vars = self.get_ghost_vars();
             if !ghost_vars.is_empty() {
-                format!(
-                    ", {}",
-                    ghost_vars
-                        .into_iter()
-                        .map(|type_inst| {
-                            let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
-                            format!("$ghost_{}: {}", var_name, boogie_type(env, &type_inst[1]))
-                        })
-                        .join(", ")
-                )
+                ghost_vars
+                    .into_iter()
+                    .map(|type_inst| {
+                        let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
+                        format!("$ghost_{}: {}", var_name, boogie_type(env, &type_inst[1]))
+                    })
+                    .collect::<Vec<_>>()
             } else {
-                String::new()
+                Vec::new()
             }
         } else {
-            String::new()
+            Vec::new()
         };
+
+        let all_args = regular_args
+            .into_iter()
+            .chain(ghost_args)
+            .collect::<Vec<_>>();
+        let args = all_args.join(", ");
 
         let mut_ref_inputs = (0..fun_target.get_parameter_count())
             .enumerate()
@@ -1692,7 +1695,7 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }))
             .join(", ");
-        (format!("{}{}", args, ghost_args), rets)
+        (args, rets)
     }
 
     /// Generates boogie implementation body.
@@ -2467,30 +2470,34 @@ impl<'env> FunctionTranslator<'env> {
                             {
                                 emitln!(self.writer(), "havoc $abort_flag;");
                             } else {
+                                let regular_args =
+                                    srcs.iter().cloned().map(str_local).collect::<Vec<_>>();
                                 let ghost_args = if !self.get_ghost_vars().is_empty() {
-                                    format!(
-                                        ", {}",
-                                        self.get_ghost_vars()
-                                            .into_iter()
-                                            .map(|type_inst| {
-                                                let var_name = boogie_spec_global_var_name(
-                                                    self.parent.env,
-                                                    &type_inst,
-                                                );
-                                                format!("$ghost_{}", var_name)
-                                            })
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    )
+                                    self.get_ghost_vars()
+                                        .into_iter()
+                                        .map(|type_inst| {
+                                            let var_name = boogie_spec_global_var_name(
+                                                self.parent.env,
+                                                &type_inst,
+                                            );
+                                            format!("$ghost_{}", var_name)
+                                        })
+                                        .collect::<Vec<_>>()
                                 } else {
-                                    String::new()
+                                    Vec::new()
                                 };
+
+                                let all_args = regular_args
+                                    .into_iter()
+                                    .chain(ghost_args)
+                                    .collect::<Vec<_>>();
+                                let args_str = all_args.join(", ");
+
                                 emitln!(
                                     self.writer(),
-                                    "call $abort_if_cond := {}({}{});",
+                                    "call $abort_if_cond := {}({});",
                                     self.function_variant_name(FunctionTranslationStyle::Aborts),
                                     args_str,
-                                    ghost_args,
                                 );
                                 emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
                             }
@@ -3695,36 +3702,41 @@ impl<'env> FunctionTranslator<'env> {
                         .contains(&self.fun_target.func_env.get_qualified_id())
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
+                    let regular_args = (0..fun_target.get_parameter_count())
+                        .map(|i| {
+                            let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
+                                "_$"
+                            } else {
+                                "$"
+                            };
+                            format!("{}t{}", prefix, i)
+                        })
+                        .collect::<Vec<_>>();
+
                     let ghost_args = if !self.get_ghost_vars().is_empty() {
-                        format!(
-                            ", {}",
-                            self.get_ghost_vars()
-                                .into_iter()
-                                .map(|type_inst| {
-                                    let var_name =
-                                        boogie_spec_global_var_name(self.parent.env, &type_inst);
-                                    format!("$ghost_{}", var_name)
-                                })
-                                .join(", ")
-                        )
+                        self.get_ghost_vars()
+                            .into_iter()
+                            .map(|type_inst| {
+                                let var_name =
+                                    boogie_spec_global_var_name(self.parent.env, &type_inst);
+                                format!("$ghost_{}", var_name)
+                            })
+                            .collect::<Vec<_>>()
                     } else {
-                        String::new()
+                        Vec::new()
                     };
+
+                    let all_args = regular_args
+                        .into_iter()
+                        .chain(ghost_args)
+                        .collect::<Vec<_>>();
+                    let args_str = all_args.join(", ");
+
                     emitln!(
                         self.writer(),
-                        "call $abort_if_cond := {}({}{});",
+                        "call $abort_if_cond := {}({});",
                         self.function_variant_name(FunctionTranslationStyle::Aborts),
-                        (0..fun_target.get_parameter_count())
-                            .map(|i| {
-                                let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
-                                    "_$"
-                                } else {
-                                    "$"
-                                };
-                                format!("{}t{}", prefix, i)
-                            })
-                            .join(", "),
-                        ghost_args,
+                        args_str,
                     );
                     emitln!(
                         self.writer(),
