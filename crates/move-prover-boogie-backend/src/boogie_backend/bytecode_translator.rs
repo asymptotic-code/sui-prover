@@ -469,7 +469,9 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-        let omit_havoc = self.targets.omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+        let omit_havoc = self
+            .targets
+            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -1363,7 +1365,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     pub fn new(
-        parent: &'env BoogieTranslator,
+        parent: &'env BoogieTranslator<'env>,
         fun_target: &'env FunctionTarget<'env>,
         type_inst: &'env [Type],
         style: FunctionTranslationStyle,
@@ -1374,6 +1376,11 @@ impl<'env> FunctionTranslator<'env> {
             type_inst,
             style,
         }
+    }
+
+    fn ghost_var_name(&self, type_inst: &[Type]) -> String {
+        let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+        format!("$ghost_{}", var_name)
     }
 
     /// Return whether a specific TempIndex involves in bitwise operations
@@ -1614,7 +1621,7 @@ impl<'env> FunctionTranslator<'env> {
             .expect("global number operation state");
         let mid = fun_target.func_env.module_env.get_id();
         let fid = fun_target.func_env.get_id();
-        let args = (0..fun_target.get_parameter_count())
+        let regular_args = (0..fun_target.get_parameter_count())
             .map(|i| {
                 let ty = self.get_local_type(i);
                 // Boogie does not allow to assign to parameters, so we need to proxy them.
@@ -1633,7 +1640,32 @@ impl<'env> FunctionTranslator<'env> {
                     self.boogie_type_for_fun(env, &ty, num_oper)
                 )
             })
-            .join(", ");
+            .collect::<Vec<_>>();
+
+        let ghost_args = if self.style == FunctionTranslationStyle::Asserts
+            || self.style == FunctionTranslationStyle::Aborts
+        {
+            let ghost_vars = self.get_ghost_vars();
+            if !ghost_vars.is_empty() {
+                ghost_vars
+                    .into_iter()
+                    .map(|type_inst| {
+                        format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let all_args = regular_args
+            .into_iter()
+            .chain(ghost_args)
+            .collect::<Vec<_>>();
+        let args = all_args.join(", ");
+
         let mut_ref_inputs = (0..fun_target.get_parameter_count())
             .enumerate()
             .filter_map(|(i, idx)| {
@@ -1743,6 +1775,22 @@ impl<'env> FunctionTranslator<'env> {
                 self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
             );
         }
+
+        // Add global ghost variables that can be used in this function
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
+            let ghost_vars = self.get_ghost_vars();
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "var {}: {};",
+                    self.ghost_var_name(&type_inst),
+                    boogie_type(env, &type_inst[1])
+                );
+            }
+        }
+
         // Generate declarations for modifies condition.
         let mut mem_inst_seen = BTreeSet::new();
         for qid in fun_target.get_modify_ids() {
@@ -1802,6 +1850,21 @@ impl<'env> FunctionTranslator<'env> {
         // Initialize renamed parameters.
         for (idx, _) in proxied_parameters {
             emitln!(writer, "$t{} := _$t{};", idx, idx);
+        }
+
+        // Initialize ghost variables
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
+            let ghost_vars = self.get_ghost_vars();
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "{} := {};",
+                    self.ghost_var_name(&type_inst),
+                    boogie_spec_global_var_name(self.parent.env, &type_inst)
+                );
+            }
         }
 
         // Initial assumptions
@@ -1871,6 +1934,23 @@ impl<'env> FunctionTranslator<'env> {
                 emitln!(writer, "assume $t{}->l == $Param({});", i, i);
             }
         }
+    }
+
+    fn get_ghost_vars(&self) -> BTreeSet<Vec<Type>> {
+        let spec_id = &self.fun_target.func_env.get_qualified_id();
+        let spec_info = spec_global_variable_analysis::get_info(
+            self.parent
+                .targets
+                .get_data(spec_id, &FunctionVariant::Baseline)
+                .unwrap(),
+        );
+        spec_info
+            .all_vars()
+            .map(|type_inst| {
+                // Instantiate each type in the type_inst with the concrete types
+                type_inst.iter().map(|ty| self.inst(ty)).collect()
+            })
+            .collect()
     }
 }
 
@@ -2065,9 +2145,13 @@ impl<'env> FunctionTranslator<'env> {
                                 };
                                 format!("{}t{}", prefix, i)
                             })
+                            .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
+                                self.ghost_var_name(&type_inst)
+                            }))
                             .join(", "),
                     );
                 }
+
                 for (i, r) in rets.iter().enumerate() {
                     emitln!(self.writer(), "$ret{} := {};", i, str_local(*r));
                 }
@@ -2303,6 +2387,16 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
+                        if callee_env.get_qualified_id() == self.parent.env.global_qid()
+                            && (self.style == FunctionTranslationStyle::Asserts
+                                || self.style == FunctionTranslationStyle::Aborts)
+                        {
+                            let var_name = boogie_spec_global_var_name(self.parent.env, inst);
+
+                            emitln!(self.writer(), "{} := $ghost_{};", dest_str, var_name);
+                            processed = true;
+                        }
+
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             emitln!(
                                 self.writer(),
@@ -2320,7 +2414,7 @@ impl<'env> FunctionTranslator<'env> {
                                 self.writer(),
                                 "assert {{:msg \"assert_failed{}: prover::asserts assertion does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
-                                args_str,
+                                args_str.to_string(),
                             );
                             processed = true;
                         }
@@ -2381,6 +2475,25 @@ impl<'env> FunctionTranslator<'env> {
                             {
                                 emitln!(self.writer(), "havoc $abort_flag;");
                             } else {
+                                let regular_args =
+                                    srcs.iter().cloned().map(str_local).collect::<Vec<_>>();
+                                let ghost_args = if !self.get_ghost_vars().is_empty() {
+                                    self.get_ghost_vars()
+                                        .into_iter()
+                                        .map(|type_inst| {
+                                            self.ghost_var_name(&type_inst)
+                                        })
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    Vec::new()
+                                };
+
+                                let all_args = regular_args
+                                    .into_iter()
+                                    .chain(ghost_args)
+                                    .collect::<Vec<_>>();
+                                let args_str = all_args.join(", ");
+
                                 emitln!(
                                     self.writer(),
                                     "call $abort_if_cond := {}({});",
@@ -2428,10 +2541,7 @@ impl<'env> FunctionTranslator<'env> {
 
                             let id = &self.fun_target.func_env.get_qualified_id();
 
-                            if self
-                                .parent
-                                .targets
-                                .get_fun_by_spec(id)
+                            if self.parent.targets.get_fun_by_spec(id)
                                 == Some(&QualifiedId {
                                     module_id: *mid,
                                     id: *fid,
@@ -2449,7 +2559,15 @@ impl<'env> FunctionTranslator<'env> {
                                 {
                                     let use_impl = self.parent.targets.omits_opaque(id);
                                     let verified = self.parent.targets.is_verified_spec(id);
-                                    let suffix = if use_impl { if verified { "$impl" } else { "" } } else { "$opaque" };
+                                    let suffix = if use_impl {
+                                        if verified {
+                                            "$impl"
+                                        } else {
+                                            ""
+                                        }
+                                    } else {
+                                        "$opaque"
+                                    };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
@@ -2503,6 +2621,7 @@ impl<'env> FunctionTranslator<'env> {
                                         &[false, bv_flag],
                                     );
                                 }
+
                                 emitln!(self.writer(), "call {}({});", fun_name, args_str);
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
@@ -2573,6 +2692,7 @@ impl<'env> FunctionTranslator<'env> {
                                         );
                                     }
                                 }
+
                                 emitln!(
                                     self.writer(),
                                     "call {} := {}({});",
@@ -2585,11 +2705,7 @@ impl<'env> FunctionTranslator<'env> {
 
                         let id = &self.fun_target.func_env.get_qualified_id();
 
-                        if self
-                            .parent
-                            .targets
-                            .get_fun_by_spec(id)
-                            == Some(&mid.qualified(*fid))
+                        if self.parent.targets.get_fun_by_spec(id) == Some(&mid.qualified(*fid))
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
@@ -3538,20 +3654,39 @@ impl<'env> FunctionTranslator<'env> {
                         .contains(&self.fun_target.func_env.get_qualified_id())
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
+                    let regular_args = (0..fun_target.get_parameter_count())
+                        .map(|i| {
+                            let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
+                                "_$"
+                            } else {
+                                "$"
+                            };
+                            format!("{}t{}", prefix, i)
+                        })
+                        .collect::<Vec<_>>();
+
+                    let ghost_args = if !self.get_ghost_vars().is_empty() {
+                        self.get_ghost_vars()
+                            .into_iter()
+                            .map(|type_inst| {
+                                format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let all_args = regular_args
+                        .into_iter()
+                        .chain(ghost_args)
+                        .collect::<Vec<_>>();
+                    let args_str = all_args.join(", ");
+
                     emitln!(
                         self.writer(),
                         "call $abort_if_cond := {}({});",
                         self.function_variant_name(FunctionTranslationStyle::Aborts),
-                        (0..fun_target.get_parameter_count())
-                            .map(|i| {
-                                let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
-                                    "_$"
-                                } else {
-                                    "$"
-                                };
-                                format!("{}t{}", prefix, i)
-                            })
-                            .join(", "),
+                        args_str,
                     );
                     emitln!(
                         self.writer(),
