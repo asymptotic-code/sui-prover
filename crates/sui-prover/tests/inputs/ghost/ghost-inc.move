@@ -27,8 +27,6 @@ fun inc_spec(x: u64): u64 {
 
     let result = inc(x);
 
-    ghost::set<GhostStruct, bool>(&true);
-
     ensures(result == x + 1);
     ensures(ghost::global<GhostStruct, _>() == true);
 
@@ -41,8 +39,6 @@ fun inc_saturated_spec(x: u64): u64 {
     requires(ghost::global<GhostStruct, _>() == false);
 
     let result = inc_saturated(x);
-
-    ghost::set<GhostStruct, bool>(&(x != u64::max_value!()));
 
     ensures((ghost::global<GhostStruct, _>() == true) == (x != u64::max_value!()));
 

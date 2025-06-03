@@ -2621,28 +2621,6 @@ impl<'env> FunctionTranslator<'env> {
                                     );
                                 }
 
-                                let mut ghost_args: String = String::new();
-                                if callee_env.get_qualified_id() != self.parent.env.requires_qid() {
-                                    ghost_args = if !self.get_ghost_vars().is_empty() {
-                                        format!(
-                                            ", {}",
-                                            self.get_ghost_vars()
-                                                .into_iter()
-                                                .map(|type_inst| {
-                                                    let var_name = boogie_spec_global_var_name(
-                                                        self.parent.env,
-                                                        &type_inst,
-                                                    );
-                                                    format!("$ghost_{}", var_name)
-                                                })
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        )
-                                    } else {
-                                        String::new()
-                                    };
-                                }
-
                                 emitln!(self.writer(), "call {}({});", fun_name, args_str);
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
@@ -2712,33 +2690,6 @@ impl<'env> FunctionTranslator<'env> {
                                             args_str
                                         );
                                     }
-                                }
-
-                                let mut ghost_args: String = String::new();
-
-                                if fun_name.ends_with("$opaque")
-                                    || fun_name.ends_with("$aborts")
-                                    || (self.style == FunctionTranslationStyle::Default
-                                        && !fun_name.ends_with("$impl"))
-                                {
-                                    ghost_args = if !self.get_ghost_vars().is_empty() {
-                                        format!(
-                                            ", {}",
-                                            self.get_ghost_vars()
-                                                .into_iter()
-                                                .map(|type_inst| {
-                                                    let var_name = boogie_spec_global_var_name(
-                                                        self.parent.env,
-                                                        &type_inst,
-                                                    );
-                                                    format!("$ghost_{}", var_name)
-                                                })
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        )
-                                    } else {
-                                        String::new()
-                                    };
                                 }
 
                                 emitln!(
