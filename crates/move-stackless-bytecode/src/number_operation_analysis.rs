@@ -446,7 +446,7 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                             self.check_and_update_oper_dest(
                                 state,
                                 dests,
-                                Bitwise,
+                                Arithmetic,
                                 cur_mid,
                                 cur_fid,
                                 &mut global_state,

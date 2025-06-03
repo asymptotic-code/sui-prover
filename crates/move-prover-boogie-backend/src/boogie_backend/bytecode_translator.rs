@@ -3423,7 +3423,16 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        make_bitwise(bv_oper_str, op1, op2, dest);
+                        // make_bitwise(&bv_oper, op1, op2, dest);
+                        emitln!(
+                            self.writer(),
+                            "call {} := {}Int'u{}'({}, {});",
+                            str_local(dest),
+                            bv_oper_str,
+                            boogie_num_type_base(&self.get_local_type(dest)),
+                            str_local(op1),
+                            str_local(op2),
+                        );
                     }
                     Uninit => {
                         emitln!(

@@ -323,6 +323,22 @@ procedure {:inline 1} $bv2int{{impl.base}}(src: bv{{impl.base}}) returns (dst: i
 function {:builtin "(_ int2bv {{impl.base}})"} $int2bv.{{impl.base}}(i: int) returns (bv{{impl.base}});
 function {:builtin "bv2nat"} $bv2int.{{impl.base}}(i: bv{{impl.base}}) returns (int);
 
+function $andInt'u{{impl.base}}'(src1: int, src2: int) returns (int);
+function $orInt'u{{impl.base}}'(src1: int, src2: int) returns (int);
+function $xorInt'u{{impl.base}}'(src1: int, src2: int) returns (int);
+procedure {:inline 1} $AndInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $andInt'u{{impl.base}}'(src1, src2);
+}
+procedure {:inline 1} $OrInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $orInt'u{{impl.base}}'(src1, src2);
+}
+procedure {:inline 1} $XorInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $xorInt'u{{impl.base}}'(src1, src2);
+}
+
 {%- endfor %}
 
 datatype $Range {
