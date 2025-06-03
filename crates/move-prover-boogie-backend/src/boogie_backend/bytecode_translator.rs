@@ -1378,6 +1378,11 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
+    fn ghost_var_name(&self, type_inst: &[Type]) -> String {
+        let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+        format!("$ghost_{}", var_name)
+    }
+
     /// Return whether a specific TempIndex involves in bitwise operations
     pub fn bv_flag(&self, num_oper: &NumOperation) -> bool {
         *num_oper == Bitwise
@@ -1645,8 +1650,7 @@ impl<'env> FunctionTranslator<'env> {
                 ghost_vars
                     .into_iter()
                     .map(|type_inst| {
-                        let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
-                        format!("$ghost_{}: {}", var_name, boogie_type(env, &type_inst[1]))
+                        format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
                     })
                     .collect::<Vec<_>>()
             } else {
@@ -1778,11 +1782,10 @@ impl<'env> FunctionTranslator<'env> {
         {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
-                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
                 emitln!(
                     writer,
-                    "var $ghost_{}: {};",
-                    var_name,
+                    "var {}: {};",
+                    self.ghost_var_name(&type_inst),
                     boogie_type(env, &type_inst[1])
                 );
             }
@@ -1855,8 +1858,12 @@ impl<'env> FunctionTranslator<'env> {
         {
             let ghost_vars = self.get_ghost_vars();
             for type_inst in ghost_vars {
-                let var_name = boogie_spec_global_var_name(self.parent.env, &type_inst);
-                emitln!(writer, "$ghost_{} := {};", var_name, var_name);
+                emitln!(
+                    writer,
+                    "{} := {};",
+                    self.ghost_var_name(&type_inst),
+                    boogie_spec_global_var_name(self.parent.env, &type_inst)
+                );
             }
         }
 
@@ -2139,9 +2146,7 @@ impl<'env> FunctionTranslator<'env> {
                                 format!("{}t{}", prefix, i)
                             })
                             .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
-                                let var_name =
-                                    boogie_spec_global_var_name(self.parent.env, &type_inst);
-                                format!("$ghost_{}", var_name)
+                                self.ghost_var_name(&type_inst)
                             }))
                             .join(", "),
                     );
@@ -2476,11 +2481,7 @@ impl<'env> FunctionTranslator<'env> {
                                     self.get_ghost_vars()
                                         .into_iter()
                                         .map(|type_inst| {
-                                            let var_name = boogie_spec_global_var_name(
-                                                self.parent.env,
-                                                &type_inst,
-                                            );
-                                            format!("$ghost_{}", var_name)
+                                            self.ghost_var_name(&type_inst)
                                         })
                                         .collect::<Vec<_>>()
                                 } else {
@@ -3668,9 +3669,7 @@ impl<'env> FunctionTranslator<'env> {
                         self.get_ghost_vars()
                             .into_iter()
                             .map(|type_inst| {
-                                let var_name =
-                                    boogie_spec_global_var_name(self.parent.env, &type_inst);
-                                format!("$ghost_{}", var_name)
+                                format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
                             })
                             .collect::<Vec<_>>()
                     } else {
