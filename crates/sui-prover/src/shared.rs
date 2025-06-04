@@ -9,6 +9,7 @@ use termcolor::Buffer;
 use crate::package_resolution_graph::resolution_graph_for_package;
 use crate::legacy_builder::ModelBuilderLegacy;
 use crate::prove::BuildConfig;
+use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 
 pub fn move_model_for_package_legacy(
     config: MoveBuildConfig,
@@ -57,15 +58,25 @@ pub fn build_model(path: Option<&Path>, build_config: BuildConfig) -> anyhow::Re
     )
 }
 
-pub fn build_defalt_model(path: Option<&Path>) -> anyhow::Result<GlobalEnv> {
+pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv, PathBuf, FunctionTargetsHolder)> {
     let rerooted_path = reroot_path(path)?;
     let move_build_config = resolve_lock_file_path(
         BuildConfig::default().into(), 
         Some(&rerooted_path),
     )?;
 
-    move_model_for_package_legacy(
+    let model = move_model_for_package_legacy(
         move_build_config,
         &rerooted_path,
-    )
+    )?;
+
+    let mut targets = FunctionTargetsHolder::new();
+
+    for module in model.get_modules() {
+        for func_env in module.get_functions() {
+            targets.add_target(&func_env);
+        }
+    }
+
+    Ok((model, rerooted_path, targets))
 }

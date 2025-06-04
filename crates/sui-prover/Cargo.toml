@@ -21,6 +21,7 @@ telemetry-subscribers.workspace = true
 move-core-types.workspace = true
 move-compiler.workspace = true
 move-prover-boogie-backend.workspace = true
+move-stackless-bytecode.workspace = true
 move-package.workspace = true
 move-model.workspace = true
 move-symbol-pool.workspace = true
