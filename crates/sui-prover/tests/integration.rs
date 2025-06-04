@@ -8,7 +8,7 @@ use move_prover_boogie_backend::{
 use regex::Regex;
 use std::fs::{copy, create_dir_all, remove_dir_all, remove_file};
 use std::path::{Path, PathBuf};
-use sui_prover::prove::move_model_for_package_legacy;
+use sui_prover::shared::move_model_for_package_legacy;
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &PathBuf) -> String {

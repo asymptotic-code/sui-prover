@@ -1,4 +1,5 @@
 pub mod prove;
+pub mod shared;
 pub mod llm_explain;
 pub mod prompts;
 pub mod legacy_builder;

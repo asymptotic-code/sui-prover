@@ -11,6 +11,8 @@ mod prompts;
 mod legacy_builder;
 mod package_resolution_graph;
 
+pub mod shared;
+
 #[derive(Parser)]
 #[clap(
     name = env!("CARGO_BIN_NAME"),
