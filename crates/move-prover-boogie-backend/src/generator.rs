@@ -326,9 +326,11 @@ pub fn verify_boogie(
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
 
-    debug!("writing boogie to `{}`", &file_name);
-
-    writer.process_result(|result| fs::write(&file_name, result))?;
+    writer.process_result(|result| if cfg!(target_os = "windows") {
+        fs::write(&file_name.replace("::", "_"), result)
+    } else {
+        fs::write(&file_name, result)
+    })?;
     
     if !options.prover.generate_only {
         let boogie = BoogieWrapper {

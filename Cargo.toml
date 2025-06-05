@@ -5,6 +5,7 @@ members = [
   "crates/move-model",
   "crates/move-stackless-bytecode",
   "crates/move-prover-boogie-backend",
+  "crates/move-prover-lean-backend",
 ]
 
 [profile.release]
@@ -28,6 +29,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 move-model = { path = "crates/move-model" }
 move-stackless-bytecode = { path = "crates/move-stackless-bytecode" }
 move-prover-boogie-backend = { path = "crates/move-prover-boogie-backend" }
+move-prover-lean-backend = { path = "crates/move-prover-lean-backend" }
 
 anyhow = "1.0.71"
 clap = { version = "4.4", features = ["derive", "wrap_help", "env"] }

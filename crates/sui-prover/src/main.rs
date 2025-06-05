@@ -19,7 +19,7 @@ mod package_resolution_graph;
     author,
     version = env!("CARGO_PKG_VERSION"),
 )]
-struct Args {
+pub struct Args {
     /// Path to package directory with a Move.toml inside
     #[clap(long = "path", short = 'p', global = true)]
     pub package_path: Option<PathBuf>,
@@ -53,7 +53,7 @@ async fn main() {
 
     debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
-    let result = execute(args.package_path.as_deref(), args.general_config, args.build_config, args.boogie_config).await;
+    let result = execute(args.package_path.as_deref(), args.build_config, &args.general_config, args.boogie_config).await;
 
     match result {
         Ok(_) => (),

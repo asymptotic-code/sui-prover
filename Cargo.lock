@@ -1995,6 +1995,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "move-prover-lean-backend"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bimap",
+ "clap",
+ "codespan",
+ "codespan-reporting",
+ "futures",
+ "itertools 0.13.0",
+ "log",
+ "move-binary-format",
+ "move-command-line-common",
+ "move-compiler",
+ "move-core-types",
+ "move-docgen",
+ "move-model 0.1.0",
+ "move-stackless-bytecode",
+ "num",
+ "once_cell",
+ "pretty",
+ "rand 0.8.5",
+ "regex",
+ "serde",
+ "simplelog",
+ "tera",
+ "tokio",
+ "toml 0.7.8",
+]
+
+[[package]]
 name = "move-stackless-bytecode"
 version = "0.1.0"
 dependencies = [
@@ -3377,6 +3409,7 @@ dependencies = [
  "move-model 0.1.0",
  "move-package",
  "move-prover-boogie-backend",
+ "move-prover-lean-backend",
  "move-symbol-pool",
  "openai_api_rust",
  "petgraph",

@@ -1,16 +1,26 @@
-use clap::Args;
-use move_compiler::editions::{Edition, Flavor};
-use move_model::model::GlobalEnv;
-use move_package::{source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig, LintFlag, package_lock::PackageLock};
-use move_core_types::account_address::AccountAddress;
-use log::LevelFilter;
-use std::{collections::BTreeMap, path::{Path,PathBuf}};
-use codespan_reporting::term::termcolor::Buffer;
-use crate::package_resolution_graph::resolution_graph_for_package;
 use crate::legacy_builder::ModelBuilderLegacy;
 use crate::llm_explain::explain_err;
+use crate::package_resolution_graph::resolution_graph_for_package;
+use clap::Args;
+use codespan_reporting::term::termcolor::Buffer;
+use log::LevelFilter;
+use move_compiler::editions::{Edition, Flavor};
+use move_core_types::account_address::AccountAddress;
+use move_model::model::GlobalEnv;
+use move_package::{
+    package_lock::PackageLock, source_package::layout::SourcePackageLayout,
+    BuildConfig as MoveBuildConfig, LintFlag,
+};
+use std::{
+    collections::BTreeMap
+    ,
+    path::{Path, PathBuf},
+};
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{Options, BoogieFileMode}};
+use move_prover_boogie_backend::{
+    generator::run_boogie_gen,
+    generator_options::BoogieFileMode,
+};
 
 pub fn move_model_for_package_legacy(
     config: MoveBuildConfig,
@@ -65,7 +75,7 @@ pub struct GeneralConfig {
     #[clap(name = "verbose", long, short = 'v', global = true)]
     pub verbose: bool,
 
-    /// Explain the proving outputs via LLM 
+    /// Explain the proving outputs via LLM
     #[clap(name = "explain", long, global = true)]
     pub explain: bool,
 
@@ -80,6 +90,10 @@ pub struct GeneralConfig {
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
+
+    /// Lean running mode
+    #[clap(name = "lean-backend", long, short = 'l', global = true)]
+    pub use_lean_backend: bool,
 }
 
 #[derive(Args, Default)]
@@ -121,34 +135,45 @@ pub struct BuildConfig {
 
 pub async fn execute(
     path: Option<&Path>,
-    general_config: GeneralConfig,
     build_config: BuildConfig,
+    general_config: &GeneralConfig,
     boogie_config: Option<String>,
 ) -> anyhow::Result<()> {
     let rerooted_path = reroot_path(path)?;
-    let move_build_config = resolve_lock_file_path(
-        build_config.into(), 
-        Some(&rerooted_path),
-    )?;
+    let move_build_config = resolve_lock_file_path(build_config.into(), Some(&rerooted_path))?;
 
-    let model = move_model_for_package_legacy(
-        move_build_config,
-        &rerooted_path,
-    )?;
-    let mut options = Options::default();
+    let model = move_model_for_package_legacy(move_build_config, &rerooted_path)?;
+
+    if general_config.use_lean_backend {
+        execute_backend_lean(model, general_config).await
+    } else {
+        execute_backend_boogie(model, general_config, boogie_config).await
+    }
+}
+
+async fn execute_backend_boogie(
+    model: GlobalEnv,
+    general_config: &GeneralConfig,
+    boogie_config: Option<String>,
+) -> anyhow::Result<()> {
+    let mut options = move_prover_boogie_backend::generator_options::Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
     options.backend.path_split = general_config.split_paths;
-    options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
+    options.verbosity_level = if general_config.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
     options.backend.string_options = boogie_config;
-    options.boogie_file_mode = general_config.boogie_file_mode;
+    options.boogie_file_mode = general_config.boogie_file_mode.clone();
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
-        match run_move_prover_with_model(&model, &mut error_writer, options, None) {
+        match move_prover_boogie_backend::generator::run_move_prover_with_model(&model, &mut error_writer, options, None) {
             Ok(_) => {
                 let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
                 println!("Output: {}", output);
@@ -159,9 +184,32 @@ pub async fn execute(
             }
         }
     } else {
-       run_boogie_gen(&model, options)?;
+        run_boogie_gen(&model, options)?;
     }
 
+    Ok(())
+}
+
+async fn execute_backend_lean(
+    model: GlobalEnv,
+    general_config: &GeneralConfig) -> anyhow::Result<()> {
+    let mut options = move_prover_lean_backend::generator_options::Options::default();
+    options.verbosity_level = if general_config.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
+    let mut error_writer = Buffer::no_color();
+    match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer) {
+        Ok(_) => {
+            let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
+            println!("Output: {}", output);
+        }
+        Err(e) => {
+            let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
+            explain_err(&output, &e).await;
+        }
+    }
     Ok(())
 }
 
