@@ -1,8 +1,4 @@
-use crate::lean_backend::lean_helpers::{
-    lean_enum_name, lean_function_name, lean_modifies_memory_name, lean_resource_memory_name,
-    lean_struct_name, lean_temp_from_suffix, lean_type, lean_type_param, lean_type_suffix,
-    lean_type_suffix_bv, FunctionTranslationStyle,
-};
+use crate::lean_backend::lean_helpers::{lean_enum_name, lean_field_sel, lean_function_name, lean_modifies_memory_name, lean_resource_memory_name, lean_struct_name, lean_temp_from_suffix, lean_type, lean_type_param, lean_type_suffix, lean_type_suffix_bv, FunctionTranslationStyle};
 use crate::lean_backend::options::LeanOptions;
 use crate::lean_backend::spec_translator::SpecTranslator;
 use bimap::BiBTreeMap;
@@ -14,7 +10,7 @@ use move_core_types::language_storage::StructTag;
 use move_model::ast::Attribute;
 use move_model::code_writer::CodeWriter;
 use move_model::model::{
-    EnumEnv, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, RefType, StructEnv,
+    DatatypeId, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, RefType, StructEnv,
 };
 use move_model::pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA;
 use move_model::ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE};
@@ -561,19 +557,14 @@ impl<'env> StructTranslator<'env> {
         matches!(field_oper, Some(&Bitwise))
     }
 
-    /// Return boogie type for a struct
-    pub fn boogie_type_for_struct_field(
+    /// Return lean type for a struct field
+    pub fn lean_type_for_struct_field(
         &self,
         field_id: &FieldId,
         env: &GlobalEnv,
         ty: &Type,
     ) -> String {
-        let bv_flag = self.field_bv_flag(field_id);
-        if bv_flag {
-            boogie_bv_type(env, ty)
-        } else {
-            boogie_type(env, ty)
-        }
+        lean_type(env, ty)
     }
 
     /// Translates the given struct.
@@ -591,7 +582,7 @@ impl<'env> StructTranslator<'env> {
             .instantiate(self.type_inst.to_owned());
         emitln!(
             writer,
-            "// struct {} {}",
+            "-- struct {} {}",
             env.display(&qid),
             struct_env.get_loc().display(env)
         );
@@ -599,41 +590,44 @@ impl<'env> StructTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
-        // Emit data type
-        let struct_name = boogie_struct_name(struct_env, self.type_inst);
-        emitln!(writer, "datatype {} {{", struct_name);
+        // Emit structure definition
+        let struct_name = lean_struct_name(struct_env, self.type_inst);
+        emitln!(writer, "structure {} where", struct_name);
+        writer.indent();
 
-        // Emit constructor
-        let fields = struct_env
-            .get_fields()
-            .map(|field| {
-                format!(
-                    "${}: {}",
-                    field.get_name().display(env.symbol_pool()),
-                    self.boogie_type_for_struct_field(
-                        &field.get_id(),
-                        env,
-                        &self.inst(&field.get_type())
-                    )
-                )
-            })
-            .join(", ");
-        emitln!(writer, "    {}({})", struct_name, fields);
-        emitln!(writer, "}");
+        // Emit fields
+        for field in struct_env.get_fields() {
+            let field_name = field.get_name().display(env.symbol_pool()).to_string();
+            let field_type = self.lean_type_for_struct_field(
+                &field.get_id(),
+                env,
+                &self.inst(&field.get_type())
+            );
+            emitln!(writer, "{} : {}", field_name, field_type);
+        }
+        writer.unindent();
+        emitln!(writer);
 
-        let suffix = boogie_type_suffix_for_struct(struct_env, self.type_inst, false);
+        let suffix = lean_type_suffix(env, &Type::Datatype(
+            struct_env.module_env.get_id(),
+            struct_env.get_id(),
+            self.type_inst.to_vec(),
+        ));
 
-        // Emit $UpdateField functions.
+        // Emit field update functions
         let fields = struct_env.get_fields().collect_vec();
-        for (pos, field_env) in fields.iter().enumerate() {
+        for field_env in fields.iter() {
             let field_name = field_env.get_name().display(env.symbol_pool()).to_string();
             self.emit_function(
                 &format!(
-                    "$Update'{}'_{}(s: {}, x: {}): {}",
+                    "update_{}_{}",
                     suffix,
-                    field_name,
+                    field_name
+                ),
+                &format!(
+                    "(s : {}) (x : {}) : {}",
                     struct_name,
-                    self.boogie_type_for_struct_field(
+                    self.lean_type_for_struct_field(
                         &field_env.get_id(),
                         env,
                         &self.inst(&field_env.get_type())
@@ -641,151 +635,101 @@ impl<'env> StructTranslator<'env> {
                     struct_name
                 ),
                 || {
-                    let args = fields
-                        .iter()
-                        .enumerate()
-                        .map(|(p, f)| {
-                            if p == pos {
-                                "x".to_string()
-                            } else {
-                                format!("s->{}", boogie_field_sel(f, self.type_inst))
-                            }
-                        })
-                        .join(", ");
-                    emitln!(writer, "{}({})", struct_name, args);
+                    emitln!(writer, "{{ s with {} := x }}", field_name);
                 },
             );
         }
 
-        // Emit $IsValid function.
-        self.emit_function_with_attr(
-            "", // not inlined!
-            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+        // Emit validity check function
+        self.emit_function(
+            &format!("is_valid_{}", suffix),
+            &format!("(s : {}) : Bool", struct_name),
             || {
                 if struct_env.is_native() {
                     emitln!(writer, "true")
                 } else {
-                    let mut sep = "";
+                    let mut checks = Vec::new();
                     for field in struct_env.get_fields() {
-                        let sel = format!("s->{}", boogie_field_sel(&field, self.type_inst));
+                        let field_name = field.get_name().display(env.symbol_pool()).to_string();
                         let ty = &field.get_type().instantiate(self.type_inst);
-                        let bv_flag = self.field_bv_flag(&field.get_id());
-                        emitln!(
-                            writer,
-                            "{}{}",
-                            sep,
-                            boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
-                        );
-                        sep = "  && ";
+                        checks.push(format!("is_valid_{} s.{}", lean_type_suffix(env, ty), field_name));
                     }
-                    if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
-                        if struct_env.get_qualified_id() == vec_set_qid {
-                            emitln!(
-                                writer,
-                                "{}$DisjointVecSet{}(s->$contents)",
-                                sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
-                            );
-                        }
-                    }
-                    if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
-                        if struct_env.get_qualified_id() == vec_map_qid {
-                            emitln!(
-                                writer,
-                                "{}$DisjointVecMap{}(s->$contents)",
-                                sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
-                            );
-                        }
+                    if checks.is_empty() {
+                        emitln!(writer, "true");
+                    } else {
+                        emitln!(writer, "{}", checks.join(" ∧ "));
                     }
                 }
             },
         );
 
-        // Emit equality
+        // Emit equality function
         self.emit_function(
-            &format!(
-                "$IsEqual'{}'(s1: {}, s2: {}): bool",
-                suffix, struct_name, struct_name
-            ),
+            &format!("is_equal_{}", suffix),
+            &format!("(s1 s2 : {}) : Bool", struct_name),
             || {
-                if struct_has_native_equality(struct_env, self.type_inst, self.parent.options) {
-                    emitln!(writer, "s1 == s2")
+                let mut checks = Vec::new();
+                for field in &fields {
+                    let field_name = field.get_name().display(env.symbol_pool()).to_string();
+                    let field_type = &self.inst(&field.get_type());
+                    let field_suffix = lean_type_suffix(env, field_type);
+                    checks.push(format!("is_equal_{} s1.{} s2.{}", field_suffix, field_name, field_name));
+                }
+                if checks.is_empty() {
+                    emitln!(writer, "true");
                 } else {
-                    let mut sep = "";
-                    for field in &fields {
-                        let sel_fun = boogie_field_sel(field, self.type_inst);
-                        let bv_flag = self.field_bv_flag(&field.get_id());
-                        let field_suffix =
-                            boogie_type_suffix_bv(env, &self.inst(&field.get_type()), bv_flag);
-                        emit!(
-                            writer,
-                            "{}$IsEqual'{}'(s1->{}, s2->{})",
-                            sep,
-                            field_suffix,
-                            sel_fun,
-                            sel_fun,
-                        );
-                        sep = "\n&& ";
-                    }
+                    emitln!(writer, "{}", checks.join(" ∧ "));
                 }
             },
         );
 
         if struct_env.has_memory() {
-            // Emit memory variable.
-            let memory_name = boogie_resource_memory_name(
+            // Emit memory variable
+            let memory_name = lean_resource_memory_name(
                 env,
                 &struct_env
                     .get_qualified_id()
                     .instantiate(self.type_inst.to_owned()),
                 &None,
             );
-            emitln!(writer, "var {}: $Memory {};", memory_name, struct_name);
+            emitln!(writer, "variable {} : Memory {}", memory_name, struct_name);
         }
 
-        emitln!(
-            writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            struct_name
+        // Emit type invariant function
+        self.emit_function(
+            &format!("type_inv_{}", suffix),
+            &format!("(s : {}) : Bool", struct_name),
+            || {
+                if let Some(inv_fun_id) = self
+                    .parent
+                    .targets
+                    .get_inv_by_datatype(&self.struct_env.get_qualified_id())
+                {
+                    emitln!(
+                        writer,
+                        "{} s",
+                        lean_function_name(
+                            &self.parent.env.get_function(*inv_fun_id),
+                            self.type_inst,
+                            FunctionTranslationStyle::Default
+                        )
+                    );
+                } else {
+                    emitln!(writer, "true");
+                }
+            },
         );
-        writer.indent();
-        if let Some(inv_fun_id) = self
-            .parent
-            .targets
-            .get_inv_by_datatype(&self.struct_env.get_qualified_id())
-        {
-            emitln!(
-                writer,
-                "call res := {}(s);",
-                boogie_function_name(
-                    &self.parent.env.get_function(*inv_fun_id),
-                    self.type_inst,
-                    FunctionTranslationStyle::Default
-                )
-            );
-        } else {
-            emitln!(writer, "res := true;");
-        }
-        emitln!(writer, "return;");
-        writer.unindent();
-        emitln!(writer, "}");
 
         emitln!(writer);
     }
 
-    fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
-        self.emit_function_with_attr("{:inline} ", signature, body_fn)
-    }
-
-    fn emit_function_with_attr(&self, attr: &str, signature: &str, body_fn: impl Fn()) {
+    fn emit_function(&self, name: &str, signature: &str, body_fn: impl Fn()) {
         let writer = self.parent.writer;
-        emitln!(writer, "function {}{} {{", attr, signature);
+        emitln!(writer, "def {} {} :=", name, signature);
         writer.indent();
         body_fn();
         writer.unindent();
-        emitln!(writer, "}");
+        emitln!(writer);
     }
 }
 
@@ -799,35 +743,21 @@ impl<'env> EnumTranslator<'env> {
 
     /// Return whether a field involves bitwise operations
     pub fn field_bv_flag(&self, field_id: &FieldId) -> bool {
-        let global_state = &self
-            .parent
-            .env
-            .get_extension::<GlobalNumberOperationState>()
-            .expect("global number operation state");
-        let operation_map = &global_state.struct_operation_map;
-        let mid = self.enum_env.module_env.get_id();
-        let eid = self.enum_env.get_id();
-        // let field_oper = operation_map.get(&(mid, eid)).unwrap_or_default().get(field_id);
-        // matches!(field_oper, Some(&Bitwise))
+        // For now, return false as enum bitwise operations are not implemented
         false
     }
 
-    /// Return boogie type for a enum
-    pub fn boogie_type_for_enum_field(
+    /// Return lean type for an enum field
+    pub fn lean_type_for_enum_field(
         &self,
         field_id: &FieldId,
         env: &GlobalEnv,
         ty: &Type,
     ) -> String {
-        let bv_flag = self.field_bv_flag(field_id);
-        if bv_flag {
-            boogie_bv_type(env, ty)
-        } else {
-            boogie_type(env, ty)
-        }
+        lean_type(env, ty)
     }
 
-    /// Translates the given struct.
+    /// Translates the given enum.
     fn translate(&self) {
         let writer = self.parent.writer;
         let enum_env = self.enum_env;
@@ -838,7 +768,7 @@ impl<'env> EnumTranslator<'env> {
             .instantiate(self.type_inst.to_owned());
         emitln!(
             writer,
-            "// enum {} {}",
+            "-- enum {} {}",
             env.display(&qid),
             enum_env.get_loc().display(env)
         );
@@ -846,182 +776,156 @@ impl<'env> EnumTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
-        // Emit data type
-        let enum_name = boogie_enum_name(enum_env, self.type_inst);
-        emitln!(writer, "datatype {} {{", enum_name);
-
-        // Emit enum as struct
-        let fields = enum_env
-            .get_variants()
-            .flat_map(|variant| {
-                variant
-                    .get_fields()
-                    .map(|field| {
-                        format!(
-                            "{}: {}",
-                            boogie_enum_field_name(&field),
-                            self.boogie_type_for_enum_field(
-                                &field.get_id(),
-                                env,
-                                &self.inst(&field.get_type())
-                            )
-                        )
-                    })
-                    .collect_vec()
-            })
-            .chain(vec!["$variant_id: int".to_string()])
-            .join(", ");
-        emitln!(writer, "    {}({})", enum_name, fields);
-        emitln!(writer, "}");
-
-        // Emit constructors
-        for variant in enum_env.get_variants() {
-            emitln!(
-                writer,
-                "procedure {{:inline 1}} {}({}) returns (res: {}) {{",
-                boogie_enum_variant_ctor_name(&variant, self.type_inst),
-                variant
-                    .get_fields()
-                    .map(|field| {
-                        format!(
-                            "{}: {}",
-                            boogie_enum_field_name(&field),
-                            self.boogie_type_for_enum_field(
-                                &field.get_id(),
-                                env,
-                                &self.inst(&field.get_type())
-                            )
-                        )
-                    })
-                    .join(", "),
-                enum_name
-            );
-            writer.indent();
-
-            emitln!(writer, "res->$variant_id := {};", variant.get_tag());
-
-            for field in variant.get_fields() {
-                let field_name = boogie_enum_field_name(&field);
-                emitln!(writer, "res->{} := {};", field_name, field_name);
-            }
-
-            emitln!(writer, "return;");
-            writer.unindent();
-            emitln!(writer, "}");
-            emitln!(writer);
-        }
-
-        let suffix = boogie_enum_name(enum_env, self.type_inst);
-
-        // Emit $IsValid function.
-        self.emit_function_with_attr(
-            "", // not inlined!
-            &format!("$IsValid'{}'(e: {}): bool", suffix, enum_name),
-            || {
-                let well_formed_checks = enum_env
-                    .get_variants()
-                    .flat_map(|variant| {
-                        variant
-                            .get_fields()
-                            .map(|field| {
-                                let sel = format!("e->{}", boogie_enum_field_name(&field));
-                                let ty = &field.get_type().instantiate(self.type_inst);
-                                let bv_flag = self.field_bv_flag(&field.get_id());
-                                boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
-                            })
-                            .collect_vec()
-                    })
-                    .chain(vec![format!(
-                        "0 <= e->$variant_id && e->$variant_id < {}",
-                        enum_env.get_variants().count()
-                    )])
-                    .join("\n  && ");
-                emitln!(writer, "{}", well_formed_checks);
-            },
-        );
-
-        // Emit equality
-        self.emit_function(
-            &format!(
-                "$IsEqual'{}'(e1: {}, e2: {}): bool",
-                suffix, enum_name, enum_name
-            ),
-            || {
-                let equality_checks = iter::once("e1->$variant_id == e2->$variant_id".to_string())
-                    .chain(enum_env.get_variants().map(|variant| {
-                        let variant_equality_checks = if variant.get_field_count() == 0 {
-                            "true".to_string()
-                        } else {
-                            variant
-                                .get_fields()
-                                .map(|field| {
-                                    let sel_fun = boogie_enum_field_name(&field);
-                                    let bv_flag = self.field_bv_flag(&field.get_id());
-                                    let field_suffix = boogie_type_suffix_bv(
-                                        env,
-                                        &self.inst(&field.get_type()),
-                                        bv_flag,
-                                    );
-                                    format!(
-                                        "$IsEqual'{}'(e1->{}, e2->{})",
-                                        field_suffix, sel_fun, sel_fun,
-                                    )
-                                })
-                                .join("\n    && ")
-                        };
-                        format!(
-                            "(e1->$variant_id == {} ==> {})",
-                            variant.get_tag(),
-                            variant_equality_checks,
-                        )
-                    }))
-                    .join("\n  && ");
-                emit!(writer, "{}", equality_checks);
-            },
-        );
-
-        emitln!(
-            writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            enum_name
-        );
+        // Emit inductive type definition
+        let enum_name = lean_enum_name(enum_env, self.type_inst);
+        emitln!(writer, "inductive {} where", enum_name);
         writer.indent();
-        if let Some(inv_fun_id) = self
-            .parent
-            .targets
-            .get_inv_by_datatype(&self.enum_env.get_qualified_id())
-        {
-            emitln!(
-                writer,
-                "call res := {}(s);",
-                boogie_function_name(
-                    &self.parent.env.get_function(*inv_fun_id),
-                    self.type_inst,
-                    FunctionTranslationStyle::Default
-                )
-            );
-        } else {
-            emitln!(writer, "res := true;");
+
+        // Emit variants as constructors
+        for variant in enum_env.get_variants() {
+            let variant_name = variant.get_name().display(env.symbol_pool()).to_string();
+            if variant.get_field_count() == 0 {
+                emitln!(writer, "| {} : {}", variant_name, enum_name);
+            } else {
+                let fields = variant
+                    .get_fields()
+                    .map(|field| {
+                        let field_type = self.lean_type_for_enum_field(
+                            &field.get_id(),
+                            env,
+                            &self.inst(&field.get_type())
+                        );
+                        field_type
+                    })
+                    .join(" → ");
+                emitln!(writer, "| {} : {} → {}", variant_name, fields, enum_name);
+            }
         }
-        emitln!(writer, "return;");
         writer.unindent();
-        emitln!(writer, "}");
+        emitln!(writer);
+
+        let suffix = lean_type_suffix(env, &Type::Datatype(
+            enum_env.module_env.get_id(),
+            enum_env.get_id(),
+            self.type_inst.to_vec(),
+        ));
+
+        // Emit validity check function
+        self.emit_function(
+            &format!("is_valid_{}", suffix),
+            &format!("(e : {}) : Bool", enum_name),
+            || {
+                emitln!(writer, "match e with");
+                writer.indent();
+                for variant in enum_env.get_variants() {
+                    let variant_name = variant.get_name().display(env.symbol_pool()).to_string();
+                    if variant.get_field_count() == 0 {
+                        emitln!(writer, "| {} => true", variant_name);
+                    } else {
+                        let field_patterns = variant
+                            .get_fields()
+                            .enumerate()
+                            .map(|(i, _)| format!("f{}", i))
+                            .join(" ");
+                        let field_checks = variant
+                            .get_fields()
+                            .enumerate()
+                            .map(|(i, field)| {
+                                let field_type = &self.inst(&field.get_type());
+                                format!("is_valid_{} f{}", lean_type_suffix(env, field_type), i)
+                            })
+                            .collect::<Vec<_>>();
+                        
+                        if field_checks.is_empty() {
+                            emitln!(writer, "| {} {} => true", variant_name, field_patterns);
+                        } else {
+                            emitln!(writer, "| {} {} => {}", variant_name, field_patterns, field_checks.join(" ∧ "));
+                        }
+                    }
+                }
+                writer.unindent();
+            },
+        );
+
+        // Emit equality function
+        self.emit_function(
+            &format!("is_equal_{}", suffix),
+            &format!("(e1 e2 : {}) : Bool", enum_name),
+            || {
+                emitln!(writer, "match e1, e2 with");
+                writer.indent();
+                for variant in enum_env.get_variants() {
+                    let variant_name = variant.get_name().display(env.symbol_pool()).to_string();
+                    if variant.get_field_count() == 0 {
+                        emitln!(writer, "| {}, {} => true", variant_name, variant_name);
+                    } else {
+                        let field_patterns1 = variant
+                            .get_fields()
+                            .enumerate()
+                            .map(|(i, _)| format!("f1_{}", i))
+                            .join(" ");
+                        let field_patterns2 = variant
+                            .get_fields()
+                            .enumerate()
+                            .map(|(i, _)| format!("f2_{}", i))
+                            .join(" ");
+                        let field_checks = variant
+                            .get_fields()
+                            .enumerate()
+                            .map(|(i, field)| {
+                                let field_type = &self.inst(&field.get_type());
+                                format!("is_equal_{} f1_{} f2_{}", lean_type_suffix(env, field_type), i, i)
+                            })
+                            .collect::<Vec<_>>();
+                        
+                        if field_checks.is_empty() {
+                            emitln!(writer, "| {} {}, {} {} => true", variant_name, field_patterns1, variant_name, field_patterns2);
+                        } else {
+                            emitln!(writer, "| {} {}, {} {} => {}", variant_name, field_patterns1, variant_name, field_patterns2, field_checks.join(" ∧ "));
+                        }
+                    }
+                }
+                // Add catch-all case for different variants
+                emitln!(writer, "| _, _ => false");
+                writer.unindent();
+            },
+        );
+
+        // Emit type invariant function
+        self.emit_function(
+            &format!("type_inv_{}", suffix),
+            &format!("(e : {}) : Bool", enum_name),
+            || {
+                if let Some(inv_fun_id) = self
+                    .parent
+                    .targets
+                    .get_inv_by_datatype(&self.enum_env.get_qualified_id())
+                {
+                    emitln!(
+                        writer,
+                        "{} e",
+                        lean_function_name(
+                            &self.parent.env.get_function(*inv_fun_id),
+                            self.type_inst,
+                            FunctionTranslationStyle::Default
+                        )
+                    );
+                } else {
+                    emitln!(writer, "true");
+                }
+            },
+        );
 
         emitln!(writer);
     }
 
-    fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
-        self.emit_function_with_attr("{:inline} ", signature, body_fn)
-    }
-
-    fn emit_function_with_attr(&self, attr: &str, signature: &str, body_fn: impl Fn()) {
+    fn emit_function(&self, name: &str, signature: &str, body_fn: impl Fn()) {
         let writer = self.parent.writer;
-        emitln!(writer, "function {}{} {{", attr, signature);
+        emitln!(writer, "def {} {} :=", name, signature);
         writer.indent();
         body_fn();
         writer.unindent();
-        emitln!(writer, "}");
+        emitln!(writer);
     }
 }
 
@@ -1135,19 +1039,19 @@ impl FunctionTranslator<'_> {
                         // These are just markers.  There is no generated code.
                     }
                     WriteBack(node, edge) => {
-                        todo!()
+
                     }
                     IsParent(node, edge) => {
-                        todo!()
+                        
                     }
                     BorrowLoc => {
-                        todo!()
+                        
                     }
                     ReadRef => {
-                        todo!()
+                        
                     }
                     WriteRef => {
-                        todo!()
+
                     }
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
@@ -1403,22 +1307,39 @@ impl FunctionTranslator<'_> {
                         *last_tracked_loc = None;
                     }
                     Pack(mid, sid, inst) => {
-                        todo!()
+
                     }
                     Unpack(mid, sid, inst) => {
-                        todo!()
+                        // TODO
                     }
                     PackVariant(mid, eid, vid, inst) => {
-                        todo!()
+                        
                     }
                     UnpackVariant(mid, eid, vid, _inst, ref_type) => {
-                        todo!()
+                        
                     }
                     BorrowField(mid, sid, inst, field_offset) => {
-                        todo!()
+                        let inst = &self.inst_slice(inst);
+                        let src = srcs[0];
+                        let mut src_str = str_local(src);
+                        let dest_str = str_local(dests[0]);
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        let field_env = &struct_env.get_field_by_offset(*field_offset);
+                        let sel_fun = lean_field_sel(field_env, inst);
+                        if self.get_local_type(src).is_reference() {
+                            src_str = format!("$Dereference({})", src_str);
+                        };
+                        emitln!(self.writer(), "{} := {}->{};", dest_str, src_str, sel_fun);
                     }
                     GetField(mid, sid, inst, field_offset) => {
-                        todo!()
+                        let inst = &self.inst_slice(inst);
+                        let src = srcs[0];
+                        let mut src_str = str_local(src);
+                        let dest_str = str_local(dests[0]);
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        let field_env = &struct_env.get_field_by_offset(*field_offset);
+                        let sel_fun = lean_field_sel(field_env, inst);
+                        emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
                     }
                     Exists(mid, sid, inst) => {
                         todo!()
@@ -1436,16 +1357,16 @@ impl FunctionTranslator<'_> {
                         todo!()
                     }
                     Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => {
-                        todo!()
+
                     }
                     Havoc(HavocKind::MutationValue) => {
-                        todo!()
+                        
                     }
                     Stop => {
                         todo!()
                     }
                     CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
-                        todo!()
+
                     }
                     Not => {
                         let src = srcs[0];
@@ -1619,15 +1540,17 @@ impl FunctionTranslator<'_> {
                     TraceReturn(i) => {
                         
                     }
-                    TraceAbort =>
-                        todo!(),
+                    TraceAbort => {
+                        // TODO
+                    },
                     TraceExp(kind, node_id) => {
-                        todo!()
+
                     }
-                    TraceMessage(message) =>
-                        todo!(),
+                    TraceMessage(message) => {
+
+                    },
                     TraceGhost(ghost_type, value_type) => {
-                        todo!()
+
                     }
                     EmitEvent => {
                         todo!()
@@ -1636,7 +1559,7 @@ impl FunctionTranslator<'_> {
                         todo!()
                     }
                     TraceGlobalMem(mem) => {
-                        todo!()
+
                     }
                 }
                 match aa {
@@ -1644,7 +1567,7 @@ impl FunctionTranslator<'_> {
                         
                     }
                     Some(AbortAction::Check) => {
-                        todo!()
+                        
                     }
                     None => {}
                 }
@@ -1944,7 +1867,7 @@ impl FunctionTranslator<'_> {
         for i in 0..fun_target.get_parameter_count() {
             let ty = fun_target.get_local_type(i);
             if ty.is_reference() {
-                todo!()
+                // TODO
                 //emitln!(writer, "assume $t{}->l == $Param({});", i, i);
             }
         }

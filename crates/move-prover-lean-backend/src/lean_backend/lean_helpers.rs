@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use move_model::model::{DatatypeId, EnumEnv, FunctionEnv, GlobalEnv, ModuleEnv, QualifiedInstId, StructEnv, StructOrEnumEnv, SCRIPT_MODULE_NAME};
+use move_model::model::{DatatypeId, EnclosingEnv, EnumEnv, FieldEnv, FunctionEnv, GlobalEnv, ModuleEnv, QualifiedInstId, StructEnv, StructOrEnumEnv, SCRIPT_MODULE_NAME};
 use move_model::ty::PrimitiveType::{Address, Bool, EventStore, Num, Range, Signer, U128, U16, U256, U32, U64, U8};
 use move_model::ty::Type;
 use move_model::ty::Type::Error;
@@ -220,6 +220,30 @@ pub fn lean_type_suffix_bv(env: &GlobalEnv, ty: &Type, bv_flag: bool) -> String 
         Fun(..) | Tuple(..) | TypeDomain(..) | ResourceDomain(..) | Error | Var(..)
         | Reference(..) => format!("<<unsupported {:?}>>", ty),
     }
+}
+
+/// Return field selector for given field.
+pub fn lean_field_sel(field_env: &FieldEnv<'_>, _inst: &[Type]) -> String {
+    let EnclosingEnv::Struct(struct_env) = &field_env.parent_env else {
+        unreachable!();
+    };
+    format!("{}", lean_struct_field_name(field_env))
+}
+
+fn lean_struct_field_name(field_env: &FieldEnv<'_>) -> String {
+    let EnclosingEnv::Struct(struct_env) = &field_env.parent_env else {
+        unreachable!();
+    };
+    if (Some(struct_env.get_qualified_id()) == struct_env.module_env.env.table_qid()
+        || Some(struct_env.get_qualified_id()) == struct_env.module_env.env.object_table_qid())
+        && field_env.get_offset() == 1
+    {
+        return "contents".to_string();
+    }
+    field_env
+        .get_name()
+        .display(struct_env.symbol_pool())
+        .to_string()
 }
 
 pub fn lean_type_param(_env: &GlobalEnv, idx: u16) -> String {
