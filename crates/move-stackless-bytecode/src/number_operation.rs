@@ -8,6 +8,7 @@
 
 use crate::ast::{PropertyValue, TempIndex};
 use crate::function_target_pipeline::FunctionTargetsHolder;
+use crate::options::ProverOptions;
 use itertools::Itertools;
 use move_model::{
     ast::Value,
@@ -91,18 +92,22 @@ impl GlobalNumberOperationState {
 
     /// Determine the default NumOperation for a given type
     /// Returns Arithmetic for number types, Bottom for non-number types
-    pub fn get_default_operation_for_type(ty: &Type) -> NumOperation {
+    pub fn get_default_operation_for_type(ty: &Type, env: &GlobalEnv) -> NumOperation {
+        let bv_int_encoding = ProverOptions::get(env).bv_int_encoding;
         let base_type = match ty {
             Type::Reference(_, tr) => tr,
             Type::Vector(tr) => tr,
             _ => ty,
         };
-        // if base_type.is_number() {
-        //     NumOperation::Arithmetic
-        // } else {
-        //     NumOperation::Bottom
-        // }
-        NumOperation::Bitwise
+        if base_type.is_number() {
+            if bv_int_encoding {
+                NumOperation::Arithmetic
+            } else {
+                NumOperation::Bitwise
+            }
+        } else {
+            NumOperation::Bottom
+        }
     }
 
     pub fn get_ret_map(&self) -> &FuncOperationMap {
@@ -231,7 +236,10 @@ impl GlobalNumberOperationState {
                 // If not appearing in the pragma, mark it as Arithmetic or Bottom
                 // Similar logic when populating ret_operation_map below
                 let local_ty = func_env.get_local_type(i);
-                default_map.insert(i, Self::get_default_operation_for_type(&local_ty));
+                default_map.insert(
+                    i,
+                    Self::get_default_operation_for_type(&local_ty, &func_env.module_env.env),
+                );
             }
         }
 
@@ -241,7 +249,10 @@ impl GlobalNumberOperationState {
                 default_ret_operation_map.insert(i, Bitwise);
             } else {
                 let ret_ty = func_env.get_return_type(i);
-                default_ret_operation_map.insert(i, Self::get_default_operation_for_type(&ret_ty));
+                default_ret_operation_map.insert(
+                    i,
+                    Self::get_default_operation_for_type(&ret_ty, &func_env.module_env.env),
+                );
             }
         }
 
@@ -275,7 +286,7 @@ impl GlobalNumberOperationState {
                 let field_ty = field.get_type();
                 field_oper_map.insert(
                     field.get_id(),
-                    Self::get_default_operation_for_type(&field_ty),
+                    Self::get_default_operation_for_type(&field_ty, &struct_env.module_env.env),
                 );
             }
         }

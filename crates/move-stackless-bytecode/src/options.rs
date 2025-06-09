@@ -89,6 +89,8 @@ pub struct ProverOptions {
     pub borrow_natives: Vec<String>,
     /// Whether to ban convertion from int to bv at the boogie backend
     pub ban_int_2_bv: bool,
+    /// Whether to ban conversion from int to bv at the number operation analysis
+    pub bv_int_encoding: bool,
 }
 
 // add custom struct for mutation options
@@ -123,15 +125,13 @@ impl Default for ProverOptions {
             skip_loop_analysis: false,
             borrow_natives: vec![],
             ban_int_2_bv: false,
+            bv_int_encoding: true,
         }
     }
 }
 
 impl ProverOptions {
     pub fn get(env: &GlobalEnv) -> Rc<ProverOptions> {
-        if !env.has_extension::<ProverOptions>() {
-            env.set_extension(ProverOptions::default())
-        }
         env.get_extension::<ProverOptions>().unwrap()
     }
 

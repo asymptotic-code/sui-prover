@@ -4,11 +4,7 @@
 
 //! This module translates specification conditions to Boogie code.
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -23,19 +19,18 @@ use move_model::{
     ty::{PrimitiveType, Type},
 };
 use move_stackless_bytecode::{
-    ast::{
-        Exp, ExpData, LocalVarDecl, MemoryLabel, Operation, QuantKind,
-        TempIndex,
+    ast::{Exp, ExpData, LocalVarDecl, MemoryLabel, Operation, QuantKind, TempIndex},
+    number_operation::{
+        GlobalNumberOperationState,
+        NumOperation::{self, Bitwise},
     },
-    number_operation::{GlobalNumberOperationState, NumOperation::Bitwise},
 };
 
 use crate::boogie_backend::{
     boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_choice_fun_name,
-        boogie_field_sel, boogie_inst_suffix, boogie_modifies_memory_name,
-        boogie_num_type_base, boogie_resource_memory_name,
-        boogie_struct_name, boogie_type, boogie_type_suffix,
+        boogie_field_sel, boogie_inst_suffix, boogie_modifies_memory_name, boogie_num_type_base,
+        boogie_resource_memory_name, boogie_struct_name, boogie_type, boogie_type_suffix,
         boogie_type_suffix_bv, boogie_value_blob, boogie_well_formed_expr,
         boogie_well_formed_expr_bv,
     },
@@ -899,7 +894,7 @@ impl<'env> SpecTranslator<'env> {
                     // if struct_env.is_intrinsic_of(INTRINSIC_TYPE_MAP) {
                     //     emit!(self.writer, "{}{}: {}", comma, var_name, ty_str(&targs[0]));
                     // } else {
-                        panic!("unexpected type");
+                    panic!("unexpected type");
                     // }
                 }
                 Type::ResourceDomain(..) => {
@@ -995,7 +990,7 @@ impl<'env> SpecTranslator<'env> {
                     //         var_name,
                     //     );
                     // } else {
-                        panic!("unexpected type");
+                    panic!("unexpected type");
                     // }
                 }
                 Type::Primitive(PrimitiveType::Range) => {
@@ -1352,7 +1347,8 @@ impl<'env> SpecTranslator<'env> {
                         *idx,
                         false,
                     )
-                    .is_some();
+                    .unwrap_or(&NumOperation::Bottom)
+                    == &Bitwise;
                 // For the special case of a temporary which can represent a
                 // &mut, skip the normal translation of `exp` which would do automatic
                 // dereferencing. Instead let boogie_well_formed_expr handle the

@@ -18,12 +18,9 @@ use crate::boogie_backend::{
     lib::add_prelude, boogie_wrapper::BoogieWrapper, bytecode_translator::BoogieTranslator,
 };
 use move_stackless_bytecode::{
-    escape_analysis::EscapeAnalysisProcessor,
-    function_target_pipeline::{
+    escape_analysis::EscapeAnalysisProcessor, function_target_pipeline::{
         FunctionTargetPipeline, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
-    },
-    number_operation::GlobalNumberOperationState,
-    pipeline_factory,
+    }, number_operation::GlobalNumberOperationState, options::ProverOptions, pipeline_factory
 };
 use std::{
     fs,
@@ -71,7 +68,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     // Add the prover options as an extension to the environment, so they can be accessed
     // from there.
-    env.set_extension(options.prover.clone());
+    ProverOptions::set(env, options.prover.clone());
 
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env);

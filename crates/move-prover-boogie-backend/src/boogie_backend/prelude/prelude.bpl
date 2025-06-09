@@ -44,7 +44,7 @@ procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y:
     y := true;
 }
 
-{%- if false -%}
+{%- if options.bv_int_encoding -%}
 
 procedure {:inline 1} $1_integer_from_u8(x: int) returns (y: int) {
     y := x;

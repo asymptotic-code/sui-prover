@@ -81,6 +81,10 @@ pub struct GeneralConfig {
     #[clap(name = "split-paths", long, short = 's', global = true)]
     pub split_paths: Option<usize>,
 
+    /// Use bv_int_encoding for boogie
+    #[clap(name = "no-bv-int-encoding", long, global = true)]
+    pub no_bv_int_encoding: bool,
+
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
@@ -146,6 +150,8 @@ pub async fn execute(
     options.backend.keep_artifacts = general_config.keep_temp;
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
     options.backend.path_split = general_config.split_paths;
+    options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
+    options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
     options.boogie_file_mode = general_config.boogie_file_mode;

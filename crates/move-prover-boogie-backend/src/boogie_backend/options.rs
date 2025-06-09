@@ -147,6 +147,7 @@ pub struct BoogieOptions {
     pub borrow_aggregates: Vec<BorrowAggregate>,
     pub prelude_extra: Option<PathBuf>,
     pub path_split: Option<usize>,
+    pub bv_int_encoding: bool,
     /// All possible additional options as simle string
     pub string_options: Option<String>,
 }
@@ -188,6 +189,7 @@ impl Default for BoogieOptions {
             borrow_aggregates: vec![],
             prelude_extra: Some(PathBuf::from("prelude_extra.bpl")),
             path_split: Some(10),
+            bv_int_encoding: true,
             string_options: None,
         }
     }

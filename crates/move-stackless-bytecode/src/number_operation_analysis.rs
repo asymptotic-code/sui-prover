@@ -318,6 +318,7 @@ impl NumberOperationAnalysis<'_> {
                         i,
                         GlobalNumberOperationState::get_default_operation_for_type(
                             &self.func_target.get_local_type(i),
+                            &self.func_target.func_env.module_env.env,
                         ),
                     );
             }
@@ -461,7 +462,12 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                             self.check_and_update_oper_dest(
                                 state,
                                 dests,
-                                Arithmetic,
+                                if ProverOptions::get(self.func_target.global_env()).bv_int_encoding
+                                {
+                                    Arithmetic
+                                } else {
+                                    Bitwise
+                                },
                                 cur_mid,
                                 cur_fid,
                                 &mut global_state,
