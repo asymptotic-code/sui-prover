@@ -14,12 +14,14 @@ use move_model::{
     ast::Value,
     code_writer::CodeWriter,
     emit, emitln,
-    model::{DatatypeId, FieldId, FunctionEnv, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId},
+    model::{DatatypeId, FieldId, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 use move_stackless_bytecode::{
     ast::{Exp, ExpData, LocalVarDecl, MemoryLabel, Operation, QuantKind, TempIndex},
+    function_target::FunctionTarget,
+    function_target_pipeline::FunctionVariant,
     number_operation::{
         GlobalNumberOperationState,
         NumOperation::{self, Bitwise},
@@ -46,7 +48,7 @@ pub struct SpecTranslator<'env> {
     /// The code writer.
     writer: &'env CodeWriter,
     /// If we are translating in the context of a function, the function environment.
-    func_env: Option<&'env FunctionEnv<'env>>,
+    func_target: Option<&'env FunctionTarget<'env>>,
     /// If we are translating in the context of a type instantiation, the type arguments.
     type_inst: Vec<Type>,
     /// Counter for creating new variables.
@@ -89,7 +91,7 @@ impl<'env> SpecTranslator<'env> {
             env,
             options,
             writer,
-            func_env: None,
+            func_target: None,
             type_inst: vec![],
             fresh_var_count: Default::default(),
             lifted_choice_infos: Default::default(),
@@ -338,10 +340,10 @@ impl<'env> SpecTranslator<'env> {
 // ===========
 
 impl<'env> SpecTranslator<'env> {
-    pub(crate) fn translate(&self, exp: &Exp, func_env: &FunctionEnv, type_inst: &[Type]) {
+    pub(crate) fn translate(&self, exp: &Exp, func_target: &FunctionTarget, type_inst: &[Type]) {
         *self.fresh_var_count.borrow_mut() = 0;
         let mut trans = self.clone();
-        trans.func_env = Some(func_env);
+        trans.func_target = Some(func_target);
         trans.type_inst = type_inst.to_owned();
         trans.translate_exp(exp);
     }
@@ -1342,10 +1344,10 @@ impl<'env> SpecTranslator<'env> {
             ExpData::Temporary(_, idx) => {
                 let bv_flag = global_state
                     .get_temp_index_oper(
-                        self.func_env.unwrap().module_env.get_id(),
-                        self.func_env.unwrap().get_id(),
+                        self.func_target.unwrap().module_env().get_id(),
+                        self.func_target.unwrap().get_id(),
                         *idx,
-                        false,
+                        self.func_target.unwrap().data.variant == FunctionVariant::Baseline,
                     )
                     .unwrap_or(&NumOperation::Bottom)
                     == &Bitwise;

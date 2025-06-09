@@ -327,19 +327,26 @@ impl<'env> FunctionDataBuilder<'env> {
             .env
             .get_extension::<GlobalNumberOperationState>()
         {
-            if let Some(num_oper) = global_state.get_temp_index_oper(
+            let temp_exp_num_oper = match global_state.get_temp_index_oper(
                 self.fun_env.module_env.get_id(),
                 self.fun_env.get_id(),
                 temp,
                 self.data.variant == FunctionVariant::Baseline,
             ) {
-                self.fun_env
-                    .module_env
-                    .env
-                    .update_extension::<GlobalNumberOperationState>(|state| {
-                        state.insert_node_num_oper(temp_exp_node_id, *num_oper);
-                    });
-            }
+                Some(num_oper) => *num_oper,
+                None => GlobalNumberOperationState::get_default_operation_for_type(
+                    &self.get_local_type(temp),
+                    self.global_env(),
+                ),
+            };
+            self.fun_env
+                .module_env
+                .env
+                .update_extension::<GlobalNumberOperationState>(|state| {
+                    state.insert_node_num_oper(temp_exp_node_id, temp_exp_num_oper);
+                });
+        } else {
+            panic!("GlobalNumberOperationState not found");
         }
     }
 

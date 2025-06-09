@@ -1968,12 +1968,12 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&loc),
                         info
                     );
-                    spec_translator.translate(exp, &fun_target.func_env, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Assume => {
                     emit!(self.writer(), "assume ");
-                    spec_translator.translate(exp, &fun_target.func_env, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Modifies => {
@@ -1992,21 +1992,13 @@ impl<'env> FunctionTranslator<'env> {
                         let val_str = boogie_temp(env, ty, 0, bv_flag);
                         emitln!(self.writer(), "havoc {};", val_str);
                         emit!(self.writer(), "{} := $ResourceUpdate({}, ", memory, memory);
-                        spec_translator.translate(
-                            &exp.call_args()[0],
-                            &fun_target.func_env,
-                            self.type_inst,
-                        );
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ", {});", val_str);
                     });
                     emitln!(self.writer(), "} else {");
                     self.writer().with_indent(|| {
                         emit!(self.writer(), "{} := $ResourceRemove({}, ", memory, memory);
-                        spec_translator.translate(
-                            &exp.call_args()[0],
-                            &fun_target.func_env,
-                            self.type_inst,
-                        );
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ");");
                     });
                     emitln!(self.writer(), "}");
