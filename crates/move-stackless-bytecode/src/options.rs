@@ -89,7 +89,7 @@ pub struct ProverOptions {
     pub borrow_natives: Vec<String>,
     /// Whether to ban convertion from int to bv at the boogie backend
     pub ban_int_2_bv: bool,
-    /// Whether to ban conversion from int to bv at the number operation analysis
+    /// Whether to encode u8/u16/u32/u64/u128/u256 as integer or bitvector
     pub bv_int_encoding: bool,
 }
 

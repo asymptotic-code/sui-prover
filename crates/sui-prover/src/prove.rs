@@ -81,7 +81,7 @@ pub struct GeneralConfig {
     #[clap(name = "split-paths", long, short = 's', global = true)]
     pub split_paths: Option<usize>,
 
-    /// Use bv_int_encoding for boogie
+    /// Encode u8/u16/u32/u64/u128/u256 as bitvector instead of integer in boogie
     #[clap(name = "no-bv-int-encoding", long, global = true)]
     pub no_bv_int_encoding: bool,
 
