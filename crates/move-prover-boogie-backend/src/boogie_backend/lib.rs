@@ -92,27 +92,27 @@ fn bv_helper() -> Vec<BvInfo> {
     let mut bv_info = vec![];
     let bv_8 = BvInfo {
         base: 8,
-        max: "255".to_string(),
+        max: format!("{}", u8::MAX),
     };
     bv_info.push(bv_8);
     let bv_16 = BvInfo {
         base: 16,
-        max: "65535".to_string(),
+        max: format!("{}", u16::MAX),
     };
     bv_info.push(bv_16);
     let bv_32 = BvInfo {
         base: 32,
-        max: "2147483647".to_string(),
+        max: format!("{}", u32::MAX),
     };
     bv_info.push(bv_32);
     let bv_64 = BvInfo {
         base: 64,
-        max: "18446744073709551615".to_string(),
+        max: format!("{}", u64::MAX),
     };
     bv_info.push(bv_64);
     let bv_128 = BvInfo {
         base: 128,
-        max: "340282366920938463463374607431768211455".to_string(),
+        max: format!("{}", u128::MAX),
     };
     bv_info.push(bv_128);
     let bv_256 = BvInfo {

@@ -43,6 +43,9 @@ function {:inline} $IsEqual'$1_integer_Integer'(x: int, y: int): bool {
 procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y: bool) {
     y := true;
 }
+
+{%- if options.bv_int_encoding -%}
+
 procedure {:inline 1} $1_integer_from_u8(x: int) returns (y: int) {
     y := x;
 }
@@ -79,6 +82,48 @@ procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: int) {
 procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: int) {
     y := x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936;
 }
+
+{%- else %}
+
+procedure {:inline 1} $1_integer_from_u8(x: bv8) returns (y: int) {
+    y := $bv2int.8(x);
+}
+procedure {:inline 1} $1_integer_from_u16(x: bv16) returns (y: int) {
+    y := $bv2int.16(x);
+}
+procedure {:inline 1} $1_integer_from_u32(x: bv32) returns (y: int) {
+    y := $bv2int.32(x);
+}
+procedure {:inline 1} $1_integer_from_u64(x: bv64) returns (y: int) {
+    y := $bv2int.64(x);
+}
+procedure {:inline 1} $1_integer_from_u128(x: bv128) returns (y: int) {
+    y := $bv2int.128(x);
+}
+procedure {:inline 1} $1_integer_from_u256(x: bv256) returns (y: int) {
+    y := $bv2int.256(x);
+}
+procedure {:inline 1} $1_integer_to_u8(x: int) returns (y: bv8) {
+    y := $int2bv.8(x);
+}
+procedure {:inline 1} $1_integer_to_u16(x: int) returns (y: bv16) {
+    y := $int2bv.16(x);
+}
+procedure {:inline 1} $1_integer_to_u32(x: int) returns (y: bv32) {
+    y := $int2bv.32(x);
+}
+procedure {:inline 1} $1_integer_to_u64(x: int) returns (y: bv64) {
+    y := $int2bv.64(x);
+}
+procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: bv128) {
+    y := $int2bv.128(x);
+}
+procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: bv256) {
+    y := $int2bv.256(x);
+}
+
+{%- endif %}
+
 procedure {:inline 1} $1_integer_add(x: int, y: int) returns (z: int) {
     z := x + y;
 }
@@ -100,6 +145,22 @@ procedure {:inline 1} $1_integer_mod(x: int, y: int) returns (z: int) {
 procedure {:inline 1} $1_integer_pow(x: int, y: int) returns (z: int) {
     z := $pow(x, y);
 }
+function $andInt(x: int, y: int) returns (int);
+function $orInt(x: int, y: int) returns (int);
+function $xorInt(x: int, y: int) returns (int);
+function $notInt(x: int) returns (int);
+procedure {:inline 1} $1_integer_bit_and(x: int, y: int) returns (z: int) {
+    z := $andInt(x, y);
+}
+procedure {:inline 1} $1_integer_bit_or(x: int, y: int) returns (z: int) {
+    z := $orInt(x, y);
+}
+procedure {:inline 1} $1_integer_bit_xor(x: int, y: int) returns (z: int) {
+    z := $xorInt(x, y);
+}
+procedure {:inline 1} $1_integer_bit_not(x: int) returns (z: int) {
+    z := $notInt(x);
+}
 procedure {:inline 1} $1_integer_lt(x: int, y: int) returns (z: bool) {
     z := x < y;
 }
@@ -115,6 +176,68 @@ procedure {:inline 1} $1_integer_gte(x: int, y: int) returns (z: bool) {
 procedure {:inline 1} $1_integer_div_real(x: int, y: int) returns (z: real) {
     z := x / y;
 }
+
+function $to_u8(x: int): int {
+    x mod 256
+}
+function $to_u16(x: int): int {
+    x mod 65536
+}
+function $to_u32(x: int): int {
+    x mod 4294967296
+}
+function $to_u64(x: int): int {
+    x mod 18446744073709551616
+}
+function $to_u128(x: int): int {
+    x mod 340282366920938463463374607431768211456
+}
+function $to_u256(x: int): int {
+    x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936
+}
+
+function $to_i8(x: int): int {(
+    var y := x mod 256;
+    if y < 256 - y then
+        y
+    else
+        y - 256
+)}
+function $to_i16(x: int): int {(
+    var y := x mod 65536;
+    if y < 65536 - y then
+        y
+    else
+        y - 65536
+)}
+function $to_i32(x: int): int {(
+    var y := x mod 4294967296;
+    if y < 4294967296 - y then
+        y
+    else
+        y - 4294967296
+)}
+function $to_i64(x: int): int {(
+    var y := x mod 18446744073709551616;
+    if y < 18446744073709551616 - y then
+        y
+    else
+        y - 18446744073709551616
+)}
+function $to_i128(x: int): int {(
+    var y := x mod 340282366920938463463374607431768211456;
+    if y < 340282366920938463463374607431768211456 - y then
+        y
+    else
+        y - 340282366920938463463374607431768211456
+)}
+function $to_i256(x: int): int {(
+    var y := x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936;
+    if y < 115792089237316195423570985008687907853269984665640564039457584007913129639936 - y then
+        y
+    else
+        y - 115792089237316195423570985008687907853269984665640564039457584007913129639936
+)}
 
 type $1_real_Real = real;
 function {:inline} $IsValid'$1_real_Real'(x: real): bool {
@@ -190,6 +313,19 @@ axiom $MAX_U128 == 340282366920938463463374607431768211455;
 const $MAX_U256: int;
 axiom $MAX_U256 == 115792089237316195423570985008687907853269984665640564039457584007913129639935;
 
+const $POW_2_8: int;
+axiom $POW_2_8 == 256;
+const $POW_2_16: int;
+axiom $POW_2_16 == 65536;
+const $POW_2_32: int;
+axiom $POW_2_32 == 4294967296;
+const $POW_2_64: int;
+axiom $POW_2_64 == 18446744073709551616;
+const $POW_2_128: int;
+axiom $POW_2_128 == 340282366920938463463374607431768211456;
+const $POW_2_256: int;
+axiom $POW_2_256 == 115792089237316195423570985008687907853269984665640564039457584007913129639936;
+
 // Templates for bitvector operations
 
 {%- for impl in bv_instances %}
@@ -202,8 +338,11 @@ function {:bvbuiltin "bvsub"} $Sub'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.bas
 function {:bvbuiltin "bvmul"} $Mul'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
 function {:bvbuiltin "bvudiv"} $Div'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
 function {:bvbuiltin "bvurem"} $Mod'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
+function {:bvbuiltin "bvsdiv"} $SDiv'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
+function {:bvbuiltin "bvsrem"} $SMod'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
 function {:bvbuiltin "bvshl"} $Shl'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
 function {:bvbuiltin "bvlshr"} $Shr'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
+function {:bvbuiltin "bvashr"} $AShr'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bv{{impl.base}});
 function {:bvbuiltin "bvult"} $Lt'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bool);
 function {:bvbuiltin "bvule"} $Le'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bool);
 function {:bvbuiltin "bvugt"} $Gt'Bv{{impl.base}}'(bv{{impl.base}},bv{{impl.base}}) returns(bool);
@@ -322,6 +461,65 @@ procedure {:inline 1} $bv2int{{impl.base}}(src: bv{{impl.base}}) returns (dst: i
 
 function {:builtin "(_ int2bv {{impl.base}})"} $int2bv.{{impl.base}}(i: int) returns (bv{{impl.base}});
 function {:builtin "bv2nat"} $bv2int.{{impl.base}}(i: bv{{impl.base}}) returns (int);
+
+function $andInt'u{{impl.base}}'(x: int, y: int) returns (int) {
+    $andInt(x mod $POW_2_{{impl.base}}, y mod $POW_2_{{impl.base}})
+}
+function $andInt'i{{impl.base}}'(x: int, y: int) returns (int) {
+    $andInt($to_i{{impl.base}}(x), $to_i{{impl.base}}(y))
+}
+axiom (forall x, y : int :: {$andInt'u{{impl.base}}'(x, y)}
+    $andInt'u{{impl.base}}'(x, y) == $andInt(x, y) mod $POW_2_{{impl.base}}
+);
+axiom (forall x, y : int :: {$andInt'u{{impl.base}}'(x, y)}
+    0 <= $andInt'u{{impl.base}}'(x, y) && $andInt'u{{impl.base}}'(x, y) < $POW_2_{{impl.base}}
+);
+axiom (forall x, y : int :: {$andInt'u{{impl.base}}'(x, y)}
+    $to_i{{impl.base}}($andInt'u{{impl.base}}'(x, y)) == $andInt'i{{impl.base}}'(x, y)
+);
+function $orInt'u{{impl.base}}'(x: int, y: int) returns (int) {
+    $orInt(x mod $POW_2_{{impl.base}}, y mod $POW_2_{{impl.base}})
+}
+function $orInt'i{{impl.base}}'(x: int, y: int) returns (int) {
+    $orInt($to_i{{impl.base}}(x), $to_i{{impl.base}}(y))
+}
+axiom (forall x, y : int :: {$orInt'u{{impl.base}}'(x, y)}
+    $orInt'u{{impl.base}}'(x, y) == $orInt(x, y) mod $POW_2_{{impl.base}}
+);
+axiom (forall x, y : int :: {$orInt'u{{impl.base}}'(x, y)}
+    0 <= $orInt'u{{impl.base}}'(x, y) && $orInt'u{{impl.base}}'(x, y) < $POW_2_{{impl.base}}
+);
+axiom (forall x, y : int :: {$orInt'u{{impl.base}}'(x, y)}
+    $to_i{{impl.base}}($orInt'u{{impl.base}}'(x, y)) == $orInt'i{{impl.base}}'(x, y)
+);
+function $xorInt'u{{impl.base}}'(x: int, y: int) returns (int) {
+    $xorInt(x mod $POW_2_{{impl.base}}, y mod $POW_2_{{impl.base}})
+}
+function $xorInt'i{{impl.base}}'(x: int, y: int) returns (int) {
+    $xorInt($to_i{{impl.base}}(x), $to_i{{impl.base}}(y))
+}
+axiom (forall x, y: int :: {$xorInt'u{{impl.base}}'(x, y)}
+    $xorInt'u{{impl.base}}'(x, y) == $xorInt(x, y) mod $POW_2_{{impl.base}}
+);
+axiom (forall x, y: int :: {$xorInt'u{{impl.base}}'(x, y)}
+    0 <= $xorInt'u{{impl.base}}'(x, y) && $xorInt'u{{impl.base}}'(x, y) < $POW_2_{{impl.base}}
+);
+axiom (forall x, y : int :: {$xorInt'u{{impl.base}}'(x, y)}
+    $to_i{{impl.base}}($xorInt'u{{impl.base}}'(x, y)) == $xorInt'i{{impl.base}}'(x, y)
+);
+
+procedure {:inline 1} $AndInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $andInt'u{{impl.base}}'(src1, src2);
+}
+procedure {:inline 1} $OrInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $orInt'u{{impl.base}}'(src1, src2);
+}
+procedure {:inline 1} $XorInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+{
+    dst := $xorInt'u{{impl.base}}'(src1, src2);
+}
 
 {%- endfor %}
 

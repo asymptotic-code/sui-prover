@@ -603,7 +603,7 @@ impl<'env> BoogieTranslator<'env> {
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
-        let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
+        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
         let mut dummy_targets = FunctionTargetsHolder::new();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
@@ -2048,12 +2048,12 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&loc),
                         info
                     );
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Assume => {
                     emit!(self.writer(), "assume ");
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Modifies => {
@@ -2072,13 +2072,13 @@ impl<'env> FunctionTranslator<'env> {
                         let val_str = boogie_temp(env, ty, 0, bv_flag);
                         emitln!(self.writer(), "havoc {};", val_str);
                         emit!(self.writer(), "{} := $ResourceUpdate({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ", {});", val_str);
                     });
                     emitln!(self.writer(), "} else {");
                     self.writer().with_indent(|| {
                         emit!(self.writer(), "{} := $ResourceRemove({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ");");
                     });
                     emitln!(self.writer(), "}");
@@ -3333,7 +3333,7 @@ impl<'env> FunctionTranslator<'env> {
                             let src_type = boogie_num_type_base(&self.get_local_type(op2));
                             emitln!(
                                 self.writer(),
-                                "call {} := ${}Bv{}From{}({}, {});",
+                                "call {} := ${}{}From{}({}, {});",
                                 str_local(dest),
                                 sh_oper_str,
                                 target_type,
@@ -3539,7 +3539,19 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        make_bitwise(bv_oper_str, op1, op2, dest);
+                        if ProverOptions::get(env).bv_int_encoding {
+                            emitln!(
+                                self.writer(),
+                                "call {} := {}Int'u{}'({}, {});",
+                                str_local(dest),
+                                bv_oper_str,
+                                boogie_num_type_base(&self.get_local_type(dest)),
+                                str_local(op1),
+                                str_local(op2),
+                            );
+                        } else {
+                            make_bitwise(bv_oper_str, op1, op2, dest);
+                        }
                     }
                     Uninit => {
                         emitln!(
@@ -3622,7 +3634,12 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        emitln!(self.writer(), "{} := $abort_code;", code_str);
+                        let code_val = if ProverOptions::get(env).bv_int_encoding {
+                            "$abort_code"
+                        } else {
+                            "$int2bv.64($abort_code)"
+                        };
+                        emitln!(self.writer(), "{} := {};", code_str, code_val);
                         self.track_abort(&code_str);
                         emitln!(self.writer(), "goto L{};", target.as_usize());
                         self.writer().unindent();
@@ -3694,7 +3711,13 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&self.fun_target.func_env.get_loc()),
                     );
                 }
-                emitln!(self.writer(), "$abort_code := {};", str_local(*src));
+                let src_str = str_local(*src);
+                let src_val = if ProverOptions::get(env).bv_int_encoding {
+                    src_str
+                } else {
+                    format!("$bv2int.64({})", src_str)
+                };
+                emitln!(self.writer(), "$abort_code := {};", src_val);
                 emitln!(self.writer(), "$abort_flag := true;");
                 emitln!(self.writer(), "return;")
             }
