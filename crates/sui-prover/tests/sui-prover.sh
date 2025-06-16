@@ -74,4 +74,18 @@ cd prover-workshop
 
 sui-prover -s 2
 
+cd ..
+
+git clone https://github.com/asymptotic-code/integer-library int-lib
+
+cd int-lib/specs
+
+sui-prover -s 2
+
+cd ..
+
+cd specs-bv
+
+sui-prover -s 2 --no-bv-int-encoding
+
 echo "All tests passed!"
