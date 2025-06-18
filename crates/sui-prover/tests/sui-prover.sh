@@ -65,6 +65,14 @@ cd amm
 sui-prover -s 4
 cd .. 
 
+cd showcase
+sui-prover -s 4
+cd ..
+
+cd vec_map
+sui-prover -s 4
+cd ..
+
 cd guide
 sui-prover -s 4
 cd ../../..
