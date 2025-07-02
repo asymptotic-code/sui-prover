@@ -58,7 +58,7 @@ pub fn lean_inst_suffix(env: &GlobalEnv, inst: &[Type]) -> String {
         "".to_owned()
     } else {
         format!(
-            "'{}'",
+            "{}",
             inst.iter().map(|ty| lean_type_suffix(env, ty)).join("_")
         )
     }
@@ -72,8 +72,8 @@ pub fn lean_module_name(env: &ModuleEnv<'_>) -> String {
         // <SELF> is not accepted by lean as a symbol
         "#SELF#".to_string()
     } else {
-        // qualify module by address.
-        format!("{}_{}", mod_name.addr().to_str_radix(16), mod_sym)
+        // qualify module by address, prefixing with 'm' to ensure it starts with a letter
+        format!("m{}_{}", mod_name.addr().to_str_radix(16), mod_sym)
     }
 }
 
@@ -144,7 +144,14 @@ pub fn lean_type(env: &GlobalEnv, ty: &Type) -> String {
     use Type::*;
     match ty {
         Primitive(p) => match p {
-            U8 | U16 | U32 | U64 | U128 | U256 | Num | Address => "Int".to_string(),
+            U8 => "UInt8".to_string(),
+            U16 => "UInt16".to_string(),
+            U32 => "UInt32".to_string(),
+            U64 => "UInt64".to_string(),
+            U128 => "UInt128".to_string(),
+            U256 => "UInt256".to_string(),
+            Num => "Int".to_string(),
+            Address => "Address".to_string(),
             Signer => "Signer".to_string(),
             Bool => "Bool".to_string(),
             Range | EventStore => panic!("unexpected type"),

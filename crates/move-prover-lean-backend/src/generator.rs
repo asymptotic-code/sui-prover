@@ -13,6 +13,7 @@ use std::path::Path;
 use bimap::BiBTreeMap;
 use move_model::code_writer::CodeWriter;
 use move_model::ty::Type;
+use crate::add_prelude;
 use crate::lean_backend::bytecode_translator::LeanTranslator;
 use crate::lean_backend::lean_wrapper::LeanWrapper;
 
@@ -128,8 +129,7 @@ pub fn generate_lean(
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
-    // TODO add prelude
-    //add_prelude(env, &writer)?;
+    add_prelude(env, &options.backend, &writer)?;
     let mut translator = LeanTranslator::new(env, &options.backend, targets, &writer, &types);
     translator.translate();
     Ok((writer, types.into_inner()))
