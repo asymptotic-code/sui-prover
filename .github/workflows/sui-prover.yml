@@ -4,7 +4,7 @@ on: [pull_request]
 
 jobs:
   build-and-run:
-    runs-on: macos-latest
+    runs-on: macos-latest-large
     env: 
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 

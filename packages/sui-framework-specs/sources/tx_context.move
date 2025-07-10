@@ -1,6 +1,7 @@
 module specs::tx_context_spec;
 
 use sui::tx_context::{derive_id, fresh_object_address, TxContext, sender, digest, epoch, epoch_timestamp_ms};
+#[spec_only]
 use prover::prover::{ensures, old};
 
 #[spec(target = sui::tx_context::fresh_object_address)]

@@ -62,15 +62,15 @@ git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 cd sui-kit/examples
 
 cd amm
-sui-prover -s 4
+sui-prover -s 2
 cd .. 
 
 cd showcase
-sui-prover -s 4
+sui-prover -s 2
 cd ..
 
 cd guide
-sui-prover -s 4
+sui-prover -s 2
 cd ../../..
 
 git clone https://github.com/asymptotic-code/sui-prover-workshop.git prover-workshop

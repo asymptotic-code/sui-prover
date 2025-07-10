@@ -2,6 +2,7 @@ module specs::random_spec;
 
 use sui::random::{new_generator, generate_u128_in_range, Random, RandomGenerator};
 use sui::tx_context::TxContext;
+#[spec_only]
 use prover::prover::{asserts, ensures};
 
 #[spec(target = sui::random::new_generator)]

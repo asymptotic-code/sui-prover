@@ -1,6 +1,8 @@
 module specs::transfer_spec;
 
+#[spec_only]
 use prover::prover::ensures;
+#[spec_only]
 use prover::ghost;
 use sui::transfer::{freeze_object_impl, share_object_impl, transfer_impl, receive_impl};
 use sui::object::ID;
