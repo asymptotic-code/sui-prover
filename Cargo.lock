@@ -3362,7 +3362,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sui-prover"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -3377,6 +3377,7 @@ dependencies = [
  "move-model 0.1.0",
  "move-package",
  "move-prover-boogie-backend",
+ "move-stackless-bytecode",
  "move-symbol-pool",
  "openai_api_rust",
  "petgraph",

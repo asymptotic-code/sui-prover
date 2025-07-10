@@ -4,7 +4,7 @@ authors = ["Asymptotic <info@asymptotic.tech>"]
 license = "Apache-2.0"
 publish = false
 edition = "2021"
-version = "0.0.1"
+version = "0.0.2"
 
 [dependencies]
 itertools.workspace = true
@@ -24,6 +24,7 @@ move-prover-boogie-backend.workspace = true
 move-package.workspace = true
 move-model.workspace = true
 move-symbol-pool.workspace = true
+move-stackless-bytecode.workspace = true
 glob.workspace = true
 insta.workspace = true
 termcolor.workspace = true

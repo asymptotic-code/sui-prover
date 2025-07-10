@@ -9,7 +9,8 @@ mod prove;
 mod llm_explain;
 mod prompts;
 mod legacy_builder;
-mod package_resolution_graph;
+mod system_dependencies;
+mod build_model;
 
 #[derive(Parser)]
 #[clap(
