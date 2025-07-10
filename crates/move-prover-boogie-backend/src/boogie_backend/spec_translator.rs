@@ -4,11 +4,7 @@
 
 //! This module translates specification conditions to Boogie code.
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -18,26 +14,25 @@ use move_model::{
     ast::Value,
     code_writer::CodeWriter,
     emit, emitln,
-    model::{
-        DatatypeId, FieldId, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId,
-    },
+    model::{DatatypeId, FieldId, GlobalEnv, Loc, ModuleId, NodeId, QualifiedInstId},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 use move_stackless_bytecode::{
-    ast::{
-        Exp, ExpData, LocalVarDecl, MemoryLabel, Operation, QuantKind,
-        TempIndex,
+    ast::{Exp, ExpData, LocalVarDecl, MemoryLabel, Operation, QuantKind, TempIndex},
+    function_target::FunctionTarget,
+    function_target_pipeline::FunctionVariant,
+    number_operation::{
+        GlobalNumberOperationState,
+        NumOperation::{self, Bitwise},
     },
-    number_operation::{GlobalNumberOperationState, NumOperation::Bitwise},
 };
 
 use crate::boogie_backend::{
     boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_choice_fun_name,
-        boogie_field_sel, boogie_inst_suffix, boogie_modifies_memory_name,
-        boogie_num_type_base, boogie_resource_memory_name,
-        boogie_struct_name, boogie_type, boogie_type_suffix,
+        boogie_field_sel, boogie_inst_suffix, boogie_modifies_memory_name, boogie_num_type_base,
+        boogie_resource_memory_name, boogie_struct_name, boogie_type, boogie_type_suffix,
         boogie_type_suffix_bv, boogie_value_blob, boogie_well_formed_expr,
         boogie_well_formed_expr_bv,
     },
@@ -52,6 +47,8 @@ pub struct SpecTranslator<'env> {
     options: &'env BoogieOptions,
     /// The code writer.
     writer: &'env CodeWriter,
+    /// If we are translating in the context of a function, the function environment.
+    func_target: Option<&'env FunctionTarget<'env>>,
     /// If we are translating in the context of a type instantiation, the type arguments.
     type_inst: Vec<Type>,
     /// Counter for creating new variables.
@@ -94,6 +91,7 @@ impl<'env> SpecTranslator<'env> {
             env,
             options,
             writer,
+            func_target: None,
             type_inst: vec![],
             fresh_var_count: Default::default(),
             lifted_choice_infos: Default::default(),
@@ -342,16 +340,12 @@ impl<'env> SpecTranslator<'env> {
 // ===========
 
 impl<'env> SpecTranslator<'env> {
-    pub(crate) fn translate(&self, exp: &Exp, type_inst: &[Type]) {
+    pub(crate) fn translate(&self, exp: &Exp, func_target: &FunctionTarget, type_inst: &[Type]) {
         *self.fresh_var_count.borrow_mut() = 0;
-        if type_inst.is_empty() {
-            self.translate_exp(exp)
-        } else {
-            // Use a clone with the given type instantiation.
-            let mut trans = self.clone();
-            trans.type_inst = type_inst.to_owned();
-            trans.translate_exp(exp)
-        }
+        let mut trans = self.clone();
+        trans.func_target = Some(func_target);
+        trans.type_inst = type_inst.to_owned();
+        trans.translate_exp(exp);
     }
 
     fn inst(&self, ty: &Type) -> Type {
@@ -902,7 +896,7 @@ impl<'env> SpecTranslator<'env> {
                     // if struct_env.is_intrinsic_of(INTRINSIC_TYPE_MAP) {
                     //     emit!(self.writer, "{}{}: {}", comma, var_name, ty_str(&targs[0]));
                     // } else {
-                        panic!("unexpected type");
+                    panic!("unexpected type");
                     // }
                 }
                 Type::ResourceDomain(..) => {
@@ -998,7 +992,7 @@ impl<'env> SpecTranslator<'env> {
                     //         var_name,
                     //     );
                     // } else {
-                        panic!("unexpected type");
+                    panic!("unexpected type");
                     // }
                 }
                 Type::Primitive(PrimitiveType::Range) => {
@@ -1346,9 +1340,17 @@ impl<'env> SpecTranslator<'env> {
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number state");
         let ty = self.get_node_type(exp.node_id());
-        let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
         match exp.as_ref() {
             ExpData::Temporary(_, idx) => {
+                let bv_flag = global_state
+                    .get_temp_index_oper(
+                        self.func_target.unwrap().module_env().get_id(),
+                        self.func_target.unwrap().get_id(),
+                        *idx,
+                        self.func_target.unwrap().data.variant == FunctionVariant::Baseline,
+                    )
+                    .unwrap_or(&NumOperation::Bottom)
+                    == &Bitwise;
                 // For the special case of a temporary which can represent a
                 // &mut, skip the normal translation of `exp` which would do automatic
                 // dereferencing. Instead let boogie_well_formed_expr handle the
@@ -1382,6 +1384,7 @@ impl<'env> SpecTranslator<'env> {
                 }
             }
             ExpData::LocalVar(_, sym) => {
+                let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
                 // For specification locals (which never can be references) directly emit them.
                 let check = boogie_well_formed_expr_bv(
                     self.env,
@@ -1392,6 +1395,7 @@ impl<'env> SpecTranslator<'env> {
                 emit!(self.writer, &check);
             }
             _ => {
+                let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
                 let check =
                     boogie_well_formed_expr_bv(self.env, "$val", ty.skip_reference(), bv_flag);
                 emit!(self.writer, "(var $val := ");

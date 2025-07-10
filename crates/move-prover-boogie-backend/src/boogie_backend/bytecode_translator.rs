@@ -33,6 +33,7 @@ use move_model::{
 };
 use move_stackless_bytecode::{
     ast::{TempIndex, TraceKind},
+    dynamic_field_analysis,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionTarget,
     function_target_pipeline::{
@@ -55,19 +56,20 @@ use move_stackless_bytecode::{
 };
 
 use crate::boogie_backend::{
-    boogie_helpers::{
+   boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
-        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
-        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
-        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
-        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
-        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
-        TypeIdentToken,
+        boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
+        boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
+        boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type,
+        boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name,
+        boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name,
+        boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
+        boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name,
+        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
+        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
+        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
+        FunctionTranslationStyle, TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -601,7 +603,7 @@ impl<'env> BoogieTranslator<'env> {
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
-        let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
+        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
         let mut dummy_targets = FunctionTargetsHolder::new();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
@@ -826,26 +828,41 @@ impl<'env> StructTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
+        let struct_type = Type::Datatype(
+            struct_env.module_env.get_id(),
+            struct_env.get_id(),
+            self.type_inst.to_owned(),
+        );
+        let dynamic_field_info = dynamic_field_analysis::get_env_info(self.parent.env);
+        let dynamic_field_names_values = dynamic_field_info
+            .dynamic_field_names_values(&struct_type)
+            .collect_vec();
+
         // Emit data type
         let struct_name = boogie_struct_name(struct_env, self.type_inst);
         emitln!(writer, "datatype {} {{", struct_name);
 
         // Emit constructor
-        let fields = struct_env
-            .get_fields()
-            .map(|field| {
-                format!(
-                    "${}: {}",
-                    field.get_name().display(env.symbol_pool()),
-                    self.boogie_type_for_struct_field(
-                        &field.get_id(),
-                        env,
-                        &self.inst(&field.get_type())
-                    )
+        let fields = struct_env.get_fields().map(|field| {
+            format!(
+                "${}: {}",
+                field.get_name().display(env.symbol_pool()),
+                self.boogie_type_for_struct_field(
+                    &field.get_id(),
+                    env,
+                    &self.inst(&field.get_type())
                 )
-            })
-            .join(", ");
-        emitln!(writer, "    {}({})", struct_name, fields);
+            )
+        });
+        let dynamic_fields = dynamic_field_names_values.iter().map(|(name, value)| {
+            format!(
+                "{}: (Table int {})",
+                boogie_dynamic_field_sel(self.parent.env, name, value),
+                boogie_type(env, value),
+            )
+        });
+        let all_fields = fields.chain(dynamic_fields).join(", ");
+        emitln!(writer, "    {}({})", struct_name, all_fields);
         emitln!(writer, "}");
 
         let suffix = boogie_type_suffix_for_struct(struct_env, self.type_inst, false);
@@ -868,18 +885,54 @@ impl<'env> StructTranslator<'env> {
                     struct_name
                 ),
                 || {
+                    let args = fields.iter().enumerate().map(|(p, f)| {
+                        if p == pos {
+                            "x".to_string()
+                        } else {
+                            format!("s->{}", boogie_field_sel(f, self.type_inst))
+                        }
+                    });
+                    let dynamic_field_args =
+                        dynamic_field_names_values.iter().map(|(name, value)| {
+                            format!(
+                                "s->{}",
+                                boogie_dynamic_field_sel(self.parent.env, name, value)
+                            )
+                        });
+                    let all_args = args.chain(dynamic_field_args).join(", ");
+                    emitln!(writer, "{}({})", struct_name, all_args);
+                },
+            );
+        }
+        for (pos, (name, value)) in dynamic_field_names_values.iter().enumerate() {
+            self.emit_function(
+                &format!(
+                    "{}(s: {}, x: (Table int {})): {}",
+                    boogie_dynamic_field_update(struct_env, self.type_inst, name, value),
+                    struct_name,
+                    boogie_type(env, value),
+                    struct_name
+                ),
+                || {
                     let args = fields
                         .iter()
-                        .enumerate()
-                        .map(|(p, f)| {
-                            if p == pos {
-                                "x".to_string()
-                            } else {
-                                format!("s->{}", boogie_field_sel(f, self.type_inst))
-                            }
-                        })
-                        .join(", ");
-                    emitln!(writer, "{}({})", struct_name, args);
+                        .map(|f| format!("s->{}", boogie_field_sel(f, self.type_inst)));
+                    let dynamic_field_args =
+                        dynamic_field_names_values
+                            .iter()
+                            .enumerate()
+                            .map(|(p, (n, v))| {
+                                if p == pos {
+                                    "x".to_string()
+                                } else {
+                                    format!(
+                                        "s->{}",
+                                        boogie_dynamic_field_sel(self.parent.env, n, v)
+                                    )
+                                }
+                            });
+                    let all_args = args.chain(dynamic_field_args).join(", ");
+                    emitln!(writer, "{}({})", struct_name, all_args);
                 },
             );
         }
@@ -1312,7 +1365,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     pub fn new(
-        parent: &'env BoogieTranslator,
+        parent: &'env BoogieTranslator<'env>,
         fun_target: &'env FunctionTarget<'env>,
         type_inst: &'env [Type],
         style: FunctionTranslationStyle,
@@ -1323,6 +1376,11 @@ impl<'env> FunctionTranslator<'env> {
             type_inst,
             style,
         }
+    }
+
+    fn ghost_var_name(&self, type_inst: &[Type]) -> String {
+        let var_name = boogie_spec_global_var_name(self.parent.env, type_inst);
+        format!("$ghost_{}", var_name)
     }
 
     /// Return whether a specific TempIndex involves in bitwise operations
@@ -1563,7 +1621,7 @@ impl<'env> FunctionTranslator<'env> {
             .expect("global number operation state");
         let mid = fun_target.func_env.module_env.get_id();
         let fid = fun_target.func_env.get_id();
-        let args = (0..fun_target.get_parameter_count())
+        let regular_args = (0..fun_target.get_parameter_count())
             .map(|i| {
                 let ty = self.get_local_type(i);
                 // Boogie does not allow to assign to parameters, so we need to proxy them.
@@ -1582,7 +1640,32 @@ impl<'env> FunctionTranslator<'env> {
                     self.boogie_type_for_fun(env, &ty, num_oper)
                 )
             })
-            .join(", ");
+            .collect::<Vec<_>>();
+
+        let ghost_args = if self.style == FunctionTranslationStyle::Asserts
+            || self.style == FunctionTranslationStyle::Aborts
+        {
+            let ghost_vars = self.get_ghost_vars();
+            if !ghost_vars.is_empty() {
+                ghost_vars
+                    .into_iter()
+                    .map(|type_inst| {
+                        format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let all_args = regular_args
+            .into_iter()
+            .chain(ghost_args)
+            .collect::<Vec<_>>();
+        let args = all_args.join(", ");
+
         let mut_ref_inputs = (0..fun_target.get_parameter_count())
             .enumerate()
             .filter_map(|(i, idx)| {
@@ -1692,6 +1775,22 @@ impl<'env> FunctionTranslator<'env> {
                 self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
             );
         }
+
+        // Add global ghost variables that can be used in this function
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
+            let ghost_vars = self.get_ghost_vars();
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "var {}: {};",
+                    self.ghost_var_name(&type_inst),
+                    boogie_type(env, &type_inst[1])
+                );
+            }
+        }
+
         // Generate declarations for modifies condition.
         let mut mem_inst_seen = BTreeSet::new();
         for qid in fun_target.get_modify_ids() {
@@ -1751,6 +1850,21 @@ impl<'env> FunctionTranslator<'env> {
         // Initialize renamed parameters.
         for (idx, _) in proxied_parameters {
             emitln!(writer, "$t{} := _$t{};", idx, idx);
+        }
+
+        // Initialize ghost variables
+        if self.style == FunctionTranslationStyle::Default
+            || self.style == FunctionTranslationStyle::Opaque
+        {
+            let ghost_vars = self.get_ghost_vars();
+            for type_inst in ghost_vars {
+                emitln!(
+                    writer,
+                    "{} := {};",
+                    self.ghost_var_name(&type_inst),
+                    boogie_spec_global_var_name(self.parent.env, &type_inst)
+                );
+            }
         }
 
         // Initial assumptions
@@ -1820,6 +1934,23 @@ impl<'env> FunctionTranslator<'env> {
                 emitln!(writer, "assume $t{}->l == $Param({});", i, i);
             }
         }
+    }
+
+    fn get_ghost_vars(&self) -> BTreeSet<Vec<Type>> {
+        let spec_id = &self.fun_target.func_env.get_qualified_id();
+        let spec_info = spec_global_variable_analysis::get_info(
+            self.parent
+                .targets
+                .get_data(spec_id, &FunctionVariant::Baseline)
+                .unwrap(),
+        );
+        spec_info
+            .all_vars()
+            .map(|type_inst| {
+                // Instantiate each type in the type_inst with the concrete types
+                type_inst.iter().map(|ty| self.inst(ty)).collect()
+            })
+            .collect()
     }
 }
 
@@ -1917,12 +2048,12 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&loc),
                         info
                     );
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Assume => {
                     emit!(self.writer(), "assume ");
-                    spec_translator.translate(exp, self.type_inst);
+                    spec_translator.translate(exp, &fun_target, self.type_inst);
                     emitln!(self.writer(), ";");
                 }
                 PropKind::Modifies => {
@@ -1941,13 +2072,13 @@ impl<'env> FunctionTranslator<'env> {
                         let val_str = boogie_temp(env, ty, 0, bv_flag);
                         emitln!(self.writer(), "havoc {};", val_str);
                         emit!(self.writer(), "{} := $ResourceUpdate({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ", {});", val_str);
                     });
                     emitln!(self.writer(), "} else {");
                     self.writer().with_indent(|| {
                         emit!(self.writer(), "{} := $ResourceRemove({}, ", memory, memory);
-                        spec_translator.translate(&exp.call_args()[0], self.type_inst);
+                        spec_translator.translate(&exp.call_args()[0], &fun_target, self.type_inst);
                         emitln!(self.writer(), ");");
                     });
                     emitln!(self.writer(), "}");
@@ -2014,9 +2145,13 @@ impl<'env> FunctionTranslator<'env> {
                                 };
                                 format!("{}t{}", prefix, i)
                             })
+                            .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
+                                self.ghost_var_name(&type_inst)
+                            }))
                             .join(", "),
                     );
                 }
+
                 for (i, r) in rets.iter().enumerate() {
                     emitln!(self.writer(), "$ret{} := {};", i, str_local(*r));
                 }
@@ -2252,6 +2387,16 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
+                        if callee_env.get_qualified_id() == self.parent.env.global_qid()
+                            && (self.style == FunctionTranslationStyle::Asserts
+                                || self.style == FunctionTranslationStyle::Aborts)
+                        {
+                            let var_name = boogie_spec_global_var_name(self.parent.env, inst);
+
+                            emitln!(self.writer(), "{} := $ghost_{};", dest_str, var_name);
+                            processed = true;
+                        }
+
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             emitln!(
                                 self.writer(),
@@ -2269,7 +2414,7 @@ impl<'env> FunctionTranslator<'env> {
                                 self.writer(),
                                 "assert {{:msg \"assert_failed{}: prover::asserts assertion does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
-                                args_str,
+                                args_str.to_string(),
                             );
                             processed = true;
                         }
@@ -2330,6 +2475,25 @@ impl<'env> FunctionTranslator<'env> {
                             {
                                 emitln!(self.writer(), "havoc $abort_flag;");
                             } else {
+                                let regular_args =
+                                    srcs.iter().cloned().map(str_local).collect::<Vec<_>>();
+                                let ghost_args = if !self.get_ghost_vars().is_empty() {
+                                    self.get_ghost_vars()
+                                        .into_iter()
+                                        .map(|type_inst| {
+                                            self.ghost_var_name(&type_inst)
+                                        })
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    Vec::new()
+                                };
+
+                                let all_args = regular_args
+                                    .into_iter()
+                                    .chain(ghost_args)
+                                    .collect::<Vec<_>>();
+                                let args_str = all_args.join(", ");
+
                                 emitln!(
                                     self.writer(),
                                     "call $abort_if_cond := {}({});",
@@ -2457,6 +2621,7 @@ impl<'env> FunctionTranslator<'env> {
                                         &[false, bv_flag],
                                     );
                                 }
+
                                 emitln!(self.writer(), "call {}({});", fun_name, args_str);
                             } else {
                                 let dest_bv_flag = !dests.is_empty() && compute_flag(dests[0]);
@@ -2527,6 +2692,7 @@ impl<'env> FunctionTranslator<'env> {
                                         );
                                     }
                                 }
+
                                 emitln!(
                                     self.writer(),
                                     "call {} := {}({});",
@@ -3167,7 +3333,7 @@ impl<'env> FunctionTranslator<'env> {
                             let src_type = boogie_num_type_base(&self.get_local_type(op2));
                             emitln!(
                                 self.writer(),
-                                "call {} := ${}Bv{}From{}({}, {});",
+                                "call {} := ${}{}From{}({}, {});",
                                 str_local(dest),
                                 sh_oper_str,
                                 target_type,
@@ -3373,7 +3539,19 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        make_bitwise(bv_oper_str, op1, op2, dest);
+                        if ProverOptions::get(env).bv_int_encoding {
+                            emitln!(
+                                self.writer(),
+                                "call {} := {}Int'u{}'({}, {});",
+                                str_local(dest),
+                                bv_oper_str,
+                                boogie_num_type_base(&self.get_local_type(dest)),
+                                str_local(op1),
+                                str_local(op2),
+                            );
+                        } else {
+                            make_bitwise(bv_oper_str, op1, op2, dest);
+                        }
                     }
                     Uninit => {
                         emitln!(
@@ -3456,7 +3634,12 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        emitln!(self.writer(), "{} := $abort_code;", code_str);
+                        let code_val = if ProverOptions::get(env).bv_int_encoding {
+                            "$abort_code"
+                        } else {
+                            "$int2bv.64($abort_code)"
+                        };
+                        emitln!(self.writer(), "{} := {};", code_str, code_val);
                         self.track_abort(&code_str);
                         emitln!(self.writer(), "goto L{};", target.as_usize());
                         self.writer().unindent();
@@ -3488,20 +3671,39 @@ impl<'env> FunctionTranslator<'env> {
                         .contains(&self.fun_target.func_env.get_qualified_id())
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
+                    let regular_args = (0..fun_target.get_parameter_count())
+                        .map(|i| {
+                            let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
+                                "_$"
+                            } else {
+                                "$"
+                            };
+                            format!("{}t{}", prefix, i)
+                        })
+                        .collect::<Vec<_>>();
+
+                    let ghost_args = if !self.get_ghost_vars().is_empty() {
+                        self.get_ghost_vars()
+                            .into_iter()
+                            .map(|type_inst| {
+                                format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let all_args = regular_args
+                        .into_iter()
+                        .chain(ghost_args)
+                        .collect::<Vec<_>>();
+                    let args_str = all_args.join(", ");
+
                     emitln!(
                         self.writer(),
                         "call $abort_if_cond := {}({});",
                         self.function_variant_name(FunctionTranslationStyle::Aborts),
-                        (0..fun_target.get_parameter_count())
-                            .map(|i| {
-                                let prefix = if self.parameter_needs_to_be_mutable(fun_target, i) {
-                                    "_$"
-                                } else {
-                                    "$"
-                                };
-                                format!("{}t{}", prefix, i)
-                            })
-                            .join(", "),
+                        args_str,
                     );
                     emitln!(
                         self.writer(),
@@ -3509,7 +3711,13 @@ impl<'env> FunctionTranslator<'env> {
                         self.loc_str(&self.fun_target.func_env.get_loc()),
                     );
                 }
-                emitln!(self.writer(), "$abort_code := {};", str_local(*src));
+                let src_str = str_local(*src);
+                let src_val = if ProverOptions::get(env).bv_int_encoding {
+                    src_str
+                } else {
+                    format!("$bv2int.64({})", src_str)
+                };
+                emitln!(self.writer(), "$abort_code := {};", src_val);
                 emitln!(self.writer(), "$abort_flag := true;");
                 emitln!(self.writer(), "return;")
             }
@@ -3659,6 +3867,47 @@ impl<'env> FunctionTranslator<'env> {
                     let update_fun = boogie_enum_field_update(field_env);
                     let sel_fun = boogie_enum_field_sel(field_env, &memory.inst);
 
+                    let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
+                    let mut new_dest_needed = false;
+                    let new_src = self.translate_write_back_update(
+                        &mut || {
+                            new_dest_needed = true;
+                            format!("$$sel{}", at)
+                        },
+                        get_path_index,
+                        src,
+                        edges,
+                        at + 1,
+                    );
+                    if new_dest_needed {
+                        format!(
+                            "(var $$sel{} := {}; {}({}, {}))",
+                            at,
+                            new_dest,
+                            update_fun,
+                            (*mk_dest)(),
+                            new_src
+                        )
+                    } else {
+                        format!("{}({}, {})", update_fun, (*mk_dest)(), new_src)
+                    }
+                }
+                BorrowEdge::DynamicField(struct_qid, name_type, value_type) => {
+                    let struct_env = &self.parent.env.get_struct_qid(struct_qid.to_qualified_id());
+                    let instantiated_struct_qid = struct_qid.to_owned().instantiate(self.type_inst);
+                    let instantiated_name_type = name_type.instantiate(self.type_inst);
+                    let instantiated_value_type = value_type.instantiate(self.type_inst);
+                    let sel_fun = boogie_dynamic_field_sel(
+                        self.parent.env,
+                        &instantiated_name_type,
+                        &instantiated_value_type,
+                    );
+                    let update_fun = boogie_dynamic_field_update(
+                        &struct_env,
+                        &instantiated_struct_qid.inst,
+                        &instantiated_name_type,
+                        &instantiated_value_type,
+                    );
                     let new_dest = format!("{}->{}", (*mk_dest)(), sel_fun);
                     let mut new_dest_needed = false;
                     let new_src = self.translate_write_back_update(

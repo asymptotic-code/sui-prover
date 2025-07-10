@@ -46,15 +46,30 @@ impl LiveVarAnnotation {
 pub struct LiveVarAnalysisProcessor {
     /// Whether the processor should attach `LiveVarAnnotation` to the function data.
     annotate: bool,
+    /// Whether the processor should rename variables.
+    rename_vars: bool,
 }
 
 impl LiveVarAnalysisProcessor {
     pub fn new() -> Box<Self> {
-        Box::new(LiveVarAnalysisProcessor { annotate: true })
+        Box::new(LiveVarAnalysisProcessor {
+            annotate: true,
+            rename_vars: true,
+        })
     }
 
     pub fn new_no_annotate() -> Box<Self> {
-        Box::new(LiveVarAnalysisProcessor { annotate: false })
+        Box::new(LiveVarAnalysisProcessor {
+            annotate: false,
+            rename_vars: true,
+        })
+    }
+
+    pub fn new_with_options(annotate: bool, rename_vars: bool) -> Box<Self> {
+        Box::new(LiveVarAnalysisProcessor {
+            annotate,
+            rename_vars,
+        })
     }
 }
 
@@ -77,30 +92,40 @@ impl FunctionTargetProcessor for LiveVarAnalysisProcessor {
         let func_target = FunctionTarget::new(func_env, &data);
 
         // Call 1st time
-        let (code, _) =
+        let (code, offset_to_live_refs) =
             Self::analyze_and_transform(&func_target, next_free_label, next_free_attr, code);
-
-        // Eliminate unused locals after dead code elimination.
-        let (code, local_types, remap) = Self::eliminate_unused_vars(&func_target, code);
-        data.rename_vars(&|idx| {
-            if let Some(new_idx) = remap.get(&idx) {
-                *new_idx
-            } else {
-                idx
-            }
-        });
-        data.local_types = local_types;
         data.code = code;
-
         if self.annotate {
-            // Call analysis 2nd time on transformed code.
-            let func_target = FunctionTarget::new(func_env, &data);
-            let offset_to_live_refs = LiveVarAnnotation(Self::analyze(&func_target, &data.code));
-            // Annotate function target with computed life variable data.
-            // TODO(mengxu): verify that recursion does not affect how live-var analysis is done
             data.annotations
-                .set::<LiveVarAnnotation>(offset_to_live_refs, true);
+                .set::<LiveVarAnnotation>(LiveVarAnnotation(offset_to_live_refs), true);
         }
+
+        if self.rename_vars {
+            // Eliminate unused locals after dead code elimination.
+            let code = std::mem::take(&mut data.code);
+            let func_target = FunctionTarget::new(func_env, &data);
+            let (code, local_types, remap) = Self::eliminate_unused_vars(&func_target, code);
+            data.rename_vars(&|idx| {
+                if let Some(new_idx) = remap.get(&idx) {
+                    *new_idx
+                } else {
+                    idx
+                }
+            });
+            data.local_types = local_types;
+            data.code = code;
+
+            if self.annotate {
+                // Call analysis 2nd time on transformed code.
+                let func_target = FunctionTarget::new(func_env, &data);
+                let offset_to_live_refs = Self::analyze(&func_target, &data.code);
+                // Annotate function target with computed life variable data.
+                // TODO(mengxu): verify that recursion does not affect how live-var analysis is done
+                data.annotations
+                    .set::<LiveVarAnnotation>(LiveVarAnnotation(offset_to_live_refs), true);
+            }
+        }
+
         data
     }
 
