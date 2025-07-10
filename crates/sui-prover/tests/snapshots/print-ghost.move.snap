@@ -4,7 +4,7 @@ assertion_line: 140
 expression: output
 ---
 exiting with verification errors
-error: prover::ensures assertion does not hold
+error: prover::ensures does not hold
    ┌─ tests/inputs/print-ghost.move:17:5
    │
 17 │     ensures(ghost::global<u64, bool>() != true);

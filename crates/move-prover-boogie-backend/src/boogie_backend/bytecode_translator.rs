@@ -56,7 +56,7 @@ use move_stackless_bytecode::{
 };
 
 use crate::boogie_backend::{
-    boogie_helpers::{
+   boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
         boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
@@ -2400,7 +2400,7 @@ impl<'env> FunctionTranslator<'env> {
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures assertion does not hold\"}} {};",
+                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
                                 args_str,
                             );
