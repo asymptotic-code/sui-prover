@@ -50,7 +50,7 @@ fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
         .unwrap_or_else(|| PathBuf::from(".").canonicalize())?;
     // Always root ourselves to the package root, and then compile relative to that.
     let rooted_path = SourcePackageLayout::try_find_root(&path)?;
-    std::env::set_current_dir(rooted_path).unwrap();
+    std::env::set_current_dir(rooted_path)?;
 
     Ok(PathBuf::from("."))
 }
