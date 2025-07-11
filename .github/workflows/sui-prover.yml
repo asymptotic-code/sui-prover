@@ -84,7 +84,6 @@ jobs:
       - name: Make binary executable
         run: |
           chmod +x ./bin/sui-prover
-          chmod +x ./bin/boogie
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Checkout Repo
@@ -93,6 +92,8 @@ jobs:
      
       - name: Run Amm Tests
         run: |
+          chmod +x ./bin/boogie
+          ls -l ./bin/boogie
           export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
           export BOOGIE_EXE="${{ github.workspace }}/bin/boogie"
           export Z3_EXE="$(brew --prefix z3)/bin/z3"
