@@ -3,8 +3,8 @@ name: Sui-Prover Test Action
 on: [pull_request]
 
 jobs:
-  build-and-run:
-    runs-on: macos-latest-large
+  build:
+    runs-on: macos-latest
     env: 
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
@@ -34,6 +34,83 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install dependencies from formula & build prover & run prover
+      - name: Install dependencies from formula & build prover
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
+
+      - name: Upload Prover Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sui-prover-binary
+          path: target/release/sui-prover
+
+  internal-tests:
+    runs-on: macos-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: |
+          cd ./crates/sui-prover
+          cargo test 
+
+  sui-kit-tests:
+    runs-on: macos-latest
+    needs: build
+    steps:
+      - name: Download prover binary
+        uses: actions/download-artifact@v4
+        with:
+          name: sui-prover-binary
+          path: ./bin
+
+      - name: Make binary executable
+        run: |
+          chmod +x ./bin/sui-prover
+          run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+      - name: Checkout Repo
+        run: |
+          git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
+          cd sui-kit/examples
+     
+      - name: Run Amm Tests
+        run: |
+          cd amm
+          sui-prover -s 2
+          cd ..
+      
+      - name: Run Showcase Tests
+        run: |
+          cd showcase
+          sui-prover -s 2
+          cd ..
+
+      - name: Run Guide Tests
+        run: |
+          cd guide
+          sui-prover -s 2
+          cd ..
+  
+  integer-mate-tests:
+    runs-on: macos-latest
+    needs: build
+    steps:
+      - name: Checkout Repo
+        run: |
+          git clone https://github.com/asymptotic-code/integer-library int-lib
+          cd int-lib
+     
+      - name: Run Regular Tests
+        run: |
+          cd specs
+          sui-prover -s 2
+          cd ..
+      
+      - name: Run BV Tests
+        run: |
+          cd specs-bv
+          sui-prover -s 2 --no-bv-int-encoding
+          cd ..
