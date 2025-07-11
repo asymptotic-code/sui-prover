@@ -78,25 +78,24 @@ jobs:
       - name: Checkout Repo
         run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-          cd sui-kit/examples
      
       - name: Run Amm Tests
         run: |
-          cd amm
+          which sui-prover
+          sui-prover --version
+          echo "Running sui-kit tests with Sui Prover"
+          cd sui-kit/examples/amm
           sui-prover -s 2
-          cd ..
       
       - name: Run Showcase Tests
         run: |
-          cd showcase
+          cd sui-kit/examples/showcase
           sui-prover -s 2
-          cd ..
 
       - name: Run Guide Tests
         run: |
-          cd guide
+          cd sui-kit/examples/guide
           sui-prover -s 2
-          cd ..
   
   # integer-mate-tests:
   #   runs-on: macos-latest
