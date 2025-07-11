@@ -90,6 +90,8 @@ jobs:
         run: |
           ls -a ${{ github.workspace }}/artifacts
           ls -l ${{ github.workspace }}/artifacts
+          
+          mkdir -p "${{ github.workspace }}/bin"
 
           ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
 
