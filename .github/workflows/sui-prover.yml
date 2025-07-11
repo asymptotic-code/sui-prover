@@ -86,16 +86,16 @@ jobs:
           chmod +x ./bin/sui-prover
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
-          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
-          export BOOGIE_EXE="./bin/boogie"
-          export Z3_EXE="$(brew --prefix z3)/bin/z3"
-
       - name: Checkout Repo
         run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
      
       - name: Run Amm Tests
         run: |
+          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+          export BOOGIE_EXE="${{ github.workspace }}/bin/boogie"
+          export Z3_EXE="$(brew --prefix z3)/bin/z3"
+
           cd sui-kit/examples/amm
           sui-prover -s 2
       
