@@ -41,6 +41,8 @@ jobs:
       - name: Install dependencies from formula & build prover
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
+          ech "Boogie version: $(boogie --version)"
+          ls -a ~/.local/bin/boogie
 
       - name: Upload Prover Binary
         uses: actions/upload-artifact@v4
@@ -88,6 +90,10 @@ jobs:
 
       - name: Checkout Repo
         run: |
+          echo "Boogie files"
+          ls -l ${{ github.workspace }}/bin/boogie
+          ls -l ${{ github.workspace }}/bin
+
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
      
       - name: Run Amm Tests
