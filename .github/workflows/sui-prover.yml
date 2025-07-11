@@ -48,6 +48,12 @@ jobs:
           name: sui-prover-binary
           path: ~/.local/libexec/sui-prover/bin/sui-prover
 
+      - name: Upload Boogie Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: boogie-artifacts
+          path: ~/.local/bin/boogie
+
   # internal-tests:
   #   runs-on: macos-latest
   #   needs: build
@@ -69,11 +75,20 @@ jobs:
         with:
           name: sui-prover-binary
           path: ./bin
+      - name: Download boogie binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: boogie-artifacts
+          path: ./bin/boogie
 
       - name: Make binary executable
         run: |
           chmod +x ./bin/sui-prover
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+          export BOOGIE_EXE="./bin/boogie"
+          export Z3_EXE="$(brew --prefix z3)/bin/z3"
 
       - name: Checkout Repo
         run: |
@@ -81,9 +96,6 @@ jobs:
      
       - name: Run Amm Tests
         run: |
-          which sui-prover
-          sui-prover --version
-          echo "Running sui-kit tests with Sui Prover"
           cd sui-kit/examples/amm
           sui-prover -s 2
       
