@@ -24,6 +24,8 @@ jobs:
             /usr/local/Homebrew
             /opt/homebrew
           key: brew-macos-dotnet8-z3-rust
+          restore-keys: |
+            brew-macos-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -33,6 +35,8 @@ jobs:
             ~/.cargo/git
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
 
       - name: Install dependencies from formula & build prover
         run: |
@@ -69,7 +73,7 @@ jobs:
       - name: Make binary executable
         run: |
           chmod +x ./bin/sui-prover
-          run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+          echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Checkout Repo
         run: |
