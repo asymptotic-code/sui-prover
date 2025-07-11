@@ -115,16 +115,6 @@ jobs:
      
       - name: Run Amm Tests
         run: |
-          echo "Bin files"
-          ls -l ${{ github.workspace }}/bin
-          ls -a ${{ github.workspace }}/bin
-          echo "--- Debugging BOOGIE_EXE ---"
-          echo "Value of BOOGIE_EXE: '$BOOGIE_EXE'"
-          # Verify the file itself exists and is executable at that path
-          ls -l "$BOOGIE_EXE"
-          "$BOOGIE_EXE" /version || echo "Failed to run Boogie directly at '$BOOGIE_EXE'"
-          echo "--- End Debugging ---"
-
           cd sui-kit/examples/amm
           sui-prover -s 2
       
