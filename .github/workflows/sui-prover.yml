@@ -124,6 +124,7 @@ jobs:
 
           ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
 
+          chmod +x ./artifacts/bin/sui-prover
           # Create sui-prover wrapper script
           cat <<EOF > "${{ github.workspace }}/bin/sui-prover"
           #!/bin/bash
@@ -138,15 +139,23 @@ jobs:
 
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
+      - name: Checkout Repo
+        run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-
+     
+      - name: Run Amm Tests
+        run: |
           cd sui-kit/examples/amm
           sui-prover -s 2
-
-          cd ../showcase
+      
+      - name: Run Showcase Tests
+        run: |
+          cd sui-kit/examples/showcase
           sui-prover -s 2
 
-          cd ../guide
+      - name: Run Guide Tests
+        run: |
+          cd sui-kit/examples/guide
           sui-prover -s 2
   
   # integer-mate-tests:
