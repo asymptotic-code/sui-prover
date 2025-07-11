@@ -43,17 +43,11 @@ jobs:
           sh ./crates/sui-prover/tests/sui-prover.sh
           ls -a ~/.local/bin/boogie
 
-      - name: Upload Prover Binary
+      - name: Upload Binaries
         uses: actions/upload-artifact@v4
         with:
-          name: sui-prover-binary
-          path: ~/.local/libexec/sui-prover/bin/sui-prover
-
-      - name: Upload Boogie Binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: boogie-artifacts
-          path: ~/.local/bin/boogie
+          name: sui-prover-binaries
+          path: ~/.local/libexec/sui-prover
 
   # internal-tests:
   #   runs-on: macos-latest
@@ -87,20 +81,16 @@ jobs:
           brew update
           brew install dotnet@8 rust z3
   
-      - name: Download prover binary
+      - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: sui-prover-binary
-          path: ${{ github.workspace }}/bin
-      - name: Download boogie binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: boogie-artifacts
+          name: sui-prover-binaries
           path: ${{ github.workspace }}/bin
 
       - name: Make binary executable
         run: |
           chmod +x ${{ github.workspace }}/bin/sui-prover
+          ln -s "${{ github.workspace }}/BoogieDriver" "${{ github.workspace }}/bin/boogie"
           chmod +x ${{ github.workspace }}/bin/boogie
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
@@ -115,6 +105,7 @@ jobs:
       - name: Run Amm Tests
         run: |
           export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+          export PATH="$DOTNET_ROOT:$DOTNET_ROOT/bin:$PATH"
           export BOOGIE_EXE="${{ github.workspace }}/bin/boogie"
           export Z3_EXE="$(brew --prefix z3)/bin/z3"
 
