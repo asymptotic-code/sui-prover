@@ -133,7 +133,7 @@ jobs:
           sh ./crates/sui-prover/tests/sui-prover.sh
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
-          cd specs
+          cd int-lib/specs
           sui-prover -s 2
           cd ..
       
