@@ -41,7 +41,6 @@ jobs:
       - name: Install dependencies from formula & build prover
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
-          ech "Boogie version: $(boogie --version)"
           ls -a ~/.local/bin/boogie
 
       - name: Upload Prover Binary
