@@ -80,26 +80,23 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: boogie-artifacts
-          path: ${{ github.workspace }}/bin/boogie
+          path: ${{ github.workspace }}/bin
 
       - name: Make binary executable
         run: |
           chmod +x ${{ github.workspace }}/bin/sui-prover
+          chmod +x ${{ github.workspace }}/bin/boogie
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Checkout Repo
         run: |
           echo "Boogie files"
-          ls -l ${{ github.workspace }}/bin/boogie
-          ls -l ${{ github.workspace }}/bin
+          ls -a ${{ github.workspace }}/bin
 
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
      
       - name: Run Amm Tests
         run: |
-          chmod +x ${{ github.workspace }}/bin/boogie
-          ls -l ${{ github.workspace }}/bin/boogie
-
           export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
           export BOOGIE_EXE="${{ github.workspace }}/bin/boogie"
           export Z3_EXE="$(brew --prefix z3)/bin/z3"
