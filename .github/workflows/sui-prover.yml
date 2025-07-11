@@ -90,6 +90,11 @@ jobs:
       - name: Install dependencies from formula & build prover & Run Kit
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
+          # Run cargo test in sui-prover directory
+          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+          export BOOGIE_EXE="${{github.workspace}}/.local/bin/boogie"
+          export Z3_EXE="$(brew --prefix z3)/bin/z3"
+
           cd ./crates/sui-prover/tests
           cargo test
 
