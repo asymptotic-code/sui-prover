@@ -56,8 +56,40 @@ jobs:
   #     - name: Checkout repository
   #       uses: actions/checkout@v4
 
-  #     - name: Run Tests
+  #     - name: Cache Homebrew
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/Library/Caches/Homebrew
+  #           /usr/local/Homebrew
+  #           /opt/homebrew
+  #         key: brew-macos-dotnet8-z3-rust
+  #         restore-keys: |
+  #           brew-macos-
+      
+  #     - name: Brew deps
   #       run: |
+  #         brew install dotnet@8 rust z3
+  
+  #     - name: Download binaries
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: sui-prover-binaries
+  #         path: ${{ github.workspace }}/artifacts
+
+  #     - name: Run Tests
+  #       run: |          
+  #         mkdir -p "${{ github.workspace }}/bin"
+
+  #         ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
+
+  #         export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+  #         export BOOGIE_EXE="$${{ github.workspace }}/bin/boogie"
+  #         export Z3_EXE="$(brew --prefix z3)/bin/z3"
+
+  #         chmod +x ${{ github.workspace }}/bin/boogie
+  #         echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
   #         cd ./crates/sui-prover
   #         cargo test 
 
@@ -87,10 +119,7 @@ jobs:
           path: ${{ github.workspace }}/artifacts
 
       - name: Make binary executable
-        run: |
-          ls -a ${{ github.workspace }}/artifacts
-          ls -l ${{ github.workspace }}/artifacts
-          
+        run: |          
           mkdir -p "${{ github.workspace }}/bin"
 
           ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
@@ -109,23 +138,15 @@ jobs:
 
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
-      - name: Checkout Repo
-        run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-     
-      - name: Run Amm Tests
-        run: |
+
           cd sui-kit/examples/amm
           sui-prover -s 2
-      
-      - name: Run Showcase Tests
-        run: |
-          cd sui-kit/examples/showcase
+
+          cd ../showcase
           sui-prover -s 2
 
-      - name: Run Guide Tests
-        run: |
-          cd sui-kit/examples/guide
+          cd ../guide
           sui-prover -s 2
   
   # integer-mate-tests:
