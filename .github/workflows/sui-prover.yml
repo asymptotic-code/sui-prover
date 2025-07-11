@@ -71,6 +71,22 @@ jobs:
     runs-on: macos-latest
     needs: build
     steps:
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /usr/local/Homebrew
+            /opt/homebrew
+          key: brew-macos-dotnet8-z3-rust
+          restore-keys: |
+            brew-macos-
+      
+      - name: Brew deps
+        run: |
+          brew update
+          brew install dotnet@8 rust z3
+  
       - name: Download prover binary
         uses: actions/download-artifact@v4
         with:
@@ -90,7 +106,8 @@ jobs:
 
       - name: Checkout Repo
         run: |
-          echo "Boogie files"
+          echo "Bin files"
+          ls -l ${{ github.workspace }}/bin
           ls -a ${{ github.workspace }}/bin
 
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
