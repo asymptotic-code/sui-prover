@@ -9,7 +9,7 @@ jobs:
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
     concurrency:
-      group: ${{ github.head_ref || github.ref_name }}
+      group: build-run-kit-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
@@ -58,7 +58,7 @@ jobs:
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
     concurrency:
-      group: ${{ github.head_ref || github.ref_name }}
+      group:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
@@ -96,7 +96,7 @@ jobs:
   build-run-integer-mate-tests:
     runs-on: macos-latest
     env: 
-      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      BRANCH_NAME:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
 
     concurrency:
       group: ${{ github.head_ref || github.ref_name }}
@@ -139,4 +139,3 @@ jobs:
       
           cd specs-bv
           sui-prover -s 2 --no-bv-int-encoding
- 
