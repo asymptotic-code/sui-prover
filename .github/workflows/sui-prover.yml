@@ -3,7 +3,7 @@ name: Sui-Prover Test Action
 on: [pull_request]
 
 jobs:
-  build:
+  build-run-kit:
     runs-on: macos-latest
     env: 
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -38,65 +38,33 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Install dependencies from formula & build prover
+      - name: Install dependencies from formula & build prover & Run Kit
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
-          ls -a ~/.local/bin/boogie
-
-      - name: Upload Binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: sui-prover-binaries
-          path: ~/.local/libexec/sui-prover
-
-  # internal-tests:
-  #   runs-on: macos-latest
-  #   needs: build
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-
-  #     - name: Cache Homebrew
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: |
-  #           ~/Library/Caches/Homebrew
-  #           /usr/local/Homebrew
-  #           /opt/homebrew
-  #         key: brew-macos-dotnet8-z3-rust
-  #         restore-keys: |
-  #           brew-macos-
-      
-  #     - name: Brew deps
-  #       run: |
-  #         brew install dotnet@8 rust z3
-  
-  #     - name: Download binaries
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: sui-prover-binaries
-  #         path: ${{ github.workspace }}/artifacts
-
-  #     - name: Run Tests
-  #       run: |          
-  #         mkdir -p "${{ github.workspace }}/bin"
-
-  #         ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
-
-  #         export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
-  #         export BOOGIE_EXE="$${{ github.workspace }}/bin/boogie"
-  #         export Z3_EXE="$(brew --prefix z3)/bin/z3"
-
-  #         chmod +x ${{ github.workspace }}/bin/boogie
-  #         echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
-
-  #         cd ./crates/sui-prover
-  #         cargo test 
-
-  sui-kit-tests:
+          git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
+          
+          cd sui-kit/examples/amm
+          sui-prover -s 2
+          
+          cd ../showcase
+          sui-prover -s 2
+          
+          cd ../guide
+          sui-prover -s 2
+          
+  build-run-internal-tests:
     runs-on: macos-latest
-    needs: build
+    env: 
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Cache Homebrew
         uses: actions/cache@v4
         with:
@@ -107,74 +75,68 @@ jobs:
           key: brew-macos-dotnet8-z3-rust
           restore-keys: |
             brew-macos-
-      
-      - name: Brew deps
-        run: |
-          brew install dotnet@8 rust z3
-  
-      - name: Download binaries
-        uses: actions/download-artifact@v4
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
         with:
-          name: sui-prover-binaries
-          path: ${{ github.workspace }}/artifacts
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
 
-      - name: Make binary executable
-        run: |          
-          mkdir -p "${{ github.workspace }}/bin"
-
-          ln -s "${{ github.workspace }}/artifacts/BoogieDriver" "${{ github.workspace }}/bin/boogie"
-
-          chmod +x ./artifacts/bin/sui-prover
-          # Create sui-prover wrapper script
-          cat <<EOF > "${{ github.workspace }}/bin/sui-prover"
-          #!/bin/bash
-          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
-          export BOOGIE_EXE="$${{ github.workspace }}/bin/boogie"
-          export Z3_EXE="$(brew --prefix z3)/bin/z3"
-          exec "${{ github.workspace }}/artifacts/bin/sui-prover" "\$@"
-          EOF
-
-          chmod +x ${{ github.workspace }}/bin/sui-prover
-          chmod +x ${{ github.workspace }}/bin/boogie
-
-          echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
-
-      - name: Checkout Repo
+      - name: Install dependencies from formula & build prover & Run Kit
         run: |
-          git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-     
-      - name: Run Amm Tests
+          sh ./crates/sui-prover/tests/sui-prover.sh
+          cd ./crates/sui-prover/tests
+          cargo test
+
+  build-run-integer-mate-tests:
+    runs-on: macos-latest
+    env: 
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+    concurrency:
+      group: ${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /usr/local/Homebrew
+            /opt/homebrew
+          key: brew-macos-dotnet8-z3-rust
+          restore-keys: |
+            brew-macos-
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Install dependencies from formula & build prover & Run Kit
         run: |
-          cd sui-kit/examples/amm
+          sh ./crates/sui-prover/tests/sui-prover.sh
+          git clone https://github.com/asymptotic-code/integer-library int-lib
+
+          cd specs
           sui-prover -s 2
+          cd ..
       
-      - name: Run Showcase Tests
-        run: |
-          cd sui-kit/examples/showcase
-          sui-prover -s 2
-
-      - name: Run Guide Tests
-        run: |
-          cd sui-kit/examples/guide
-          sui-prover -s 2
-  
-  # integer-mate-tests:
-  #   runs-on: macos-latest
-  #   needs: build
-  #   steps:
-  #     - name: Checkout Repo
-  #       run: |
-  #         git clone https://github.com/asymptotic-code/integer-library int-lib
-  #         cd int-lib
-     
-  #     - name: Run Regular Tests
-  #       run: |
-  #         cd specs
-  #         sui-prover -s 2
-  #         cd ..
-      
-  #     - name: Run BV Tests
-  #       run: |
-  #         cd specs-bv
-  #         sui-prover -s 2 --no-bv-int-encoding
-  #         cd ..
+          cd specs-bv
+          sui-prover -s 2 --no-bv-int-encoding
+ 
