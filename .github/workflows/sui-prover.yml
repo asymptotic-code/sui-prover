@@ -84,6 +84,7 @@ jobs:
       - name: Make binary executable
         run: |
           chmod +x ./bin/sui-prover
+          chmod +x ./bin/boogie
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Checkout Repo
