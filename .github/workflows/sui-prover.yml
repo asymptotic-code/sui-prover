@@ -74,16 +74,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: sui-prover-binary
-          path: ./bin
+          path: ${{ github.workspace }}/bin
       - name: Download boogie binaries
         uses: actions/download-artifact@v4
         with:
           name: boogie-artifacts
-          path: ./bin/boogie
+          path: ${{ github.workspace }}/bin/boogie
 
       - name: Make binary executable
         run: |
-          chmod +x ./bin/sui-prover
+          chmod +x ${{ github.workspace }}/bin/sui-prover
           echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Checkout Repo
@@ -92,8 +92,9 @@ jobs:
      
       - name: Run Amm Tests
         run: |
-          chmod +x ./bin/boogie
-          ls -l ./bin/boogie
+          chmod +x ${{ github.workspace }}/bin/boogie
+          ls -l ${{ github.workspace }}/bin/boogie
+
           export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
           export BOOGIE_EXE="${{ github.workspace }}/bin/boogie"
           export Z3_EXE="$(brew --prefix z3)/bin/z3"
