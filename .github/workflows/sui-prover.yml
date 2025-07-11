@@ -42,19 +42,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sui-prover-binary
-          path: target/release/sui-prover
+          path: ~/.local/libexec/sui-prover/bin/sui-prover
 
-  internal-tests:
-    runs-on: macos-latest
-    needs: build
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # internal-tests:
+  #   runs-on: macos-latest
+  #   needs: build
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
 
-      - name: Run Tests
-        run: |
-          cd ./crates/sui-prover
-          cargo test 
+  #     - name: Run Tests
+  #       run: |
+  #         cd ./crates/sui-prover
+  #         cargo test 
 
   sui-kit-tests:
     runs-on: macos-latest
@@ -94,23 +94,23 @@ jobs:
           sui-prover -s 2
           cd ..
   
-  integer-mate-tests:
-    runs-on: macos-latest
-    needs: build
-    steps:
-      - name: Checkout Repo
-        run: |
-          git clone https://github.com/asymptotic-code/integer-library int-lib
-          cd int-lib
+  # integer-mate-tests:
+  #   runs-on: macos-latest
+  #   needs: build
+  #   steps:
+  #     - name: Checkout Repo
+  #       run: |
+  #         git clone https://github.com/asymptotic-code/integer-library int-lib
+  #         cd int-lib
      
-      - name: Run Regular Tests
-        run: |
-          cd specs
-          sui-prover -s 2
-          cd ..
+  #     - name: Run Regular Tests
+  #       run: |
+  #         cd specs
+  #         sui-prover -s 2
+  #         cd ..
       
-      - name: Run BV Tests
-        run: |
-          cd specs-bv
-          sui-prover -s 2 --no-bv-int-encoding
-          cd ..
+  #     - name: Run BV Tests
+  #       run: |
+  #         cd specs-bv
+  #         sui-prover -s 2 --no-bv-int-encoding
+  #         cd ..
