@@ -3,7 +3,7 @@ name = "Prover"
 edition = "2024.beta"
 
 [dependencies]
-MoveStdlib = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2f45b1e", override = true }
+MoveStdlib = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2c7bfdd", override = true }
 
 [addresses]
 prover = "0x0"
