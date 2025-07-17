@@ -1490,6 +1490,7 @@ impl GlobalEnv {
     const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
     const OPTION_MODULE_NAME: &'static str = "option";
     const TABLE_MODULE_NAME: &'static str = "table";
+    const OBJECT_MODULE_NAME: &'static str = "object";
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
@@ -1554,6 +1555,9 @@ impl GlobalEnv {
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
     const TABLE_DROP_FUNCTION_NAME: &'static str = "drop";
     const OBJECT_TABLE_VALUE_ID_FUNCTION_NAME: &'static str = "value_id";
+
+    // object function names
+    const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
 
     const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
     const DYNAMIC_FIELD_BORROW_FUNCTION_NAME: &'static str = "borrow";
@@ -1862,6 +1866,13 @@ impl GlobalEnv {
         )
     }
 
+    pub fn object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_MODULE_NAME,
+            Self::OBJECT_BORROW_UID_FUNCTION_NAME,
+        )
+    }
+
     pub fn dynamic_field_add_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::DYNAMIC_FIELD_MODULE_NAME,
@@ -1996,6 +2007,7 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_destroy_empty_qid(),
             self.object_table_value_id_qid(),
+            self.object_borrow_uid_qid(),
             self.dynamic_field_add_qid(),
             self.dynamic_field_borrow_qid(),
             self.dynamic_field_borrow_mut_qid(),

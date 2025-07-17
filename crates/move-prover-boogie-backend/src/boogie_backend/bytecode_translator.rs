@@ -1012,6 +1012,24 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
+        // Generate object::borrow_uid function for structs with key ability
+        if struct_env.get_abilities().has_key() {
+            let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", 
+                boogie_type_suffix(env, &Type::Datatype(
+                    struct_env.module_env.get_id(),
+                    struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )));
+            let writer = self.parent.writer;
+            emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
+                object_borrow_uid_fun_name, 
+                struct_name);
+            writer.indent();
+            emitln!(writer, "res := obj->$id;");
+            writer.unindent();
+            emitln!(writer, "}");
+        }
+
         if struct_env.has_memory() {
             // Emit memory variable.
             let memory_name = boogie_resource_memory_name(
