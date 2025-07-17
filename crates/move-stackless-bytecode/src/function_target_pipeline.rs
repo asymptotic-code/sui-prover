@@ -4,6 +4,7 @@
 
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
+use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -507,8 +508,32 @@ impl FunctionTargetsHolder {
     ) -> Option<(ModuleName, String)> {
         match &function_spec.value {
             ModuleAccess_::Name(name) => {
-                // Use the current module for unqualified names
-                Some((current_module.get_name().clone(), name.value.to_string()))
+                // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
+                let function_name = name.value.to_string();
+                let function_symbol = env.symbol_pool().make(&function_name);
+                
+                // First try to find the function in the current module
+                if current_module.find_function(function_symbol).is_some() {
+                    return Some((current_module.get_name().clone(), function_name));
+                }
+
+                let handle_index = current_module.data.module.function_handles()
+                    .iter()
+                    .enumerate()
+                    .find_map(|(h_index, handle)| {
+                        if function_name == current_module.data.module.identifier_at(handle.name).to_string() {
+                            Some(FunctionHandleIndex(h_index.try_into().unwrap()))
+                        } else {
+                            None
+                        }
+                    });
+
+                if handle_index.is_some() {
+                    let func_env= current_module.get_used_function(handle_index.unwrap());
+                    Some((func_env.module_env.get_name().clone(), function_name))
+                } else {
+                    None
+                }
             }
             ModuleAccess_::ModuleAccess(module_ident, name) => {
                 let address = module_ident.value.address;

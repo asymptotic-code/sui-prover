@@ -2142,7 +2142,7 @@ pub struct ModuleEnv<'env> {
     pub env: &'env GlobalEnv,
 
     /// Reference to the data of the module.
-    data: &'env ModuleData,
+    pub data: &'env ModuleData,
 }
 
 impl<'env> ModuleEnv<'env> {
