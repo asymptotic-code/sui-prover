@@ -5,7 +5,7 @@ expression: output
 ---
 Verification successful
 warning: unused variable
-   ┌─ tests/inputs/vec_map.move:20:13
+   ┌─ tests/inputs/vec_map/ghost_map.move:20:13
    │
 20 │     let mut value = self.get_value(key);
    │             ^^^^^ Unused local variable 'value'. Consider removing or prefixing with an underscore: '_value'
@@ -13,7 +13,7 @@ warning: unused variable
    = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
 warning: unused struct field
-   ┌─ tests/inputs/vec_map.move:14:5
+   ┌─ tests/inputs/vec_map/ghost_map.move:14:5
    │
 14 │     value: u64
    │     ^^^^^ The 'value' field of the 'Value' type is unused
@@ -21,7 +21,7 @@ warning: unused struct field
    = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
 warning: unused 'mut' modifiers
-   ┌─ tests/inputs/vec_map.move:20:13
+   ┌─ tests/inputs/vec_map/ghost_map.move:20:13
    │
 20 │     let mut value = self.get_value(key);
    │         --- ^^^^^ The variable 'value' is never used mutably
