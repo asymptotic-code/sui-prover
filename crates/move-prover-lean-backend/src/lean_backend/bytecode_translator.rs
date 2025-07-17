@@ -127,6 +127,8 @@ impl<'env> LeanTranslator<'env> {
             "generating verification conditions for {:?} module(s)",
             self.env.get_module_count()
         );
+        
+        // First pass: translate structs and enums for all modules
         for module_env in self.env.get_modules() {
             self.writer.set_location(&module_env.env.internal_loc());
 
@@ -170,110 +172,39 @@ impl<'env> LeanTranslator<'env> {
                         .translate();
                 }
             }
+        }
 
-            // Collect all functions as qualified IDs for dependency analysis
-            let mut all_function_qids = Vec::new();
-            let mut scenario_spec_qids = Vec::new();
-            
-            for fun_env in module_env.get_functions() {
-                // Don't filter out functions here - include them for dependency analysis
-                // Filtering will happen later in the processing phase
-                
+        // Second pass: collect functions that need to be processed for dependency ordering
+        let mut all_function_qids = Vec::new();
+        
+        for module_env in self.env.get_modules() {
+            for fun_env in module_env.get_functions().collect_vec().iter().rev() {
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
                     verified_functions_count += 1;
-
-                    if self
-                        .targets
-                        .scenario_specs()
-                        .contains(&fun_env.get_qualified_id())
-                    {
-                        scenario_spec_qids.push(fun_env.get_qualified_id());
-                        continue;
-                    }
-
-                    all_function_qids.push((fun_env.get_qualified_id(), true)); // true indicates spec function
-                } else {
-                    all_function_qids.push((fun_env.get_qualified_id(), false)); // false indicates regular function
-                }
-            }
-
-            // Process scenario spec functions first (these don't participate in dependency ordering)
-            for qid in scenario_spec_qids {
-                let fun_env = self.env.get_function(qid);
-                if self.targets.has_target(
-                    &fun_env,
-                    &FunctionVariant::Verification(VerificationFlavor::Regular),
-                ) {
-                    let fun_target = self.targets.get_target(
-                        &fun_env,
-                        &FunctionVariant::Verification(VerificationFlavor::Regular),
-                    );
-                    FunctionTranslator {
-                        parent: self,
-                        fun_target: &fun_target,
-                        type_inst: &[],
-                        style: FunctionTranslationStyle::Default,
-                        ensures_info: RefCell::new(Vec::new()),
-                    }
-                        .translate();
-                }
-            }
-
-            // Process all other functions in dependency order
-            if !all_function_qids.is_empty() {
-                let ordered_qids = self.order_functions_by_dependencies_qids(&all_function_qids);
-                for (qid, is_spec) in ordered_qids {
-                    let fun_env = self.env.get_function(qid);
-                    
-                    // Filter out native and intrinsic functions during processing
-                    if fun_env.is_native() || intrinsic_fun_ids.contains(&qid) {
-                        continue;
-                    }
-                    
-                    if is_spec {
-                        self.translate_function_styles_mutual(&fun_env);
+                    // Include spec functions that need to be verified
+                    if self.targets.scenario_specs().contains(&fun_env.get_qualified_id()) {
+                        if self.targets.has_target(
+                            &fun_env,
+                            &FunctionVariant::Verification(VerificationFlavor::Regular),
+                        ) {
+                            all_function_qids.push((fun_env.get_qualified_id(), true));
+                        }
                     } else {
-                        let fun_target = self.targets.get_target(&fun_env, &FunctionVariant::Baseline);
-                        
-                        // Always process functions that have spec counterparts, regardless of inlined flag
-                        if let Some(spec_qid) =
-                            self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
-                        {
-                            if !self.targets.no_verify_specs().contains(spec_qid) {
-                                FunctionTranslator {
-                                    parent: self,
-                                    fun_target: &fun_target,
-                                    type_inst: &[],
-                                    style: FunctionTranslationStyle::Default,
-                                    ensures_info: RefCell::new(Vec::new()),
-                                }
-                                    .translate();
-                            }
-                        } else if verification_analysis::get_info(&fun_target).inlined {
-                            // Only check inlined flag for functions without spec counterparts
-                            // This variant is inlined, so translate for all type instantiations.
-                            for type_inst in mono_info
-                                .funs
-                                .get(&(
-                                    fun_target.func_env.get_qualified_id(),
-                                    FunctionVariant::Baseline,
-                                ))
-                                .unwrap_or(&BTreeSet::new())
-                            {
-                                FunctionTranslator {
-                                    parent: self,
-                                    fun_target: &fun_target,
-                                    type_inst,
-                                    style: FunctionTranslationStyle::Default,
-                                    ensures_info: RefCell::new(Vec::new()),
-                                }
-                                    .translate();
-                            }
+                        // Check if this spec function should be generated
+                        if self.should_generate_style(&fun_env, FunctionTranslationStyle::Default) {
+                            all_function_qids.push((fun_env.get_qualified_id(), true));
                         }
                     }
+                } else {
+                    // Include regular functions that might be needed
+                    // We'll filter them during processing based on actual usage
+                    all_function_qids.push((fun_env.get_qualified_id(), false));
                 }
             }
+        }
 
+        // Third pass: handle invariant functions
+        for module_env in self.env.get_modules() {
             for ref struct_env in module_env.get_structs() {
                 if struct_env.is_native() {
                     continue;
@@ -307,6 +238,187 @@ impl<'env> LeanTranslator<'env> {
                 }
             }
         }
+
+        // Fourth pass: process all functions in global dependency order
+        if !all_function_qids.is_empty() {
+            let ordered_qids = self.order_functions_by_dependencies_qids(&all_function_qids);
+            
+            // Build a set of functions that are actually needed
+            let mut needed_functions = std::collections::HashSet::new();
+            
+            // First, identify spec functions that need to be verified
+            for (qid, is_spec) in &ordered_qids {
+                if *is_spec {
+                    let fun_env = self.env.get_function(*qid);
+                    if self.targets.scenario_specs().contains(qid) {
+                        if self.targets.has_target(
+                            &fun_env,
+                            &FunctionVariant::Verification(VerificationFlavor::Regular),
+                        ) {
+                            needed_functions.insert(*qid);
+                        }
+                    } else if self.should_generate_style(&fun_env, FunctionTranslationStyle::Default) {
+                        needed_functions.insert(*qid);
+                    }
+                }
+            }
+            
+            // Then, find all dependencies of needed functions
+            let mut to_process = needed_functions.clone();
+            while !to_process.is_empty() {
+                let current = to_process.iter().next().unwrap().clone();
+                to_process.remove(&current);
+                
+                let fun_env = self.env.get_function(current);
+                let dependencies = self.get_function_dependencies(&fun_env);
+                
+                for dep_qid in dependencies {
+                    let dep_fun_env = self.env.get_function(dep_qid);
+                    // Skip native and intrinsic functions
+                    if dep_fun_env.is_native() || intrinsic_fun_ids.contains(&dep_qid) {
+                        continue;
+                    }
+                    
+                    if !needed_functions.contains(&dep_qid) {
+                        needed_functions.insert(dep_qid);
+                        to_process.insert(dep_qid);
+                    }
+                }
+            }
+            
+            // Debug: Print the ordering for overflowing_mul related functions
+            eprintln!("=== FUNCTION ORDERING ===");
+            for (i, (qid, is_spec)) in ordered_qids.iter().enumerate() {
+                let fun_env = self.env.get_function(*qid);
+                let fun_name = fun_env.get_name_str();
+                if fun_name.contains("overflowing_mul") || fun_name.contains("mul_spec") {
+                    eprintln!("  {}: {} (is_spec: {}, needed: {})", i, fun_name, is_spec, needed_functions.contains(qid));
+                }
+            }
+            eprintln!("=========================");
+            
+            for (qid, is_spec) in ordered_qids {
+                let fun_env = self.env.get_function(qid);
+                
+                // Filter out native and intrinsic functions during processing
+                if fun_env.is_native() || intrinsic_fun_ids.contains(&qid) {
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!("FILTERED OUT: {} (native: {}, intrinsic: {})", 
+                                  fun_env.get_name_str(), fun_env.is_native(), intrinsic_fun_ids.contains(&qid));
+                    }
+                    continue;
+                }
+                
+                // Only process functions that are actually needed
+                if !needed_functions.contains(&qid) {
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!("SKIPPED: {} (not needed)", fun_env.get_name_str());
+                    }
+                    continue;
+                }
+                
+                if fun_env.get_name_str().contains("overflowing_mul") {
+                    eprintln!("PROCESSING: {} (is_spec: {})", fun_env.get_name_str(), is_spec);
+                }
+                
+                if is_spec {
+                    // Handle scenario spec functions
+                    if self.targets.scenario_specs().contains(&qid) {
+                        if self.targets.has_target(
+                            &fun_env,
+                            &FunctionVariant::Verification(VerificationFlavor::Regular),
+                        ) {
+                            let fun_target = self.targets.get_target(
+                                &fun_env,
+                                &FunctionVariant::Verification(VerificationFlavor::Regular),
+                            );
+                            FunctionTranslator {
+                                parent: self,
+                                fun_target: &fun_target,
+                                type_inst: &[],
+                                style: FunctionTranslationStyle::Default,
+                                ensures_info: RefCell::new(Vec::new()),
+                            }
+                                .translate();
+                        }
+                    } else {
+                        // Handle regular spec functions
+                        self.translate_function_styles_mutual(&fun_env);
+                    }
+                } else {
+                    let fun_target = self.targets.get_target(&fun_env, &FunctionVariant::Baseline);
+                    
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!("  Regular function processing for: {}", fun_env.get_name_str());
+                        let spec_qid = self.targets.get_spec_by_fun(&fun_env.get_qualified_id());
+                        eprintln!("    Has spec counterpart: {:?}", spec_qid.is_some());
+                        if let Some(spec_qid) = spec_qid {
+                            eprintln!("    Spec function: {}", self.env.get_function(*spec_qid).get_name_str());
+                            eprintln!("    No verify specs contains: {}", self.targets.no_verify_specs().contains(spec_qid));
+                        } else {
+                            eprintln!("    Inlined: {}", verification_analysis::get_info(&fun_target).inlined);
+                        }
+                    }
+                    
+                    // Process functions that have spec counterparts
+                    if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
+                        if !self.targets.no_verify_specs().contains(spec_qid) {
+                            if fun_env.get_name_str().contains("overflowing_mul") {
+                                eprintln!("    -> Translating {} (has spec counterpart)", fun_env.get_name_str());
+                            }
+                            FunctionTranslator {
+                                parent: self,
+                                fun_target: &fun_target,
+                                type_inst: &[],
+                                style: FunctionTranslationStyle::Default,
+                                ensures_info: RefCell::new(Vec::new()),
+                            }
+                                .translate();
+                        } else {
+                            // Only translate if this function is actually needed as a dependency
+                            // Since we're processing in dependency order, if we reach here, it means
+                            // this function is needed by something else
+                            if fun_env.get_name_str().contains("overflowing_mul") {
+                                eprintln!("    -> Translating {} (spec in no_verify_specs but function is needed as dependency)", fun_env.get_name_str());
+                            }
+                            FunctionTranslator {
+                                parent: self,
+                                fun_target: &fun_target,
+                                type_inst: &[],
+                                style: FunctionTranslationStyle::Default,
+                                ensures_info: RefCell::new(Vec::new()),
+                            }
+                                .translate();
+                        }
+                    } else if verification_analysis::get_info(&fun_target).inlined {
+                        if fun_env.get_name_str().contains("overflowing_mul") {
+                            eprintln!("    -> Translating {} (inlined, no spec counterpart)", fun_env.get_name_str());
+                        }
+                        // This variant is inlined, so translate for all type instantiations.
+                        for type_inst in mono_info
+                            .funs
+                            .get(&(
+                                fun_target.func_env.get_qualified_id(),
+                                FunctionVariant::Baseline,
+                            ))
+                            .unwrap_or(&BTreeSet::new())
+                        {
+                            FunctionTranslator {
+                                parent: self,
+                                fun_target: &fun_target,
+                                type_inst,
+                                style: FunctionTranslationStyle::Default,
+                                ensures_info: RefCell::new(Vec::new()),
+                            }
+                                .translate();
+                        }
+                    } else if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!("    -> NOT translating {} (not inlined, no spec counterpart)", fun_env.get_name_str());
+                    }
+                }
+            }
+        }
+        
         // Emit any finalization items required by spec translation.
         self.spec_translator.finalize();
         info!("{} verification conditions", verified_functions_count);
@@ -340,12 +452,6 @@ impl<'env> LeanTranslator<'env> {
         // Collect ensures info for generating theorems later
         let mut all_ensures_info = Vec::new();
         
-        // Start mutual block if we have multiple functions
-        if active_styles.len() > 1 {
-            emitln!(writer, "\nmutual");
-            writer.indent();
-        }
-        
         // Generate each function style (functions only, not theorems)
         for style in &active_styles {
             let ensures_info = self.translate_function_style_no_theorems(fun_env, *style);
@@ -353,14 +459,7 @@ impl<'env> LeanTranslator<'env> {
                 all_ensures_info = ensures_info;
             }
         }
-        
-        // End mutual block
-        if active_styles.len() > 1 {
-            writer.unindent();
-            emitln!(writer, "end");
-        }
-        
-        // Generate theorems outside the mutual block
+
         if !all_ensures_info.is_empty() {
             emitln!(writer, "\n-- Theorems proving ensures conditions");
             
@@ -665,6 +764,8 @@ impl<'env> LeanTranslator<'env> {
     fn order_functions_by_dependencies_qids(&self, functions: &[(QualifiedId<FunId>, bool)]) -> Vec<(QualifiedId<FunId>, bool)> {
         use std::collections::{HashMap, HashSet, VecDeque};
         
+        let intrinsic_fun_ids = self.env.intrinsic_fun_ids();
+        
         // Build function ID to index mapping
         let mut func_to_idx = HashMap::new();
         let mut idx_to_func = HashMap::new();
@@ -681,12 +782,31 @@ impl<'env> LeanTranslator<'env> {
             // Get function dependencies by analyzing bytecode calls
             let fun_env = self.env.get_function(*qid);
             let dependencies = self.get_function_dependencies(&fun_env);
+            if fun_env.get_name_str().contains("mul") {
+                for dep_qid in &dependencies {
+                    println!("DEPENDENCY: {} depends on {}", fun_env.get_name_str(), self.env.get_function(dep_qid.clone()).get_name_str());
+                }
+            }
             
             for dep_qid in dependencies {
+                // Filter out native and intrinsic functions from dependency graph
+                let dep_fun_env = self.env.get_function(dep_qid);
+                if dep_fun_env.is_native() || intrinsic_fun_ids.contains(&dep_qid) {
+                    if fun_env.get_name_str().contains("mul") {
+                        println!("FILTERED DEPENDENCY: {} -> {} (native: {}, intrinsic: {})", 
+                                 fun_env.get_name_str(), dep_fun_env.get_name_str(), 
+                                 dep_fun_env.is_native(), intrinsic_fun_ids.contains(&dep_qid));
+                    }
+                    continue;
+                }
+                
                 if let Some(&dep_idx) = func_to_idx.get(&dep_qid) {
                     // Add edge from dependency to current function
                     graph[dep_idx].push(i);
                     in_degree[i] += 1;
+                    if fun_env.get_name_str().contains("mul") {
+                        println!("ADDED DEPENDENCY EDGE: {} -> {}", dep_fun_env.get_name_str(), fun_env.get_name_str());
+                    }
                 }
             }
         }
@@ -796,20 +916,18 @@ impl<'env> LeanTranslator<'env> {
                                 id: *fun_id,
                             };
                             let callee_name = self.env.get_function(callee_qid).get_name_str();
-                            let is_math_call = callee_name.contains("math_u128") || callee_name.contains("math_u64");
+                            let is_math_call = callee_name.contains("math_u128") || callee_name.contains("math_u64") || callee_name.contains("overflowing_mul");
                             
                             if should_debug || is_math_call {
                                 eprintln!("      Function call to: {} (module: {:?}, same_module: {})", 
                                           callee_name, module_id, *module_id == fun_env.module_env.get_id());
                             }
                             
-                            // Include dependencies from the same module, but be more permissive
+                            // Include dependencies from the same module and cross-module dependencies
                             // Don't filter out based on native/intrinsic here - let the processing phase handle that
-                            if *module_id == fun_env.module_env.get_id() {
-                                dependencies.push(callee_qid);
-                                if should_debug || is_math_call {
-                                    eprintln!("      -> Added dependency: {}", callee_name);
-                                }
+                            dependencies.push(callee_qid);
+                            if should_debug || is_math_call {
+                                eprintln!("      -> Added dependency: {} (cross-module: {})", callee_name, *module_id != fun_env.module_env.get_id());
                             }
                         } else if should_debug {
                             eprintln!("      Non-function operation: {:?}", operation);
@@ -1545,15 +1663,21 @@ impl FunctionTranslator<'_> {
                                 FunctionTranslationStyle::Default,
                             );
 
-                            if self
+                            // Check if the callee function has a spec counterpart
+                            let callee_qid = QualifiedId {
+                                module_id: *mid,
+                                id: *fid,
+                            };
+                            if let Some(spec_qid) = self.parent.targets.get_spec_by_fun(&callee_qid) {
+                                // The callee function has a spec counterpart, so we need to call the _impl version
+                                fun_name = format!("{}_impl", fun_name);
+                            } else if self
                                 .parent
                                 .targets
                                 .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                                == Some(&QualifiedId {
-                                module_id: *mid,
-                                id: *fid,
-                            })
+                                == Some(&callee_qid)
                             {
+                                // This is the case where we're calling the spec function from the implementation
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
                                     == FunctionVariant::Verification(
@@ -2151,27 +2275,43 @@ fn generate_function_body(&mut self) {
         self.translate_bytecode(&mut last_tracked_loc, bytecode);
     }
 
-    // Add explicit return for Asserts style if no Ret instruction was found
-    if self.style == FunctionTranslationStyle::Asserts {
-        // Check if the last bytecode was a Ret instruction
-        let has_ret = code.iter().any(|bc| matches!(bc, Bytecode::Ret(_, _)));
-        if !has_ret {
-            emitln!(writer, "\n-- explicit return for Asserts style");
-            emitln!(writer, "()");
-        }
-    }
-
-    // Add explicit return for Aborts and SpecNoAbortCheck styles if no Ret instruction was found
-    if self.style == FunctionTranslationStyle::Aborts || self.style == FunctionTranslationStyle::SpecNoAbortCheck {
-        // Check if the last bytecode was a Ret instruction
-        let has_ret = code.iter().any(|bc| matches!(bc, Bytecode::Ret(_, _)));
-        if !has_ret {
-            emitln!(writer, "\n-- explicit return for {} style", match self.style {
-                    FunctionTranslationStyle::Aborts => "Aborts",
-                    FunctionTranslationStyle::SpecNoAbortCheck => "SpecNoAbortCheck",
-                    _ => unreachable!(),
-                });
-            emitln!(writer, "()");
+    // Add explicit return if no Ret instruction was found
+    let has_ret = code.iter().any(|bc| matches!(bc, Bytecode::Ret(_, _)));
+    if !has_ret {
+        emitln!(writer, "\n-- explicit return (no Ret instruction found)");
+        match self.style {
+            FunctionTranslationStyle::Asserts 
+            | FunctionTranslationStyle::Aborts 
+            | FunctionTranslationStyle::SpecNoAbortCheck => {
+                emitln!(writer, "()");
+            }
+            FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => {
+                // For Default and Opaque styles, we need to return the appropriate type
+                let return_count = fun_target.get_return_count();
+                let mut_ref_count = (0..fun_target.get_parameter_count())
+                    .filter(|&i| self.get_local_type(i).is_mutable_reference())
+                    .count();
+                
+                if return_count == 0 && mut_ref_count == 0 {
+                    emitln!(writer, "()");
+                } else if return_count == 1 && mut_ref_count == 0 {
+                    emitln!(writer, "sorry -- TODO: provide default return value");
+                } else {
+                    // Multiple returns or mutable references - return tuple with sorry values
+                    let mut return_values = Vec::new();
+                    for _ in 0..return_count {
+                        return_values.push("sorry".to_string());
+                    }
+                    for _ in 0..mut_ref_count {
+                        return_values.push("sorry".to_string());
+                    }
+                    if return_values.len() == 1 {
+                        emitln!(writer, "{}", return_values[0]);
+                    } else {
+                        emitln!(writer, "({})", return_values.join(", "));
+                    }
+                }
+            }
         }
     }
 

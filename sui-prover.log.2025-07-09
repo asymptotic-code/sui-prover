@@ -1,0 +1,290 @@
+2025-07-09T18:05:17.145879Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:06:19.511254Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:06:26.979384Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:06:26.995778Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:06:27.010921Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:06:27.030762Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:06:27.042254Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:06:27.046873Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:06:27.053630Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:06:27.054996Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:06:27.056182Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:06:36.612584Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:06:38.180010Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:06:38.181516Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:06:38.181569Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:06:38.182930Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:06:48.525323Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:38:20.967238Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:38:34.232075Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:38:34.246302Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:38:34.262505Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:38:34.287715Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:38:34.301451Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:38:34.307793Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:38:34.314351Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:38:34.315353Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:38:34.316392Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:38:43.697186Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:38:45.520314Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:38:45.523259Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:38:45.523325Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:38:45.524634Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:38:55.834373Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:39:57.627961Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:40:07.030600Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:40:07.045853Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:40:07.061175Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:40:07.080746Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:40:07.090408Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:40:07.096808Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:40:07.102773Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:40:07.103763Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:40:07.104697Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:40:16.586449Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:40:18.220814Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:40:18.222318Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:40:18.222374Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:40:18.223451Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:40:28.422837Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:40:34.878400Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:40:42.317404Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:40:42.335486Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:40:42.352268Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:40:42.375538Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:40:42.385877Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:40:42.390597Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:40:42.396776Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:40:42.398057Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:40:42.399001Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:40:51.938939Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:40:53.538738Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:40:53.540251Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:40:53.540317Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:40:53.541488Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:41:03.472324Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:41:50.597535Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:42:00.200203Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:42:00.214339Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:42:00.230253Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:42:00.251826Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:42:00.261387Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:42:00.266248Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:42:00.272218Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:42:00.273285Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:42:00.274304Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:42:09.933927Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:42:11.561725Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:42:11.563191Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:42:11.563232Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:42:11.564386Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:42:21.811969Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:42:28.616354Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:42:36.645179Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:42:36.659634Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:42:36.675352Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:42:36.696133Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:42:36.706157Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:42:36.710854Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:42:36.717132Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:42:36.718292Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:42:36.719348Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:42:46.314519Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:42:48.004958Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:42:48.006442Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:42:48.006509Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:42:48.007811Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:42:57.935685Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:43:43.393351Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:43:52.714883Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:43:52.733293Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:43:52.751550Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:43:52.778487Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:43:52.790373Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:43:52.794993Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:43:52.800772Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:43:52.801746Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:43:52.802682Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:44:02.426275Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:44:04.087584Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:44:04.089358Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:44:04.089412Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:44:04.090531Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:44:14.341076Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:44:52.166386Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:45:01.129036Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:45:01.147594Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:45:01.166344Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:45:01.187764Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:45:01.198403Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:45:01.203247Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:45:01.211236Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:45:01.212281Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:45:01.213223Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:45:10.776675Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:45:12.521997Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:45:12.523710Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:45:12.523960Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:45:12.525929Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:45:22.730861Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:46:15.449758Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:46:24.194810Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:46:24.209718Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:46:24.225151Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:46:24.246881Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:46:24.256764Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:46:24.263235Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:46:24.273578Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:46:24.274999Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:46:24.276227Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:46:34.336610Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:46:36.156220Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:46:36.157637Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:46:36.157680Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:46:36.158820Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:46:46.374501Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:47:20.906290Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:47:30.038943Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:47:30.055254Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:47:30.072910Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:47:30.105540Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:47:30.119402Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:47:30.125595Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:47:30.133844Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:47:30.134964Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:47:30.135923Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:47:40.320700Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:47:41.958638Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:47:41.960306Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:47:41.960365Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:47:41.961589Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:47:52.476961Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:49:14.028781Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:49:22.875917Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:49:22.891831Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:49:22.910651Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:49:22.933672Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:49:22.943928Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:49:22.948727Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:49:22.956059Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:49:22.957138Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:49:22.958104Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:49:33.070284Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:49:34.695891Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:49:34.697273Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:49:34.697310Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:49:34.698583Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:49:45.702513Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:49:52.243747Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:50:00.271421Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:50:00.290681Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:50:00.306226Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:50:00.328127Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:50:00.338023Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:50:00.345321Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:50:00.351227Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:50:00.352254Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:50:00.353194Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:50:10.383871Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:50:12.197365Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:50:12.198852Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:50:12.198933Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:50:12.200216Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:50:22.193863Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:50:31.961138Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:50:40.526559Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:50:40.540553Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:50:40.560095Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:50:40.581511Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:50:40.591504Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:50:40.596674Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:50:40.602604Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:50:40.603618Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:50:40.604563Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:50:51.207704Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:50:52.906725Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:50:52.908355Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:50:52.908591Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:50:52.910513Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:51:02.820422Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:51:41.281401Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:51:50.084872Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:51:50.098777Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:51:50.114253Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:51:50.134538Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:51:50.144428Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:51:50.154078Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:51:50.160157Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:51:50.161168Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:51:50.162178Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:51:58.941161Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:52:00.445321Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:52:00.447096Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:52:00.447165Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:52:00.448450Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:52:10.665625Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:52:17.570108Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:52:24.460404Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:52:24.478359Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:52:24.497844Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:52:24.517827Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:52:24.527884Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:52:24.532778Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:52:24.538627Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:52:24.539619Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:52:24.540561Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:52:33.394274Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:52:34.903745Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:52:34.905157Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:52:34.905212Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:52:34.906352Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:52:44.854986Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:52:59.901682Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:53:06.760685Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:53:06.774914Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:53:06.790266Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:53:06.810374Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:53:06.820113Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:53:06.824771Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:53:06.830514Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:53:06.831559Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:53:06.832522Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:53:15.540450Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:53:17.025430Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:53:17.027016Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:53:17.027080Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:53:17.028321Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:53:26.937943Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21
+2025-07-09T18:58:12.656630Z DEBUG sui_prover: Sui-Prover CLI version: 0.0.1
+2025-07-09T18:58:22.769833Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I64Specs    
+2025-07-09T18:58:22.790992Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I32Specs    
+2025-07-09T18:58:22.809206Z  INFO move_prover_lean_backend::generator: preparing module 0x0::I128Specs    
+2025-07-09T18:58:22.837928Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU128Specs    
+2025-07-09T18:58:22.849564Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU256Specs    
+2025-07-09T18:58:22.855654Z  INFO move_prover_lean_backend::generator: preparing module 0x0::MathU64Specs    
+2025-07-09T18:58:22.865895Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i128    
+2025-07-09T18:58:22.867130Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i32    
+2025-07-09T18:58:22.868097Z  INFO move_prover_lean_backend::generator: preparing module 0x0::i64    
+2025-07-09T18:58:32.535550Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: generating verification conditions for 191 module(s)    
+2025-07-09T18:58:34.508290Z  INFO move_prover_lean_backend::lean_backend::bytecode_translator: 124 verification conditions    
+2025-07-09T18:58:34.509960Z  INFO move_prover_lean_backend::lean_backend::lean_wrapper: running solver    
+2025-07-09T18:58:34.510020Z DEBUG move_prover_lean_backend::lean_backend::lean_wrapper: command line: lean output/i128::wrapping_add_spec.lean    
+2025-07-09T18:58:34.511245Z DEBUG move_prover_lean_backend::lean_backend::prover_task_runner: running Lean command with seed 1    
+2025-07-09T18:58:44.741875Z ERROR telemetry_subscribers: panicked at C:\Users\bmene\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.45.0\src\runtime\blocking\shutdown.rs:51:21:
+Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context. panic.file="C:\\Users\\bmene\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\tokio-1.45.0\\src\\runtime\\blocking\\shutdown.rs" panic.line=51 panic.column=21

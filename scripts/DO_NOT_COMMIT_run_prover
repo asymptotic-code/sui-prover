@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Run sui-prover with Lean backend
+# Output will be generated in target/integermate/sui-specs
+# This script continues even if the prover doesn't exit successfully
+
+echo "Starting sui-prover with Lean backend..."
+
+# Ensure output directory exists
+mkdir -p target/integermate/sui-specs
+
+# Change to the output directory
+cd target/integermate/sui-specs
+
+echo "Running sui-prover with Lean backend..."
+echo "Working directory: $(pwd)"
+
+# Run sui-prover with Lean backend, capture exit code but continue
+set +e  # Don't exit on error
+cargo run --bin sui-prover -- \
+    --lean-backend \
+    --verbose \
+    --timeout 3000
+
+PROVER_EXIT_CODE=$?
+set -e  # Re-enable exit on error for other commands
+
+# Report the result
+if [ $PROVER_EXIT_CODE -eq 0 ]; then
+    echo "✅ Prover completed successfully!"
+else
+    echo "⚠️  Prover exited with code $PROVER_EXIT_CODE, but continuing..."
+fi
+
+# Check if any Lean files were generated
+LEAN_FILES=$(find . -name "*.lean" -type f 2>/dev/null || true)
+if [ -n "$LEAN_FILES" ]; then
+    echo "📁 Lean files generated:"
+    echo "$LEAN_FILES" | head -10  # Show first 10 files
+    LEAN_COUNT=$(echo "$LEAN_FILES" | wc -l)
+    if [ $LEAN_COUNT -gt 10 ]; then
+        echo "... and $(($LEAN_COUNT - 10)) more files"
+    fi
+else
+    echo "⚠️  No .lean files found in target/integermate/sui-specs"
+fi
+
+# Run Lean on each file and filter out warnings
+for lean_file in $LEAN_FILES; do
+    echo ""
+    echo "Checking $lean_file with Lean..."
+    
+    # Run lean and filter out warnings and info messages
+    if command -v lean &> /dev/null; then
+        # Capture all output and filter it properly
+        LEAN_OUTPUT=$(lean "$lean_file" 2>&1 || true)
+        
+        # Filter out lines containing warnings and info messages
+        # This catches patterns like "file.lean:123:45: warning:" and "note:" lines
+        FILTERED_OUTPUT=$(echo "$LEAN_OUTPUT" | grep -v -E "(: warning:|: info:|^note:|^warning|^info)" || true)
+        
+        # Only show output if there's something meaningful left
+        if [ -n "$FILTERED_OUTPUT" ]; then
+            echo "$FILTERED_OUTPUT"
+        else
+            echo "✅ No errors found"
+        fi
+    else
+        echo "Warning: 'lean' command not found. Please install Lean 4."
+        echo "You can install it from: https://lean-lang.org/lean4/doc/quickstart.html"
+    fi
+done
