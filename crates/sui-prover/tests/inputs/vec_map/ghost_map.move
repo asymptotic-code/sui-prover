@@ -11,7 +11,8 @@ public struct Key has copy, drop, store {
 }
 
 public struct Value has copy, drop, store {
-    value: u64
+    value: u64,
+    complex: VecMap<u32, VecMap<u32, vector<u32>>>,
 }
 
 public fun foo(self: &mut Stuff,

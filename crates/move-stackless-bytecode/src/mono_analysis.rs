@@ -228,7 +228,7 @@ impl MonoAnalysisProcessor {
             // VecSet<T> uses vec<T> internally, so we need to add T to vec_inst
             for tys in &vec_set_tys {
                 if !tys.is_empty() {
-                    info.vec_inst.insert(tys[0].clone());
+                    info.vec_inst.extend(tys.iter().cloned());
                 }
             }
             
@@ -245,9 +245,7 @@ impl MonoAnalysisProcessor {
             
             // VecMap<K, V> uses vec<K> internally, so we need to add K to vec_inst
             for tys in &vec_map_tys {
-                if !tys.is_empty() {
-                    info.vec_inst.insert(tys[0].clone());
-                }
+                info.vec_inst.extend(tys.iter().cloned());
             }
             
             // Also add the key type to Option instantiations
