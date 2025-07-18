@@ -1,6 +1,7 @@
 use codespan_reporting::term::termcolor::Buffer;
 use glob;
 use move_compiler::editions::Flavor;
+use move_compiler::shared::known_attributes::ModeAttribute;
 use move_package::BuildConfig as MoveBuildConfig;
 use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
@@ -41,8 +42,8 @@ fn run_prover(file_path: &PathBuf) -> String {
         // Set up the build config
         let mut config = MoveBuildConfig::default();
         config.default_flavor = Some(Flavor::Sui);
-        config.verify_mode = true;
         config.silence_warnings = false; // Disable warning suppression
+        config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
 
         // Try to build the model
         let result = match move_model_for_package_legacy(config, file_dir) {
