@@ -224,6 +224,14 @@ impl MonoAnalysisProcessor {
                 .structs
                 .get(&vec_set_qid)
                 .map_or_else(BTreeSet::new, |set| set.clone());
+            
+            // VecSet<T> uses vec<T> internally, so we need to add T to vec_inst
+            for tys in &vec_set_tys {
+                if !tys.is_empty() {
+                    info.vec_inst.extend(tys.iter().cloned());
+                }
+            }
+            
             info.structs
                 .entry(env.option_qid().unwrap())
                 .or_default()
@@ -233,13 +241,21 @@ impl MonoAnalysisProcessor {
             let vec_map_tys = info
                 .structs
                 .get(&vec_map_qid)
-                .map_or_else(BTreeSet::new, |set| set.clone())
+                .map_or_else(BTreeSet::new, |set| set.clone());
+            
+            // VecMap<K, V> uses vec<K> internally, so we need to add K to vec_inst
+            for tys in &vec_map_tys {
+                info.vec_inst.extend(tys.iter().cloned());
+            }
+            
+            // Also add the key type to Option instantiations
+            let vec_map_option_tys = vec_map_tys
                 .into_iter()
                 .flat_map(|tys| tys.into_iter().map(|ty| vec![ty]));
             info.structs
                 .entry(env.option_qid().unwrap())
                 .or_default()
-                .extend(vec_map_tys);
+                .extend(vec_map_option_tys);
         }
 
         env.set_extension(info);
