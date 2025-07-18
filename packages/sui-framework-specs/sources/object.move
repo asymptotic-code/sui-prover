@@ -1,9 +1,11 @@
 module specs::object_spec;
 
-use sui::object::{borrow_uid, delete, delete_impl, record_new_uid};
-use sui::object::UID;
+use sui::object::{delete_impl, record_new_uid};
 
-#[spec(target = sui::object::borrow_uid)]
+#[spec_only]
+native public fun borrow_uid<T: key>(obj: &T): &UID;
+
+#[spec]
 fun borrow_uid_spec<T: key>(obj: &T): &UID {
     borrow_uid(obj)
 }

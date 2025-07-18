@@ -252,6 +252,7 @@ impl<'env> BoogieTranslator<'env> {
         let intrinsic_fun_ids = self.env.intrinsic_fun_ids();
 
         let mut translated_types = BTreeSet::new();
+        let mut generated_borrow_uid_procedures = BTreeSet::new();
         let mut verified_functions_count = 0;
         info!(
             "generating verification conditions for {:?} module(s)",
@@ -278,7 +279,7 @@ impl<'env> BoogieTranslator<'env> {
                         struct_env,
                         type_inst: type_inst.as_slice(),
                     }
-                    .translate();
+                    .translate(&mut generated_borrow_uid_procedures);
                 }
             }
 
@@ -297,7 +298,7 @@ impl<'env> BoogieTranslator<'env> {
                         enum_env,
                         type_inst: type_inst.as_slice(),
                     }
-                    .translate();
+                    .translate(&mut generated_borrow_uid_procedures);
                 }
             }
 
@@ -806,7 +807,7 @@ impl<'env> StructTranslator<'env> {
     }
 
     /// Translates the given struct.
-    fn translate(&self) {
+    fn translate(&self, generated_borrow_uid_procedures: &mut BTreeSet<String>) {
         let writer = self.parent.writer;
         let struct_env = self.struct_env;
         let env = struct_env.module_env.env;
@@ -1012,6 +1013,27 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
+        // Generate object::borrow_uid function for structs with key ability
+        if struct_env.get_abilities().has_key() {
+            let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", 
+                boogie_type_suffix(env, &Type::Datatype(
+                    struct_env.module_env.get_id(),
+                    struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )));
+            // Only generate if we haven't already generated this procedure
+            if generated_borrow_uid_procedures.insert(object_borrow_uid_fun_name.clone()) {
+                let writer = self.parent.writer;
+                emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
+                    object_borrow_uid_fun_name, 
+                    struct_name);
+                writer.indent();
+                emitln!(writer, "res := obj->$id;");
+                writer.unindent();
+                emitln!(writer, "}");
+            }
+        }
+
         if struct_env.has_memory() {
             // Emit memory variable.
             let memory_name = boogie_resource_memory_name(
@@ -1107,8 +1129,8 @@ impl<'env> EnumTranslator<'env> {
         }
     }
 
-    /// Translates the given struct.
-    fn translate(&self) {
+    /// Translates the given enum.
+    fn translate(&self, generated_borrow_uid_procedures: &mut BTreeSet<String>) {
         let writer = self.parent.writer;
         let enum_env = self.enum_env;
         let env = enum_env.module_env.env;
