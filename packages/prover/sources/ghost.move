@@ -13,6 +13,7 @@ public native fun set<T, U>(x: &U);
 public fun set_spec<T, U>(x: &U) {
   declare_global_mut<T, U>();
   set<T, U>(x);
+  havoc_global<T, U>();
   prover::ensures(global<T, U>() == x);
 }
 
