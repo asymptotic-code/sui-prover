@@ -248,14 +248,16 @@ impl MonoAnalysisProcessor {
                 info.vec_inst.extend(tys.iter().cloned());
             }
             
-            // Also add the key type to Option instantiations
-            let vec_map_option_tys = vec_map_tys
-                .into_iter()
-                .flat_map(|tys| tys.into_iter().map(|ty| vec![ty]));
-            info.structs
-                .entry(env.option_qid().unwrap())
-                .or_default()
-                .extend(vec_map_option_tys);
+            if !vec_map_tys.is_empty() {
+                info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+            }
+            
+            if !vec_map_tys.is_empty() {
+                info.structs
+                    .entry(env.option_qid().unwrap())
+                    .or_default()
+                    .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::U64)]);
+            }
         }
 
         env.set_extension(info);
