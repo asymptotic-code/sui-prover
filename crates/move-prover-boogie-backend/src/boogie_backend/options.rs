@@ -229,12 +229,20 @@ impl BoogieOptions {
 
         add(DEFAULT_BOOGIE_FLAGS);
         if self.use_cvc5 {
-            add(&[
-                "-proverOpt:SOLVER=cvc5",
-                &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
-            ]);
+            if self.cvc5_exe.is_empty() {
+                anyhow::bail!("No cvc5 executable set.  Please set CVC5_EXE");
+            } else {
+                add(&[
+                    "-proverOpt:SOLVER=cvc5",
+                    &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
+                ]);
+            }
         } else {
-            add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+            if self.z3_exe.is_empty() {
+                anyhow::bail!("No z3 executable set.  Please set Z3_EXE");
+            } else {
+                add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+            }
         }
         if self.use_array_theory {
             add(&["-useArrayAxioms"]);
