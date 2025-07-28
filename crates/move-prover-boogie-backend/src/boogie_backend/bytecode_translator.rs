@@ -219,6 +219,16 @@ impl<'env> BoogieTranslator<'env> {
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
+                
+                // Generate object::borrow_uid function for type parameter with uid field
+                let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
+                emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
+                    param_object_borrow_uid_fun_name, 
+                    param_type);
+                writer.indent();
+                emitln!(writer, "res := obj->$id;");
+                writer.unindent();
+                emitln!(writer, "}");
             } else {
                 emitln!(writer, "type {};", param_type);
             }
@@ -244,9 +254,6 @@ impl<'env> BoogieTranslator<'env> {
 
             // declare free variables to represent the type info for this type
             emitln!(writer, "var {}_info: $TypeParamInfo;", param_type);
-
-            // Note: object::borrow_uid functions for type parameters with uid field will be
-            // generated when the type parameter is instantiated as a concrete struct type
         }
         emitln!(writer);
 
