@@ -131,7 +131,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
         vec![PackagePaths {
             name: None,
             paths: sources,
-            named_address_map: move_stdlib::move_stdlib_named_addresses(),
+            named_address_map: move_stdlib::named_addresses(),
         }],
         vec![],
         ModelBuilderOptions::default(),
@@ -166,7 +166,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Run pipeline if any
         if let Some(pipeline) = pipeline_opt {
-            pipeline.run(&env, &mut targets);
+            let _ = pipeline.run(&env, &mut targets);
             let processor = pipeline.last_processor();
             if !processor.is_single_run() {
                 text += &print_targets_for_test(
