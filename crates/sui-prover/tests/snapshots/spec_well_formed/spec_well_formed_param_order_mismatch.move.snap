@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+warning: unused variable
+   ┌─ tests/inputs/spec_well_formed/spec_well_formed_param_order_mismatch.move:12:24
+   │
+12 │ fun add_up_spec(x: u8, y: u8): u8 {
+   │                        ^ Unused parameter 'y'. Consider removing or prefixing with an underscore: '_y'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: Parameter mismatch in function call: argument 2 should be 'y' but found 'x'. Check function call parameters match spec signature order.
+   ┌─ tests/inputs/spec_well_formed/spec_well_formed_param_order_mismatch.move:12:1
+   │  
+12 │ ╭ fun add_up_spec(x: u8, y: u8): u8 {
+13 │ │     requires(x <= 127);
+14 │ │     let r = add_up(x, x); // <=== wrong call - should be add_up(x, y)
+15 │ │     ensures(r.to_int() == x.to_int().add(x.to_int()));
+16 │ │     r
+17 │ │ }
+   │ ╰─^

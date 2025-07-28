@@ -344,17 +344,28 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
         }
 
         let spec_params_symbols: Vec<Symbol> = spec_params.iter().map(|sd| sd.0).collect(); 
-        for src in inputs {
-            let lc = func_target.get_local_name(src);
-
-            if !spec_params_symbols.contains(&lc) { // => if input variable for underlying function is not spec parameter
-                env.diag(
-                    Severity::Error,
-                    &func_env.get_loc(),
-                    "Underlying func input var is not a function parameter",
-                );
-
-                return data;
+        
+        if inputs.len() == spec_params_symbols.len() {
+            for (idx, src) in inputs.iter().enumerate() {
+                
+                let actual_param = func_target.get_local_name(*src);
+                let expected_param = spec_params_symbols[idx];
+                
+                if actual_param != expected_param {
+                    let actual_param_str = env.symbol_pool().string(actual_param);
+                    let expected_param_str = env.symbol_pool().string(expected_param);
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "Parameter mismatch in function call: argument {} should be '{}' but found '{}'. Check function call parameters match spec signature order.", 
+                            idx + 1, 
+                            expected_param_str, 
+                            actual_param_str
+                        ),
+                    );
+                    return data;
+                }
             }
         }
 
