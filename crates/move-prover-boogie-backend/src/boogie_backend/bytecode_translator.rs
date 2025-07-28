@@ -244,6 +244,9 @@ impl<'env> BoogieTranslator<'env> {
 
             // declare free variables to represent the type info for this type
             emitln!(writer, "var {}_info: $TypeParamInfo;", param_type);
+
+            // Note: object::borrow_uid functions for type parameters with uid field will be
+            // generated when the type parameter is instantiated as a concrete struct type
         }
         emitln!(writer);
 
@@ -2476,6 +2479,23 @@ impl<'env> FunctionTranslator<'env> {
                                 }
                             }
                             processed = true;
+                        }
+
+                        if let Some(object_borrow_uid_qid) = self.parent.env.object_borrow_uid_qid() {
+                            if callee_env.get_qualified_id() == object_borrow_uid_qid {
+                                // Handle object::borrow_uid calls by calling the generated function
+                                assert_eq!(inst.len(), 1);
+                                let type_suffix = boogie_type_suffix(env, &inst[0]);
+                                let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", type_suffix);
+                                emitln!(
+                                    self.writer(),
+                                    "call {} := {}({});",
+                                    dest_str,
+                                    object_borrow_uid_fun_name,
+                                    args_str,
+                                );
+                                processed = true;
+                            }
                         }
 
                         if self
