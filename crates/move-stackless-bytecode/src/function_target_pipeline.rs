@@ -4,6 +4,7 @@
 
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
+use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -16,16 +17,10 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{AttributeName_, AttributeValue_, Attribute_, ModuleAccess_},
-    shared::{
-        known_attributes::{KnownAttribute::Verification, VerificationAttribute},
-        unique_map::UniqueMap,
-    },
+    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::{
+        known_attributes::{AttributeKind_, KnownAttribute, VerificationAttribute},
+    }
 };
-
-use move_ir_types::location::Spanned;
-
-use move_symbol_pool::Symbol;
 
 use move_model::{
     ast::ModuleName,
@@ -381,47 +376,33 @@ impl FunctionTargetsHolder {
             .or_default()
             .insert(FunctionVariant::Baseline, data);
 
-        if let Some(spec_attr) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, target, no_opaque, ignore_abort })) = func_env
             .get_toplevel_attributes()
-            .get_(&Verification(VerificationAttribute::Spec))
+            .get_(&AttributeKind_::Spec)
+            .map(|attr| &attr.value)
         {
-            let inner_attrs = match &spec_attr.value {
-                Attribute_::Parameterized(_, inner_attrs) => inner_attrs,
-                _ => &UniqueMap::new(),
-            };
-            let is_focus_spec =
-                inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("focus")));
-            let is_verify_spec =
-                inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("prove")));
-            let is_path_spec: bool =
-                inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("target")));
-
-            if inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("no_opaque"))) {
+            if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 
-            if !is_verify_spec && !is_focus_spec {
+            if !*prove && !*focus {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             }
 
-            if is_focus_spec {
+            if *focus {
                 self.focus_specs.insert(func_env.get_qualified_id());
             } else {
                 self.no_focus_specs.insert(func_env.get_qualified_id());
             }
 
-            if inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("ignore_abort"))) {
+            if *ignore_abort {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
-            if is_path_spec {
-                let function_spec = inner_attrs
-                    .get_(&AttributeName_::Unknown(Symbol::from("target")))
-                    .unwrap();
-
+            if target.is_some() {
                 let env = func_env.module_env.env;
 
-                match Self::parse_module_access(function_spec, env) {
+                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env) {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
                         Self::process_spec(
@@ -468,9 +449,10 @@ impl FunctionTargetsHolder {
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
-        if let Some(spec_attr) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target })) = func_env
             .get_toplevel_attributes()
-            .get_(&Verification(VerificationAttribute::SpecOnly))
+            .get_(&AttributeKind_::SpecOnly)
+            .map(|attr| &attr.value)
         {
             if func_env.get_name_str().contains("type_inv") {
                 return;
@@ -478,20 +460,8 @@ impl FunctionTargetsHolder {
 
             let env = func_env.module_env.env;
 
-            let inner_attrs = match &spec_attr.value {
-                Attribute_::Parameterized(_, inner_attrs) => inner_attrs,
-                _ => &UniqueMap::new(),
-            };
-
-            let is_inv_target: bool =
-                inner_attrs.contains_key_(&AttributeName_::Unknown(Symbol::from("inv_target")));
-
-            if is_inv_target {
-                let function_spec = inner_attrs
-                    .get_(&AttributeName_::Unknown(Symbol::from("inv_target")))
-                    .unwrap();
-
-                match Self::parse_module_access(function_spec, env) {
+            if inv_target.is_some() {
+                match Self::parse_module_access(inv_target.as_ref().unwrap(), env, &func_env.module_env) {
                     Some((module_name, struct_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
 
@@ -532,27 +502,57 @@ impl FunctionTargetsHolder {
     }
 
     fn parse_module_access(
-        function_spec: &Spanned<Attribute_>,
+        function_spec: &ModuleAccess,
         env: &GlobalEnv,
+        current_module: &ModuleEnv,
     ) -> Option<(ModuleName, String)> {
-        if let Attribute_::Assigned(_, boxed_value) = &function_spec.value {
-            if let AttributeValue_::ModuleAccess(mod_access) = &boxed_value.value {
-                if let ModuleAccess_::ModuleAccess(module_ident, symbol) = mod_access.value {
-                    let address = module_ident.value.address;
-                    let module = &module_ident.value.module;
+        match &function_spec.value {
+            ModuleAccess_::Name(name) => {
+                // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
+                let function_name = name.value.to_string();
+                let function_symbol = env.symbol_pool().make(&function_name);
+                
+                // First try to find the function in the current module
+                if current_module.find_function(function_symbol).is_some() {
+                    return Some((current_module.get_name().clone(), function_name));
+                }
 
-                    let addr_bytes = address.into_addr_bytes();
-                    let module_name = ModuleName::from_address_bytes_and_name(
-                        addr_bytes,
-                        env.symbol_pool().make(&module.to_string()),
-                    );
+                let handle_index = current_module.data.module.function_handles()
+                    .iter()
+                    .enumerate()
+                    .find_map(|(h_index, handle)| {
+                        if function_name == current_module.data.module.identifier_at(handle.name).to_string() {
+                            Some(FunctionHandleIndex(h_index.try_into().unwrap()))
+                        } else {
+                            None
+                        }
+                    });
 
-                    let auxillary = symbol.value.to_string();
-                    return Some((module_name, auxillary));
+                if handle_index.is_some() {
+                    let func_env= current_module.get_used_function(handle_index.unwrap());
+                    Some((func_env.module_env.get_name().clone(), function_name))
+                } else {
+                    None
                 }
             }
+            ModuleAccess_::ModuleAccess(module_ident, name) => {
+                let address = module_ident.value.address;
+                let module = &module_ident.value.module;
+
+                let addr_bytes = address.into_addr_bytes();
+                let module_name = ModuleName::from_address_bytes_and_name(
+                    addr_bytes,
+                    env.symbol_pool().make(&module.to_string()),
+                );
+
+                let function_name = name.value.to_string();
+                Some((module_name, function_name))
+            }
+            ModuleAccess_::Variant(_, _) => {
+                // Variant access is not supported in this context
+                None
+            }
         }
-        None
     }
 
     fn process_spec(
