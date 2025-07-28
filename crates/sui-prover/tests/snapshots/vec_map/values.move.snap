@@ -1,0 +1,30 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: unused variable
+   ┌─ tests/inputs/vec_map/values.move:12:5
+   │
+12 │     self: &mut Stuff,
+   │     ^^^^ Unused parameter 'self'. Consider removing or prefixing with an underscore: '_self'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused struct field
+  ┌─ tests/inputs/vec_map/values.move:8:5
+  │
+8 │     value: VecMap<u32, bool>,
+  │     ^^^^^ The 'value' field of the 'Stuff' type is unused
+  │
+  = This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused mutable reference '&mut' parameter
+   ┌─ tests/inputs/vec_map/values.move:12:11
+   │
+12 │     self: &mut Stuff,
+   │     ----  ^^^^^^^^^^ Mutable reference is never used mutably, consider switching to an immutable reference '&' instead
+   │     │      
+   │     For parameters, this can be silenced by prefixing the name with an underscore, e.g. '_self'
+   │
+   = This warning can be suppressed with '#[allow(unused_mut_parameter)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
