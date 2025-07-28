@@ -93,6 +93,8 @@ pub struct Options {
     pub backend: BoogieOptions,
     /// Boogie run mode
     pub boogie_file_mode: BoogieFileMode,
+    /// Filtering options
+    pub filter: FilterOptions,
 }
 
 impl Default for Options {
@@ -112,6 +114,7 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             boogie_file_mode: BoogieFileMode::Function,
+            filter: FilterOptions::default(),
         }
     }
 }
@@ -874,4 +877,33 @@ pub fn named_addresses_for_options(
         .iter()
         .map(|(name, addr)| format!("{}={}", name, addr))
         .collect()
+}
+
+#[derive(clap::Parser, Debug, Clone, Deserialize, Serialize, Default)]
+pub struct FilterOptions {
+    /// Specify modules names to target
+    #[arg(long = "modules")]
+    pub modules: Option<Vec<String>>,
+
+    /// Specify functions names to target
+    #[arg(long = "functions")]
+    pub functions: Option<Vec<String>>,
+}
+
+impl FilterOptions {
+    pub fn is_targeted_module(&self, module_name: String) -> bool {
+        if let Some(modules) = &self.modules {
+            modules.iter().any(|m| m == &module_name)
+        } else {
+            true
+        }
+    }
+
+    pub fn is_targeted_function(&self, function_name: String) -> bool {
+        if let Some(functions) = &self.functions {
+            functions.iter().any(|f| f == &function_name)
+        } else {
+            true
+        }
+    }
 }
