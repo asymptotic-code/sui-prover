@@ -187,6 +187,11 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
     }
 
+    for skip_spec in targets.skip_specs() {
+        let fun_env = env.get_function(*skip_spec);
+        println!("⏭️ {} {}", fun_env.get_full_name_str(), fun_env.get_loc().display_line_only(env));
+    }
+
     Ok(has_errors)
 }
 

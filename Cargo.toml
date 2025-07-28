@@ -71,14 +71,14 @@ tokio = "1.43.0"
 datatest-stable = "0.3.2"
 sha2 = "0.10.9"
 
-move-stdlib = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-docgen = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-package = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-compiler = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-ir-types = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-core-types = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-disassembler = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-binary-format = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
-move-command-line-common = { git = "https://github.com/asymptotic-code/sui", rev = "2c7bfdd" }
+move-stdlib = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-docgen = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-package = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-compiler = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-ir-types = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-core-types = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-disassembler = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-binary-format = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
+move-command-line-common = { git = "https://github.com/asymptotic-code/sui", rev = "2aa573f" }
