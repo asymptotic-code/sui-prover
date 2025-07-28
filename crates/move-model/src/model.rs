@@ -2007,7 +2007,6 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_destroy_empty_qid(),
             self.object_table_value_id_qid(),
-            self.object_borrow_uid_qid(),
             self.dynamic_field_add_qid(),
             self.dynamic_field_borrow_qid(),
             self.dynamic_field_borrow_mut_qid(),
