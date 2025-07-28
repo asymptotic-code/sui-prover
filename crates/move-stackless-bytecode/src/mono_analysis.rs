@@ -224,14 +224,14 @@ impl MonoAnalysisProcessor {
                 .structs
                 .get(&vec_set_qid)
                 .map_or_else(BTreeSet::new, |set| set.clone());
-            
+
             // VecSet<T> uses vec<T> internally, so we need to add T to vec_inst
             for tys in &vec_set_tys {
                 if !tys.is_empty() {
                     info.vec_inst.extend(tys.iter().cloned());
                 }
             }
-            
+
             info.structs
                 .entry(env.option_qid().unwrap())
                 .or_default()
@@ -242,12 +242,12 @@ impl MonoAnalysisProcessor {
                 .structs
                 .get(&vec_map_qid)
                 .map_or_else(BTreeSet::new, |set| set.clone());
-            
+
             // VecMap<K, V> uses vec<K> internally, so we need to add K to vec_inst
             for tys in &vec_map_tys {
                 info.vec_inst.extend(tys.iter().cloned());
             }
-            
+
             // Also add the key type to Option instantiations
             let vec_map_option_tys = vec_map_tys
                 .into_iter()
@@ -256,6 +256,23 @@ impl MonoAnalysisProcessor {
                 .entry(env.option_qid().unwrap())
                 .or_default()
                 .extend(vec_map_option_tys);
+
+            // VecMap also uses vec<u64> internally for storing indices, so we need to add u64 to vec_inst
+            let has_vec_map = info
+                .structs
+                .get(&vec_map_qid)
+                .map_or(false, |set| !set.is_empty());
+            if has_vec_map {
+                info.vec_inst
+                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+            }
+
+            if has_vec_map {
+                info.structs
+                    .entry(env.option_qid().unwrap())
+                    .or_default()
+                    .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::U64)]);
+            }
         }
 
         env.set_extension(info);
