@@ -61,10 +61,10 @@ fn run_prover(file_path: &PathBuf) -> String {
 
                 // Run the prover with the buffer to capture all output
                 match run_move_prover_with_model(&model, &mut error_buffer, options, None) {
-                    Ok(_) => {
+                    Ok(output) => {
                         let error_output =
                             String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
-                        format!("Verification successful\n{}", error_output)
+                        format!("{output}\n{error_output}")
                     }
                     Err(err) => {
                         // Get the captured error output as string

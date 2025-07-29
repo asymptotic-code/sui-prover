@@ -42,7 +42,7 @@ pub fn create_init_num_operation_state(env: &GlobalEnv) {
     env.set_extension(global_state);
 }
 
-pub fn run_boogie_gen(env: &GlobalEnv, options: Options) -> anyhow::Result<()> {
+pub fn run_boogie_gen(env: &GlobalEnv, options: Options) -> anyhow::Result<String> {
     let mut error_writer = StandardStream::stderr(ColorChoice::Auto);
 
     run_move_prover_with_model(env, &mut error_writer, options, None)
@@ -53,7 +53,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     error_writer: &mut W,
     options: Options,
     timer: Option<Instant>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let now = timer.unwrap_or_else(Instant::now);
 
     let build_duration = now.elapsed();
@@ -81,7 +81,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     if options.run_escape {
         return {
             run_escape(env, &options, now);
-            Ok(())
+            Ok(("Escape analysis completed").to_string())
         };
     }
 
@@ -109,6 +109,14 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     let now = Instant::now();
 
+    if targets.specs_count() == 0 {
+        return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
+    }
+
+    if targets.verify_specs_count() == 0 {
+        return Ok("🦀 No specifications are marked for verification. Nothing to verify.".to_owned());
+    }
+
     let has_errors = match options.boogie_file_mode {
         BoogieFileMode::Function => run_prover_function_mode(env, error_writer, &options, &targets)?,
         BoogieFileMode::Module => run_prover_module_mode(env, error_writer, &options, &targets)?,
@@ -131,7 +139,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         return Err(anyhow!("exiting with verification errors"));
     }
 
-    Ok(())
+    Ok(("Verification successful").to_string())
 }
 
 pub fn run_prover_function_mode<W: WriteColor>(
