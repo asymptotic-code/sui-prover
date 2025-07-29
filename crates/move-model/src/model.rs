@@ -1482,6 +1482,8 @@ impl GlobalEnv {
     const LOG_TEXT_FUNCTION_NAME: &'static str = "text";
     const LOG_VAR_FUNCTION_NAME: &'static str = "var";
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
+    const PROVER_VAL_FUNCTION_NAME: &'static str = "val";
+    const PROVER_REF_FUNCTION_NAME: &'static str = "ref";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1595,6 +1597,14 @@ impl GlobalEnv {
 
     pub fn invariant_end_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::INVARIANT_END_FUNCTION_NAME)
+    }
+
+    pub fn prover_val_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_VAL_FUNCTION_NAME)
+    }
+
+    pub fn prover_ref_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_REF_FUNCTION_NAME)
     }
 
     pub fn log_text_qid(&self) -> QualifiedId<FunId> {
