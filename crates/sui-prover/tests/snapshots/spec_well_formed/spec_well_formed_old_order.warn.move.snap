@@ -1,0 +1,17 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 141
+expression: output
+---
+Verification successful
+warning: Consider moving old!(...) macro calls before function call
+   ┌─ tests/inputs/spec_well_formed/spec_well_formed_old_order.warn.move:15:1
+   │  
+15 │ ╭ fun bar_spec(ctx: &mut TxContext) {
+16 │ │   let old_ctx = old!(ctx);
+17 │ │   bar(ctx);
+18 │ │   let old_ctx_2 = old!(ctx);
+19 │ │   ensures(true);
+20 │ │   let old_ctx_3 = old!(ctx);
+21 │ │ }
+   │ ╰─^

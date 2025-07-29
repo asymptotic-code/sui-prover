@@ -99,6 +99,8 @@ impl std::fmt::Display for FunctionVariant {
     }
 }
 
+pub static SYSTEM_SPECS_COUNT: usize = 19;
+
 /// A trait describing a function target processor.
 pub trait FunctionTargetProcessor {
     /// Processes a function variant. Takes as parameter a target holder which can be mutated, the
@@ -334,6 +336,14 @@ impl FunctionTargetsHolder {
         self.function_specs
             .left_values()
             .chain(self.scenario_specs.iter())
+    }
+
+    pub fn specs_count(&self) -> usize {
+        self.function_specs.len() + self.scenario_specs.len() - SYSTEM_SPECS_COUNT
+    }
+
+    pub fn verify_specs_count(&self) -> usize {
+        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().len()
     }
 
     pub fn has_no_verify_spec(&self, id: &QualifiedId<FunId>) -> bool {

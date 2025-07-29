@@ -94,7 +94,7 @@ fun test4_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[spec(prove, ignore_abort)]
 fun test5_spec(n: u64) {
     let mut i = 0;
 
@@ -139,7 +139,7 @@ fun test6_spec(n: u64) {
     ensures(ghost::global<SpecSum, Integer>() == ((n as u128) * ((n as u128) + 1) / 2).to_int());
 }
 
-#[spec(prove)]
+#[spec(prove, ignore_abort)]
 fun test7_spec(s: &mut u128, n: u64) {
     let old_s = old!(s);
 

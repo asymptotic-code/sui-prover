@@ -151,7 +151,8 @@ pub async fn execute(
             }
         }
     } else {
-       run_boogie_gen(&model, options)?;
+       let result_str = run_boogie_gen(&model, options)?;
+       println!("{}", result_str)
     }
 
     Ok(())

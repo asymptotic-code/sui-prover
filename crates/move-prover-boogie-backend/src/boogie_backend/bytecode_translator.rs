@@ -219,6 +219,16 @@ impl<'env> BoogieTranslator<'env> {
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
+                
+                // Generate object::borrow_uid function for type parameter with uid field
+                let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
+                emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
+                    param_object_borrow_uid_fun_name, 
+                    param_type);
+                writer.indent();
+                emitln!(writer, "res := obj->$id;");
+                writer.unindent();
+                emitln!(writer, "}");
             } else {
                 emitln!(writer, "type {};", param_type);
             }
@@ -329,6 +339,8 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                         }
                         continue;
                     }
@@ -620,6 +632,9 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
+            if self.targets.get_fun_by_spec(&fun_target.func_env.get_qualified_id()).is_none() { // is scenario spec
+                return;
+            }
             mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
@@ -1012,6 +1027,24 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
+        // Generate object::borrow_uid function for structs with key ability
+        if struct_env.get_abilities().has_key() {
+            let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", 
+                boogie_type_suffix(env, &Type::Datatype(
+                    struct_env.module_env.get_id(),
+                    struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )));
+            let writer = self.parent.writer;
+            emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
+                object_borrow_uid_fun_name, 
+                struct_name);
+            writer.indent();
+            emitln!(writer, "res := obj->$id;");
+            writer.unindent();
+            emitln!(writer, "}");
+        }
+
         if struct_env.has_memory() {
             // Emit memory variable.
             let memory_name = boogie_resource_memory_name(
@@ -1107,7 +1140,7 @@ impl<'env> EnumTranslator<'env> {
         }
     }
 
-    /// Translates the given struct.
+    /// Translates the given enum.
     fn translate(&self) {
         let writer = self.parent.writer;
         let enum_env = self.enum_env;
@@ -2121,11 +2154,6 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
-                    && self
-                        .parent
-                        .targets
-                        .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                        .is_some()
                     && !self
                         .parent
                         .targets
@@ -3659,11 +3687,6 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
-                    && self
-                        .parent
-                        .targets
-                        .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                        .is_some()
                     && !self
                         .parent
                         .targets
