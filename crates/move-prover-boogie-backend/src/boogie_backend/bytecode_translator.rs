@@ -339,6 +339,8 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                         }
                         continue;
                     }
@@ -630,6 +632,9 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
+            if self.targets.get_fun_by_spec(&fun_target.func_env.get_qualified_id()).is_none() { // is scenario spec
+                return;
+            }
             mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
@@ -2149,11 +2154,6 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
-                    && self
-                        .parent
-                        .targets
-                        .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                        .is_some()
                     && !self
                         .parent
                         .targets
@@ -3687,11 +3687,6 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
-                    && self
-                        .parent
-                        .targets
-                        .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                        .is_some()
                     && !self
                         .parent
                         .targets

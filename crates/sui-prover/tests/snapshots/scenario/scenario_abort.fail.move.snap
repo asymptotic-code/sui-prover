@@ -1,0 +1,18 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 141
+expression: output
+---
+exiting with verification errors
+error: prover::asserts conditions are not complete
+   ┌─ tests/inputs/scenario/scenario_abort.fail.move:11:1
+   │  
+11 │ ╭ fun scenario(a: u128): bool {
+12 │ │     let res = foo(a);
+13 │ │     assert!(false);
+14 │ │     ensures(true);
+15 │ │     res
+16 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/scenario/scenario_abort.fail.move:11: scenario
