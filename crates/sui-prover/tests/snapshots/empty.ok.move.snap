@@ -1,6 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 141
 expression: output
-snapshot_kind: text
 ---
-Verification successful
+🦀 No specifications found in the project. Nothing to verify.
