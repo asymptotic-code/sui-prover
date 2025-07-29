@@ -99,8 +99,6 @@ impl std::fmt::Display for FunctionVariant {
     }
 }
 
-pub static SYSTEM_SPECS_COUNT: usize = 19;
-
 /// A trait describing a function target processor.
 pub trait FunctionTargetProcessor {
     /// Processes a function variant. Takes as parameter a target holder which can be mutated, the
@@ -194,6 +192,35 @@ impl FunctionTargetsHolder {
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
         }
+    }
+
+    /// Counts system specs dynamically based on their module addresses.
+    /// System specs are those from modules deployed at address 0x0:
+    /// - specs::* modules (sui-framework-specs package)
+    /// - prover::* modules (prover package)
+    fn count_system_specs(&self, env: &GlobalEnv) -> usize {
+        let mut system_specs_count = 0;
+        let system_address = &0u16.into(); // Address 0x0 used by system modules
+
+        // Count function specs from system modules
+        for spec_id in self.function_specs.left_values() {
+            let func_env = env.get_function(*spec_id);
+            let module_env = &func_env.module_env;
+            if module_env.get_name().addr() == system_address {
+                system_specs_count += 1;
+            }
+        }
+
+        // Count scenario specs from system modules
+        for spec_id in &self.scenario_specs {
+            let func_env = env.get_function(*spec_id);
+            let module_env = &func_env.module_env;
+            if module_env.get_name().addr() == system_address {
+                system_specs_count += 1;
+            }
+        }
+
+        system_specs_count
     }
 
     pub fn for_one_spec(target: &QualifiedId<FunId>, instance: FunctionTargetsHolder) -> Self {
@@ -342,8 +369,8 @@ impl FunctionTargetsHolder {
             .chain(self.scenario_specs.iter())
     }
 
-    pub fn specs_count(&self) -> usize {
-        self.function_specs.len() + self.scenario_specs.len() - SYSTEM_SPECS_COUNT
+    pub fn specs_count(&self, env: &GlobalEnv) -> usize {
+        self.function_specs.len() + self.scenario_specs.len() - self.count_system_specs(env)
     }
 
     pub fn verify_specs_count(&self) -> usize {

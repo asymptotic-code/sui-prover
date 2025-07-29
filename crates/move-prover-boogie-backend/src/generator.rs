@@ -109,7 +109,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     let now = Instant::now();
 
-    if targets.specs_count() == 0 {
+    if targets.specs_count(env) == 0 {
         return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
     }
 
