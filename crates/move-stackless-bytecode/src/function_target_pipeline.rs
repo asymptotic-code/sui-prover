@@ -310,6 +310,10 @@ impl FunctionTargetsHolder {
         &self.target_modules
     }
 
+    pub fn ignores_aborts(&self, id: &QualifiedId<FunId>) -> bool {
+        self.ignore_aborts.contains(id)
+    }
+
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
     }
