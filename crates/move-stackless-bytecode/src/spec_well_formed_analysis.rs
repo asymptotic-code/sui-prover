@@ -116,6 +116,22 @@ impl SpecWellFormedAnalysisProcessor {
         }
     }
 
+    pub fn find_operation_locs(&self, operation: &Operation, code: &[Bytecode], builder: &FunctionDataBuilder) -> BTreeSet<Loc> {
+        let mut locs = BTreeSet::new();
+        for position in 0..code.len() {
+            match &code[position] {
+                Bytecode::Call(attr_id, _, oper, _, _) => {
+                    if oper == operation {
+                        locs.insert(builder.get_loc(*attr_id));
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        locs
+    }
+
     pub fn find_node_by_func_id(&self, target_id: QualifiedId<FunId>, graph: &Graph<BlockId>, code: &[Bytecode], cfg: &StacklessControlFlowGraph) -> (Option<(BlockId, Operation, Vec<usize>, Vec<usize>, Vec<Type>)>, bool) {
         let mut multiple = false;
         let mut result = None;
@@ -383,6 +399,19 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             return data;
         }
 
+        let asserts_operation = Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]);
+
+        if targets.ignores_aborts(&func_env.get_qualified_id()) {
+            let locations = self.find_operation_locs(&asserts_operation, code, &builder);
+            for loc in locations {
+                env.diag(
+                    Severity::Warning,
+                    &loc,
+                    "Asserts are not checked while ignore_abort is enabled.",
+                );
+            }
+        }
+
         let (call_node_id, call_operation, outputs, inputs, type_param_args) = call_data.unwrap();
 
         // Arguments Checking
@@ -463,7 +492,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
 
         let preconditions = [
             Operation::apply_fun_qid(&func_env.module_env.env.requires_qid(), vec![]),
-            Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]),
+            asserts_operation,
         ];
 
         let mut pre_matches_traversed = self.traverse_and_match_operations(true, &call_node_id, &graph, &cfg, code, &builder, &preconditions);
