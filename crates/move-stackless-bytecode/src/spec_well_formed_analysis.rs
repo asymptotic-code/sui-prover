@@ -330,7 +330,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             return data;
         }
 
-        let asserts_operation= Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]);
+        let asserts_operation = Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]);
 
         if targets.ignores_aborts(&func_env.get_qualified_id()) {
             let locations = self.find_operation_locs(&asserts_operation, code, &builder);
