@@ -480,7 +480,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             ref_val_patterns_traversed.insert(ref_val_same_block_pattern.unwrap());
         }
 
-        if ref_val_patterns_traversed.len() > 0 {
+        if !ref_val_patterns_traversed.is_empty() {
             env.diag(
                 Severity::Warning,
                 &func_env.get_loc(), // NOTE: this is not a real location, but we don't have a better one due to the nature of the macro
