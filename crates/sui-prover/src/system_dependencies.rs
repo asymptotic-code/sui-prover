@@ -53,7 +53,7 @@ fn prover_deps() -> Dependencies {
     Dependency::Internal(InternalDependency {
             kind: DependencyKind::Git(GitInfo {
                 git_url: SYSTEM_PROVER_GIT_REPO.into(),
-                git_rev: "object-id-fix".to_string().into(),
+                git_rev: "main".to_string().into(),
                 subdir: "packages/sui-prover".to_string().into(),
             }),
             subst: None,
