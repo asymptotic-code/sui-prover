@@ -2488,23 +2488,6 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if let Some(object_borrow_uid_qid) = self.parent.env.object_borrow_uid_qid() {
-                            if callee_env.get_qualified_id() == object_borrow_uid_qid {
-                                // Handle object::borrow_uid calls by calling the generated function
-                                assert_eq!(inst.len(), 1);
-                                let type_suffix = boogie_type_suffix(env, &inst[0]);
-                                let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", type_suffix);
-                                emitln!(
-                                    self.writer(),
-                                    "call {} := {}({});",
-                                    dest_str,
-                                    object_borrow_uid_fun_name,
-                                    args_str,
-                                );
-                                processed = true;
-                            }
-                        }
-
                         if self
                             .parent
                             .targets

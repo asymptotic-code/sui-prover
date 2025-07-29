@@ -2,9 +2,6 @@ module specs::object_spec;
 
 use sui::object::{delete_impl, record_new_uid};
 
-#[spec_only]
-native public fun borrow_uid<T: key>(obj: &T): &UID;
-
 #[spec(target = sui::object::delete_impl)]
 fun delete_impl_spec(id: address) {
     delete_impl(id)
