@@ -44,6 +44,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "250f629c0161ad8107cf89319e990051fae62832fd343083bea452d93e2205fd"
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
+
+[[package]]
 name = "android-tzdata"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,6 +337,8 @@ version = "1.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
 dependencies = [
+ "jobserver",
+ "libc",
  "shlex",
 ]
 
@@ -456,16 +464,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "combine"
-version = "4.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
-dependencies = [
- "bytes",
- "memchr",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,9 +492,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
+checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
 ]
@@ -730,7 +728,7 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 [[package]]
 name = "enum-compat-util"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "serde_yaml",
 ]
@@ -819,6 +817,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
 name = "flate2"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -833,6 +837,12 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "form_urlencoded"
@@ -1044,6 +1054,11 @@ name = "hashbrown"
 version = "0.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5971ac85611da7067dbfcabef3c70ebb5606018acd9e2a3903a0da507521e0d5"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash",
+]
 
 [[package]]
 name = "heck"
@@ -1384,6 +1399,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
+name = "jobserver"
+version = "0.1.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38f262f097c174adebe41eb73d66ae9c06b2844fb0da69969647bbddd9b0538a"
+dependencies = [
+ "getrandom 0.3.3",
+ "libc",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1407,6 +1432,15 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
+name = "lcov"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ccfa6d5e585a884db65b37f38184e4364eaf74d884ac35d0a90fe9baf80b723"
+dependencies = [
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "leb128"
@@ -1554,24 +1588,22 @@ dependencies = [
 [[package]]
 name = "move-abstract-interpreter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
-dependencies = [
- "move-binary-format",
- "move-bytecode-verifier-meter",
-]
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 
 [[package]]
 name = "move-abstract-stack"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 
 [[package]]
 name = "move-binary-format"
 version = "0.0.3"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "enum-compat-util",
+ "indexmap 2.10.0",
+ "move-abstract-interpreter",
  "move-core-types",
  "move-proc-macros",
  "ref-cast",
@@ -1582,12 +1614,12 @@ dependencies = [
 [[package]]
 name = "move-borrow-graph"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 
 [[package]]
 name = "move-bytecode-source-map"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1603,20 +1635,20 @@ dependencies = [
 [[package]]
 name = "move-bytecode-utils"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "indexmap 2.10.0",
  "move-binary-format",
  "move-core-types",
- "petgraph",
+ "petgraph 0.8.2",
  "serde-reflection",
 ]
 
 [[package]]
 name = "move-bytecode-verifier"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "move-abstract-interpreter",
  "move-abstract-stack",
@@ -1625,13 +1657,13 @@ dependencies = [
  "move-bytecode-verifier-meter",
  "move-core-types",
  "move-vm-config",
- "petgraph",
+ "petgraph 0.8.2",
 ]
 
 [[package]]
 name = "move-bytecode-verifier-meter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -1641,7 +1673,7 @@ dependencies = [
 [[package]]
 name = "move-command-line-common"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1662,7 +1694,7 @@ dependencies = [
 [[package]]
 name = "move-compiler"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1672,6 +1704,7 @@ dependencies = [
  "hex",
  "insta",
  "lsp-types",
+ "move-abstract-interpreter",
  "move-binary-format",
  "move-borrow-graph",
  "move-bytecode-source-map",
@@ -1683,7 +1716,7 @@ dependencies = [
  "move-proc-macros",
  "move-symbol-pool",
  "once_cell",
- "petgraph",
+ "petgraph 0.8.2",
  "rayon",
  "regex",
  "serde",
@@ -1697,13 +1730,14 @@ dependencies = [
 [[package]]
 name = "move-core-types"
 version = "0.0.4"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
  "enum-compat-util",
  "ethnum",
  "hex",
+ "indexmap 2.10.0",
  "leb128",
  "move-proc-macros",
  "num",
@@ -1721,7 +1755,7 @@ dependencies = [
 [[package]]
 name = "move-coverage"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1729,20 +1763,24 @@ dependencies = [
  "codespan",
  "colored",
  "indexmap 2.10.0",
+ "lcov",
  "move-abstract-interpreter",
  "move-binary-format",
  "move-bytecode-source-map",
+ "move-bytecode-verifier",
  "move-command-line-common",
+ "move-compiler",
  "move-core-types",
  "move-ir-types",
- "petgraph",
+ "move-trace-format",
+ "petgraph 0.8.2",
  "serde",
 ]
 
 [[package]]
 name = "move-disassembler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1763,7 +1801,7 @@ dependencies = [
 [[package]]
 name = "move-docgen"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "clap",
@@ -1786,7 +1824,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "codespan-reporting",
@@ -1804,7 +1842,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode-syntax"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "hex",
@@ -1817,7 +1855,7 @@ dependencies = [
 [[package]]
 name = "move-ir-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "hex",
  "move-command-line-common",
@@ -1855,7 +1893,7 @@ dependencies = [
 [[package]]
 name = "move-model"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "codespan",
@@ -1880,7 +1918,7 @@ dependencies = [
 [[package]]
 name = "move-model-2"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1903,7 +1941,7 @@ dependencies = [
 [[package]]
 name = "move-package"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "clap",
@@ -1918,19 +1956,19 @@ dependencies = [
  "move-core-types",
  "move-disassembler",
  "move-docgen",
- "move-model 0.1.0 (git+https://github.com/asymptotic-code/sui?branch=next)",
+ "move-model 0.1.0 (git+https://github.com/asymptotic-code/sui?rev=2c7bfdd)",
  "move-model-2",
  "move-symbol-pool",
  "named-lock",
  "once_cell",
- "petgraph",
+ "petgraph 0.8.2",
  "regex",
  "serde",
  "serde_yaml",
  "sha2 0.9.9",
  "tempfile",
  "toml 0.5.11",
- "toml_edit 0.14.4",
+ "toml_edit 0.22.27",
  "treeline",
  "vfs",
  "walkdir",
@@ -1940,7 +1978,7 @@ dependencies = [
 [[package]]
 name = "move-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "enum-compat-util",
  "quote",
@@ -2004,7 +2042,7 @@ dependencies = [
  "num",
  "once_cell",
  "paste",
- "petgraph",
+ "petgraph 0.5.1",
  "regex",
  "serde",
 ]
@@ -2012,7 +2050,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "anyhow",
  "hex",
@@ -2031,7 +2069,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib-natives"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "hex",
  "move-binary-format",
@@ -2046,7 +2084,7 @@ dependencies = [
 [[package]]
 name = "move-symbol-pool"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "once_cell",
  "phf",
@@ -2056,18 +2094,19 @@ dependencies = [
 [[package]]
 name = "move-trace-format"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "move-binary-format",
  "move-core-types",
  "serde",
  "serde_json",
+ "zstd",
 ]
 
 [[package]]
 name = "move-vm-config"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "move-binary-format",
  "once_cell",
@@ -2076,7 +2115,7 @@ dependencies = [
 [[package]]
 name = "move-vm-profiler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "move-vm-config",
  "once_cell",
@@ -2088,7 +2127,7 @@ dependencies = [
 [[package]]
 name = "move-vm-runtime"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "better_any",
  "fail",
@@ -2108,7 +2147,7 @@ dependencies = [
 [[package]]
 name = "move-vm-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#cf078e1b3c4698a9c1e08014a37dcb9ce93e2384"
+source = "git+https://github.com/asymptotic-code/sui?rev=2c7bfdd#2c7bfdd17700e84eef278614d7e18bc0ffb771db"
 dependencies = [
  "bcs",
  "move-binary-format",
@@ -2552,8 +2591,20 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
 dependencies = [
- "fixedbitset",
+ "fixedbitset 0.2.0",
  "indexmap 1.9.3",
+]
+
+[[package]]
+name = "petgraph"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54acf3a685220b533e437e264e4d932cfbdc4cc7ec0cd232ed73c08d03b8a7ca"
+dependencies = [
+ "fixedbitset 0.5.7",
+ "hashbrown 0.15.4",
+ "indexmap 2.10.0",
+ "serde",
 ]
 
 [[package]]
@@ -2619,6 +2670,12 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
+name = "pkg-config"
+version = "0.3.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "potential_utf"
@@ -2987,15 +3044,15 @@ checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustix"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c71e83d6afe7ff64890ec6b71d6a69bb8a610ab78ce364b3352876bb4c801266"
+checksum = "11181fbabf243db407ef8df94a6ce0b2f9a733bd8be4ad02b4eda9602296cac8"
 dependencies = [
  "bitflags 2.9.1",
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3405,7 +3462,7 @@ dependencies = [
  "move-stackless-bytecode",
  "move-symbol-pool",
  "openai_api_rust",
- "petgraph",
+ "petgraph 0.5.1",
  "regex",
  "serde",
  "sha2 0.10.9",
@@ -3713,18 +3770,6 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5376256e44f2443f8896ac012507c19a012df0fe8758b55246ae51a2279db51f"
-dependencies = [
- "combine",
- "indexmap 1.9.3",
- "itertools 0.10.5",
- "serde",
-]
-
-[[package]]
-name = "toml_edit"
 version = "0.19.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
@@ -3733,8 +3778,28 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow",
+ "winnow 0.5.40",
 ]
+
+[[package]]
+name = "toml_edit"
+version = "0.22.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
+dependencies = [
+ "indexmap 2.10.0",
+ "serde",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_write",
+ "winnow 0.7.12",
+]
+
+[[package]]
+name = "toml_write"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "tracing"
@@ -4490,6 +4555,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winnow"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3edebf492c8125044983378ecb5766203ad3b4c2f7a922bd7dd207f6d443e95"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "wit-bindgen-rt"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4630,4 +4704,32 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.0.15+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb81183ddd97d0c74cedf1d50d85c8d08c1b8b68ee863bdee9e706eedba1a237"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
