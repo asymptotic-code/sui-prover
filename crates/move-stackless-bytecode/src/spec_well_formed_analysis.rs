@@ -407,7 +407,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                 env.diag(
                     Severity::Warning,
                     &loc,
-                    "Asserts may not take effect while ignore_abort is enabled.",
+                    "Asserts are not checked while ignore_abort is enabled.",
                 );
             }
         }
