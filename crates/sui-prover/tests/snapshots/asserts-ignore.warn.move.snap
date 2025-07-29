@@ -4,7 +4,7 @@ assertion_line: 141
 expression: output
 ---
 Verification successful
-warning: Asserts may not take effect while ignore_abort is enabled.
+warning: Asserts are not checked while ignore_abort is enabled.
    ┌─ tests/inputs/asserts-ignore.warn.move:12:5
    │
 12 │     asserts(a > 0);
