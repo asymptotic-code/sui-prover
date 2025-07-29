@@ -50,7 +50,7 @@ impl SpecWellFormedAnalysisProcessor {
     pub fn find_operation_locs(&self, operation: &Operation, code: &[Bytecode], builder: &FunctionDataBuilder) -> BTreeSet<Loc> {
         let mut locs = BTreeSet::new();
         for position in 0..code.len() {
-            match &code[position as usize] {
+            match &code[position] {
                 Bytecode::Call(attr_id, _, oper, _, _) => {
                     if oper == operation {
                         locs.insert(builder.get_loc(*attr_id));
