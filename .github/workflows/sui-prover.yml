@@ -23,9 +23,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -72,9 +72,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -99,7 +99,7 @@ jobs:
           cargo test
 
   build-run-integer-mate-tests:
-    runs-on: macos-latest-large
+    runs-on: macos-latest
     env: 
       BRANCH_NAME:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
 
@@ -118,9 +118,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}
 
       - name: Cache Cargo
         uses: actions/cache@v4
