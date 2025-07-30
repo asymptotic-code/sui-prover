@@ -4,7 +4,7 @@ use codespan_reporting::diagnostic::Severity;
 use move_model::{model::{FunId, FunctionEnv, Loc, QualifiedId}, symbol::Symbol, ty::Type};
 
 use crate::{
-    function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder}, graph::{DomRelation, Graph}, stackless_bytecode::{Bytecode, Operation}, stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph}
+    exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder}, graph::{DomRelation, Graph}, stackless_bytecode::{Bytecode, Operation}, stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph}
 };
 
 pub struct SpecWellFormedAnalysisProcessor();
@@ -13,6 +13,75 @@ impl SpecWellFormedAnalysisProcessor {
 
     pub fn new() -> Box<Self> {
         Box::new(Self())
+    }
+
+    pub fn find_ref_val_pattern(&self, block_id: BlockId, cfg: &StacklessControlFlowGraph, code: &[Bytecode], builder: &FunctionDataBuilder, operation: &Option<Operation>) -> Option<Loc> {        
+        match cfg.content(block_id) {
+            BlockContent::Dummy => {},
+            BlockContent::Basic { lower, upper } => {
+                let mut val_match = None;
+                // If operation is provided, we only look after that specific operation
+                let mut operation_match = operation.is_none();
+                for position in *lower..*upper {
+                    match &code[position as usize] {
+                        Bytecode::Call(attr, dests, opr, srcs, _) => {
+                            if operation.is_some() {
+                                if opr == operation.as_ref().unwrap() {
+                                    operation_match = true;
+                                }
+                            }
+                            if !operation_match {
+                                continue;
+                            }
+                            if let Operation::Function(mod_id, fun_id, _) = opr {
+                                if builder.global_env().prover_val_qid() == mod_id.qualified(*fun_id) {
+                                    val_match = Some(dests);
+                                }
+                                if 
+                                    val_match.is_some() && 
+                                    builder.global_env().prover_ref_qid() == mod_id.qualified(*fun_id) &&
+                                    srcs == val_match.unwrap()
+                                {
+                                    return Some(builder.get_loc(*attr));
+                                }
+                            }
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn traverse_and_match_old_macro_pattern(&self, block_id: &BlockId, graph: &Graph<BlockId>, cfg: &StacklessControlFlowGraph, code: &[Bytecode],  builder: &FunctionDataBuilder) -> BTreeSet<Loc> {
+        let mut visited = BTreeSet::new();
+        let mut matches = BTreeSet::new();
+
+        visited.insert(cfg.entry_block());
+        visited.insert(cfg.exit_block());
+
+        self.traverse_and_match_old_macro_pattern_internal(block_id, block_id, &mut visited, graph, cfg, code, builder, &mut matches);
+
+        matches
+    }
+
+    fn traverse_and_match_old_macro_pattern_internal(&self, starting_block_id: &BlockId, block_id: &BlockId, visited: &mut BTreeSet<BlockId>, graph: &Graph<BlockId>, cfg: &StacklessControlFlowGraph, code: &[Bytecode], builder: &FunctionDataBuilder, matches: &mut BTreeSet<Loc>) {
+        if !visited.insert(*block_id)  {
+            return;
+        }
+
+        if starting_block_id != block_id {
+            let loc = self.find_ref_val_pattern(*block_id, cfg, code, builder, &None);
+            if loc.is_some() {
+                matches.insert(loc.unwrap());
+            }
+        }
+
+        for successor in graph.successors[block_id].iter() {
+            self.traverse_and_match_old_macro_pattern_internal(starting_block_id, &successor, visited, graph, cfg, code, builder, matches);
+        }
     }
 
     pub fn traverse_and_match_operations(&self, is_forward: bool, block_id: &BlockId, graph: &Graph<BlockId>, cfg: &StacklessControlFlowGraph, code: &[Bytecode],  builder: &FunctionDataBuilder, targets: &[Operation]) -> BTreeSet<Loc> {
@@ -34,7 +103,7 @@ impl SpecWellFormedAnalysisProcessor {
         }
 
         if starting_block_id != block_id {
-            let loc = self.fing_node_operation(*block_id, cfg, code, targets, builder);
+            let loc = self.find_node_operation(*block_id, cfg, code, targets, builder);
             if loc.is_some() {
                 matches.insert(loc.unwrap());
             }
@@ -45,6 +114,22 @@ impl SpecWellFormedAnalysisProcessor {
         for successor in nodes.iter() {
             self.traverse_and_match_operations_internal(is_forward, starting_block_id, &successor, visited, graph, cfg, code, builder, targets, matches);
         }
+    }
+
+    pub fn find_operation_locs(&self, operation: &Operation, code: &[Bytecode], builder: &FunctionDataBuilder) -> BTreeSet<Loc> {
+        let mut locs = BTreeSet::new();
+        for position in 0..code.len() {
+            match &code[position] {
+                Bytecode::Call(attr_id, _, oper, _, _) => {
+                    if oper == operation {
+                        locs.insert(builder.get_loc(*attr_id));
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        locs
     }
 
     pub fn find_node_by_func_id(&self, target_id: QualifiedId<FunId>, graph: &Graph<BlockId>, code: &[Bytecode], cfg: &StacklessControlFlowGraph) -> (Option<(BlockId, Operation, Vec<usize>, Vec<usize>, Vec<Type>)>, bool) {
@@ -82,7 +167,7 @@ impl SpecWellFormedAnalysisProcessor {
         (result, multiple)
     }
 
-    pub fn fing_node_operation(&self, block_id: BlockId, cfg: &StacklessControlFlowGraph, code: &[Bytecode], targets: &[Operation], builder: &FunctionDataBuilder) -> Option<Loc> {
+    pub fn find_node_operation(&self, block_id: BlockId, cfg: &StacklessControlFlowGraph, code: &[Bytecode], targets: &[Operation], builder: &FunctionDataBuilder) -> Option<Loc> {
         match cfg.content(block_id) {
             BlockContent::Dummy => {},
             BlockContent::Basic { lower, upper } => {
@@ -314,6 +399,19 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             return data;
         }
 
+        let asserts_operation = Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]);
+
+        if targets.ignores_aborts(&func_env.get_qualified_id()) {
+            let locations = self.find_operation_locs(&asserts_operation, code, &builder);
+            for loc in locations {
+                env.diag(
+                    Severity::Warning,
+                    &loc,
+                    "Asserts are not checked while ignore_abort is enabled.",
+                );
+            }
+        }
+
         let (call_node_id, call_operation, outputs, inputs, type_param_args) = call_data.unwrap();
 
         // Arguments Checking
@@ -394,15 +492,30 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
 
         let preconditions = [
             Operation::apply_fun_qid(&func_env.module_env.env.requires_qid(), vec![]),
-            Operation::apply_fun_qid(&func_env.module_env.env.asserts_qid(), vec![]),
+            asserts_operation,
         ];
 
         let mut pre_matches_traversed = self.traverse_and_match_operations(true, &call_node_id, &graph, &cfg, code, &builder, &preconditions);
         let mut post_matches_traversed = self.traverse_and_match_operations(false, &call_node_id, &graph, &cfg, code, &builder, &postconditions);
         let (mut pre_matches, mut post_matches) = self.find_operations_before_after_operation_in_node(&call_node_id, &call_operation, &cfg, code, &builder, &preconditions, &postconditions);
 
+        let mut ref_val_patterns_traversed: BTreeSet<Loc> = self.traverse_and_match_old_macro_pattern(&call_node_id, &graph, &cfg, code, &builder);
+        let ref_val_same_block_pattern = self.find_ref_val_pattern(call_node_id, &cfg, code, &builder, &Some(call_operation));
+
         pre_matches.append(&mut pre_matches_traversed);
         post_matches.append(&mut post_matches_traversed);
+
+        if ref_val_same_block_pattern.is_some() {
+            ref_val_patterns_traversed.insert(ref_val_same_block_pattern.unwrap());
+        }
+
+        if !ref_val_patterns_traversed.is_empty() {
+            env.diag(
+                Severity::Warning,
+                &func_env.get_loc(), // NOTE: this is not a real location, but we don't have a better one due to the nature of the macro
+                "Consider moving old!(...) macro calls before function call",
+            );
+        }
 
         for loc in pre_matches.iter() {
             env.diag(

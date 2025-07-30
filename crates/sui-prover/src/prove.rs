@@ -1,5 +1,5 @@
 use clap::Args;
-use move_compiler::editions::{Edition, Flavor};
+use move_compiler::{editions::{Edition, Flavor}, shared::known_attributes::ModeAttribute};
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_core_types::account_address::AccountAddress;
 use log::LevelFilter;
@@ -15,7 +15,6 @@ impl From<BuildConfig> for MoveBuildConfig {
         Self {
             dev_mode: true,
             test_mode: false,
-            verify_mode: true,
             json_errors: false,
             generate_docs: false,
             silence_warnings: true,
@@ -32,6 +31,8 @@ impl From<BuildConfig> for MoveBuildConfig {
             additional_named_addresses: config.additional_named_addresses,
             save_disassembly: false,
             implicit_dependencies: BTreeMap::new(),
+            modes: vec![ModeAttribute::VERIFY_ONLY.into()],
+            force_lock_file: false,
         }
     }
 }
@@ -148,7 +149,8 @@ pub async fn execute(
             }
         }
     } else {
-       run_boogie_gen(&model, options)?;
+       let result_str = run_boogie_gen(&model, options)?;
+       println!("{}", result_str)
     }
 
     Ok(())

@@ -23,9 +23,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -72,9 +72,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}-
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -118,9 +118,9 @@ jobs:
             ~/Library/Caches/Homebrew
             /usr/local/Homebrew
             /opt/homebrew
-          key: brew-macos-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
-            brew-macos-
+            brew-${{ runner.os }}
 
       - name: Cache Cargo
         uses: actions/cache@v4
