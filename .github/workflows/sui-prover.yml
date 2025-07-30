@@ -99,7 +99,7 @@ jobs:
           cargo test
 
   build-run-integer-mate-tests:
-    runs-on: macos-latest-large
+    runs-on: macos-latest
     env: 
       BRANCH_NAME:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
 
