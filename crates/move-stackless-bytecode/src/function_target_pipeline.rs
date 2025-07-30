@@ -43,7 +43,7 @@ pub struct FunctionTargetsHolder {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     no_focus_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
-    skip_specs: BTreeSet<QualifiedId<FunId>>,
+    skip_specs: BTreeMap<QualifiedId<FunId>, String>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
@@ -187,7 +187,7 @@ impl FunctionTargetsHolder {
             no_verify_specs: BTreeSet::new(),
             no_focus_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
-            skip_specs: BTreeSet::new(),
+            skip_specs: BTreeMap::new(),
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
@@ -367,12 +367,12 @@ impl FunctionTargetsHolder {
         self.omit_opaque_specs.contains(id)
     }
 
-    pub fn skip_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.skip_specs.contains(id)
+    pub fn skip_spec_txt(&self, id: &QualifiedId<FunId>) -> String {
+        self.skip_specs.get(id).cloned().unwrap_or_default()
     }
 
     pub fn skip_specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
-        self.skip_specs.iter()
+        self.skip_specs.keys()
     }
 
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
@@ -438,11 +438,11 @@ impl FunctionTargetsHolder {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 
-            if *skip {
-                self.skip_specs.insert(func_env.get_qualified_id());
+            if skip.is_some() {
+                self.skip_specs.insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
-            if (!*prove && !*focus) || *skip {
+            if (!*prove && !*focus) || skip.is_some() {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             }
 
