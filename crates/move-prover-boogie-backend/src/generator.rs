@@ -200,16 +200,17 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
     }
 
-    // for skip_spec in targets.skip_specs() {
-    //     let fun_env = env.get_function(*skip_spec);
-        
-    //     // Filter by function and module names if specified
-    //     if !should_process_function(env, options, &fun_env) {
-    //         continue;
-    //     }
-        
-    //     println!("⏭️ {} {}", fun_env.get_full_name_str(), fun_env.get_loc().display_line_only(env));
-    // }
+    for skip_spec in targets.skip_specs() {
+        let fun_env = env.get_function(*skip_spec);
+        let txt = targets.skip_spec_txt(skip_spec);
+        let loc = fun_env.get_loc().display_line_only(env).to_string();
+        let name = fun_env.get_full_name_str();
+        if txt.is_empty() {
+            println!("⏭️ {} {}", name, loc);
+        } else {
+            println!("⏭️ {} {}: {}", name, loc, txt);
+        }
+    }
 
     Ok(has_errors)
 }
