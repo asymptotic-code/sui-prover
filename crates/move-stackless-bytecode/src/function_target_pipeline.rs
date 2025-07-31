@@ -208,9 +208,11 @@ impl FunctionTargetsHolder {
         for spec_id in self.function_specs.left_values().chain(self.scenario_specs.iter()) {
             let func_env = env.get_function(*spec_id);
             let module_env = &func_env.module_env;
-            let module_name = module_env.get_name().name().display(env.symbol_pool()).to_string();
-            if module_env.get_name().addr() == system_address && GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
-                system_specs_count += 1;
+            if module_env.get_name().addr() == system_address {
+                let module_name = module_env.get_name().name().display(env.symbol_pool()).to_string();
+                if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
+                    system_specs_count += 1;
+                }
             }
         }
 
