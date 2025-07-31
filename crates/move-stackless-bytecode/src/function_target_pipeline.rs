@@ -31,7 +31,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
-    stackless_control_flow_graph::generate_cfg_in_dot_format,
+    stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions,
 };
 
 /// A data structure which holds data for multiple function targets, and allows to
@@ -421,7 +421,7 @@ impl FunctionTargetsHolder {
     }
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
-    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
+    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>, filter: TargetFilterOptions) {
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets
@@ -434,6 +434,8 @@ impl FunctionTargetsHolder {
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
+            let targeted = filter.is_targeted(func_env);
+
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
@@ -442,7 +444,7 @@ impl FunctionTargetsHolder {
                 self.skip_specs.insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
-            if (!*prove && !*focus) || skip.is_some() {
+            if (!*prove && !*focus) || skip.is_some() || !targeted {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             }
 

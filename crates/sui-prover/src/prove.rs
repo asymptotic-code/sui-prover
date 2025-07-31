@@ -3,12 +3,13 @@ use move_compiler::{editions::{Edition, Flavor}, shared::known_attributes::ModeA
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_core_types::account_address::AccountAddress;
 use log::LevelFilter;
+use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::{collections::BTreeMap, path::{Path,PathBuf}};
 use codespan_reporting::term::termcolor::Buffer;
 use crate::{build_model::build_model};
 use crate::llm_explain::explain_err;
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{BoogieFileMode, FilterOptions, Options}};
+use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{BoogieFileMode, Options}};
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -120,7 +121,7 @@ pub async fn execute(
     general_config: GeneralConfig,
     build_config: BuildConfig,
     boogie_config: Option<String>,
-    filter: FilterOptions,
+    filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
     let mut options = Options::default();

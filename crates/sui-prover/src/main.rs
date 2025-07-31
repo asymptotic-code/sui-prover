@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::*;
 use colored::Colorize;
-use move_prover_boogie_backend::generator_options::FilterOptions;
+use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use prove::{GeneralConfig, BuildConfig, execute};
 use tracing::debug;
 
@@ -40,7 +40,7 @@ struct Args {
 
     /// Filtering options
     #[clap(flatten)]
-    pub filter: FilterOptions,
+    pub filter_config: TargetFilterOptions,
 }
 
 #[tokio::main]
@@ -64,7 +64,7 @@ async fn main() {
         args.general_config,
         args.build_config,
         args.boogie_config,
-        args.filter,
+        args.filter_config,
     ).await;
 
     match result {

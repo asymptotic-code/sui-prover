@@ -28,7 +28,7 @@ use move_model::{
     model::VerificationScope, options::ModelBuilderOptions,
 };
 use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
-use move_stackless_bytecode::options::{AutoTraceLevel, ProverOptions};
+use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
 static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
@@ -94,7 +94,7 @@ pub struct Options {
     /// Boogie run mode
     pub boogie_file_mode: BoogieFileMode,
     /// Filtering options
-    pub filter: FilterOptions,
+    pub filter: TargetFilterOptions,
 }
 
 impl Default for Options {
@@ -114,7 +114,7 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             boogie_file_mode: BoogieFileMode::Function,
-            filter: FilterOptions::default(),
+            filter: TargetFilterOptions::default(),
         }
     }
 }
@@ -877,33 +877,4 @@ pub fn named_addresses_for_options(
         .iter()
         .map(|(name, addr)| format!("{}={}", name, addr))
         .collect()
-}
-
-#[derive(clap::Parser, Debug, Clone, Deserialize, Serialize, Default)]
-pub struct FilterOptions {
-    /// Specify modules names to target
-    #[arg(long = "modules")]
-    pub modules: Option<Vec<String>>,
-
-    /// Specify functions names to target
-    #[arg(long = "functions")]
-    pub functions: Option<Vec<String>>,
-}
-
-impl FilterOptions {
-    pub fn is_targeted_module(&self, module_name: String) -> bool {
-        if let Some(modules) = &self.modules {
-            modules.iter().any(|m| m == &module_name)
-        } else {
-            true
-        }
-    }
-
-    pub fn is_targeted_function(&self, function_name: String) -> bool {
-        if let Some(functions) = &self.functions {
-            functions.iter().any(|f| f == &function_name)
-        } else {
-            true
-        }
-    }
 }

@@ -20,7 +20,7 @@ use move_stackless_bytecode::{
     mut_ref_instrumentation::MutRefInstrumenter,
     options::ProverOptions,
     print_targets_for_test,
-    reaching_def_analysis::ReachingDefProcessor,
+    reaching_def_analysis::ReachingDefProcessor, target_filter::TargetFilterOptions,
 };
 use regex::Regex;
 use std::{fs::File, io::Read, path::Path};
@@ -159,7 +159,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
         let mut targets = FunctionTargetsHolder::new();
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
-                targets.add_target(&func_env);
+                targets.add_target(&func_env, TargetFilterOptions::default());
             }
         }
         text += &print_targets_for_test(&env, "initial translation from Move", &targets);

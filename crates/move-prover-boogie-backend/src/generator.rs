@@ -12,7 +12,7 @@ use codespan_reporting::{
 #[allow(unused_imports)]
 use log::{debug, info, warn};
 use move_model::{
-    code_writer::CodeWriter, model::{GlobalEnv, FunctionEnv, ModuleEnv}, ty::Type,
+    code_writer::CodeWriter, model::GlobalEnv, ty::Type,
 };
 use crate::boogie_backend::{
     lib::add_prelude, boogie_wrapper::BoogieWrapper, bytecode_translator::BoogieTranslator,
@@ -88,6 +88,11 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     // Check correct backend versions.
     options.backend.check_tool_versions()?;
 
+    // Check Filter Correctness
+    if let Some(err) = options.filter.check_filter_correctness(env) {
+        return Err(anyhow!(err));
+    }
+
     // Create and process bytecode
     let now = Instant::now();
     let (targets, _err_processor) = create_and_process_bytecode(&options, env);
@@ -156,10 +161,6 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
 
         let fun_env = env.get_function(*target);
-        
-        if !should_process_function(env, options, &fun_env) {
-            continue;
-        }
         
         let has_target = targets.has_target(
             &env.get_function(*target),
@@ -245,10 +246,6 @@ pub fn run_prover_all_mode<W: WriteColor>(
                 &FunctionVariant::Verification(VerificationFlavor::Regular),
             )
         {
-            if !should_process_function(env, options, &fun_env) {
-                continue;
-            }
-            
             println!("✅ {}", fun_env.get_full_name_str());
         }
     }    
@@ -269,12 +266,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
         if !module_env.is_target() {
             continue;
         }
-        
-        // Filter by module name if specified
-        if !should_process_module(env, options, &module_env) {
-            continue;
-        }
-        
+
         let file_name = module_env.get_full_name_str();
 
         println!("🔄 {file_name}");
@@ -310,12 +302,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
                         &fun_env,
                         &FunctionVariant::Verification(VerificationFlavor::Regular),
                     )
-                {
-                    // Filter by function name if specified
-                    if !should_process_function_by_name(options, &fun_env) {
-                        continue;
-                    }
-                    
+                {                    
                     println!("  - {}", fun_env.get_full_name_str());
                 }
             }   
@@ -404,7 +391,7 @@ pub fn create_and_process_bytecode(
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            targets.add_target(&func_env, options.filter.clone())
         }
     }
 
@@ -473,7 +460,7 @@ fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
     let mut targets = FunctionTargetsHolder::new();
     for module_env in env.get_modules() {
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            targets.add_target(&func_env, options.filter.clone())
         }
     }
     println!(
@@ -487,7 +474,7 @@ fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
     pipeline.add_processor(EscapeAnalysisProcessor::new());
 
     let start = now.elapsed();
-    pipeline.run(env, &mut targets);
+    let _ = pipeline.run(env, &mut targets);
     let end = now.elapsed();
 
     // print escaped internal refs flagged by analysis. do not report errors in dependencies
@@ -505,26 +492,4 @@ fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
     });
     println!("{}", String::from_utf8_lossy(&error_writer.into_inner()));
     info!("in ms, analysis took {:.3}", (end - start).as_millis())
-}
-
-fn get_module_name_string(env: &GlobalEnv, module_env: &ModuleEnv) -> String {
-    env.symbol_pool().string(module_env.get_name().name()).to_string()
-}
-
-fn should_process_function(env: &GlobalEnv, options: &Options, fun_env: &FunctionEnv) -> bool {
-    let function_name = fun_env.get_name_str().to_string();
-    let module_name = get_module_name_string(env, &fun_env.module_env);
-    
-    options.filter.is_targeted_function(function_name) && 
-    options.filter.is_targeted_module(module_name)
-}
-
-fn should_process_module(env: &GlobalEnv, options: &Options, module_env: &ModuleEnv) -> bool {
-    let module_name = get_module_name_string(env, module_env);
-    options.filter.is_targeted_module(module_name)
-}
-
-fn should_process_function_by_name(options: &Options, fun_env: &FunctionEnv) -> bool {
-    let function_name = fun_env.get_name_str().to_string();
-    options.filter.is_targeted_function(function_name)
 }
