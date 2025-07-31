@@ -24,7 +24,7 @@ static SYSTEM_PROVER_GIT_REPO: &str = "https://github.com/asymptotic-code/sui-pr
 
 static LATEST_SYSTEM_PACKAGES: LazyLock<SystemPackagesVersion> = LazyLock::new(|| {
     SystemPackagesVersion {
-        git_revision: "8a015a4".to_owned(),
+        git_revision: "next".to_owned(),
         packages: vec![
             SystemPackage {
                 package_name: "MoveStdlib".to_owned(),
