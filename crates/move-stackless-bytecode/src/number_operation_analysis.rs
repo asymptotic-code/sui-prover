@@ -149,6 +149,8 @@ fn vector_table_funs_name_propogate_to_dest(callee_name: &str) -> bool {
         || callee_name.contains("remove")
         || callee_name.contains("swap_remove")
         || callee_name.contains("spec_get")
+        || callee_name.contains("take")
+        || callee_name.contains("skip")
 }
 
 fn vector_funs_name_propogate_to_srcs(callee_name: &str) -> bool {
