@@ -205,20 +205,14 @@ impl FunctionTargetsHolder {
         let system_address = &0u16.into(); // Address 0x0 used by system modules
 
         // Count function specs from system modules
-        for spec_id in self.function_specs.left_values() {
+        for spec_id in self.function_specs.left_values().chain(self.scenario_specs.iter()) {
             let func_env = env.get_function(*spec_id);
             let module_env = &func_env.module_env;
             if module_env.get_name().addr() == system_address {
-                system_specs_count += 1;
-            }
-        }
-
-        // Count scenario specs from system modules
-        for spec_id in &self.scenario_specs {
-            let func_env = env.get_function(*spec_id);
-            let module_env = &func_env.module_env;
-            if module_env.get_name().addr() == system_address {
-                system_specs_count += 1;
+                let module_name = module_env.get_name().name().display(env.symbol_pool()).to_string();
+                if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
+                    system_specs_count += 1;
+                }
             }
         }
 
