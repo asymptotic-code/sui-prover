@@ -43,6 +43,7 @@ pub struct FunctionTargetsHolder {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     no_focus_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
+    skip_specs: BTreeMap<QualifiedId<FunId>, String>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
@@ -186,6 +187,7 @@ impl FunctionTargetsHolder {
             no_verify_specs: BTreeSet::new(),
             no_focus_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
+            skip_specs: BTreeMap::new(),
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
@@ -242,6 +244,7 @@ impl FunctionTargetsHolder {
             datatype_invs: instance.datatype_invs,
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
+            skip_specs: instance.skip_specs,
         }
     }
 
@@ -282,6 +285,7 @@ impl FunctionTargetsHolder {
             datatype_invs: instance.datatype_invs,
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
+            skip_specs: instance.skip_specs,
         }
     }
 
@@ -363,6 +367,14 @@ impl FunctionTargetsHolder {
         self.omit_opaque_specs.contains(id)
     }
 
+    pub fn skip_spec_txt(&self, id: &QualifiedId<FunId>) -> String {
+        self.skip_specs.get(id).cloned().unwrap_or_default()
+    }
+
+    pub fn skip_specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
+        self.skip_specs.keys()
+    }
+
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
             .left_values()
@@ -417,7 +429,7 @@ impl FunctionTargetsHolder {
             .or_default()
             .insert(FunctionVariant::Baseline, data);
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, target, no_opaque, ignore_abort })) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
@@ -426,7 +438,11 @@ impl FunctionTargetsHolder {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 
-            if !*prove && !*focus {
+            if skip.is_some() {
+                self.skip_specs.insert(func_env.get_qualified_id(), skip.clone().unwrap());
+            }
+
+            if (!*prove && !*focus) || skip.is_some() {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             }
 
