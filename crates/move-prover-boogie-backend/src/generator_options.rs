@@ -28,7 +28,7 @@ use move_model::{
     model::VerificationScope, options::ModelBuilderOptions,
 };
 use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
-use move_stackless_bytecode::options::{AutoTraceLevel, ProverOptions};
+use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
 static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
@@ -93,6 +93,8 @@ pub struct Options {
     pub backend: BoogieOptions,
     /// Boogie run mode
     pub boogie_file_mode: BoogieFileMode,
+    /// Filtering options
+    pub filter: TargetFilterOptions,
 }
 
 impl Default for Options {
@@ -112,6 +114,7 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             boogie_file_mode: BoogieFileMode::Function,
+            filter: TargetFilterOptions::default(),
         }
     }
 }

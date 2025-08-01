@@ -31,6 +31,7 @@ paste.workspace = true
 petgraph.workspace = true
 once_cell.workspace = true
 serde.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 move-stdlib.workspace = true

@@ -1148,6 +1148,10 @@ impl GlobalEnv {
             .and_then(|menv| menv.find_function(menv.symbol_pool().make(name.as_str())))
     }
 
+    pub fn find_function_by_name(&self, module_id: ModuleId, simple_name: Symbol) -> Option<FunctionEnv<'_>> {
+        self.get_module(module_id).find_function(simple_name)
+    }
+
     /// Gets a StructEnv in this module by its `StructTag`
     pub fn find_datatype_by_tag(
         &self,

@@ -2023,6 +2023,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bimap",
+ "clap",
  "codespan",
  "codespan-reporting",
  "datatest-stable",
