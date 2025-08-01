@@ -2758,14 +2758,36 @@ impl<'env> FunctionTranslator<'env> {
                     Pack(mid, sid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let struct_env = env.get_module(*mid).into_struct(*sid);
-                        let args = srcs.iter().cloned().map(str_local).join(", ");
+                        
+                        // Get regular field arguments
+                        let regular_args = srcs.iter().cloned().map(str_local).collect_vec();
+                        
+                        // Get dynamic field arguments
+                        let struct_type = Type::Datatype(*mid, *sid, inst.to_owned());
+                        let dynamic_field_info = dynamic_field_analysis::get_env_info(env);
+                        let dynamic_field_names_values = dynamic_field_info
+                            .dynamic_field_names_values(&struct_type)
+                            .collect_vec();
+                        
+                        // Create EmptyTable() arguments for each dynamic field
+                        let dynamic_args = dynamic_field_names_values
+                            .iter()
+                            .map(|_| "EmptyTable()".to_string())
+                            .collect_vec();
+                        
+                        // Combine all arguments
+                        let all_args = regular_args
+                            .into_iter()
+                            .chain(dynamic_args)
+                            .join(", ");
+                        
                         let dest_str = str_local(dests[0]);
                         emitln!(
                             self.writer(),
                             "{} := {}({});",
                             dest_str,
                             boogie_struct_name(&struct_env, inst),
-                            args
+                            all_args
                         );
                     }
                     Unpack(mid, sid, inst) => {
