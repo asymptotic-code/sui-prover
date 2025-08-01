@@ -31,7 +31,8 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
-    stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions,
+    stackless_control_flow_graph::generate_cfg_in_dot_format, 
+    target_filter::TargetFilterOptions,
 };
 
 /// A data structure which holds data for multiple function targets, and allows to
@@ -49,6 +50,7 @@ pub struct FunctionTargetsHolder {
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
+    filter: TargetFilterOptions,
 }
 
 /// Describes a function verification flavor.
@@ -180,7 +182,7 @@ pub struct FunctionTargetPipeline {
 }
 
 impl FunctionTargetsHolder {
-    pub fn new() -> Self {
+    pub fn new(filter: Option<TargetFilterOptions>) -> Self {
         Self {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
@@ -193,6 +195,7 @@ impl FunctionTargetsHolder {
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
+            filter: filter.unwrap_or_default(),
         }
     }
 
@@ -239,6 +242,7 @@ impl FunctionTargetsHolder {
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
+            filter: instance.filter,
         }
     }
 
@@ -280,6 +284,7 @@ impl FunctionTargetsHolder {
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
+            filter: instance.filter,
         }
     }
 
@@ -415,7 +420,7 @@ impl FunctionTargetsHolder {
     }
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
-    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>, filter: TargetFilterOptions) {
+    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets
@@ -428,7 +433,7 @@ impl FunctionTargetsHolder {
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
-            let targeted = filter.is_targeted(func_env);
+            let targeted = self.filter.is_targeted(func_env);
 
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());

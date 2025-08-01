@@ -373,7 +373,7 @@ pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -391,7 +391,7 @@ pub fn create_and_process_bytecode(
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env, options.filter.clone())
+            targets.add_target(&func_env);
         }
     }
 
@@ -457,10 +457,10 @@ fn run_docgen<W: WriteColor>(
 */
 
 fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
     for module_env in env.get_modules() {
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env, options.filter.clone())
+            targets.add_target(&func_env);
         }
     }
     println!(

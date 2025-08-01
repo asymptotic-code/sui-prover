@@ -2,7 +2,7 @@ use move_model::model::GlobalEnv;
 use termcolor::Buffer;
 use std::path::{Path,PathBuf};
 use move_package::{package_lock::PackageLock, source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig};
-use move_stackless_bytecode::{function_target_pipeline::FunctionTargetsHolder, target_filter::TargetFilterOptions};
+use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 
 use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps};
 
@@ -68,11 +68,11 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         &rerooted_path,
     )?;
 
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(None);
 
     for module in model.get_modules() {
         for func_env in module.get_functions() {
-            targets.add_target(&func_env, TargetFilterOptions::default());
+            targets.add_target(&func_env);
         }
     }
 
