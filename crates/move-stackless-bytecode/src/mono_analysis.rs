@@ -295,6 +295,12 @@ impl Analyzer<'_> {
         // in self.todo_targets for later analysis. During this phase, self.inst_opt is None.
         for module in self.env.get_modules() {
             for fun in module.get_functions() {
+                // Check if function exists in targets before trying to get its targets
+                let qid = fun.get_qualified_id();
+                if !self.targets.get_funs().contains(&qid) {
+                    continue;
+                }
+                
                 for (variant, target) in self.targets.get_targets(&fun) {
                     if !(variant.is_verified()
                         || self.targets.is_spec(&fun.get_qualified_id())

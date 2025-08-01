@@ -274,6 +274,14 @@ impl<'env> BoogieTranslator<'env> {
                 if struct_env.is_native() {
                     continue;
                 }
+                
+                // Include structs from target modules OR structs that are in mono_info
+                // (meaning they're actually used by the functions we're analyzing)
+                if !module_env.is_target() && 
+                   !mono_info.structs.contains_key(&struct_env.get_qualified_id()) {
+                    continue;
+                }
+
                 for type_inst in mono_info
                     .structs
                     .get(&struct_env.get_qualified_id())
@@ -312,12 +320,29 @@ impl<'env> BoogieTranslator<'env> {
             }
 
             for ref fun_env in module_env.get_functions() {
-                if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                // Skip functions that aren't in targets (due to our selective filtering)
+                let qid = fun_env.get_qualified_id();
+                if !self.targets.get_funs().contains(&qid) {
                     continue;
+                }
+
+                // Skip most native/intrinsic functions as they're handled by the prelude system
+                // But allow some critical ones that need explicit procedure declarations
+                if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    let name = fun_env.get_full_name_str();
+                    
+                    // Only allow tx_context functions - ghost functions should be handled
+                    // exclusively by the special ghost infrastructure
+                    let is_tx_context_function = name.contains("fresh_id") || name.contains("fresh_object_address");
+                    
+                    if !is_tx_context_function {
+                        continue;
+                    }
                 }
 
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
                     verified_functions_count += 1;
+
 
                     if self
                         .targets
@@ -344,7 +369,7 @@ impl<'env> BoogieTranslator<'env> {
                         }
                         continue;
                     }
-
+                    
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
@@ -355,7 +380,16 @@ impl<'env> BoogieTranslator<'env> {
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                 } else {
                     let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
-                    if !verification_analysis::get_info(&fun_target).inlined {
+                                        let verification_info = verification_analysis::get_info(&fun_target);
+                    let inlined = verification_info.inlined;
+                     
+                    // Regular functions need to be inlined to get procedure declarations
+                    // Some specific native functions also need procedure declarations even though they can't be "inlined"
+                    let name = fun_env.get_full_name_str();
+                    let is_tx_context_native = fun_env.is_native() && name.contains("tx_context");
+                    let needs_procedure_declaration = inlined || is_tx_context_native;
+                     
+                    if !needs_procedure_declaration {
                         continue;
                     }
 
@@ -432,6 +466,8 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
         use Bytecode::*;
+        
+
 
         if style == FunctionTranslationStyle::Default
             && (self
@@ -1632,14 +1668,17 @@ impl<'env> FunctionTranslator<'env> {
             );
             emitln!(writer, "");
         }
+        let proc_name = self.function_variant_name(self.style);
         emitln!(
             writer,
             "procedure {}{}({}) returns ({})",
             attribs,
-            self.function_variant_name(self.style),
+            proc_name,
             args,
             rets,
-        )
+        );
+        
+
     }
 
     /// Generate boogie representation of function args and return args.
@@ -4253,3 +4292,4 @@ pub fn has_native_equality(env: &GlobalEnv, options: &BoogieOptions, ty: &Type) 
         | Type::Var(_) => true,
     }
 }
+

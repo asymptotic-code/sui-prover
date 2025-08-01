@@ -23,6 +23,9 @@ pub struct VerificationInfo {
     /// Whether the function needs to have an inlined variant since it is called from a verified
     /// function and is not opaque.
     pub inlined: bool,
+    /// Whether the function is essential for the verification pipeline (e.g., native functions
+    /// needed for compilation) even if not verified or inlined.
+    pub essential: bool,
 }
 
 /// Get verification information for this function.
@@ -74,6 +77,12 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
+
+        // Rule 0a: mark essential functions that are needed for the verification pipeline
+        let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+        if Self::is_essential_function(fun_env) {
+            info.essential = true;
+        }
 
         // Rule 0: mark invariant functions as inlined
         if targets
@@ -360,6 +369,33 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
+    /// Check if a function is essential for the verification pipeline
+    fn is_essential_function(fun_env: &FunctionEnv) -> bool {
+        let name = fun_env.get_full_name_str();
+        
+        // Handle ghost functions first (since they're also native)
+        if name.contains("ghost::") {
+            let is_specially_handled = name == "ghost::global" 
+                || name == "ghost::havoc_global"
+                || name == "ghost::declare_global"
+                || name == "ghost::declare_global_mut";
+            return !is_specially_handled;
+        }
+        
+        // Mark tx_context functions as essential  
+        if name.contains("fresh_id") || name.contains("fresh_object_address") {
+            return true;
+        }
+        
+        // Mark other native/intrinsic functions as essential by default
+        // This ensures they're available for compilation
+        if fun_env.is_native() || fun_env.is_intrinsic() {
+            return true;
+        }
+        
+        false
+    }
+
     /// Check whether the function falls within the verification scope given in the options
     fn is_within_verification_scope(fun_env: &FunctionEnv) -> bool {
         let env = fun_env.module_env.env;
