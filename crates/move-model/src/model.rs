@@ -1504,6 +1504,8 @@ impl GlobalEnv {
     const VECTOR_REMOVE_FUNCTION_NAME: &'static str = "remove";
     const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
     const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
+    const VECTOR_TAKE_FUNCTION_NAME: &'static str = "take";
+    const VECTOR_SKIP_FUNCTION_NAME: &'static str = "skip";
 
     // vec_set struct name
     const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
@@ -1511,6 +1513,15 @@ impl GlobalEnv {
     // vec_set function names
     const VEC_SET_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_SET_FROM_KEYS_FUNCTION_NAME: &'static str = "from_keys";
+    const VEC_SET_INSERT_FUNCTION_NAME: &'static str = "insert";
+    const VEC_SET_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    const VEC_SET_REMOVE_FUNCTION_NAME: &'static str = "remove";
+    const VEC_SET_EMPTY_FUNCTION_NAME: &'static str = "empty";
+    const VEC_SET_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
+    const VEC_SET_SIZE_FUNCTION_NAME: &'static str = "size";
+    const VEC_SET_SINGLETON_FUNCTION_NAME: &'static str = "singleton";
+    const VEC_SET_INTO_KEYS_FUNCTION_NAME: &'static str = "into_keys";
+    const VEC_SET_KEYS_FUNCTION_NAME: &'static str = "keys";
 
     // vec_map struct name
     const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
@@ -1674,6 +1685,14 @@ impl GlobalEnv {
         )
     }
 
+    pub fn vector_take_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_TAKE_FUNCTION_NAME)
+    }
+
+    pub fn vector_skip_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SKIP_FUNCTION_NAME)
+    }
+
     // vec_set struct name
     pub fn vec_set_qid(&self) -> Option<QualifiedId<DatatypeId>> {
         self.get_struct_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_STRUCT_NAME)
@@ -1692,6 +1711,42 @@ impl GlobalEnv {
             Self::VEC_SET_MODULE_NAME,
             Self::VEC_SET_FROM_KEYS_FUNCTION_NAME,
         )
+    }
+
+    pub fn vec_set_insert_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_INSERT_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_CONTAINS_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_REMOVE_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_EMPTY_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_is_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_IS_EMPTY_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_size_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_SIZE_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_singleton_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_SINGLETON_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_into_keys_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_INTO_KEYS_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_keys_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_KEYS_FUNCTION_NAME)
     }
 
     // vec_map struct name
@@ -1974,8 +2029,19 @@ impl GlobalEnv {
             self.vector_remove_qid(),
             self.vector_insert_qid(),
             self.vector_swap_remove_qid(),
+            self.vector_take_qid(),
+            self.vector_skip_qid(),
             self.vec_set_get_idx_opt_qid(),
             self.vec_set_from_keys_qid(),
+            self.vec_set_insert_qid(),
+            self.vec_set_contains_qid(),
+            self.vec_set_remove_qid(),
+            self.vec_set_empty_qid(),
+            self.vec_set_is_empty_qid(),
+            self.vec_set_size_qid(),
+            self.vec_set_singleton_qid(),
+            self.vec_set_into_keys_qid(),
+            self.vec_set_keys_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_from_keys_values_qid(),
             self.vec_map_into_keys_values_qid(),

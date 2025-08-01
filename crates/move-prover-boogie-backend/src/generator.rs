@@ -12,7 +12,7 @@ use codespan_reporting::{
 #[allow(unused_imports)]
 use log::{debug, info, warn};
 use move_model::{
-    code_writer::CodeWriter, model::GlobalEnv, ty::Type,
+    code_writer::CodeWriter, model::{GlobalEnv, VerificationScope}, ty::Type,
 };
 use crate::boogie_backend::{
     lib::add_prelude, boogie_wrapper::BoogieWrapper, bytecode_translator::BoogieTranslator,
@@ -374,7 +374,10 @@ pub fn create_and_process_bytecode(
         Path::new(s).file_name().unwrap().to_str().unwrap()
     });
 
-    // Add function targets for all functions in the environment.
+    // Phase 1: Initialize work queue with essential functions
+    let mut work_queue = std::collections::VecDeque::new();
+    let mut included_functions = std::collections::HashSet::new();
+    
     for module_env in env.get_modules() {
         if module_env.is_target() {
             info!("preparing module {}", module_env.get_full_name_str());
@@ -383,8 +386,42 @@ pub fn create_and_process_bytecode(
             let dump_file = output_dir.join(format!("{}.mv.disas", output_prefix));
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
+        
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            let qid = func_env.get_qualified_id();
+            
+            // Always include native and intrinsic functions (they're runtime dependencies)
+            if func_env.is_native() || func_env.is_intrinsic() {
+                if included_functions.insert(qid.clone()) {
+                    work_queue.push_back(qid);
+                }
+            }
+            // Also include functions from target modules or functions that should be verified
+            else if module_env.is_target() || func_env.should_verify(&VerificationScope::All) {
+                if included_functions.insert(qid.clone()) {
+                    work_queue.push_back(qid);
+                }
+            }
+            // Also include all functions from modules that contain native functions (like prover module)
+            else if module_env.get_functions().any(|f| f.is_native()) {
+                if included_functions.insert(qid.clone()) {
+                    work_queue.push_back(qid);
+                }
+            }
+        }
+    }
+    
+    // Phase 2: Transitively include all called functions and add to targets
+    while let Some(current_qid) = work_queue.pop_front() {
+        let func_env = env.get_function(current_qid);
+        
+        targets.add_target(&func_env);
+        
+        // Add all functions called by this function
+        for called_qid in func_env.get_called_functions() {
+            if included_functions.insert(called_qid.clone()) {
+                work_queue.push_back(called_qid);
+            }
         }
     }
 
