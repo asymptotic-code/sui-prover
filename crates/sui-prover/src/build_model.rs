@@ -58,10 +58,12 @@ fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
 #[allow(dead_code)] // This function is used in external cli
 pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv, PathBuf, FunctionTargetsHolder)> {
     let rerooted_path = reroot_path(path)?;
-    let move_build_config = resolve_lock_file_path(
+    let mut move_build_config = resolve_lock_file_path(
         BuildConfig::default().into(), 
         Some(&rerooted_path),
     )?;
+
+    move_build_config.implicit_dependencies = implicit_deps();
 
     let model = move_model_for_package_legacy(
         move_build_config,
