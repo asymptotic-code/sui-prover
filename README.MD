@@ -12,12 +12,6 @@ Go to [Sui Prover Documentation](https://info.asymptotic.tech/sui-prover) for mo
 brew install asymptotic-code/sui-prover/sui-prover
 ```
 
-### Update `Move.toml` to add the `sui-prover` package dependency
-
-```toml
-SuiProver = { git = "https://github.com/asymptotic-code/sui-prover.git", subdir = "packages/sui-prover", rev = "main", override = true}
-```
-
 ## Basic Usage
 
 Write specifications for your smart contract that the Sui Prover will verify.
