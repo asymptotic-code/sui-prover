@@ -332,6 +332,38 @@ $1_vector_index_of{{S}}(v: Vec ({{T}}), e: {{T}}) returns (res1: bool, res2: int
         res2 := 0;
     }
 }
+
+procedure {:inline 1} $1_vector_take{{S}}(v: Vec ({{T}}), n: int) returns (res: Vec ({{T}})) {
+    var len: int;
+    len := LenVec(v);
+    if (n > len) {
+        call $ExecFailureAbort();
+        return;
+    }
+    if (n == len) {
+        res := v;
+    } else {
+        res := SliceVec(v, 0, n);
+    }
+}
+
+function {:inline} $1_vector_$take{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
+    (if n >= LenVec(v) then v else SliceVec(v, 0, n))
+}
+
+procedure {:inline 1} $1_vector_skip{{S}}(v: Vec ({{T}}), n: int) returns (res: Vec ({{T}})) {
+    var len: int;
+    len := LenVec(v);
+    if (n >= len) {
+        res := EmptyVec();
+    } else {
+        res := SliceVec(v, n, len);
+    }
+}
+
+function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
+    (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
+}
 {% endmacro vector_module %}
 
 {# VecSet
@@ -366,6 +398,30 @@ procedure {:inline 1} $2_vec_set_from_keys{{S}}(v: Vec ({{T}})) returns (res: $2
         return;
     }
     res := $2_vec_set_VecSet{{S}}(v);
+}
+
+procedure {:inline 1} $2_vec_set_contains{{S}}(
+    s: $2_vec_set_VecSet{{S}},
+    e: {{T}}
+) returns (res: bool) {
+    res := $ContainsVec{{S}}(s->$contents, e);
+}
+
+procedure {:inline 1} $2_vec_set_remove{{S}}(
+    m: $Mutation ($2_vec_set_VecSet{{S}}),
+    e: {{T}}
+) returns (m': $Mutation ($2_vec_set_VecSet{{S}})) {
+    var s: $2_vec_set_VecSet{{S}};
+    var v: Vec ({{T}});
+    var idx: int;
+    s := $Dereference(m);
+    v := s->$contents;
+    idx := $IndexOfVec{{S}}(v, e);
+    if (idx < 0) {
+        call $Abort(1); // EKeyDoesNotExist
+        return;
+    }
+    m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
 {% endmacro vec_set_module %}
