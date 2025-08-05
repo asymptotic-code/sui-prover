@@ -400,21 +400,6 @@ procedure {:inline 1} $2_vec_set_from_keys{{S}}(v: Vec ({{T}})) returns (res: $2
     res := $2_vec_set_VecSet{{S}}(v);
 }
 
-procedure {:inline 1} $2_vec_set_insert{{S}}(
-    m: $Mutation ($2_vec_set_VecSet{{S}}),
-    e: {{T}}
-) returns (m': $Mutation ($2_vec_set_VecSet{{S}})) {
-    var s: $2_vec_set_VecSet{{S}};
-    var v: Vec ({{T}});
-    s := $Dereference(m);
-    v := s->$contents;
-    if ($ContainsVec{{S}}(v, e)) {
-        call $Abort(0); // EKeyAlreadyExists
-        return;
-    }
-    m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(ExtendVec(v, e)));
-}
-
 procedure {:inline 1} $2_vec_set_contains{{S}}(
     s: $2_vec_set_VecSet{{S}},
     e: {{T}}
@@ -437,30 +422,6 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
         return;
     }
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
-}
-
-procedure {:inline 1} $2_vec_set_empty{{S}}() returns (res: $2_vec_set_VecSet{{S}}) {
-    res := $2_vec_set_VecSet{{S}}(EmptyVec());
-}
-
-procedure {:inline 1} $2_vec_set_is_empty{{S}}(s: $2_vec_set_VecSet{{S}}) returns (res: bool) {
-    res := IsEmptyVec(s->$contents);
-}
-
-procedure {:inline 1} $2_vec_set_size{{S}}(s: $2_vec_set_VecSet{{S}}) returns (res: int) {
-    res := LenVec(s->$contents);
-}
-
-procedure {:inline 1} $2_vec_set_singleton{{S}}(e: {{T}}) returns (res: $2_vec_set_VecSet{{S}}) {
-    res := $2_vec_set_VecSet{{S}}(ExtendVec(EmptyVec(), e));
-}
-
-procedure {:inline 1} $2_vec_set_into_keys{{S}}(s: $2_vec_set_VecSet{{S}}) returns (res: Vec ({{T}})) {
-    res := s->$contents;
-}
-
-procedure {:inline 1} $2_vec_set_keys{{S}}(s: $2_vec_set_VecSet{{S}}) returns (res: Vec ({{T}})) {
-    res := s->$contents;
 }
 
 {% endmacro vec_set_module %}
