@@ -372,7 +372,6 @@ impl VerificationAnalysisProcessor {
     /// Check if a function is essential for the verification pipeline
     fn is_essential_function(fun_env: &FunctionEnv) -> bool {
         let name = fun_env.get_full_name_str();
-        let module_name = fun_env.module_env.get_full_name_str();
         
         // Handle ghost functions first (since they're also native)
         if name.contains("ghost::") {
@@ -391,33 +390,6 @@ impl VerificationAnalysisProcessor {
         // Mark other native/intrinsic functions as essential by default
         // This ensures they're available for compilation
         if fun_env.is_native() || fun_env.is_intrinsic() {
-            return true;
-        }
-        
-        let whitelisted_modules = [
-            "transfer", "object", "balance", "event", "supply", "versioned", 
-            "dynamic_field", "table", "vec", "option", "type_info"
-        ];
-        
-        let whitelisted_functions = [
-            "transfer::share_object", "transfer_share_object",
-            "object::new", "object::id", "object::uid",
-            "balance::zero", "balance::join", "balance::split", "balance::withdraw",
-            "event::emit", "event_emit",
-            "supply::increase_supply", "supply::decrease_supply", "supply::supply_value",
-            "versioned::create", "versioned::destroy",
-            "dynamic_field::add", "dynamic_field::borrow", "dynamic_field::borrow_mut", "dynamic_field::remove",
-            "table::add", "table::borrow", "table::borrow_mut", "table::remove",
-            "vec::empty", "vec::push_back", "vec::pop_back", "vec::borrow", "vec::borrow_mut",
-            "option::some", "option::none", "option::borrow", "option::borrow_mut",
-            "type_info::type_of", "type_info::type_name"
-        ];
-        
-        if whitelisted_modules.iter().any(|&module| module_name.contains(module)) {
-            return true;
-        }
-        
-        if whitelisted_functions.iter().any(|&func| name.contains(func)) {
             return true;
         }
         
