@@ -70,7 +70,7 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         &rerooted_path,
     )?;
 
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(None);
 
     for module in model.get_modules() {
         for func_env in module.get_functions() {
