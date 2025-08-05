@@ -392,18 +392,21 @@ pub fn create_and_process_bytecode(
             
             // Always include native and intrinsic functions (they're runtime dependencies)
             if func_env.is_native() || func_env.is_intrinsic() {
+                debug!("Including native/intrinsic function: {}", func_env.get_full_name_str());
                 if included_functions.insert(qid.clone()) {
                     work_queue.push_back(qid);
                 }
             }
             // Also include functions from target modules or functions that should be verified
             else if module_env.is_target() || func_env.should_verify(&VerificationScope::All) {
+                debug!("Including target/verified function: {}", func_env.get_full_name_str());
                 if included_functions.insert(qid.clone()) {
                     work_queue.push_back(qid);
                 }
             }
             // Also include all functions from modules that contain native functions (like prover module)
             else if module_env.get_functions().any(|f| f.is_native()) {
+                debug!("Including function from module with native functions: {}", func_env.get_full_name_str());
                 if included_functions.insert(qid.clone()) {
                     work_queue.push_back(qid);
                 }
@@ -415,11 +418,16 @@ pub fn create_and_process_bytecode(
     while let Some(current_qid) = work_queue.pop_front() {
         let func_env = env.get_function(current_qid);
         
+        debug!("Adding function to targets: {}", func_env.get_full_name_str());
         targets.add_target(&func_env);
         
         // Add all functions called by this function
         for called_qid in func_env.get_called_functions() {
+            let called_func = env.get_function(called_qid);
+            debug!("Checking called function: {} (from {})", 
+                   called_func.get_full_name_str(), func_env.get_full_name_str());
             if included_functions.insert(called_qid.clone()) {
+                debug!("Adding called function to work queue: {}", called_func.get_full_name_str());
                 work_queue.push_back(called_qid);
             }
         }

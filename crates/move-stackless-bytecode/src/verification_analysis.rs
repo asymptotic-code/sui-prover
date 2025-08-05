@@ -10,6 +10,8 @@
 use std::fmt::{self, Formatter};
 use codespan_reporting::diagnostic::Severity;
 use move_model::model::{FunctionEnv, GlobalEnv, Loc, VerificationScope};
+#[allow(unused_imports)]
+use log::debug;
 
 use crate::{
   function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions, stackless_bytecode::{Bytecode, Operation}
@@ -384,6 +386,11 @@ impl VerificationAnalysisProcessor {
         
         // Mark tx_context functions as essential  
         if name.contains("fresh_id") || name.contains("fresh_object_address") {
+            return true;
+        }
+
+        if name.contains("share_object_impl") {
+            debug!("Marking as essential (share_object_impl): {}", name);
             return true;
         }
         

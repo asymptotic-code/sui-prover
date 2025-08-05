@@ -322,7 +322,9 @@ impl<'env> BoogieTranslator<'env> {
             for ref fun_env in module_env.get_functions() {
                 // Skip functions that aren't in targets (due to our selective filtering)
                 let qid = fun_env.get_qualified_id();
+                println!("Checking function for translation: {}", fun_env.get_full_name_str());
                 if !self.targets.get_funs().contains(&qid) {
+                    println!("Skipping function not in targets: {}", fun_env.get_full_name_str());
                     continue;
                 }
 
@@ -331,11 +333,50 @@ impl<'env> BoogieTranslator<'env> {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
                     let name = fun_env.get_full_name_str();
                     
-                    // Only allow tx_context functions - ghost functions should be handled
-                    // exclusively by the special ghost infrastructure
-                    let is_tx_context_function = name.contains("fresh_id") || name.contains("fresh_object_address");
+                    // Only skip functions that are definitely handled by the prelude system
+                    // This includes most standard library functions but not framework-specific ones
+                    let is_prelude_function = name.contains("vector::") || 
+                                            name.contains("option::") ||
+                                            name.contains("hash::") ||
+                                            name.contains("ecdsa_") ||
+                                            name.contains("ed25519::") ||
+                                            name.contains("bls12381::") ||
+                                            name.contains("groth16::") ||
+                                            name.contains("vdf::") ||
+                                            name.contains("hmac::") ||
+                                            name.contains("poseidon::") ||
+                                            name.contains("zklogin_") ||
+                                            name.contains("nitro_") ||
+                                            name.contains("string::") ||
+                                            name.contains("bcs::") ||
+                                            name.contains("address::") ||
+                                            name.contains("object::") ||
+                                            name.contains("vec_set::") ||
+                                            name.contains("vec_map::") ||
+                                            name.contains("config::") ||
+                                            name.contains("accumulator::") ||
+                                            name.contains("type_name::") ||
+                                            name.contains("coin::") ||
+                                            name.contains("sui::") ||
+                                            name.contains("transfer_policy::") ||
+                                            name.contains("pay::") ||
+                                            name.contains("token::") ||
+                                            name.contains("object_table::") ||
+                                            name.contains("dynamic_field::") ||
+                                            name.contains("dynamic_object_field::") ||
+                                            name.contains("table::") ||
+                                            name.contains("integer::") ||
+                                            name.contains("real::") ||
+                                            name.contains("group_ops::") ||
+                                            name.contains("log::") ||
+                                            name.contains("debug::") ||
+                                            name.contains("prover::") ||
+                                            name.contains("ghost::");
                     
-                    if !is_tx_context_function {
+                    println!("Native function filtering: {} (prelude: {})", name, is_prelude_function);
+                    
+                    if is_prelude_function {
+                        println!("Skipping native function (prelude): {}", name);
                         continue;
                     }
                 }
@@ -384,12 +425,22 @@ impl<'env> BoogieTranslator<'env> {
                     let inlined = verification_info.inlined;
                      
                     // Regular functions need to be inlined to get procedure declarations
-                    // Some specific native functions also need procedure declarations even though they can't be "inlined"
+                    // Native functions that aren't handled by prelude also need procedure declarations
                     let name = fun_env.get_full_name_str();
                     let is_tx_context_native = fun_env.is_native() && name.contains("tx_context");
-                    let needs_procedure_declaration = inlined || is_tx_context_native;
+                    let is_framework_native = fun_env.is_native() && (
+                        name.contains("transfer::") ||
+                        name.contains("event::") ||
+                        name.contains("balance::") ||
+                        name.contains("object::")
+                    );
+                    let needs_procedure_declaration = inlined || is_tx_context_native || is_framework_native;
+                     
+                    println!("Function translation decision: {} (inlined: {}, tx_context: {}, framework: {}, needs_procedure: {})", 
+                           name, inlined, is_tx_context_native, is_framework_native, needs_procedure_declaration);
                      
                     if !needs_procedure_declaration {
+                        println!("Skipping function (no procedure needed): {}", name);
                         continue;
                     }
 
@@ -397,6 +448,7 @@ impl<'env> BoogieTranslator<'env> {
                         self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
                     {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
+                            println!("Translating function with spec: {}", fun_env.get_full_name_str());
                             FunctionTranslator::new(
                                 self,
                                 &fun_target,
@@ -407,19 +459,32 @@ impl<'env> BoogieTranslator<'env> {
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
-                        for type_inst in mono_info
+                        let type_insts = mono_info
                             .funs
                             .get(&(
                                 fun_target.func_env.get_qualified_id(),
                                 FunctionVariant::Baseline,
                             ))
                             .unwrap_or(&BTreeSet::new())
-                        {
+                            .clone();
+                        
+                        println!("Translating function with {} type instantiations: {}", type_insts.len(), fun_env.get_full_name_str());
+                        
+                        // For native functions that need procedure declarations, use Opaque style
+                        let style = if fun_env.is_native() && (name.contains("share_object_impl") || name.contains("freeze_object_impl") || name.contains("transfer_impl")) {
+                            println!("Using Opaque style for native function: {}", fun_env.get_full_name_str());
+                            FunctionTranslationStyle::Opaque
+                        } else {
+                            FunctionTranslationStyle::Default
+                        };
+                        
+                        for type_inst in type_insts {
+                            println!("  Translating with type instantiation: {:?}", type_inst);
                             FunctionTranslator::new(
                                 self,
                                 &fun_target,
-                                type_inst,
-                                FunctionTranslationStyle::Default,
+                                &type_inst,
+                                style,
                             )
                             .translate();
                         }
