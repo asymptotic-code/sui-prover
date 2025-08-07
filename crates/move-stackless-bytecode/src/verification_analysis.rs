@@ -7,15 +7,15 @@
 //! each function as well as collect information on how these invariants should be handled (i.e.,
 //! checked after bytecode, checked at function exit, or deferred to caller).
 
+use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
 use codespan_reporting::diagnostic::Severity;
 use move_model::model::{FunctionEnv, GlobalEnv, Loc, VerificationScope};
-#[allow(unused_imports)]
-use log::debug;
 
 use crate::{
   function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions, stackless_bytecode::{Bytecode, Operation}
 };
+use move_model::model::{FunId, QualifiedId};
 
 /// The annotation for information about verification.
 #[derive(Clone, Default)]
@@ -158,6 +158,79 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         "verification_analysis".to_string()
     }
 
+    fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        // Remove functions that aren't used for verification
+        // Keep: verified functions, inlined functions, essential functions, datatype invariant functions
+        
+        let mut functions_to_keep = BTreeSet::new();
+        
+        // Keep all datatype invariant functions (even if not inlined)
+        for (_, inv_fun_id) in targets.get_datatype_invs() {
+            functions_to_keep.insert(inv_fun_id.clone());
+        }
+        
+        // Keep all functions that are marked as verified, inlined, or essential
+        let mut functions_to_mark_inlined = Vec::new();
+        
+        for fun_id in targets.get_funs() {
+            let fun_env = env.get_function(fun_id);
+            let fun_name = fun_env.get_full_name_str();
+            
+            // Check if this function has any variants that are verified, inlined, or essential
+            let mut should_keep = false;
+            for variant in targets.get_target_variants(&fun_env) {
+                if let Some(data) = targets.get_data(&fun_id, &variant) {
+                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                    if info.verified || info.inlined || info.essential {
+                        should_keep = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Also check if the function itself is essential (for functions not yet processed)
+            if !should_keep && Self::is_essential_function(&fun_env) {
+                should_keep = true;
+            }
+            
+            if should_keep {
+                functions_to_keep.insert(fun_id.clone());
+                
+                // Mark essential functions for inlining (we'll do this after the loop to avoid borrow issues)
+                if Self::is_essential_function(&fun_env) {
+                    functions_to_mark_inlined.push(fun_id.clone());
+                }
+            }
+        }
+        
+        // Mark essential functions as verified and inlined so they get translated to Boogie
+        for fun_id in functions_to_mark_inlined {
+            let fun_env = env.get_function(fun_id);
+            
+            for variant in targets.get_target_variants(&fun_env) {
+                if let Some(data) = targets.get_data_mut(&fun_id, &variant) {
+                    let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                    if !info.verified {
+                        info.verified = true;
+                    }
+                    if !info.inlined {
+                        info.inlined = true;
+                    }
+                }
+            }
+        }
+        
+        // Remove functions that are not in the keep set
+        let functions_to_remove: Vec<QualifiedId<FunId>> = targets
+            .get_funs()
+            .filter(|fun_id| !functions_to_keep.contains(fun_id))
+            .collect();
+            
+        for fun_id in functions_to_remove {
+            targets.remove_target(&fun_id);
+        }
+    }
+
     fn dump_result(
         &self,
         f: &mut Formatter<'_>,
@@ -228,21 +301,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // writeln!(f, "]\n")?;
 
         writeln!(f, "verification analysis: [")?;
-        for (fun_id, fun_variant) in targets.get_funs_and_variants() {
+        for fun_id in targets.get_funs() {
             let fenv = env.get_function(fun_id);
-            let target = targets.get_target(&fenv, &fun_variant);
-            let result = get_info(&target);
-            write!(f, "  {}: ", fenv.get_full_name_str())?;
-            if result.verified {
-                if result.inlined {
-                    writeln!(f, "verified + inlined")?;
+            for fun_variant in targets.get_target_variants(&fenv) {
+                let target = targets.get_target(&fenv, &fun_variant);
+                let result = get_info(&target);
+                write!(f, "  {}: ", fenv.get_full_name_str())?;
+                if result.verified {
+                    if result.inlined {
+                        writeln!(f, "verified + inlined")?;
+                    } else {
+                        writeln!(f, "verified")?;
+                    }
+                } else if result.inlined {
+                    writeln!(f, "inlined")?;
                 } else {
-                    writeln!(f, "verified")?;
+                    writeln!(f, "not verified and not inlined")?;
                 }
-            } else if result.inlined {
-                writeln!(f, "inlined")?;
-            } else {
-                writeln!(f, "not verified and not inlined")?;
             }
         }
         writeln!(f, "]")
@@ -377,26 +452,103 @@ impl VerificationAnalysisProcessor {
         
         // Handle ghost functions first (since they're also native)
         if name.contains("ghost::") {
-            let is_specially_handled = name == "ghost::global" 
-                || name == "ghost::havoc_global"
-                || name == "ghost::declare_global"
-                || name == "ghost::declare_global_mut";
-            return !is_specially_handled;
+            return true; // Keep all ghost functions
+        }
+        
+        // All prover functions are essential
+        if name.contains("prover::") {
+            return true;
+        }
+        
+        // Keep all object-related functions
+        if name.contains("object::") {
+            return true;
+        }
+        
+        // Keep all dynamic_field-related functions
+        if name.contains("dynamic_field::") {
+            return true;
+        }
+        
+        // Keep all dynamic_object_field-related functions
+        if name.contains("dynamic_object_field::") {
+            return true;
         }
         
         // Mark tx_context functions as essential  
-        if name.contains("fresh_id") || name.contains("fresh_object_address") {
+        if name.contains("tx_context::") {
+            return true;
+        }
+        
+        // Mark address functions as essential
+        if name.contains("address::") {
             return true;
         }
 
         if name.contains("share_object_impl") {
-            debug!("Marking as essential (share_object_impl): {}", name);
             return true;
         }
         
         // Mark other native/intrinsic functions as essential by default
         // This ensures they're available for compilation
         if fun_env.is_native() || fun_env.is_intrinsic() {
+            return true;
+        }
+        
+        // Mark specific essential functions that are causing Boogie errors
+        if name.contains("uid_to_address") || name.contains("new_uid_from_hash") {
+            return true;
+        }
+        
+        if name.contains("hash_type_and_key") || name.contains("has_child_object") || name.contains("add_child_object") {
+            return true;
+        }
+        
+        // Add more specific function names that are missing
+        if name.contains("address_from_bytes") || name.contains("tx_context_sender") {
+            return true;
+        }
+        
+        if name.contains("option::") || name.contains("vec_set::") || name.contains("vec_map::") {
+            return true;
+        }
+        
+        // Add specific option function names that are missing
+        if name.contains("option_some") || name.contains("option_none") || name.contains("option_destroy_some") || name.contains("option_destroy_none") {
+            return true;
+        }
+        
+        // Add option functions with specific type parameters
+        if name.contains("option_some'u64'") || name.contains("option_none'u64'") || name.contains("option_destroy_some'u64'") || name.contains("option_destroy_none'u64'") {
+            return true;
+        }
+        
+        // Add all option functions more broadly
+        if name.contains("option_some") || name.contains("option_none") || name.contains("option_destroy_some") || name.contains("option_destroy_none") {
+            return true;
+        }
+        
+        // Keep all option functions regardless of type parameters
+        if name.contains("option::") {
+            return true;
+        }
+        
+        // Add more missing functions
+        if name.contains("hex_encode") || name.contains("ascii_string") || name.contains("string_from_ascii") {
+            return true;
+        }
+        
+        if name.contains("vector::") {
+            return true;
+        }
+        
+        // Add specific vector function names that are missing
+        if name.contains("vector_singleton") || name.contains("vector_flatten") {
+            return true;
+        }
+        
+        // Add more specific function names that are missing
+        if name.contains("hex::") || name.contains("ascii::") || name.contains("string::") {
             return true;
         }
         
