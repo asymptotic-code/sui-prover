@@ -88,6 +88,11 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     // Check correct backend versions.
     options.backend.check_tool_versions()?;
 
+    // Check Filter Correctness
+    if let Some(err) = options.filter.check_filter_correctness(env) {
+        return Err(anyhow!(err));
+    }
+
     // Create and process bytecode
     let now = Instant::now();
     let (targets, _err_processor) = create_and_process_bytecode(&options, env);
@@ -156,6 +161,7 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
 
         let fun_env = env.get_function(*target);
+        
         let has_target = targets.has_target(
             &env.get_function(*target),
             &FunctionVariant::Verification(VerificationFlavor::Regular),
@@ -260,6 +266,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
         if !module_env.is_target() {
             continue;
         }
+
         let file_name = module_env.get_full_name_str();
 
         println!("🔄 {file_name}");
@@ -295,7 +302,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
                         &fun_env,
                         &FunctionVariant::Verification(VerificationFlavor::Regular),
                     )
-                {
+                {                    
                     println!("  - {}", fun_env.get_full_name_str());
                 }
             }   
@@ -366,7 +373,7 @@ pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -487,10 +494,10 @@ fn run_docgen<W: WriteColor>(
 */
 
 fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
     for module_env in env.get_modules() {
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            targets.add_target(&func_env);
         }
     }
     println!(
@@ -504,7 +511,7 @@ fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
     pipeline.add_processor(EscapeAnalysisProcessor::new());
 
     let start = now.elapsed();
-    pipeline.run(env, &mut targets);
+    let _ = pipeline.run(env, &mut targets);
     let end = now.elapsed();
 
     // print escaped internal refs flagged by analysis. do not report errors in dependencies
