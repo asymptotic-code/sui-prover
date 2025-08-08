@@ -427,50 +427,6 @@ impl Analyzer<'_> {
             return true;
         }
         
-        // Keep all object-related functions
-        if name.contains("object::") {
-            return true;
-        }
-        
-        // Keep all dynamic_field-related functions
-        if name.contains("dynamic_field::") {
-            return true;
-        }
-        
-        // Keep all dynamic_object_field-related functions
-        if name.contains("dynamic_object_field::") {
-            return true;
-        }
-        
-        // Mark tx_context functions as essential  
-        if name.contains("tx_context::") {
-            return true;
-        }
-        
-        // Mark address functions as essential
-        if name.contains("address::") {
-            return true;
-        }
-
-        if name.contains("share_object_impl") {
-            return true;
-        }
-        
-        // Mark other native/intrinsic functions as essential by default
-        // This ensures they're available for compilation
-        if fun_env.is_native() || fun_env.is_intrinsic() {
-            return true;
-        }
-        
-        // Mark specific essential functions that are causing Boogie errors
-        if name.contains("uid_to_address") || name.contains("new_uid_from_hash") {
-            return true;
-        }
-        
-        if name.contains("hash_type_and_key") || name.contains("has_child_object") || name.contains("add_child_object") {
-            return true;
-        }
-        
         false
     }
 }

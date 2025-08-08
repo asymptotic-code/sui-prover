@@ -36,6 +36,7 @@ use crate::{
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {
     // NOTE: the order of these processors is import!
     let mut processors: Vec<Box<dyn FunctionTargetProcessor>> = vec![
+        VerificationAnalysisProcessor::new(),
         SpecGlobalVariableAnalysisProcessor::new(),
         SpecPurityAnalysis::new(),
         DebugInstrumenter::new(),
@@ -51,7 +52,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
-        VerificationAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
     ];
 
