@@ -231,11 +231,15 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
-            let info = get_info(
-                targets
-                    .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .unwrap(),
-            );
+            // Check if the function exists in targets before trying to access it
+            let data = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
+                Some(data) => data,
+                None => {
+                    // Function was removed from targets, skip this iteration
+                    return None;
+                }
+            };
+            let info = get_info(data);
             match info.instantiate(type_inst) {
                 Ok(inst_info) => Some(inst_info),
                 Err(conflicts) => {
