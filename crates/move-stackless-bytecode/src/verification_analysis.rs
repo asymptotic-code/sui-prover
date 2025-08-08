@@ -9,11 +9,10 @@
 
 use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
-use codespan_reporting::diagnostic::Severity;
-use move_model::model::{FunctionEnv, GlobalEnv, Loc, VerificationScope};
+use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
 
 use crate::{
-  function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions, stackless_bytecode::{Bytecode, Operation}
+  function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions
 };
 use move_model::model::{FunId, QualifiedId};
 
@@ -174,7 +173,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         
         for fun_id in targets.get_funs() {
             let fun_env = env.get_function(fun_id);
-            let fun_name = fun_env.get_full_name_str();
+            let _fun_name = fun_env.get_full_name_str();
             
             // Check if this function has any variants that are verified, inlined, or essential
             let mut should_keep = false;
@@ -183,6 +182,8 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                     let info = get_info(&FunctionTarget::new(&fun_env, data));
                     if info.verified || info.inlined || info.essential {
                         should_keep = true;
+                        println!("Keeping function {}: verified={}, inlined={}, essential={}", 
+                                fun_env.get_full_name_str(), info.verified, info.inlined, info.essential);
                         break;
                     }
                 }
@@ -191,6 +192,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             // Also check if the function itself is essential (for functions not yet processed)
             if !should_keep && Self::is_essential_function(&fun_env) {
                 should_keep = true;
+                println!("Keeping essential function: {}", fun_env.get_full_name_str());
             }
             
             if should_keep {
@@ -220,11 +222,53 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             }
         }
         
+        // Second pass: keep functions that are called by inlined functions
+        let mut functions_to_add = Vec::new();
+        for fun_id in targets.get_funs() {
+            if functions_to_keep.contains(&fun_id) {
+                let fun_env = env.get_function(fun_id);
+                
+                // Check if this function is inlined
+                let mut is_inlined = false;
+                for variant in targets.get_target_variants(&fun_env) {
+                    if let Some(data) = targets.get_data(&fun_id, &variant) {
+                        let info = get_info(&FunctionTarget::new(&fun_env, data));
+                        if info.inlined {
+                            is_inlined = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // If this function is inlined, keep all its callees
+                if is_inlined {
+                    for callee in fun_env.get_called_functions() {
+                        if !functions_to_keep.contains(&callee) {
+                            functions_to_add.push(callee);
+                            println!("Keeping callee of inlined function: {}", env.get_function(callee).get_full_name_str());
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Add the callees to the keep set
+        for fun_id in functions_to_add {
+            functions_to_keep.insert(fun_id);
+        }
+        
         // Remove functions that are not in the keep set
         let functions_to_remove: Vec<QualifiedId<FunId>> = targets
             .get_funs()
             .filter(|fun_id| !functions_to_keep.contains(fun_id))
             .collect();
+            
+        // Debug: print functions being removed
+        for fun_id in &functions_to_remove {
+            let fun_env = env.get_function(*fun_id);
+            let fun_name = fun_env.get_full_name_str();
+            println!("Removing function: {}", fun_name);
+        }
             
         for fun_id in functions_to_remove {
             targets.remove_target(&fun_id);
@@ -447,7 +491,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
     /// Check if a function is essential for the verification pipeline
-    fn is_essential_function(fun_env: &FunctionEnv) -> bool {
+    pub fn is_essential_function(fun_env: &FunctionEnv) -> bool {
         let name = fun_env.get_full_name_str();
         
         // Handle ghost functions first (since they're also native)

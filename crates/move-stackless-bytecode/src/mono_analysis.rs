@@ -191,6 +191,7 @@ impl MonoAnalysisProcessor {
             done_funs: BTreeSet::new(),
             done_types: BTreeSet::new(),
             inst_opt: None,
+            analyzed_functions: BTreeSet::new(),
         };
 
         // Analyze ghost types
@@ -211,62 +212,7 @@ impl MonoAnalysisProcessor {
                 }
             });
 
-        // Analyze essential functions to ensure they have proper type instantiations
-        for fun in targets.get_funs() {
-            let fun_env = env.get_function(fun);
-            if Analyzer::is_essential_function(&fun_env) {
-                // For essential functions, ensure they're always available in MonoInfo.funs
-                let type_params = fun_env.get_type_parameters();
-                
-                if type_params.is_empty() {
-                    // For functions with no type parameters, add empty instantiation
-                    analyzer.info.funs
-                        .entry((fun, FunctionVariant::Baseline))
-                        .or_default()
-                        .insert(vec![]);
-                } else {
-                    // For functions with type parameters, add common instantiations
-                    let fun_name = fun_env.get_full_name_str();
-                    
-                    // Add common type instantiations for essential functions
-                    if fun_name.contains("vector::") || fun_name.contains("option::") {
-                        // Add common type instantiations for vector and option functions
-                        let common_types = vec![
-                            Type::Primitive(PrimitiveType::U64),
-                            Type::Primitive(PrimitiveType::U8),
-                            Type::Primitive(PrimitiveType::Address),
-                        ];
-                        
-                        for ty in common_types {
-                            analyzer.info.funs
-                                .entry((fun, FunctionVariant::Baseline))
-                                .or_default()
-                                .insert(vec![ty]);
-                        }
-                        
-                        // For option functions specifically, add more type instantiations
-                        if fun_name.contains("option::") {
-                            // Add more specific type instantiations for option functions
-                            let option_types = vec![
-                                Type::Primitive(PrimitiveType::U64),
-                                Type::Primitive(PrimitiveType::U8),
-                                Type::Primitive(PrimitiveType::Address),
-                                Type::Primitive(PrimitiveType::Bool),
-                                Type::Primitive(PrimitiveType::U128),
-                                Type::Primitive(PrimitiveType::U256),
-                            ];
-                            
-                            for ty in option_types {
-                                analyzer.info.funs
-                                    .entry((fun, FunctionVariant::Baseline))
-                                    .or_default()
-                                    .insert(vec![ty]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+
 
         // Analyze functions
         analyzer.analyze_funs();
@@ -345,6 +291,7 @@ struct Analyzer<'a> {
     done_funs: BTreeSet<(QualifiedId<FunId>, FunctionVariant, Vec<Type>)>,
     done_types: BTreeSet<Type>,
     inst_opt: Option<Vec<Type>>,
+    analyzed_functions: BTreeSet<QualifiedId<FunId>>, // Track which functions have been analyzed
 }
 
 impl Analyzer<'_> {
@@ -360,11 +307,20 @@ impl Analyzer<'_> {
                 }
                 
                 for (variant, target) in self.targets.get_targets(&fun) {
-                    // Analyze functions that are verified, inlined, or essential
+                    // Skip spec functions - they should only be processed by the Boogie translator
+                    if self.targets.is_spec(&fun.get_qualified_id()) {
+                        continue;
+                    }
+                    
+                    // Analyze functions that are verified or inlined
                     let should_analyze = variant.is_verified()
-                        || self.targets.is_spec(&fun.get_qualified_id())
-                            && verification_analysis::get_info(&target).inlined
-                        || Self::is_essential_function(&fun);
+                        || verification_analysis::get_info(&target).inlined;
+                    
+                    // Skip prover::type_inv as it's a special helper function that doesn't need type instantiations
+                    let fun_name = fun.get_full_name_str();
+                    if fun_name.contains("prover::type_inv") {
+                        continue;
+                    }
                     
                     if !should_analyze {
                         continue;
@@ -398,41 +354,35 @@ impl Analyzer<'_> {
                 continue;
             }
             
-            self.inst_opt = Some(inst);
+            self.inst_opt = Some(inst.clone());
             self.analyze_fun(
                 self.targets
                     .get_target(&self.env.get_function(fun), &variant),
             );
             let inst = std::mem::take(&mut self.inst_opt).unwrap();
-            // Insert it into final analysis result.
-            self.info
-                .funs
-                .entry((fun, variant))
-                .or_default()
-                .insert(inst);
+            // Insert it into final analysis result using the same method to avoid duplicates
+            self.add_function_to_result(fun, inst);
         }
     }
 
-    /// Check if a function is essential for the verification pipeline
-    fn is_essential_function(fun_env: &FunctionEnv) -> bool {
-        let name = fun_env.get_full_name_str();
-        
-        // Handle ghost functions first (since they're also native)
-        if name.contains("ghost::") {
-            return true; // Keep all ghost functions
-        }
-        
-        // All prover functions are essential
-        if name.contains("prover::") {
-            return true;
-        }
-        
-        false
-    }
+
 }
 
 impl Analyzer<'_> {
     fn analyze_fun(&mut self, target: FunctionTarget<'_>) {
+        // Check if this function has already been analyzed
+        let fun_id = target.func_env.get_qualified_id();
+        if self.analyzed_functions.contains(&fun_id) {
+            return;
+        }
+        self.analyzed_functions.insert(fun_id);
+        
+        // Check if this function has already been analyzed with the current instantiation
+        let entry = (target.func_env.get_qualified_id(), target.data.variant.clone(), self.inst_opt.clone().unwrap_or_default());
+        if self.done_funs.contains(&entry) {
+            return;
+        }
+        
         self.analyze_fun_types(&target, self.inst_opt.clone());
         // Analyze code.
         if !target.func_env.is_native() && !target.func_env.is_intrinsic() {
@@ -449,6 +399,7 @@ impl Analyzer<'_> {
 
             // collect instantiations
             let mut all_insts = BTreeSet::new();
+            println!("DEBUG: Analyzing function {} with {} accessed types", target.func_env.get_full_name_str(), usage_state.accessed.all.len());
             for lhs_m in usage_state.accessed.all.iter() {
                 let lhs_ty = lhs_m.to_type();
                 for rhs_m in usage_state.accessed.all.iter() {
@@ -472,6 +423,7 @@ impl Analyzer<'_> {
                         true,
                         false,
                     );
+                    println!("DEBUG: Generated {} instantiations for {}: {:?}", fun_insts.len(), target.func_env.get_full_name_str(), fun_insts);
                     all_insts.extend(fun_insts);
                 }
             }
@@ -549,11 +501,7 @@ impl Analyzer<'_> {
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        self.info
-                            .funs
-                            .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                            .or_default()
-                            .insert(actuals.clone());
+                        self.add_function_to_result(callee_env.get_qualified_id(), actuals.clone());
                         self.analyze_fun_types(
                             &self
                                 .targets
@@ -564,11 +512,7 @@ impl Analyzer<'_> {
                 };
 
                 if (callee_env.is_native() || callee_env.is_intrinsic()) && !actuals.is_empty() {
-                    self.info
-                        .funs
-                        .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                        .or_default()
-                        .insert(actuals.clone());
+                    self.add_function_to_result(callee_env.get_qualified_id(), actuals.clone());
                     self.analyze_fun_types(
                         &self
                             .targets
@@ -576,13 +520,8 @@ impl Analyzer<'_> {
                         Some(actuals.clone()),
                     );
 
-                    if callee_env.get_qualified_id() == self.env.type_inv_qid() {
-                        if let Some((dt_qid, tys)) = actuals[0].get_datatype() {
-                            if let Some(inv_qid) = self.targets.get_inv_by_datatype(&dt_qid) {
-                                self.push_todo_fun(*inv_qid, tys.to_vec());
-                            }
-                        }
-                    }
+                    // Skip prover::type_inv as it's a special helper function that doesn't need type instantiations
+                    // The type_inv handling has been removed to prevent duplicate type instantiations
 
                     // Mark the associated module to be instantiated with the given actuals.
                     // This will instantiate all functions in the module with matching number
@@ -626,6 +565,19 @@ impl Analyzer<'_> {
         if !self.done_funs.contains(&entry) {
             self.done_funs.insert(entry.clone());
             self.todo_funs.push(entry);
+        }
+    }
+
+    fn add_function_to_result(&mut self, id: QualifiedId<FunId>, actuals: Vec<Type>) {
+        // Only add to the final result if this instantiation hasn't been processed yet
+        let entry = (id, FunctionVariant::Baseline, actuals.clone());
+        if !self.done_funs.contains(&entry) {
+            self.done_funs.insert(entry);
+            self.info
+                .funs
+                .entry((id, FunctionVariant::Baseline))
+                .or_default()
+                .insert(actuals);
         }
     }
 

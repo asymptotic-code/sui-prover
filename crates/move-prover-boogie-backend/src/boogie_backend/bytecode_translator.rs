@@ -85,6 +85,7 @@ pub struct BoogieTranslator<'env> {
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     declared_procedures: RefCell<BTreeSet<String>>,
+    processed_functions: RefCell<BTreeSet<(QualifiedId<FunId>, Vec<Type>, FunctionTranslationStyle)>>,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -122,6 +123,7 @@ impl<'env> BoogieTranslator<'env> {
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
             declared_procedures: RefCell::new(BTreeSet::new()),
+            processed_functions: RefCell::new(BTreeSet::new()),
         }
     }
 
@@ -327,12 +329,19 @@ impl<'env> BoogieTranslator<'env> {
                 if !self.targets.get_funs().contains(&qid) {
                     continue;
                 }
+                
+                println!("DEBUG: Processing function in main loop: {} (is_spec: {})", fun_env.get_full_name_str(), self.targets.is_spec(&fun_env.get_qualified_id()));
 
 
 
                 // Skip native/intrinsic functions that are handled by the prelude system
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
                     let name = fun_env.get_full_name_str();
+                    
+                    // Skip ghost functions - they're handled separately in translate_ghost_global()
+                    if name.contains("ghost::") {
+                        continue;
+                    }
                     
                     // Skip only standard library functions that are definitely handled by prelude
                     let is_prelude_function = name.contains("vector::") || 
@@ -381,22 +390,38 @@ impl<'env> BoogieTranslator<'env> {
                         continue;
                     }
                     
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(
-                        fun_env,
-                        FunctionTranslationStyle::SpecNoAbortCheck,
-                    );
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                    // Only translate each style if not already processed
+                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
+                    }
+                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Asserts) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                    }
+                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Aborts) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+                    }
+                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::SpecNoAbortCheck) {
+                        self.translate_function_style(
+                            fun_env,
+                            FunctionTranslationStyle::SpecNoAbortCheck,
+                        );
+                    }
+                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Opaque) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                    }
                 } else {
                     let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
-                                        let verification_info = verification_analysis::get_info(&fun_target);
+                    let verification_info = verification_analysis::get_info(&fun_target);
                     let inlined = verification_info.inlined;
                      
-                                        // Regular functions need to be inlined to get procedure declarations
+                    // Regular functions need to be inlined to get procedure declarations
                     // Native functions that aren't handled by prelude also need procedure declarations
                     let needs_procedure_declaration = inlined || fun_env.is_native();
+                    
+                    // Skip processing if this function was already processed as a spec function
+                    if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                        continue;
+                    }
                     
                     if !needs_procedure_declaration {
                         continue;
@@ -416,14 +441,14 @@ impl<'env> BoogieTranslator<'env> {
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
+                        let fun_key = (fun_target.func_env.get_qualified_id(), FunctionVariant::Baseline);
                         let type_insts = mono_info
                             .funs
-                            .get(&(
-                                fun_target.func_env.get_qualified_id(),
-                                FunctionVariant::Baseline,
-                            ))
+                            .get(&fun_key)
                             .unwrap_or(&BTreeSet::new())
                             .clone();
+                        
+                        println!("DEBUG: Mono info for {}: {:?}", fun_env.get_full_name_str(), type_insts);
                         
                         // For native functions, use Opaque style
                         let style = if fun_env.is_native() {
@@ -432,129 +457,89 @@ impl<'env> BoogieTranslator<'env> {
                             FunctionTranslationStyle::Default
                         };
                         
+                        println!("DEBUG: Processing regular function: {} with style {:?}, type_insts: {:?}", fun_env.get_full_name_str(), style, type_insts.len());
+                        
                         // If no type instantiations found, generate it with empty type instantiation
                         if type_insts.is_empty() {
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                style,
-                            )
-                            .translate();
+                            if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &[], style) {
+                                println!("DEBUG: Creating FunctionTranslator for {} with empty type inst", fun_env.get_full_name_str());
+                                FunctionTranslator::new(
+                                    self,
+                                    &fun_target,
+                                    &[],
+                                    style,
+                                )
+                                .translate();
+                                self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &[], style);
+                            } else {
+                                println!("DEBUG: Skipping {} with style {:?} - already processed", fun_env.get_full_name_str(), style);
+                            }
                         } else {
                             for type_inst in type_insts {
-                                FunctionTranslator::new(
-                                    self,
-                                    &fun_target,
-                                    &type_inst,
-                                    style,
-                                )
-                                .translate();
+                                println!("DEBUG: Processing type inst for {}: {:?}", fun_env.get_full_name_str(), type_inst);
+                                if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &type_inst,
+                                        style,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
+                                } else {
+                                    println!("DEBUG: Skipping type inst for {}: {:?} - already processed", fun_env.get_full_name_str(), type_inst);
+                                }
                             }
                         }
                         
-                        // Also generate with empty type instantiation for essential functions
-                        // to ensure they're always available
-                        if self.is_essential_function(fun_env) {
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                style,
-                            )
-                            .translate();
-                        }
+
                         
-                        // For option functions, also generate with u64 type parameter
-                        // to ensure they're available when needed
+                        // For option functions, also generate with additional type parameters
+                        // to ensure they're available when needed (but avoid duplicates)
                         if fun_env.get_full_name_str().contains("option::") {
-                            let u64_type = vec![Type::Primitive(PrimitiveType::U64)];
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &u64_type,
-                                style,
-                            )
-                            .translate();
+                            let additional_types = vec![
+                                vec![Type::Primitive(PrimitiveType::U64)],
+                                vec![Type::TypeParameter(0)],
+                                vec![Type::Primitive(PrimitiveType::Address)],
+                                vec![Type::Primitive(PrimitiveType::U8)],
+                                vec![Type::TypeParameter(1)],
+                            ];
                             
-                            // Also generate with generic type parameter for option functions
-                            // to ensure all option functions are available
-                            let generic_type = vec![Type::TypeParameter(0)];
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &generic_type,
-                                style,
-                            )
-                            .translate();
+                            for type_inst in additional_types {
+                                if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &type_inst,
+                                        style,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
+                                }
+                            }
                             
-                            // Also generate with address type parameter for option functions
-                            // to ensure all option functions are available
-                            let address_type = vec![Type::Primitive(PrimitiveType::Address)];
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &address_type,
-                                style,
-                            )
-                            .translate();
-                            
-                            // Also generate with u8 type parameter for option functions
-                            // to ensure all option functions are available
-                            let u8_type = vec![Type::Primitive(PrimitiveType::U8)];
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &u8_type,
-                                style,
-                            )
-                            .translate();
-                            
-                            // Also generate with #1 type parameter for option functions
-                            // to ensure all option functions are available
-                            let type_param_1 = vec![Type::TypeParameter(1)];
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &type_param_1,
-                                style,
-                            )
-                            .translate();
-                            
-                            // Also generate with u64 type parameter for vector functions
+                            // Also generate with additional type parameters for vector functions
                             // to ensure all vector functions are available
                             if fun_env.get_full_name_str().contains("vector::") {
-                                let u64_type = vec![Type::Primitive(PrimitiveType::U64)];
-                                FunctionTranslator::new(
-                                    self,
-                                    &fun_target,
-                                    &u64_type,
-                                    style,
-                                )
-                                .translate();
+                                let vector_types = vec![
+                                    vec![Type::Primitive(PrimitiveType::U64)],
+                                    vec![Type::Primitive(PrimitiveType::U8)],
+                                    vec![Type::TypeParameter(1)],
+                                ];
                                 
-                                // Also generate with u8 type parameter for vector functions
-                                let u8_type = vec![Type::Primitive(PrimitiveType::U8)];
-                                FunctionTranslator::new(
-                                    self,
-                                    &fun_target,
-                                    &u8_type,
-                                    style,
-                                )
-                                .translate();
-                                
-                                // Also generate with #1 type parameter for vector functions
-                                let type_param_1 = vec![Type::TypeParameter(1)];
-                                FunctionTranslator::new(
-                                    self,
-                                    &fun_target,
-                                    &type_param_1,
-                                    style,
-                                )
-                                .translate();
+                                for type_inst in vector_types {
+                                    if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                        FunctionTranslator::new(
+                                            self,
+                                            &fun_target,
+                                            &type_inst,
+                                            style,
+                                        )
+                                        .translate();
+                                        self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
+                                    }
+                                }
                             }
-                            
-
                         }
                     }
                 }
@@ -598,6 +583,8 @@ impl<'env> BoogieTranslator<'env> {
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
+        println!("DEBUG: translate_function_style called for {} with style {:?}", 
+                fun_env.get_full_name_str(), style);
         use Bytecode::*;
         
 
@@ -797,7 +784,10 @@ impl<'env> BoogieTranslator<'env> {
             || style == FunctionTranslationStyle::Opaque
         // this is for the $opaque signature
         {
-            FunctionTranslator::new(self, &fun_target, &[], style).translate();
+            if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &[], style) {
+                FunctionTranslator::new(self, &fun_target, &[], style).translate();
+                self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &[], style);
+            }
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
@@ -827,7 +817,10 @@ impl<'env> BoogieTranslator<'env> {
                         return;
                     }
 
-                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                    if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), type_inst, style) {
+                        FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                        self.mark_function_processed(&fun_target.func_env.get_qualified_id(), type_inst, style);
+                    }
                 });
         }
     }
@@ -894,23 +887,31 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         for type_inst in ghost_global_type_instances {
-            FunctionTranslator::new(
-                self,
-                &ghost_global_fun_target,
-                type_inst,
-                FunctionTranslationStyle::Default,
-            )
-            .translate();
+            // Check if this ghost global function has already been processed
+            if !self.is_function_processed(&ghost_global_fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default) {
+                FunctionTranslator::new(
+                    self,
+                    &ghost_global_fun_target,
+                    type_inst,
+                    FunctionTranslationStyle::Default,
+                )
+                .translate();
+                self.mark_function_processed(&ghost_global_fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default);
+            }
         }
 
         for type_inst in &ghost_declare_global_mut_type_instances {
-            FunctionTranslator::new(
-                self,
-                &ghost_havoc_global_fun_target,
-                type_inst,
-                FunctionTranslationStyle::Default,
-            )
-            .translate();
+            // Check if this ghost havoc global function has already been processed
+            if !self.is_function_processed(&ghost_havoc_global_fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default) {
+                FunctionTranslator::new(
+                    self,
+                    &ghost_havoc_global_fun_target,
+                    type_inst,
+                    FunctionTranslationStyle::Default,
+                )
+                .translate();
+                self.mark_function_processed(&ghost_havoc_global_fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default);
+            }
         }
     }
 
@@ -957,19 +958,22 @@ impl<'env> BoogieTranslator<'env> {
 
     /// Check if a function is essential for the verification pipeline
     fn is_essential_function(&self, fun_env: &FunctionEnv) -> bool {
-        let name = fun_env.get_full_name_str();
-        
-        // Handle ghost functions first (since they're also native)
-        if name.contains("ghost::") {
-            return true; // Keep all ghost functions
+        move_stackless_bytecode::verification_analysis::VerificationAnalysisProcessor::is_essential_function(fun_env)
+    }
+
+    fn is_function_processed(&self, fun_id: &QualifiedId<FunId>, type_inst: &[Type], style: FunctionTranslationStyle) -> bool {
+        let processed = self.processed_functions.borrow().contains(&(fun_id.clone(), type_inst.to_vec(), style));
+        if processed {
+            println!("DEBUG: Function already processed: {} with style {:?}", 
+                    self.env.get_function(*fun_id).get_full_name_str(), style);
         }
-        
-        // All prover functions are essential
-        if name.contains("prover::") {
-            return true;
-        }
-        
-        false
+        processed
+    }
+
+    fn mark_function_processed(&self, fun_id: &QualifiedId<FunId>, type_inst: &[Type], style: FunctionTranslationStyle) {
+        let fun_name = self.env.get_function(*fun_id).get_full_name_str();
+        println!("DEBUG: Marking function as processed: {} with style {:?}", fun_name, style);
+        self.processed_functions.borrow_mut().insert((fun_id.clone(), type_inst.to_vec(), style));
     }
 }
 
@@ -1769,7 +1773,7 @@ impl<'env> FunctionTranslator<'env> {
 
     /// Return a string for a boogie procedure header. Use inline attribute and name
     /// suffix as indicated by `entry_point`.
-    fn generate_function_sig(&mut self) {
+    fn generate_function_sig(&self) {
         let writer = self.parent.writer;
         let options = self.parent.options;
         let fun_target = self.fun_target;
@@ -1812,36 +1816,24 @@ impl<'env> FunctionTranslator<'env> {
         };
 
         writer.set_location(&fun_target.get_loc());
-        
-        // Check for duplicate procedure declarations only for opaque procedures
         if self.style == FunctionTranslationStyle::Opaque {
-            let opaque_proc_name = format!("{}$opaque", self.function_variant_name(FunctionTranslationStyle::Opaque));
-            if !self.parent.is_procedure_declared(&opaque_proc_name) {
-                emitln!(
-                    writer,
-                    "procedure {}({}) returns ({});",
-                    opaque_proc_name,
-                    args,
-                    rets,
-                );
-                emitln!(writer, "");
-                self.parent.mark_procedure_declared(opaque_proc_name);
-            }
-        }
-        
-        // Always generate the regular procedure signature (not just declaration)
-        let proc_name = self.function_variant_name(self.style);
-        if !self.parent.is_procedure_declared(&proc_name) {
             emitln!(
                 writer,
-                "procedure {}{}({}) returns ({})",
-                attribs,
-                proc_name,
+                "procedure {}$opaque({}) returns ({});",
+                self.function_variant_name(FunctionTranslationStyle::Opaque),
                 args,
                 rets,
             );
-            self.parent.mark_procedure_declared(proc_name);
+            emitln!(writer, "");
         }
+        emitln!(
+            writer,
+            "procedure {}{}({}) returns ({})",
+            attribs,
+            self.function_variant_name(self.style),
+            args,
+            rets,
+        )
     }
 
     /// Generate boogie representation of function args and return args.
@@ -2033,7 +2025,7 @@ impl<'env> FunctionTranslator<'env> {
             if !mem_inst_seen.contains(&memory) {
                 emitln!(
                     writer,
-                    "var {}: {}",
+                    "var {}: {};",
                     boogie_modifies_memory_name(fun_target.global_env(), &memory),
                     "[int]bool;"
                 );
