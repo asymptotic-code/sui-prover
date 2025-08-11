@@ -28,11 +28,12 @@ use move_stackless_bytecode::number_operation::{GlobalNumberOperationState, NumO
 use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::reaching_def_analysis::ReachingDefProcessor;
 use move_stackless_bytecode::stackless_bytecode::Bytecode::{Call, Prop, Ret, SaveMem};
+use move_stackless_bytecode::stackless_bytecode::Label;
 use move_stackless_bytecode::stackless_bytecode::Operation::{
     Add, And, BitAnd, BitOr, BorrowLoc, CastU128, CastU16, CastU256, CastU32, CastU64, CastU8,
-    Destroy, Div, EmitEvent, Eq, EventStoreDiverge, FreezeRef, Ge, Gt, Le, Lt, Mod, Mul, Neq, Not,
-    Or, PackRef, PackRefDeep, ReadRef, Shl, Shr, Stop, Sub, TraceAbort, Uninit, UnpackRef,
-    UnpackRefDeep, WriteRef, Xor,
+    Destroy, Div, EmitEvent, Eq, EventStoreDiverge, FreezeRef, Ge, GetField, Gt, Le, Lt, Mod, Mul, Neq, Not,
+    Or, Pack, PackRef, PackRefDeep, ReadRef, Shl, Shr, Stop, Sub, TraceAbort, TraceExp, TraceGhost, TraceLocal, TraceMessage, TraceReturn, Uninit, UnpackRef,
+    UnpackRefDeep, WriteRef, Xor, Function,
 };
 use move_stackless_bytecode::stackless_bytecode::{
     AbortAction, BorrowEdge, BorrowNode, Bytecode, HavocKind, Operation, PropKind,
@@ -40,8 +41,11 @@ use move_stackless_bytecode::stackless_bytecode::{
 use move_stackless_bytecode::{
     mono_analysis, spec_global_variable_analysis, verification_analysis,
 };
+use move_stackless_bytecode::stackless_control_flow_graph::{StacklessControlFlowGraph, BlockContent, BlockId};
+use move_binary_format::file_format::CodeOffset;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use move_stackless_bytecode::graph::Graph;
 use std::str::FromStr;
 
 pub struct LeanTranslator<'env> {
@@ -71,6 +75,39 @@ pub struct EnumTranslator<'env> {
     parent: &'env LeanTranslator<'env>,
     enum_env: &'env EnumEnv<'env>,
     type_inst: &'env [Type],
+}
+
+/// Control flow translation state
+#[derive(Debug, Clone)]
+pub struct ControlFlowState {
+    /// Available variables at this program point with their types
+    pub available_vars: BTreeMap<TempIndex, Type>,
+    /// Values that need to be returned (if any)
+    pub pending_returns: Option<Vec<TempIndex>>,
+    /// Abort code if aborted
+    pub abort_code: Option<TempIndex>,
+}
+
+/// Represents a basic block in the control flow translation
+#[derive(Debug, Clone)]
+pub struct BasicBlockInfo {
+    /// Block ID from the CFG
+    pub block_id: BlockId,
+    /// Range of bytecode instructions in this block
+    pub instruction_range: Option<(CodeOffset, CodeOffset)>,
+    /// Variables that are live at the entry of this block
+    pub entry_vars: BTreeMap<TempIndex, Type>,
+    /// Variables that are available at the exit of this block
+    pub exit_vars: BTreeMap<TempIndex, Type>,
+    /// Whether this block ends with a return
+    pub has_return: bool,
+    /// Whether this block ends with an abort
+    pub has_abort: bool,
+    /// Successors of this block
+    pub successors: Vec<BlockId>,
+    /// If this block is a loop invariant checker block ending in `stop`,
+    /// this records the loop header we should jump back to when translating `stop`.
+    pub stop_back_target: Option<BlockId>,
 }
 
 impl<'env> LeanTranslator<'env> {
@@ -1385,15 +1422,21 @@ impl FunctionTranslator<'_> {
             fun_target.data.variant,
             fun_target.get_loc().display(env)
         );
-        self.generate_function_sig();
 
-        if self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() {
-            todo!()
-        } else if self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()
-        {
-            todo!()
+        // Special handling for SpecNoAbortCheck: generate a theorem instead of a function
+        if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
+            self.generate_no_abort_check_theorem();
         } else {
-            self.generate_function_body();
+            self.generate_function_sig();
+
+            if self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() {
+                todo!()
+            } else if self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()
+            {
+                todo!()
+            } else {
+                self.generate_function_body();
+            }
         }
         emitln!(self.parent.writer);
 
@@ -2026,12 +2069,19 @@ impl FunctionTranslator<'_> {
             }
             Label(_, _) => {
                 // Labels don't generate code in Lean
+                emitln!(self.writer(), "-- Label (no code generated)");
             }
             Jump(_, _) => {
                 // Jumps are control flow, not directly translated in functional style
+                emitln!(self.writer(), "-- Jump (control flow not implemented in simple mode)");
             }
             Branch(_, _, _, _) => {
                 // Branches are control flow, not directly translated in functional style
+                emitln!(self.writer(), "-- Branch (control flow not implemented in simple mode)");
+            }
+            VariantSwitch(_, _, _) => {
+                // Variant switch is control flow, not directly translated in functional style
+                emitln!(self.writer(), "-- VariantSwitch (control flow not implemented in simple mode)");
             }
             Assign(_, dest, src, _) => {
                 // Simple assignment - in functional style this would be a let binding
@@ -2084,7 +2134,7 @@ fn generate_function_sig(&self) {
     let rets = match self.style {
         FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => prerets,
         FunctionTranslationStyle::Asserts => "Unit".to_string(),
-        FunctionTranslationStyle::Aborts => "Unit".to_string(),
+        FunctionTranslationStyle::Aborts => "ProgramState Nat".to_string(),
         FunctionTranslationStyle::SpecNoAbortCheck => "Unit".to_string(),
     };
 
@@ -2202,14 +2252,7 @@ fn generate_function_body(&mut self) {
     let writer = self.parent.writer;
     let fun_target = self.fun_target;
     let variant = &fun_target.data.variant;
-    let instantiation = &fun_target.data.type_args;
     let env = fun_target.global_env();
-    let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
-    let global_state = &self
-        .fun_target
-        .global_env()
-        .get_extension::<GlobalNumberOperationState>()
-        .expect("global number operation state");
 
     // Be sure to set back location to the whole function definition as a default.
     writer.set_location(&fun_target.get_loc().at_start());
@@ -2217,7 +2260,7 @@ fn generate_function_body(&mut self) {
     writer.indent();
 
     // Print instantiation information
-    if !instantiation.is_empty() {
+    if !fun_target.data.type_args.is_empty() {
         let display_ctxt = TypeDisplayContext::WithEnv {
             env,
             type_param_names: None,
@@ -2225,7 +2268,7 @@ fn generate_function_body(&mut self) {
         emitln!(
                 writer,
                 "-- function instantiation <{}>",
-                instantiation
+                fun_target.data.type_args
                     .iter()
                     .map(|ty| ty.display(&display_ctxt))
                     .join(", ")
@@ -2233,87 +2276,7 @@ fn generate_function_body(&mut self) {
         emitln!(writer, "");
     }
 
-    // Generate local variable declarations. They need to appear first in lean.
-    emitln!(writer, "-- declare local variables");
-    let num_args = fun_target.get_parameter_count();
-    let mid = fun_target.func_env.module_env.get_id();
-    let fid = fun_target.func_env.get_id();
-    for i in num_args..fun_target.get_local_count() {
-        let local_type = &self.get_local_type(i);
-        emitln!(writer, "let t{} : {} := sorry;", i, lean_type(env, local_type));
-    }
-
-    // Generate declarations for modifies condition.
-    let mut mem_inst_seen = BTreeSet::new();
-    for qid in fun_target.get_modify_ids() {
-        let memory = qid.instantiate(self.type_inst);
-        if !mem_inst_seen.contains(&memory) {
-            // Skip modifies declarations for now
-            mem_inst_seen.insert(memory);
-        }
-    }
-
-    // Generate memory snapshot variable declarations.
-    let code = fun_target.get_bytecode();
-    let labels = code
-        .iter()
-        .filter_map(|bc| match bc {
-            SaveMem(_, lab, mem) => Some((lab, mem)),
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
-
-    // Initial assumptions
-    if variant.is_verified() {
-        self.translate_verify_entry_assumptions(fun_target);
-    }
-
-    // Generate bytecode
-    emitln!(writer, "\n-- bytecode translation starts here");
-    let mut last_tracked_loc = None;
-    for bytecode in code.iter() {
-        self.translate_bytecode(&mut last_tracked_loc, bytecode);
-    }
-
-    // Add explicit return if no Ret instruction was found
-    let has_ret = code.iter().any(|bc| matches!(bc, Bytecode::Ret(_, _)));
-    if !has_ret {
-        emitln!(writer, "\n-- explicit return (no Ret instruction found)");
-        match self.style {
-            FunctionTranslationStyle::Asserts 
-            | FunctionTranslationStyle::Aborts 
-            | FunctionTranslationStyle::SpecNoAbortCheck => {
-                emitln!(writer, "()");
-            }
-            FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => {
-                // For Default and Opaque styles, we need to return the appropriate type
-                let return_count = fun_target.get_return_count();
-                let mut_ref_count = (0..fun_target.get_parameter_count())
-                    .filter(|&i| self.get_local_type(i).is_mutable_reference())
-                    .count();
-                
-                if return_count == 0 && mut_ref_count == 0 {
-                    emitln!(writer, "()");
-                } else if return_count == 1 && mut_ref_count == 0 {
-                    emitln!(writer, "sorry -- TODO: provide default return value");
-                } else {
-                    // Multiple returns or mutable references - return tuple with sorry values
-                    let mut return_values = Vec::new();
-                    for _ in 0..return_count {
-                        return_values.push("sorry".to_string());
-                    }
-                    for _ in 0..mut_ref_count {
-                        return_values.push("sorry".to_string());
-                    }
-                    if return_values.len() == 1 {
-                        emitln!(writer, "{}", return_values[0]);
-                    } else {
-                        emitln!(writer, "({})", return_values.join(", "));
-                    }
-                }
-            }
-        }
-    }
+    self.generate_function_body_with_cfg();
 
     writer.unindent();
 }
@@ -2574,4 +2537,644 @@ fn generate_ensures_impl_function(&self, ensures_idx: usize) {
     emitln!(writer, "sorry -- TODO: Prove that the ensures condition holds");
     writer.unindent();
 }
+
+/// Generates function body using control flow graph pattern matching
+fn generate_function_body_with_cfg(&mut self) {
+    let writer = self.parent.writer;
+    let fun_target = self.fun_target;
+    let variant = &fun_target.data.variant;
+    let code = fun_target.get_bytecode();
+    
+    // Build control flow graph
+    let cfg = StacklessControlFlowGraph::new_forward(code);
+    
+    // Analyze basic blocks
+    let block_info = self.analyze_basic_blocks(&cfg, code);
+    
+    emitln!(writer, "-- Control flow translation with {} blocks", block_info.len());
+    
+    // Program state is now defined in integer.lean
+    
+    // Generate local variable declarations
+    self.generate_local_declarations();
+    
+    // Initial assumptions for verification
+    if variant.is_verified() {
+        self.translate_verify_entry_assumptions(fun_target);
+    }
+    
+    // Generate the main control flow function
+    self.generate_control_flow_function(&cfg, &block_info, code);
 }
+
+/// Analyzes basic blocks to gather variable and control flow information
+fn analyze_basic_blocks(&self, cfg: &StacklessControlFlowGraph, code: &[Bytecode]) -> BTreeMap<BlockId, BasicBlockInfo> {
+    let mut block_info = BTreeMap::new();
+    // Pre-compute loop headers (by block id) using natural loops
+    let nodes = cfg.blocks();
+    let edges: Vec<(BlockId, BlockId)> = nodes
+        .iter()
+        .flat_map(|x| cfg.successors(*x).iter().map(|y| (*x, *y)).collect::<Vec<_>>())
+        .collect();
+    let graph = Graph::new(cfg.entry_block(), nodes.clone(), edges);
+    let natural_loops = graph.compute_reducible().unwrap_or_default();
+    let loop_headers: BTreeSet<BlockId> = natural_loops.iter().map(|l| l.loop_header).collect();
+    let latch_to_header: BTreeMap<BlockId, BlockId> = natural_loops
+        .iter()
+        .map(|l| (l.loop_latch, l.loop_header))
+        .collect();
+    
+    for block_id in cfg.blocks() {
+        if cfg.is_dummmy(block_id) {
+            continue;
+        }
+        
+        let mut info = BasicBlockInfo {
+            block_id,
+            instruction_range: None,
+            entry_vars: BTreeMap::new(),
+            exit_vars: BTreeMap::new(),
+            has_return: false,
+            has_abort: false,
+            successors: cfg.successors(block_id).clone(),
+            stop_back_target: latch_to_header.get(&block_id).copied(),
+        };
+        
+        // Get instruction range for this block
+        if let Some(instr_range) = cfg.instr_indexes(block_id) {
+            let instrs: Vec<_> = instr_range.collect();
+            if !instrs.is_empty() {
+                info.instruction_range = Some((instrs[0], instrs[instrs.len() - 1]));
+                
+                // Analyze last instruction to determine block exit type
+                let last_instr = &code[instrs[instrs.len() - 1] as usize];
+                match last_instr {
+                    Bytecode::Ret(_, _) => info.has_return = true,
+                    Bytecode::Abort(_, _) => info.has_abort = true,
+                    _ => {}
+                }
+            }
+        }
+        
+        // If this block is a loop latch (has successor that is a loop header and appears after), prefer back-edge first
+        if info
+            .successors
+            .iter()
+            .any(|&s| loop_headers.contains(&s) && s <= block_id)
+        {
+            info.successors.sort_by_key(|&s| {
+                if loop_headers.contains(&s) && s <= block_id { 0 } else { 1 }
+            });
+        }
+        block_info.insert(block_id, info);
+    }
+    
+    block_info
+}
+
+/// Generates local variable declarations for the control flow function
+fn generate_local_declarations(&self) {
+    let writer = self.writer();
+    let fun_target = self.fun_target;
+    let env = fun_target.global_env();
+    
+    emitln!(writer, "-- Local variable declarations");
+    let num_args = fun_target.get_parameter_count();
+    for i in num_args..fun_target.get_local_count() {
+        let local_type = &self.get_local_type(i);
+        emitln!(writer, "let t{} : {} := sorry;", i, lean_type(env, local_type));
+    }
+    emitln!(writer, "");
+}
+
+/// Generates a function using control flow pattern matching
+fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, block_info: &BTreeMap<BlockId, BasicBlockInfo>, code: &[Bytecode]) {
+    // Get writer reference once and use it throughout
+    emitln!(self.parent.writer, "-- Control flow function with pattern matching");
+    // Determine the ProgramState inner type based on translation style
+    let default_return_type = self.get_return_type_string();
+    let default_inner_type = default_return_type.trim_start_matches("ProgramState ").to_string();
+    let (cf_inner_type, cf_return_type) = match self.style {
+        FunctionTranslationStyle::Aborts => ("Nat".to_string(), "ProgramState Nat".to_string()),
+        _ => (default_inner_type.clone(), format!("ProgramState {}", default_inner_type)),
+    };
+    emitln!(
+        self.parent.writer,
+        "let rec control_flow_exec (state : ProgramState {}) : {} :=",
+        cf_inner_type,
+        cf_return_type
+    );
+    self.parent.writer.indent();
+    emitln!(self.parent.writer, "match state with");
+    
+    // Generate pattern matching cases for each block
+    for (block_id, info) in block_info {
+        if cfg.is_dummmy(*block_id) {
+            continue;
+        }
+        self.generate_block_case_inline(*block_id, info, code);
+    }
+
+    // Fallback for unmatched AtBlock values to make match exhaustive
+    emitln!(self.parent.writer, "| ProgramState.AtBlock n => ProgramState.AtBlock n");
+    // Terminal cases
+    emitln!(self.parent.writer, "| ProgramState.Returned x => ProgramState.Returned x");
+    emitln!(self.parent.writer, "| ProgramState.Aborted code => ProgramState.Aborted code");
+    
+    self.parent.writer.unindent();
+    
+    // Call the control flow function with initial state, adapting to top-level return type
+    let entry_block = cfg.entry_block();
+    // Prefer the first non-dummy successor of the CFG entry that has instructions; otherwise pick the
+    // smallest non-dummy block with instructions; finally fall back to the raw entry block.
+    let mut actual_entry = entry_block;
+    if let Some(first_succ) = cfg.successors(entry_block).iter().find(|&&b| {
+        !cfg.is_dummmy(b) && cfg.instr_indexes(b).is_some()
+    }) {
+        actual_entry = *first_succ;
+    } else if let Some((best_block, _)) = block_info
+        .iter()
+        .filter(|(b, info)| !cfg.is_dummmy(**b) && info.instruction_range.is_some())
+        .min_by_key(|(b, _)| **b)
+    {
+        actual_entry = *best_block;
+    }
+    match self.style {
+        FunctionTranslationStyle::Aborts => {
+            // Top-level rets is ProgramState Nat; return directly
+            emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", actual_entry);
+        }
+        FunctionTranslationStyle::Asserts | FunctionTranslationStyle::SpecNoAbortCheck => {
+            // Top-level rets is Unit; ignore the control-flow result
+            emitln!(self.parent.writer, "match control_flow_exec (ProgramState.AtBlock {}) with", actual_entry);
+            self.parent.writer.indent();
+            emitln!(self.parent.writer, "| ProgramState.Returned _ => ()");
+            emitln!(self.parent.writer, "| ProgramState.Aborted _ => ()");
+            emitln!(self.parent.writer, "| ProgramState.AtBlock _ => ()");
+            self.parent.writer.unindent();
+        }
+        _ => {
+            // Default/Verify: extract the returned value or leave placeholders
+            emitln!(self.parent.writer, "match control_flow_exec (ProgramState.AtBlock {}) with", actual_entry);
+            self.parent.writer.indent();
+            emitln!(self.parent.writer, "| ProgramState.Returned r => r");
+            emitln!(self.parent.writer, "| ProgramState.Aborted _ => sorry");
+            emitln!(self.parent.writer, "| ProgramState.AtBlock _ => sorry");
+            self.parent.writer.unindent();
+        }
+    }
+}
+
+/// Generates a pattern matching case for a specific basic block (inline version to avoid borrowing issues)
+fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInfo, code: &[Bytecode]) {
+    emitln!(self.parent.writer, "| ProgramState.AtBlock {} =>", block_id);
+    self.parent.writer.indent();
+    
+    // Generate comment about the block with source location
+    if let Some((start, end)) = info.instruction_range {
+        // Derive source locations from the AttrId’s of the first/last instructions in this block
+        let start_attr = code[start as usize].get_attr_id();
+        let end_attr = code[end as usize].get_attr_id();
+        let start_loc = self.fun_target.get_bytecode_loc(start_attr);
+        let end_loc = self.fun_target.get_bytecode_loc(end_attr);
+        emitln!(
+            self.parent.writer,
+            "-- Block {} (instructions {} to {}) [{}..{}]",
+            block_id,
+            start,
+            end,
+            start_loc.display(self.parent.env),
+            end_loc.display(self.parent.env)
+        );
+    } else {
+        emitln!(self.parent.writer, "-- Block {} (empty)", block_id);
+    }
+    
+    // Translate instructions in this block
+    if let Some((start, end)) = info.instruction_range {
+        let mut last_tracked_loc: Option<&move_model::model::Loc> = None;
+        // Prepare label offsets for pretty-printing bytecode
+        let label_offsets = Bytecode::label_offsets(code);
+        for pc in start..=end {
+            let bytecode = &code[pc as usize];
+            let attr = bytecode.get_attr_id();
+            let loc = self.fun_target.get_bytecode_loc(attr);
+            let pretty = format!("{}", bytecode.display(&self.fun_target, &label_offsets));
+            emitln!(
+                self.parent.writer,
+                "-- [pc {}] {} [{}]",
+                pc,
+                pretty,
+                loc.display(self.parent.env)
+            );
+            
+            // Handle control flow instructions specially
+            match bytecode {
+                Bytecode::Label(_, _) => {
+                    // Already logged above
+                    continue;
+                },
+                Bytecode::Jump(_, label) => {
+                    // Already logged above
+                    // Find the target block ID
+                    let target_block = self.find_block_for_label(code, *label, pc);
+                    let back = if target_block < block_id { " (back)" } else { "" };
+                    emitln!(
+                        self.parent.writer,
+                        "-- jump {} -> {}{}",
+                        block_id,
+                        target_block,
+                        back
+                    );
+                    eprintln!("[LeanCFG] jump {} -> {}{} (pc {} )", block_id, target_block, back, pc);
+                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", target_block);
+                    self.parent.writer.unindent();
+                    return;
+                },
+                Bytecode::Branch(_, then_label, else_label, cond_temp) => {
+                    // Already logged above
+                    let then_block = self.find_block_for_label(code, *then_label, pc);
+                    let else_block = self.find_block_for_label(code, *else_label, pc);
+                    emitln!(self.parent.writer, "if t{} then", cond_temp);
+                    self.parent.writer.indent();
+                    let back_then = if then_block < block_id { " (back)" } else { "" };
+                    emitln!(self.parent.writer, "-- branch then: {} -> {}{}", block_id, then_block, back_then);
+                    eprintln!("[LeanCFG] branch-then {} -> {}{} (pc {} )", block_id, then_block, back_then, pc);
+                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", then_block);
+                    self.parent.writer.unindent();
+                    emitln!(self.parent.writer, "else");
+                    self.parent.writer.indent();
+                    let back_else = if else_block < block_id { " (back)" } else { "" };
+                    emitln!(self.parent.writer, "-- branch else: {} -> {}{}", block_id, else_block, back_else);
+                    eprintln!("[LeanCFG] branch-else {} -> {}{} (pc {} )", block_id, else_block, back_else, pc);
+                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", else_block);
+                    self.parent.writer.unindent();
+                    self.parent.writer.unindent();
+                    return;
+                },
+                Bytecode::VariantSwitch(_, switch_temp, labels) => {
+                    // Already logged above
+                    emitln!(self.parent.writer, "match t{} with", switch_temp);
+                    self.parent.writer.indent();
+                    for (variant_idx, label) in labels.iter().enumerate() {
+                        let target_block = self.find_block_for_label(code, *label, pc);
+                        let back = if target_block < block_id { " (back)" } else { "" };
+                        emitln!(self.parent.writer, "| {} =>", variant_idx);
+                        self.parent.writer.indent();
+                        emitln!(self.parent.writer, "-- variant {}: {} -> {}{}", variant_idx, block_id, target_block, back);
+                        eprintln!("[LeanCFG] variant {}: {} -> {}{} (pc {} )", variant_idx, block_id, target_block, back, pc);
+                        emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", target_block);
+                        self.parent.writer.unindent();
+                    }
+                    self.parent.writer.unindent();
+                    self.parent.writer.unindent();
+                    return;
+                },
+                Bytecode::Call(_, _dests, oper, _srcs, _on_abort) => {
+                    use Operation::*;
+                    match oper {
+                        Stop => {
+                            // If this is a loop latch, jump back to its header; otherwise go to exit
+                            if let Some(header) = info.stop_back_target {
+                                let back = if header < block_id { " (back)" } else { "" };
+                                emitln!(self.parent.writer, "-- stop (latch): {} -> {}{}", block_id, header, back);
+                                eprintln!("[LeanCFG] stop (latch) {} -> {}{} (pc {} )", block_id, header, back, pc);
+                                emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", header);
+                            } else {
+                                emitln!(self.parent.writer, "-- stop: {} -> 1 (exit)", block_id);
+                                eprintln!("[LeanCFG] stop {} -> 1 (exit) (pc {} )", block_id, pc);
+                                emitln!(self.parent.writer, "ProgramState.AtBlock 1");
+                            }
+                            self.parent.writer.unindent();
+                            return;
+                        }
+                        _ => {
+                            // Defer to core translator for non-terminal calls
+                            self.translate_bytecode_core(bytecode, &self.parent.writer);
+                        }
+                    }
+                },
+                Bytecode::Ret(_, srcs) => {
+                    if srcs.is_empty() {
+                        emitln!(self.parent.writer, "ProgramState.Returned ()");
+                    } else if srcs.len() == 1 {
+                        emitln!(self.parent.writer, "ProgramState.Returned t{}", srcs[0]);
+                    } else {
+                        let values = srcs.iter().map(|&idx| format!("t{}", idx)).join(", ");
+                        emitln!(self.parent.writer, "ProgramState.Returned ({})", values);
+                    }
+                    self.parent.writer.unindent();
+                    return;
+                },
+                Bytecode::Abort(_, code_temp) => {
+                    emitln!(self.parent.writer, "ProgramState.Aborted (Int.natAbs t{})", code_temp);
+                    self.parent.writer.unindent();
+                    return;
+                },
+                _ => {
+                    // Translate normal instructions - use the core translation logic
+                    self.translate_bytecode_core(bytecode, &self.parent.writer);
+                }
+            }
+        }
+    }
+    
+    // Handle fall-through to next block: prefer forward successor over back-edge to avoid biasing to abort handlers
+    let cfg2 = StacklessControlFlowGraph::new_forward(code);
+    // If this block is a loop invariant checker/latch transformed to stop, prefer jumping back to its header
+    let next_block_opt = if let Some(header) = info.stop_back_target {
+        Some(header)
+    } else {
+        // Prefer first forward successor (> current block id), otherwise any real successor
+        let mut iter = cfg2
+            .successors(block_id)
+            .iter()
+            .copied();
+        // 1) forward successor
+        iter.clone()
+            .find(|&b| b > block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some())
+            // 2) any real successor (could be back-edge)
+            .or_else(|| iter.find(|&b| b != block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some()))
+            // 3) finally, try info.successors as a fallback in the same preference order
+            .or_else(|| {
+                let mut iter2 = info.successors.iter().copied();
+                iter2.clone()
+                    .find(|&b| b > block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some())
+                    .or_else(|| iter2.find(|&b| b != block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some()))
+            })
+    };
+    if let Some(next_block) = next_block_opt {
+        let back = if next_block < block_id { " (back)" } else { "" };
+        emitln!(self.parent.writer, "-- fallthrough: {} -> {}{}", block_id, next_block, back);
+        eprintln!("[LeanCFG] fallthrough {} -> {}{}", block_id, next_block, back);
+        emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", next_block);
+    } else {
+        // No successors - keep current state to preserve totality and aid debugging
+        emitln!(self.parent.writer, "ProgramState.AtBlock {} -- no real successors", block_id);
+    }
+    
+    self.parent.writer.unindent();
+}
+
+/// Core bytecode translation logic shared between different contexts
+fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
+    // Helper function to get a string for a local
+    let str_local = |idx: usize| format!("t{}", idx);
+    
+    match bytecode {
+        Bytecode::Load(_, dest, c) => {
+            emitln!(writer, "let {} := {};", str_local(*dest), c);
+        },
+        Bytecode::Call(_, dests, oper, srcs, _) => {
+            use Operation::*;
+            match oper {
+                Add => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} + {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Sub => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} - {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Mul => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} * {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Mod => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} % {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Div => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} / {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Eq | Neq => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        let op = if matches!(oper, Eq) { "==" } else { "!=" };
+                        emitln!(writer, "let {} := {} {} {};", 
+                                str_local(dests[0]), str_local(srcs[0]), op, str_local(srcs[1]));
+                    }
+                },
+                Lt | Le | Gt | Ge => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        let op = match oper {
+                            Lt => "<", Le => "<=", Gt => ">", Ge => ">=", _ => "?"
+                        };
+                        emitln!(writer, "let {} := {} {} {};", 
+                                str_local(dests[0]), str_local(srcs[0]), op, str_local(srcs[1]));
+                    }
+                },
+                BitAnd => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} &&& {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                BitOr => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} ||| {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Xor => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} ^^^ {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Shl => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} <<< {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                Shr => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        emitln!(writer, "let {} := {} >>> {};", 
+                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                    }
+                },
+                CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
+                    if dests.len() == 1 && srcs.len() == 1 {
+                        let cast_type = match oper {
+                            CastU8 => "UInt8.ofNat",
+                            CastU16 => "UInt16.ofNat", 
+                            CastU32 => "UInt32.ofNat",
+                            CastU64 => "UInt64.ofNat",
+                            CastU128 => "UInt128.ofNat",
+                            CastU256 => "UInt256.ofNat",
+                            _ => "sorry"
+                        };
+                        emitln!(writer, "let {} := {} {}.toNat;", 
+                                str_local(dests[0]), cast_type, str_local(srcs[0]));
+                    }
+                },
+                GetField(mid, sid, type_args, field_idx) => {
+                    if dests.len() == 1 && srcs.len() == 1 {
+                        // For struct field access, we need to generate the appropriate field access
+                        let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
+                        let field_env = struct_env.get_field_by_offset(*field_idx);
+                        let field_name = field_env.get_name();
+                        emitln!(writer, "let {} := {}.{};", 
+                                str_local(dests[0]), str_local(srcs[0]), field_name.display(self.parent.env.symbol_pool()));
+                    }
+                },
+                Pack(mid, sid, type_args) => {
+                    if dests.len() == 1 {
+                        let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
+                        let struct_name = lean_struct_name(&struct_env, type_args);
+                        let field_values = srcs.iter().map(|&idx| str_local(idx)).join(" ");
+                        emitln!(writer, "let {} := {}.mk {};", 
+                                str_local(dests[0]), struct_name, field_values);
+                    }
+                },
+                _ => {
+                    // For operations not handled in the simple version, emit a comment
+                    emitln!(writer, "-- Unhandled operation: {:?}", oper);
+                }
+            }
+        },
+        _ => {
+            // For bytecode types not handled in the simple version, emit a comment
+            emitln!(writer, "-- Unhandled bytecode: {:?}", bytecode);
+        }
+    }
+}
+
+
+/// Finds the block ID that contains a given label
+fn find_block_for_label(&self, code: &[Bytecode], target_label: Label, _current_pc: CodeOffset) -> BlockId {
+    // Build a mapping from labels to their code offsets
+    let label_offsets = Bytecode::label_offsets(code);
+    
+    if let Some(&offset) = label_offsets.get(&target_label) {
+        // Build CFG to get proper block mapping
+        let cfg = StacklessControlFlowGraph::new_forward(code);
+        
+        // Find the block that contains this offset
+        for block_id in cfg.blocks() {
+            if let Some(instr_range) = cfg.instr_indexes(block_id) {
+                for instr_offset in instr_range {
+                    if instr_offset == offset {
+                        return block_id;
+                    }
+                }
+            }
+        }
+        
+        // Fallback: use the offset as the block ID
+        offset as BlockId
+    } else {
+        // If label not found, this is an error - use a placeholder
+        9999 // Placeholder for error case
+    }
+}
+
+/// Gets the return type string for the current function
+fn get_return_type_string(&self) -> String {
+    let fun_target = self.fun_target;
+    let env = fun_target.global_env();
+    
+    let inner_type = if fun_target.get_return_count() == 0 {
+        "Unit".to_string()
+    } else if fun_target.get_return_count() == 1 {
+        let ret_type = self.inst(&fun_target.get_return_types()[0]);
+        lean_type(env, &ret_type)
+    } else {
+        let return_types = fun_target
+            .get_return_types()
+            .iter()
+            .map(|s| {
+                let s = self.inst(s);
+                lean_type(env, &s)
+            })
+            .collect::<Vec<_>>();
+        format!("({})", return_types.join(" × "))
+    };
+    
+    format!("ProgramState {}", inner_type)
+}
+
+/// Generate a theorem that asserts the _aborts variant is false
+fn generate_no_abort_check_theorem(&self) {
+    let writer = self.parent.writer;
+    let fun_target = self.fun_target;
+    let (args, _) = self.generate_function_args_and_returns();
+    
+    // Get the name of the current function (no_abort_check variant)
+    let no_abort_check_name = self.function_variant_name(FunctionTranslationStyle::SpecNoAbortCheck);
+    
+    // Get the name of the corresponding _aborts variant
+    let aborts_name = self.function_variant_name(FunctionTranslationStyle::Aborts);
+    
+    writer.set_location(&fun_target.get_loc());
+    emitln!(
+        writer,
+        "theorem {} {} : True :=",
+        no_abort_check_name,
+        args
+    );
+    writer.indent();
+    emitln!(writer, "trivial");
+    writer.unindent();
+}
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use move_stackless_bytecode::stackless_bytecode::{Bytecode, Label};
+
+    #[test] 
+    fn test_control_flow_detection() {
+        use move_stackless_bytecode::stackless_bytecode::AttrId;
+        
+        // Test bytecode with control flow
+        let bytecode_with_control_flow = vec![
+            Bytecode::Branch(AttrId::new(1), Label::new(0), Label::new(1), 0),
+        ];
+        
+        // Test detection
+        let has_control_flow = bytecode_with_control_flow.iter().any(|bc| {
+            matches!(bc, 
+                Bytecode::Jump(_, _) | 
+                Bytecode::Branch(_, _, _, _) | 
+                Bytecode::VariantSwitch(_, _, _) |
+                Bytecode::Abort(_, _))
+        });
+        
+        assert!(has_control_flow, "Should detect control flow");
+    }
+
+    #[test]
+    fn test_cfg_analysis() {
+        use move_stackless_bytecode::stackless_control_flow_graph::StacklessControlFlowGraph;
+        use move_stackless_bytecode::stackless_bytecode::AttrId;
+        
+        // Test bytecode with control flow
+        let bytecode = vec![
+            Bytecode::Branch(AttrId::new(1), Label::new(0), Label::new(1), 0),
+            Bytecode::Label(AttrId::new(2), Label::new(0)),
+            Bytecode::Ret(AttrId::new(3), vec![1]),
+            Bytecode::Label(AttrId::new(4), Label::new(1)),
+            Bytecode::Ret(AttrId::new(5), vec![0]),
+        ];
+        
+        let cfg = StacklessControlFlowGraph::new_forward(&bytecode);
+        let blocks = cfg.blocks();
+        
+        // Should have multiple blocks for the different control flow paths
+        assert!(blocks.len() > 1, "Should have multiple basic blocks, got {}", blocks.len());
+    }
+}
+
+
