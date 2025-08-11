@@ -321,11 +321,13 @@ pub fn collect_dynamic_field_info(
                 return None;
             }
 
-            let info = get_fun_info(
-                targets
-                    .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .unwrap(),
-            );
+            // Check if the function data exists before trying to access it
+            let function_data = targets.get_data(fun_id_with_info, &FunctionVariant::Baseline);
+            if function_data.is_none() {
+                return None;
+            }
+
+            let info = get_fun_info(&function_data.unwrap());
             Some(info.instantiate(type_inst))
         }
         _ => None,

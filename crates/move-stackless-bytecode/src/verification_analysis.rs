@@ -78,11 +78,14 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
+        let fun_name = fun_env.get_full_name_str();
+        println!("DEBUG: Processing function: {}", fun_name);
 
         // Rule 0a: mark essential functions that are needed for the verification pipeline
         let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
         if Self::is_essential_function(fun_env) {
             info.essential = true;
+            println!("DEBUG: Marking essential function: {}", fun_name);
         }
 
         // Rule 0: mark invariant functions as inlined
@@ -113,9 +116,11 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
+            println!("DEBUG: Function {} is in target module", fun_name);
             if targets.is_spec(&fun_env.get_qualified_id())
                 && Self::is_within_verification_scope(fun_env)
             {
+                println!("DEBUG: Marking function {} as verified", fun_name);
                 Self::mark_verified(fun_env, &mut data, targets);
                 // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
                 // if dynamic_loc.is_some() {
@@ -125,8 +130,12 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 //         "Function uses unsupported dynamic fields",
                 //     );
                 // }
+            } else {
+                println!("DEBUG: Function {} is not a spec or not in verification scope", fun_name);
             }
             return data;
+        } else {
+            println!("DEBUG: Function {} is not in target module", fun_name);
         }
 
         // // Rule 3: verify the function if a global invariant (including update invariant) that is
@@ -161,92 +170,140 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // Remove functions that aren't used for verification
         // Keep: verified functions, inlined functions, essential functions, datatype invariant functions
         
+        println!("DEBUG: Starting verification analysis finalize");
+        println!("DEBUG: Total functions in targets before filtering: {}", targets.get_funs().count());
+        
         let mut functions_to_keep = BTreeSet::new();
         
         // Keep all datatype invariant functions (even if not inlined)
         for (_, inv_fun_id) in targets.get_datatype_invs() {
             functions_to_keep.insert(inv_fun_id.clone());
+            println!("DEBUG: Keeping datatype invariant function: {}", env.get_function(inv_fun_id.clone()).get_full_name_str());
         }
         
-        // Keep all functions that are marked as verified, inlined, or essential
-        let mut functions_to_mark_inlined = Vec::new();
+        // Collect all function IDs first to avoid borrowing issues
+        let all_function_ids: Vec<QualifiedId<FunId>> = targets.get_funs().collect();
         
-        for fun_id in targets.get_funs() {
+        // Keep all functions that are marked as verified, inlined, or essential
+        for fun_id in all_function_ids {
             let fun_env = env.get_function(fun_id);
-            let _fun_name = fun_env.get_full_name_str();
+            let fun_name = fun_env.get_full_name_str();
             
-            // Check if this function has any variants that are verified, inlined, or essential
+            // Check if this function has any variants that are verified or inlined
             let mut should_keep = false;
             for variant in targets.get_target_variants(&fun_env) {
                 if let Some(data) = targets.get_data(&fun_id, &variant) {
                     let info = get_info(&FunctionTarget::new(&fun_env, data));
-                    if info.verified || info.inlined || info.essential {
+                    if info.verified || info.inlined {
                         should_keep = true;
-                        println!("Keeping function {}: verified={}, inlined={}, essential={}", 
-                                fun_env.get_full_name_str(), info.verified, info.inlined, info.essential);
+                        println!("Keeping function {}: verified={}, inlined={}", 
+                                fun_name, info.verified, info.inlined);
                         break;
                     }
                 }
             }
             
-            // Also check if the function itself is essential (for functions not yet processed)
-            if !should_keep && Self::is_essential_function(&fun_env) {
+            // Also keep compiler-generated functions (prover and ghost packages only)
+            if !should_keep && Self::is_compiler_generated_function(&fun_env) {
                 should_keep = true;
-                println!("Keeping essential function: {}", fun_env.get_full_name_str());
+                println!("Keeping compiler-generated function: {}", fun_name);
+                
+                // Mark essential functions as essential in their data annotations
+                for variant in targets.get_target_variants(&fun_env) {
+                    if let Some(data) = targets.get_data_mut(&fun_id, &variant) {
+                        let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                        info.essential = true;
+                    }
+                }
             }
             
             if should_keep {
                 functions_to_keep.insert(fun_id.clone());
-                
-                // Mark essential functions for inlining (we'll do this after the loop to avoid borrow issues)
-                if Self::is_essential_function(&fun_env) {
-                    functions_to_mark_inlined.push(fun_id.clone());
-                }
             }
         }
         
-        // Mark essential functions as verified and inlined so they get translated to Boogie
-        for fun_id in functions_to_mark_inlined {
+        println!("DEBUG: Functions to keep after first pass: {}", functions_to_keep.len());
+        
+        // Second pass: recursively keep all callees of inlined functions and dependencies
+        let mut functions_to_add = Vec::new();
+        let mut processed_functions = BTreeSet::new();
+        
+        // Start with the functions we've already decided to keep
+        let mut functions_to_process: Vec<(QualifiedId<FunId>, bool)> = functions_to_keep.iter().map(|id| (*id, true)).collect();
+        println!("DEBUG: Starting with {} functions to process", functions_to_process.len());
+        
+        println!("DEBUG: Starting callee and dependency processing loop");
+        while !functions_to_process.is_empty() {
+            let (fun_id, mark_as_inlined) = functions_to_process.pop().unwrap();
+            
+            if processed_functions.contains(&fun_id) {
+                continue;
+            }
+            processed_functions.insert(fun_id.clone());
+            
             let fun_env = env.get_function(fun_id);
             
+            // Check if this function is inlined or verified (needs deep analysis)
+            let mut needs_deep_analysis = false;
             for variant in targets.get_target_variants(&fun_env) {
-                if let Some(data) = targets.get_data_mut(&fun_id, &variant) {
-                    let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
-                    if !info.verified {
-                        info.verified = true;
-                    }
-                    if !info.inlined {
-                        info.inlined = true;
+                if let Some(data) = targets.get_data(&fun_id, &variant) {
+                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                    if info.inlined || info.verified {
+                        needs_deep_analysis = true;
+                        break;
                     }
                 }
             }
-        }
-        
-        // Second pass: keep functions that are called by inlined functions
-        let mut functions_to_add = Vec::new();
-        for fun_id in targets.get_funs() {
-            if functions_to_keep.contains(&fun_id) {
-                let fun_env = env.get_function(fun_id);
-                
-                // Check if this function is inlined
-                let mut is_inlined = false;
-                for variant in targets.get_target_variants(&fun_env) {
-                    if let Some(data) = targets.get_data(&fun_id, &variant) {
-                        let info = get_info(&FunctionTarget::new(&fun_env, data));
-                        if info.inlined {
-                            is_inlined = true;
-                            break;
+            
+            // If this function needs deep analysis, keep all its callees
+            if needs_deep_analysis {
+                for callee in fun_env.get_called_functions() {
+                    if !functions_to_keep.contains(&callee) && !processed_functions.contains(&callee) {
+                        functions_to_add.push(callee);
+                        // Add to processing for recursive exploration
+                        // Mark callees as inlined only if the caller is inlined, not just verified
+                        let should_mark_callee_inlined = mark_as_inlined && {
+                            let mut caller_is_inlined = false;
+                            for variant in targets.get_target_variants(&fun_env) {
+                                if let Some(data) = targets.get_data(&fun_id, &variant) {
+                                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                                    if info.inlined {
+                                        caller_is_inlined = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            caller_is_inlined
+                        };
+                        
+                        functions_to_process.push((callee, should_mark_callee_inlined));
+                        println!("Keeping callee of function {}: {} (mark_inlined: {})", 
+                                fun_env.get_full_name_str(), env.get_function(callee).get_full_name_str(), should_mark_callee_inlined);
+                        
+                        // Mark the callee as inlined if needed
+                        if should_mark_callee_inlined {
+                            let callee_env = env.get_function(callee);
+                            for variant in targets.get_target_variants(&callee_env) {
+                                if let Some(data) = targets.get_data_mut(&callee, &variant) {
+                                    let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                                    if !info.inlined {
+                                        info.inlined = true;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                
-                // If this function is inlined, keep all its callees
-                if is_inlined {
-                    for callee in fun_env.get_called_functions() {
-                        if !functions_to_keep.contains(&callee) {
-                            functions_to_add.push(callee);
-                            println!("Keeping callee of inlined function: {}", env.get_function(callee).get_full_name_str());
-                        }
+            } else {
+                // Even if this function doesn't need deep analysis, we still need to keep its callees
+                // for dependency reasons (like spec functions needed by borrow analysis)
+                for callee in fun_env.get_called_functions() {
+                    if !functions_to_keep.contains(&callee) && !processed_functions.contains(&callee) {
+                        functions_to_add.push(callee);
+                        // Add to processing but don't mark as inlined (just dependency)
+                        functions_to_process.push((callee, false));
+                        println!("Keeping dependency of function {}: {}", 
+                                fun_env.get_full_name_str(), env.get_function(callee).get_full_name_str());
                     }
                 }
             }
@@ -257,12 +314,16 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             functions_to_keep.insert(fun_id);
         }
         
+        println!("DEBUG: Total functions to keep after callee processing: {}", functions_to_keep.len());
+        
         // Remove functions that are not in the keep set
         let functions_to_remove: Vec<QualifiedId<FunId>> = targets
             .get_funs()
             .filter(|fun_id| !functions_to_keep.contains(fun_id))
             .collect();
             
+        println!("DEBUG: Functions to remove: {}", functions_to_remove.len());
+        
         // Debug: print functions being removed
         for fun_id in &functions_to_remove {
             let fun_env = env.get_function(*fun_id);
@@ -273,6 +334,8 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         for fun_id in functions_to_remove {
             targets.remove_target(&fun_id);
         }
+        
+        println!("DEBUG: Final function count after filtering: {}", targets.get_funs().count());
     }
 
     fn dump_result(
@@ -501,6 +564,30 @@ impl VerificationAnalysisProcessor {
         
         // All prover functions are essential
         if name.contains("prover::") {
+            return true;
+        }
+        
+        // Essential stdlib functions that are needed for verification
+        if name.starts_with("vector::") || 
+           name.starts_with("option::") ||
+           name.starts_with("object::") {
+            return true;
+        }
+        
+        false
+    }
+    
+    /// Check if a function is compiler-generated or fundamental infrastructure
+    pub fn is_compiler_generated_function(fun_env: &FunctionEnv) -> bool {
+        let name = fun_env.get_full_name_str();
+        
+        // Compiler-generated functions (prover/ghost)
+        if name.contains("prover::") || name.contains("ghost::") {
+            return true;
+        }
+        
+        // Fundamental infrastructure functions needed for verification
+        if name.starts_with("vector::") || name.starts_with("option::") {
             return true;
         }
         
@@ -814,118 +901,4 @@ impl VerificationAnalysisProcessor {
 //         original: BTreeMap<QualifiedId<FunId>, InvariantRelevance>,
 //         fun_set_with_no_inv_check: &BTreeSet<QualifiedId<FunId>>,
 //     ) -> BTreeMap<QualifiedId<FunId>, InvariantRelevance> {
-//         // NOTE: All fields in `InvariantRelevance` are derived based on unification of memory
-//         // usage/modification of the function and the invariant. In `MemoryUsageAnalysis`, both used
-//         // memory and modified memory subsumes the set summarized in the called functions.
-//         //
-//         // If the called function is NOT a generic function, this means that all the invariants that
-//         // are applicable to the called function will be applicable to its caller function as well.
-//         //
-//         // If the called function IS a generic function, this means that all the invariants that are
-//         // applicable to this specific instantiation of the called function (which can be another
-//         // type parameter, i.e., a type parameter from the caller function) will be applicable to
-//         // this caller function as well.
-//         //
-//         // This means that if we disable a suspendable invariant `I` in the called function, for all
-//         // the callers of this called function, `I` is either
-//         // - already marked as relevant to the caller (in the `accessed/modified` set), or
-//         // - `I` is not relevant to the caller and we should not instrument `I` in the caller.
-//         // This information will be consumed in the invariant instrumentation phase later.
-
-//         // Step 1: remove suspended invariants from the the relevance set. These suspended
-//         // invariants themselves forms a relevance set which will be considered as directly
-//         // accessed/modified in all callers of this function.
-//         let mut pruned = BTreeMap::new();
-//         let mut deferred = BTreeMap::new();
-//         for (fun_id, mut relevance) in original.into_iter() {
-//             if fun_set_with_no_inv_check.contains(&fun_id) {
-//                 let suspended = relevance.prune_suspendable(env);
-//                 deferred.insert(fun_id, suspended);
-//             }
-//             pruned.insert(fun_id, relevance);
-//         }
-
-//         // Step 2: defer the suspended invariants back to the caller and the caller will accept
-//         // them in the directly accessed/modified sets. Later in the instrumentation phase, the
-//         // caller should treat the call instruction in the same way as if the instruction modifies
-//         // the deferred invariants.
-//         let mut result = BTreeMap::new();
-//         for (fun_id, mut relevance) in pruned.into_iter() {
-//             if !fun_set_with_no_inv_check.contains(&fun_id) {
-//                 let fenv = env.get_function(fun_id);
-//                 for callee in fenv.get_called_functions() {
-//                     if fun_set_with_no_inv_check.contains(&callee) {
-//                         // all invariants in the callee side will now be deferred to this function
-//                         let suspended = deferred.get(&callee).unwrap();
-//                         relevance.subsume_callee(suspended);
-//                     }
-//                 }
-//             }
-//             result.insert(fun_id, relevance);
-//         }
-//         result
-//     }
-// }
-
-// /// This impl block contains functions that are mostly utilities functions and are only relevant
-// /// within this file.
-// impl InvariantRelevance {
-//     /// Split off `[suspendable]` invariants from the sets and form a new `InvariantRelevance` for
-//     /// these suspended ones. This represents the invariants that will be deferred to the caller.
-//     fn prune_suspendable(&mut self, env: &GlobalEnv) -> Self {
-//         fn separate(holder: &mut BTreeSet<GlobalId>, env: &GlobalEnv) -> BTreeSet<GlobalId> {
-//             let mut split = BTreeSet::new();
-//             holder.retain(|inv_id| {
-//                 if is_invariant_suspendable(env, *inv_id) {
-//                     split.insert(*inv_id);
-//                     false
-//                 } else {
-//                     true
-//                 }
-//             });
-//             split
-//         }
-
-//         let accessed = separate(&mut self.accessed, env);
-//         let modified = separate(&mut self.modified, env);
-//         let direct_accessed = separate(&mut self.direct_accessed, env);
-//         let direct_modified = separate(&mut self.direct_modified, env);
-//         Self {
-//             accessed,
-//             modified,
-//             direct_accessed,
-//             direct_modified,
-//         }
-//     }
-
-//     /// Accept the invariants deferred from the callee and incorporate them into the callers' direct
-//     /// accessed/modified set if these invariants are also in the caller's transitive set.
-//     ///
-//     /// NOTE: it is possible that the deferred invariants are not in the caller's transitive set.
-//     /// For example, if the callee (C) is a generic function that modifies memory S<T> while the
-//     /// suspended invariant I is about S<bool>. The caller (F) calls a concrete instantiation of C
-//     /// which modifies S<u64>. In this case, I is applicable to C but not applicable to F.
-//     fn subsume_callee(&mut self, suspended: &InvariantRelevance) {
-//         self.direct_accessed
-//             .extend(suspended.accessed.intersection(&self.accessed));
-//         self.direct_modified
-//             .extend(suspended.modified.intersection(&self.modified));
-//     }
-// }
-
-// // Helper functions
-// // ----------------
-
-// pub fn is_invariant_checking_disabled(fun_env: &FunctionEnv) -> bool {
-//     fun_env.is_pragma_true(DISABLE_INVARIANTS_IN_BODY_PRAGMA, || false)
-// }
-
-// pub fn is_invariant_checking_delegated(fun_env: &FunctionEnv) -> bool {
-//     fun_env.is_pragma_true(DELEGATE_INVARIANTS_TO_CALLER_PRAGMA, || false)
-// }
-
-// pub fn is_invariant_suspendable(env: &GlobalEnv, inv_id: GlobalId) -> bool {
-//     let inv = env.get_global_invariant(inv_id).unwrap();
-//     env.is_property_true(&inv.properties, CONDITION_SUSPENDABLE_PROP)
-//         .unwrap_or(false)
-// }
+//         // NOTE: All fields in `

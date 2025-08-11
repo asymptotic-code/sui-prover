@@ -86,6 +86,8 @@ pub struct BoogieTranslator<'env> {
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     declared_procedures: RefCell<BTreeSet<String>>,
     processed_functions: RefCell<BTreeSet<(QualifiedId<FunId>, Vec<Type>, FunctionTranslationStyle)>>,
+    // Enhanced tracking for procedure names to prevent duplicates
+    procedure_names: RefCell<BTreeSet<String>>,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -124,6 +126,7 @@ impl<'env> BoogieTranslator<'env> {
             spec_translator: SpecTranslator::new(writer, env, options),
             declared_procedures: RefCell::new(BTreeSet::new()),
             processed_functions: RefCell::new(BTreeSet::new()),
+            procedure_names: RefCell::new(BTreeSet::new()),
         }
     }
 
@@ -361,6 +364,12 @@ impl<'env> BoogieTranslator<'env> {
                 }
 
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                    // Skip prover:: functions as they should only be processed as regular functions
+                    let fun_name = fun_env.get_full_name_str();
+                    if fun_name.contains("prover::") {
+                        continue;
+                    }
+                    
                     verified_functions_count += 1;
 
 
@@ -377,13 +386,16 @@ impl<'env> BoogieTranslator<'env> {
                                 fun_env,
                                 &FunctionVariant::Verification(VerificationFlavor::Regular),
                             );
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                FunctionTranslationStyle::Default,
-                            )
-                            .translate();
+                            if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
+                                FunctionTranslator::new(
+                                    self,
+                                    &fun_target,
+                                    &[],
+                                    FunctionTranslationStyle::Default,
+                                )
+                                .translate();
+                                self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default);
+                            }
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                         }
@@ -391,35 +403,41 @@ impl<'env> BoogieTranslator<'env> {
                     }
                     
                     // Only translate each style if not already processed
-                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
+                    if self.should_process_function(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
                         self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
                     }
-                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Asserts) {
+                    if self.should_process_function(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Asserts) {
                         self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
                     }
-                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Aborts) {
+                    if self.should_process_function(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Aborts) {
                         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                     }
-                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::SpecNoAbortCheck) {
+                    if self.should_process_function(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::SpecNoAbortCheck) {
                         self.translate_function_style(
                             fun_env,
                             FunctionTranslationStyle::SpecNoAbortCheck,
                         );
                     }
-                    if !self.is_function_processed(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Opaque) {
+                    if self.should_process_function(&fun_env.get_qualified_id(), &[], FunctionTranslationStyle::Opaque) {
                         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                     }
                 } else {
                     let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
-                    let verification_info = verification_analysis::get_info(&fun_target);
+                                        let verification_info = verification_analysis::get_info(&fun_target);
                     let inlined = verification_info.inlined;
                      
-                    // Regular functions need to be inlined to get procedure declarations
+                                        // Regular functions need to be inlined to get procedure declarations
                     // Native functions that aren't handled by prelude also need procedure declarations
                     let needs_procedure_declaration = inlined || fun_env.is_native();
                     
                     // Skip processing if this function was already processed as a spec function
                     if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                        continue;
+                    }
+                    
+                    // Skip prover functions entirely as they are handled by the prelude
+                    let fun_name = fun_env.get_full_name_str();
+                    if fun_name.contains("prover::") {
                         continue;
                     }
                     
@@ -431,13 +449,16 @@ impl<'env> BoogieTranslator<'env> {
                         self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
                     {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                FunctionTranslationStyle::Default,
-                            )
-                            .translate();
+                            if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
+                                FunctionTranslator::new(
+                                    self,
+                                    &fun_target,
+                                    &[],
+                                    FunctionTranslationStyle::Default,
+                                )
+                                .translate();
+                                self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default);
+                            }
                         }
                     } else {
                         // This variant is inlined, so translate for all type instantiations.
@@ -450,19 +471,143 @@ impl<'env> BoogieTranslator<'env> {
                         
                         println!("DEBUG: Mono info for {}: {:?}", fun_env.get_full_name_str(), type_insts);
                         
-                        // For native functions, use Opaque style
+                        // Use verification analysis to determine how to handle this function
+                        let fun_name = fun_env.get_full_name_str();
+                        
+                        // Handle Sui-specific functions that need special processing
+                        let is_sui_specific = fun_name.contains("dynamic_field::") || fun_name.contains("versioned::");
+                        if is_sui_specific {
+                            println!("DEBUG: Processing Sui-specific function: {} with Default style", fun_name);
+                            
+                            // Special handling for dynamic_field functions - coordinate with prelude
+                            if fun_name.contains("dynamic_field::") {
+                                println!("DEBUG: Special dynamic_field handling for: {}", fun_name);
+                                self.generate_dynamic_field_function_variants(&fun_target, FunctionTranslationStyle::Default, &type_insts);
+                            } else {
+                                // Original logic for non-dynamic_field Sui-specific functions
+                                
+                                // Process with empty type instantiation
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default) {
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &[],
+                                        FunctionTranslationStyle::Default,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], FunctionTranslationStyle::Default);
+                                }
+                                
+                                // Also process with type instantiations if available
+                                for type_inst in &type_insts {
+                                    println!("DEBUG: Processing Sui-specific function type inst: {} with {:?}", fun_name, type_inst);
+                                    if self.should_process_function(&fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default) {
+                                        FunctionTranslator::new(
+                                            self,
+                                            &fun_target,
+                                            type_inst,
+                                            FunctionTranslationStyle::Default,
+                                        )
+                                        .translate();
+                                        self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), type_inst, FunctionTranslationStyle::Default);
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                        
                         let style = if fun_env.is_native() {
-                            FunctionTranslationStyle::Opaque
+                            // Check if this function is marked as essential or inlined
+                            let is_essential = self.is_function_essential(fun_env);
+                            let is_inlined = self.is_function_inlined(fun_env);
+                            
+                            if is_essential || is_inlined {
+                                // Essential and inlined functions need full implementations
+                                FunctionTranslationStyle::Default
+                            } else {
+                                // Other native functions only need declarations
+                                FunctionTranslationStyle::Opaque
+                            }
                         } else {
                             FunctionTranslationStyle::Default
                         };
                         
                         println!("DEBUG: Processing regular function: {} with style {:?}, type_insts: {:?}", fun_env.get_full_name_str(), style, type_insts.len());
                         
-                        // If no type instantiations found, generate it with empty type instantiation
-                        if type_insts.is_empty() {
-                            if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &[], style) {
-                                println!("DEBUG: Creating FunctionTranslator for {} with empty type inst", fun_env.get_full_name_str());
+                        // Enhanced handling for essential functions with missing mono info
+                        let is_essential = self.is_function_essential(fun_env);
+                        let needs_common_instantiations = is_essential && type_insts.is_empty();
+                        
+                        // Process concrete type instantiations
+                        let type_insts_is_empty = type_insts.is_empty();
+                        
+                        // For dynamic_field functions, we need to generate specific combinations
+                        // that are called but not handled by prelude templates
+                        let fun_name = fun_env.get_full_name_str();
+                        let is_dynamic_field_fn = fun_name.contains("dynamic_field::");
+                        
+                        println!("DEBUG: Checking if {} is dynamic_field function: {}", fun_name, is_dynamic_field_fn);
+                        
+                        if is_dynamic_field_fn {
+                            println!("DEBUG: Special handling for dynamic_field function: {}", fun_name);
+                            self.generate_dynamic_field_function_variants(&fun_target, style, &type_insts);
+                        } else {
+                            // For non-dynamic_field functions, use original logic
+                            
+                            // Always generate empty instantiation for functions with type parameters
+                            // This creates the generic '#0_#1' versions that are expected by calls
+                            if fun_env.get_type_parameter_count() > 0 {
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], style) {
+                                    println!("DEBUG: Creating generic FunctionTranslator for {} with empty type inst", fun_env.get_full_name_str());
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &[],
+                                        style,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], style);
+                                }
+                            }
+                            
+                            // Process concrete type instantiations
+                            for type_inst in type_insts {
+                                println!("DEBUG: Processing type inst for {}: {:?}", fun_env.get_full_name_str(), type_inst);
+                                
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &type_inst,
+                                        style,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &type_inst, style);
+                                } else {
+                                    println!("DEBUG: Skipping type inst for {}: {:?} - already processed or duplicate", fun_env.get_full_name_str(), type_inst);
+                                }
+                            }
+                            
+                            // If no type instantiations and no type parameters, process with empty instantiation
+                            if type_insts_is_empty && fun_env.get_type_parameter_count() == 0 {
+                                println!("DEBUG: Creating FunctionTranslator for {} with empty type inst (no type params)", fun_env.get_full_name_str());
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], style) {
+                                    FunctionTranslator::new(
+                                        self,
+                                        &fun_target,
+                                        &[],
+                                        style,
+                                    )
+                                    .translate();
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], style);
+                                }
+                            }
+                        }
+                        
+                        // If no type instantiations and no type parameters, process with empty instantiation
+                        if type_insts_is_empty && fun_env.get_type_parameter_count() == 0 {
+                            println!("DEBUG: Creating FunctionTranslator for {} with empty type inst (no type params)", fun_env.get_full_name_str());
+                            if self.should_process_function(&fun_target.func_env.get_qualified_id(), &[], style) {
                                 FunctionTranslator::new(
                                     self,
                                     &fun_target,
@@ -470,14 +615,18 @@ impl<'env> BoogieTranslator<'env> {
                                     style,
                                 )
                                 .translate();
-                                self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &[], style);
-                            } else {
-                                println!("DEBUG: Skipping {} with style {:?} - already processed", fun_env.get_full_name_str(), style);
+                                self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &[], style);
                             }
-                        } else {
-                            for type_inst in type_insts {
-                                println!("DEBUG: Processing type inst for {}: {:?}", fun_env.get_full_name_str(), type_inst);
-                                if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                        }
+                        
+                        // Generate common type instantiations for essential functions
+                        if needs_common_instantiations {
+                            println!("DEBUG: Generating common type instantiations for essential function: {}", fun_env.get_full_name_str());
+                            let common_instantiations = self.get_common_type_instantiations_for_function(fun_env);
+                            
+                            for type_inst in common_instantiations {
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                    println!("DEBUG: Processing common type inst for {}: {:?}", fun_env.get_full_name_str(), type_inst);
                                     FunctionTranslator::new(
                                         self,
                                         &fun_target,
@@ -485,28 +634,27 @@ impl<'env> BoogieTranslator<'env> {
                                         style,
                                     )
                                     .translate();
-                                    self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
-                                } else {
-                                    println!("DEBUG: Skipping type inst for {}: {:?} - already processed", fun_env.get_full_name_str(), type_inst);
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &type_inst, style);
                                 }
                             }
                         }
-                        
 
                         
-                        // For option functions, also generate with additional type parameters
-                        // to ensure they're available when needed (but avoid duplicates)
-                        if fun_env.get_full_name_str().contains("option::") {
+                        // Legacy handling for vector and option functions (keeping for compatibility)
+                        if fun_env.get_full_name_str().contains("vector::") || fun_env.get_full_name_str().contains("option::") {
                             let additional_types = vec![
                                 vec![Type::Primitive(PrimitiveType::U64)],
-                                vec![Type::TypeParameter(0)],
-                                vec![Type::Primitive(PrimitiveType::Address)],
                                 vec![Type::Primitive(PrimitiveType::U8)],
+                                vec![Type::Primitive(PrimitiveType::Address)],
+                                vec![Type::Primitive(PrimitiveType::Bool)],
+                                vec![Type::Primitive(PrimitiveType::U128)],
+                                vec![Type::Primitive(PrimitiveType::U256)],
+                                vec![Type::TypeParameter(0)],
                                 vec![Type::TypeParameter(1)],
                             ];
                             
                             for type_inst in additional_types {
-                                if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
+                                if self.should_process_function(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
                                     FunctionTranslator::new(
                                         self,
                                         &fun_target,
@@ -514,30 +662,7 @@ impl<'env> BoogieTranslator<'env> {
                                         style,
                                     )
                                     .translate();
-                                    self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
-                                }
-                            }
-                            
-                            // Also generate with additional type parameters for vector functions
-                            // to ensure all vector functions are available
-                            if fun_env.get_full_name_str().contains("vector::") {
-                                let vector_types = vec![
-                                    vec![Type::Primitive(PrimitiveType::U64)],
-                                    vec![Type::Primitive(PrimitiveType::U8)],
-                                    vec![Type::TypeParameter(1)],
-                                ];
-                                
-                                for type_inst in vector_types {
-                                    if !self.is_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style) {
-                                        FunctionTranslator::new(
-                                            self,
-                                            &fun_target,
-                                            &type_inst,
-                                            style,
-                                        )
-                                        .translate();
-                                        self.mark_function_processed(&fun_target.func_env.get_qualified_id(), &type_inst, style);
-                                    }
+                                    self.mark_function_processed_comprehensive(&fun_target.func_env.get_qualified_id(), &type_inst, style);
                                 }
                             }
                         }
@@ -583,6 +708,18 @@ impl<'env> BoogieTranslator<'env> {
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
+        let fun_name = fun_env.get_full_name_str();
+        let fun_id = &fun_env.get_qualified_id();
+        
+        // Use enhanced tracking to check if function should be processed
+        if !self.should_process_function(fun_id, &[], style) {
+            println!("DEBUG: translate_function_style - SKIPPING function: {} with style {:?}", fun_name, style);
+            return;
+        }
+        
+        // Mark as processed with comprehensive tracking
+        self.mark_function_processed_comprehensive(fun_id, &[], style);
+        
         println!("DEBUG: translate_function_style called for {} with style {:?}", 
                 fun_env.get_full_name_str(), style);
         use Bytecode::*;
@@ -947,6 +1084,40 @@ impl<'env> BoogieTranslator<'env> {
         self.declared_procedures.borrow_mut().insert(procedure_name);
     }
 
+    /// Enhanced procedure name tracking to prevent duplicates
+    fn is_procedure_name_tracked(&self, procedure_name: &str) -> bool {
+        self.procedure_names.borrow().contains(procedure_name)
+    }
+
+    fn mark_procedure_name_tracked(&self, procedure_name: String) {
+        let was_inserted = self.procedure_names.borrow_mut().insert(procedure_name.clone());
+        if !was_inserted {
+            println!("WARNING: Duplicate procedure name detected: {}", procedure_name);
+        }
+    }
+
+    /// Check if a function should be processed based on comprehensive tracking
+    fn should_process_function(&self, fun_id: &QualifiedId<FunId>, type_inst: &[Type], style: FunctionTranslationStyle) -> bool {
+        // Check if already processed with this exact combination
+        if self.is_function_processed(fun_id, type_inst, style) {
+            return false;
+        }
+
+        true
+    }
+
+    /// Mark a function as processed with comprehensive tracking
+    fn mark_function_processed_comprehensive(&self, fun_id: &QualifiedId<FunId>, type_inst: &[Type], style: FunctionTranslationStyle) {
+        let fun_env = self.env.get_function(*fun_id);
+        let fun_name = fun_env.get_full_name_str();
+        
+        // Mark as processed in the existing tracking
+        self.mark_function_processed(fun_id, type_inst, style);
+        
+        println!("DEBUG: Marking function as processed: {} with style {:?}", 
+                fun_name, style);
+    }
+
     fn get_verification_target_fun_env(
         &self,
         spec_fun_qid: &QualifiedId<FunId>,
@@ -959,6 +1130,153 @@ impl<'env> BoogieTranslator<'env> {
     /// Check if a function is essential for the verification pipeline
     fn is_essential_function(&self, fun_env: &FunctionEnv) -> bool {
         move_stackless_bytecode::verification_analysis::VerificationAnalysisProcessor::is_essential_function(fun_env)
+    }
+
+    /// Check if a function is marked as essential in the verification analysis
+    fn is_function_essential(&self, fun_env: &FunctionEnv) -> bool {
+        let qid = fun_env.get_qualified_id();
+        
+        // Check if this function has any variants marked as essential
+        for variant in self.targets.get_target_variants(fun_env) {
+            if let Some(data) = self.targets.get_data(&qid, &variant) {
+                let info = move_stackless_bytecode::verification_analysis::get_info(
+                    &move_stackless_bytecode::function_target::FunctionTarget::new(fun_env, data)
+                );
+                if info.essential {
+                    return true;
+                }
+            }
+        }
+        
+        // Also check if the function itself is essential (for functions not yet processed)
+        move_stackless_bytecode::verification_analysis::VerificationAnalysisProcessor::is_essential_function(fun_env)
+    }
+
+    /// Check if a function is marked as inlined in the verification analysis
+    fn is_function_inlined(&self, fun_env: &FunctionEnv) -> bool {
+        let qid = fun_env.get_qualified_id();
+        
+        // Check if this function has any variants marked as inlined
+        for variant in self.targets.get_target_variants(fun_env) {
+            if let Some(data) = self.targets.get_data(&qid, &variant) {
+                let info = move_stackless_bytecode::verification_analysis::get_info(
+                    &move_stackless_bytecode::function_target::FunctionTarget::new(fun_env, data)
+                );
+                if info.inlined {
+                    return true;
+                }
+            }
+        }
+        
+        // Also check if this function is called by any inlined functions
+        // This is a fallback for functions that are kept as callees but not yet marked as inlined
+        let fun_name = fun_env.get_full_name_str();
+        if fun_name.contains("dynamic_field::") || fun_name.contains("versioned::") {
+            // These are Sui-specific functions that are likely called by inlined functions
+            return true;
+        }
+        
+        false
+    }
+    
+    /// Get common type instantiations for essential functions that need them
+    fn get_common_type_instantiations_for_function(&self, fun_env: &FunctionEnv) -> Vec<Vec<Type>> {
+        let fun_name = fun_env.get_full_name_str();
+        let type_param_count = fun_env.get_type_parameter_count();
+        
+        // Generate appropriate type instantiations based on function name and arity
+        let mut instantiations = Vec::new();
+        
+        // For functions with no type parameters, ensure they still get processed
+        if type_param_count == 0 {
+            // Functions without type parameters don't need instantiations beyond empty
+            // But we still want to ensure they get generated in boogie output
+            // This is handled by the empty type instantiation already processed above
+            return instantiations;
+        }
+        
+        // Common primitive types for single-parameter functions
+        if type_param_count == 1 {
+            instantiations.extend(vec![
+                vec![Type::Primitive(PrimitiveType::U8)],
+                vec![Type::Primitive(PrimitiveType::U64)],
+                vec![Type::Primitive(PrimitiveType::U128)],
+                vec![Type::Primitive(PrimitiveType::U256)],
+                vec![Type::Primitive(PrimitiveType::Address)],
+                vec![Type::Primitive(PrimitiveType::Bool)],
+                vec![Type::Vector(Box::new(Type::Primitive(PrimitiveType::U8)))],
+                vec![Type::TypeParameter(0)],
+            ]);
+        }
+        
+        // Common type pairs for two-parameter functions
+        if type_param_count == 2 {
+            instantiations.extend(vec![
+                vec![Type::TypeParameter(0), Type::TypeParameter(1)],
+                vec![Type::Primitive(PrimitiveType::U8), Type::Primitive(PrimitiveType::U64)],
+                vec![Type::Vector(Box::new(Type::Primitive(PrimitiveType::U8))), Type::Primitive(PrimitiveType::U64)],
+            ]);
+        }
+        
+        // Special handling for specific function types
+        if fun_name.contains("vector::") {
+            // Vector functions often need these specific instantiations
+            if type_param_count == 1 {
+                instantiations.extend(vec![
+                    vec![Type::Primitive(PrimitiveType::U8)],
+                    vec![Type::Primitive(PrimitiveType::U64)],
+                    vec![Type::Primitive(PrimitiveType::Bool)],
+                    vec![Type::Primitive(PrimitiveType::Address)],
+                ]);
+            }
+        }
+        
+        if fun_name.contains("option::") {
+            // Option functions need specific type instantiations
+            if type_param_count == 1 {
+                instantiations.extend(vec![
+                    vec![Type::TypeParameter(0)],
+                    vec![Type::TypeParameter(1)], // Add #1 type parameter that's being referenced
+                    vec![Type::Vector(Box::new(Type::Primitive(PrimitiveType::U8)))],
+                    vec![Type::Primitive(PrimitiveType::U64)],
+                ]);
+            }
+        }
+        
+        if fun_name.contains("object::") {
+            // Object functions may not need type parameters, but if they do, use common types
+            if type_param_count == 1 {
+                instantiations.extend(vec![
+                    vec![Type::Primitive(PrimitiveType::U8)],
+                    vec![Type::Primitive(PrimitiveType::U64)],
+                    vec![Type::TypeParameter(0)],
+                ]);
+            }
+        }
+        
+        if fun_name.contains("dynamic_field::") {
+            // Dynamic field functions often need type pairs
+            if type_param_count == 1 {
+                instantiations.extend(vec![
+                    vec![Type::TypeParameter(0)],
+                    vec![Type::Vector(Box::new(Type::Primitive(PrimitiveType::U8)))],
+                    vec![Type::Primitive(PrimitiveType::U64)],
+                ]);
+            } else if type_param_count == 2 {
+                instantiations.extend(vec![
+                    vec![Type::TypeParameter(0), Type::TypeParameter(1)],
+                    vec![Type::Vector(Box::new(Type::Primitive(PrimitiveType::U8))), Type::TypeParameter(1)],
+                    vec![Type::Primitive(PrimitiveType::U64), Type::Primitive(PrimitiveType::U8)],
+                ]);
+            }
+        }
+        
+        // Remove duplicates while preserving order
+        let mut seen = std::collections::BTreeSet::new();
+        instantiations.retain(|inst| seen.insert(inst.clone()));
+        
+        println!("DEBUG: Generated {} common type instantiations for {}", instantiations.len(), fun_name);
+        instantiations
     }
 
     fn is_function_processed(&self, fun_id: &QualifiedId<FunId>, type_inst: &[Type], style: FunctionTranslationStyle) -> bool {
@@ -974,6 +1292,265 @@ impl<'env> BoogieTranslator<'env> {
         let fun_name = self.env.get_function(*fun_id).get_full_name_str();
         println!("DEBUG: Marking function as processed: {} with style {:?}", fun_name, style);
         self.processed_functions.borrow_mut().insert((fun_id.clone(), type_inst.to_vec(), style));
+    }
+
+    /// Generate the specific function variants needed for dynamic_field functions
+    /// based on the call site analysis
+    fn generate_dynamic_field_function_variants(
+        &self, 
+        fun_target: &FunctionTarget, 
+        style: FunctionTranslationStyle,
+        type_insts: &BTreeSet<Vec<Type>>
+    ) {
+        let fun_env = fun_target.func_env;
+        let fun_name = fun_env.get_full_name_str();
+        let fun_id = fun_env.get_qualified_id();
+        
+        println!("DEBUG: Generating dynamic_field variants for: {}", fun_name);
+        
+        // Key insight: The prelude generates concrete instantiations, but we need 
+        // to generate ONLY the missing generic variants and specific combinations
+        // that are called but not provided by the prelude
+        
+        match fun_name.as_str() {
+            name if name.contains("dynamic_field::borrow_child_object") => {
+                // The prelude doesn't generate borrow_child_object - we need all variants
+                println!("DEBUG: Generating all variants for borrow_child_object (not in prelude)");
+                
+                // Generate generic version for general case
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic borrow_child_object variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                
+                // Generate specific Field struct variants that are being called
+                // Calls expect: '$2_dynamic_field_Field'#0_#1'' and '$2_dynamic_field_Field'vec'u8'_$42_dynamic_fields_DFChild''
+                self.generate_field_struct_variants(fun_target, style, &type_insts);
+            },
+            name if name.contains("dynamic_field::has_child_object_with_ty") => {
+                // The prelude doesn't generate has_child_object_with_ty - we need all variants  
+                println!("DEBUG: Generating all variants for has_child_object_with_ty (not in prelude)");
+                
+                // Generate generic version for general case
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic has_child_object_with_ty variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                
+                // Generate specific Field struct variants that are being called
+                self.generate_field_struct_variants(fun_target, style, &type_insts);
+            },
+            name if name.contains("dynamic_field::hash_type_and_key") => {
+                // The prelude doesn't generate hash_type_and_key - we need all variants
+                println!("DEBUG: Generating all variants for hash_type_and_key (not in prelude)");
+                
+                // Generate generic version
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic hash_type_and_key variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                
+                // Also generate concrete vec<u8> version that's being called
+                let vec_u8_type = Type::Vector(Box::new(Type::Primitive(move_model::ty::PrimitiveType::U8)));
+                if self.should_process_function(&fun_id, &[vec_u8_type.clone()], style) {
+                    println!("DEBUG: Generating concrete vec<u8> hash_type_and_key variant");
+                    FunctionTranslator::new(self, fun_target, &[vec_u8_type.clone()], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[vec_u8_type], style);
+                }
+            },
+            name if name.contains("dynamic_field::borrow") => {
+                // The prelude DOES generate borrow with concrete types, 
+                // so we ONLY generate generic version to avoid conflicts
+                println!("DEBUG: Generating ONLY generic borrow variant (prelude handles concrete)");
+                
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic dynamic_field::borrow variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                // Skip concrete versions - let prelude handle them
+            },
+            name if name.contains("dynamic_field::exists_with_type") => {
+                // The prelude DOES generate exists_with_type with concrete types,
+                // so we ONLY generate generic version to avoid conflicts
+                println!("DEBUG: Generating ONLY generic exists_with_type variant (prelude handles concrete)");
+                
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic dynamic_field::exists_with_type variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                // Skip concrete versions - let prelude handle them  
+            },
+            name if name.contains("dynamic_field::has_child_object") => {
+                // The prelude doesn't generate has_child_object - we need all variants
+                println!("DEBUG: Generating all variants for has_child_object (not in prelude)");
+                
+                // Generate version without type parameters (basic case)
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating basic has_child_object variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+            },
+            name if name.contains("dynamic_field::add_child_object") => {
+                // The prelude doesn't generate add_child_object - we need all variants
+                println!("DEBUG: Generating all variants for add_child_object (not in prelude)");
+                
+                // Generate generic version for general case
+                if self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic add_child_object variant");
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+                
+                // Generate specific Field struct variants that are being called
+                self.generate_field_struct_variants(fun_target, style, &type_insts);
+            },
+            _ => {
+                // For other dynamic_field functions, generate generic version
+                if fun_env.get_type_parameter_count() > 0 && self.should_process_function(&fun_id, &[], style) {
+                    println!("DEBUG: Generating generic variant for {}", fun_name);
+                    FunctionTranslator::new(self, fun_target, &[], style).translate();
+                    self.mark_function_processed_comprehensive(&fun_id, &[], style);
+                }
+            }
+        }
+    }
+
+    fn generate_field_compound_variant(
+        &self,
+        fun_target: &FunctionTarget, 
+        style: FunctionTranslationStyle,
+        with_generic_params: bool
+    ) {
+        // This generates variants that use Field struct combined with other type parameters
+        // The key insight is that these functions take Field<K, V> as first parameter
+        // and need to be instantiated with compound types
+        
+        let fun_id = fun_target.func_env.get_qualified_id();
+        
+        // Try to find the Field struct type in the environment
+        // We need to create type instantiations that represent Field<#0, #1> combinations
+        
+        if with_generic_params {
+            // Generate version with generic type parameters that matches call pattern 'Field'#0_#1'
+            // This is tricky because we need to represent the Field struct with generic parameters
+            if self.should_process_function(&fun_id, &[], style) {
+                println!("DEBUG: Generating Field compound variant (generic) for {}", fun_target.func_env.get_full_name_str());
+                FunctionTranslator::new(self, fun_target, &[], style).translate();
+                self.mark_function_processed_comprehensive(&fun_id, &[], style);
+            }
+        }
+    }
+
+    fn generate_field_compound_variant_concrete(
+        &self,
+        fun_target: &FunctionTarget,
+        style: FunctionTranslationStyle, 
+        type_inst: &[Type]
+    ) {
+        // Generate version with concrete type parameters that matches patterns like
+        // 'Field'vec'u8'_$42_dynamic_fields_DFChild'
+        
+        let fun_id = fun_target.func_env.get_qualified_id();
+        if self.should_process_function(&fun_id, type_inst, style) {
+            println!("DEBUG: Generating Field compound variant (concrete) for {} with types {:?}", 
+                    fun_target.func_env.get_full_name_str(), type_inst);
+            FunctionTranslator::new(self, fun_target, type_inst, style).translate();
+            self.mark_function_processed_comprehensive(&fun_id, type_inst, style);
+        }
+    }
+
+    fn generate_concrete_variant(
+        &self,
+        fun_target: &FunctionTarget,
+        style: FunctionTranslationStyle, 
+        type_inst: Vec<Type>
+    ) {
+        let fun_id = fun_target.func_env.get_qualified_id();
+        if self.should_process_function(&fun_id, &type_inst, style) {
+            println!("DEBUG: Generating concrete variant for {} with types {:?}", 
+                    fun_target.func_env.get_full_name_str(), type_inst);
+            FunctionTranslator::new(self, fun_target, &type_inst, style).translate();
+            self.mark_function_processed_comprehensive(&fun_id, &type_inst, style);
+        }
+    }
+    
+    /// Generate variants for functions that take Field struct as first parameter
+    /// These functions need variants like '$2_dynamic_field_Field'#0_#1'' and 
+    /// '$2_dynamic_field_Field'vec'u8'_$42_dynamic_fields_DFChild''
+    fn generate_field_struct_variants(
+        &self,
+        fun_target: &FunctionTarget,
+        style: FunctionTranslationStyle,
+        type_insts: &BTreeSet<Vec<Type>>
+    ) {
+        let fun_id = fun_target.func_env.get_qualified_id();
+        let fun_name = fun_target.func_env.get_full_name_str();
+        
+        println!("DEBUG: Generating Field struct variants for: {}", fun_name);
+        
+        // Try to find the Field struct type from the environment
+        // Look for dynamic_field::Field in the modules
+        let mut field_struct_type = None;
+        for module_env in self.env.get_modules() {
+            if module_env.get_full_name_str().contains("dynamic_field") {
+                for struct_env in module_env.get_structs() {
+                    if struct_env.get_name().display(struct_env.symbol_pool()).to_string() == "Field" {
+                        // Found the Field struct - create a type reference with generic parameters
+                        let field_qid = struct_env.get_qualified_id();
+                        
+                        // Create Field<#0, #1> variant
+                        let field_with_generics = Type::Datatype(
+                            field_qid.module_id,
+                            field_qid.id,
+                            vec![Type::TypeParameter(0), Type::TypeParameter(1)]
+                        );
+                        field_struct_type = Some(field_with_generics);
+                        break;
+                    }
+                }
+                if field_struct_type.is_some() {
+                    break;
+                }
+            }
+        }
+        
+        if let Some(field_type) = field_struct_type {
+            println!("DEBUG: Found Field struct type, generating variants");
+            
+            // Generate the variant with Field<#0, #1> which will create names like '$2_dynamic_field_Field'#0_#1''
+            if self.should_process_function(&fun_id, &[field_type.clone()], style) {
+                println!("DEBUG: Generating Field<#0,#1> variant for {}", fun_name);
+                FunctionTranslator::new(self, fun_target, &[field_type.clone()], style).translate();
+                self.mark_function_processed_comprehensive(&fun_id, &[field_type.clone()], style);
+            }
+            
+            // Also generate concrete versions based on mono info
+            for type_inst in type_insts {
+                if type_inst.len() >= 2 {
+                    // Create Field with concrete type parameters from mono info
+                    let field_qid = field_type.get_datatype().unwrap().0;
+                    let field_concrete = Type::Datatype(
+                        field_qid.module_id,
+                        field_qid.id,
+                        vec![type_inst[0].clone(), type_inst[1].clone()]
+                    );
+                    
+                    if self.should_process_function(&fun_id, &[field_concrete.clone()], style) {
+                        println!("DEBUG: Generating Field<concrete> variant for {} with {:?}", fun_name, type_inst);
+                        FunctionTranslator::new(self, fun_target, &[field_concrete.clone()], style).translate();
+                        self.mark_function_processed_comprehensive(&fun_id, &[field_concrete], style);
+                    }
+                }
+            }
+        } else {
+            println!("DEBUG: Could not find Field struct type for {}", fun_name);
+        }
     }
 }
 

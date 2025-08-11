@@ -397,9 +397,27 @@ impl Analyzer<'_> {
             let fun_type_params_arity = target.get_type_parameter_count();
             let usage_state = UsageProcessor::analyze(self.targets, target.func_env, target.data);
 
-            // collect instantiations
+            // collect instantiations from usage analysis
             let mut all_insts = BTreeSet::new();
-            println!("DEBUG: Analyzing function {} with {} accessed types", target.func_env.get_full_name_str(), usage_state.accessed.all.len());
+            println!("DEBUG: Analyzing function {} with {} accessed types and {} type instantiations", 
+                    target.func_env.get_full_name_str(), 
+                    usage_state.accessed.all.len(),
+                    usage_state.type_instantiations.len());
+            
+            // Use the type instantiations directly from usage analysis
+            for type_inst in &usage_state.type_instantiations {
+                println!("DEBUG: Found type instantiation for {}: {:?}", target.func_env.get_full_name_str(), type_inst);
+                
+                // Validate that the type instantiation has the correct arity
+                if type_inst.len() == fun_type_params_arity {
+                    all_insts.insert(type_inst.clone());
+                } else {
+                    println!("DEBUG: Skipping type instantiation with wrong arity for {}: expected {}, got {}", 
+                            target.func_env.get_full_name_str(), fun_type_params_arity, type_inst.len());
+                }
+            }
+            
+            // Also try to derive instantiations from memory usage as a fallback
             for lhs_m in usage_state.accessed.all.iter() {
                 let lhs_ty = lhs_m.to_type();
                 for rhs_m in usage_state.accessed.all.iter() {
@@ -423,13 +441,25 @@ impl Analyzer<'_> {
                         true,
                         false,
                     );
-                    println!("DEBUG: Generated {} instantiations for {}: {:?}", fun_insts.len(), target.func_env.get_full_name_str(), fun_insts);
-                    all_insts.extend(fun_insts);
+                    println!("DEBUG: Generated {} instantiations from memory usage for {}: {:?}", fun_insts.len(), target.func_env.get_full_name_str(), fun_insts);
+                    
+                    // Filter out instantiations with wrong arity
+                    for inst in fun_insts {
+                        if inst.len() == fun_type_params_arity {
+                            all_insts.insert(inst);
+                        } else {
+                            println!("DEBUG: Skipping memory-derived type instantiation with wrong arity for {}: expected {}, got {}", 
+                                    target.func_env.get_full_name_str(), fun_type_params_arity, inst.len());
+                        }
+                    }
                 }
             }
 
-            // mark all the instantiated targets as todo
+            // mark all the instantiated targets as todo and add to result
             for fun_inst in all_insts {
+                println!("DEBUG: Adding function {} with type inst {:?} to mono result", 
+                        target.func_env.get_full_name_str(), fun_inst);
+                self.add_function_to_result(target.func_env.get_qualified_id(), fun_inst.clone());
                 self.done_funs.insert((
                     target.func_env.get_qualified_id(),
                     target.data.variant.clone(),
@@ -440,6 +470,32 @@ impl Analyzer<'_> {
                     target.data.variant.clone(),
                     fun_inst,
                 ));
+            }
+            
+            // For essential functions like vector and option, ensure they are processed with common types
+            let fun_name = target.func_env.get_full_name_str();
+            let is_essential_library_function = fun_name.starts_with("vector::") || fun_name.starts_with("option::");
+            
+            if is_essential_library_function {
+                println!("DEBUG: Essential library function {} - ensuring common type instantiations", fun_name);
+                // Add common type instantiations for essential functions
+                let common_types = vec![
+                    vec![Type::Primitive(PrimitiveType::U64)],
+                    vec![Type::Primitive(PrimitiveType::U8)],
+                    vec![Type::Primitive(PrimitiveType::Address)],
+                    vec![Type::Primitive(PrimitiveType::Bool)],
+                    vec![Type::Primitive(PrimitiveType::U128)],
+                    vec![Type::Primitive(PrimitiveType::U256)],
+                    vec![Type::TypeParameter(0)],
+                    vec![Type::TypeParameter(1)],
+                ];
+                
+                for type_inst in common_types {
+                    if type_inst.len() == fun_type_params_arity {
+                        println!("DEBUG: Adding common type instantiation for {}: {:?}", fun_name, type_inst);
+                        self.add_function_to_result(target.func_env.get_qualified_id(), type_inst.clone());
+                    }
+                }
             }
         }
     }

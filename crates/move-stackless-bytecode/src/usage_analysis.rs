@@ -51,6 +51,8 @@ pub struct UsageState {
     pub assumed: MemoryUsage,
     /// The memory mentioned by the assert expressions in this function.
     pub asserted: MemoryUsage,
+    /// The type instantiations used in function calls by this function.
+    pub type_instantiations: BTreeSet<Vec<Type>>,
 }
 
 impl MemoryUsage {
@@ -178,24 +180,48 @@ impl UsageState {
         self.add_transitive_modified_iter(callee.modified.get_all_inst(inst).into_iter());
         self.add_transitive_assumed_iter(callee.assumed.get_all_inst(inst).into_iter());
         self.add_transitive_asserted_iter(callee.asserted.get_all_inst(inst).into_iter());
+        
+        // Add type instantiations from callee, instantiated with the current instantiation
+        for callee_inst in &callee.type_instantiations {
+            let instantiated = callee_inst.iter().map(|ty| ty.instantiate(inst)).collect();
+            self.type_instantiations.insert(instantiated);
+        }
+    }
+    
+    fn add_type_instantiation(&mut self, inst: Vec<Type>) {
+        self.type_instantiations.insert(inst);
     }
 }
 
 impl AbstractDomain for UsageState {
     fn join(&mut self, other: &Self) -> JoinResult {
-        match (
-            self.accessed.join(&other.accessed),
-            self.modified.join(&other.modified),
-            self.assumed.join(&other.assumed),
-            self.asserted.join(&other.asserted),
-        ) {
-            (
-                JoinResult::Unchanged,
-                JoinResult::Unchanged,
-                JoinResult::Unchanged,
-                JoinResult::Unchanged,
-            ) => JoinResult::Unchanged,
-            _ => JoinResult::Changed,
+        let mut changed = false;
+        
+        // Join memory usage
+        if self.accessed.join(&other.accessed) == JoinResult::Changed {
+            changed = true;
+        }
+        if self.modified.join(&other.modified) == JoinResult::Changed {
+            changed = true;
+        }
+        if self.assumed.join(&other.assumed) == JoinResult::Changed {
+            changed = true;
+        }
+        if self.asserted.join(&other.asserted) == JoinResult::Changed {
+            changed = true;
+        }
+        
+        // Join type instantiations
+        let old_size = self.type_instantiations.len();
+        self.type_instantiations.extend(other.type_instantiations.iter().cloned());
+        if self.type_instantiations.len() != old_size {
+            changed = true;
+        }
+        
+        if changed {
+            JoinResult::Changed
+        } else {
+            JoinResult::Unchanged
         }
     }
 }
@@ -211,6 +237,8 @@ impl<'a> CompositionalAnalysis<UsageState> for MemoryUsageAnalysis<'a> {
         state
     }
 }
+
+
 
 impl<'a> TransferFunctions for MemoryUsageAnalysis<'a> {
     type State = UsageState;
@@ -234,6 +262,8 @@ impl<'a> TransferFunctions for MemoryUsageAnalysis<'a> {
                     {
                         state.subsume_callee(summary, inst);
                     }
+                    // Track the type instantiation from this function call
+                    state.add_type_instantiation(inst.to_vec());
                 }
                 MoveTo(mid, sid, inst)
                 | MoveFrom(mid, sid, inst)
