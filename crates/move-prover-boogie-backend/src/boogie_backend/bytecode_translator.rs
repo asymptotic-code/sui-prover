@@ -354,7 +354,11 @@ impl<'env> BoogieTranslator<'env> {
                     );
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                 } else {
-                    let fun_target = self.targets.get_target(fun_env, &FunctionVariant::Baseline);
+                    // Skip functions that were removed by verification analysis
+                    let fun_target = match self.targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+                        Some(target) => target,
+                        None => continue, // Function was filtered out
+                    };
                     if !verification_analysis::get_info(&fun_target).inlined {
                         continue;
                     }
@@ -402,9 +406,12 @@ impl<'env> BoogieTranslator<'env> {
                     .get_inv_by_datatype(&struct_env.get_qualified_id())
                 {
                     let inv_fun_env = self.env.get_function(*inv_fun_id);
-                    let inv_fun_target = self
+                    let inv_fun_target = match self
                         .targets
-                        .get_target(&inv_fun_env, &FunctionVariant::Baseline);
+                        .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
+                        Some(target) => target,
+                        None => continue, // Invariant function was filtered out (shouldn't happen)
+                    };
                     let struct_type_instances = mono_info
                         .structs
                         .get(&struct_env.get_qualified_id())
@@ -472,7 +479,10 @@ impl<'env> BoogieTranslator<'env> {
         if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
             return;
         }
-        let spec_fun_target = self.targets.get_target(&fun_env, &variant);
+        let spec_fun_target = match self.targets.get_target_opt(fun_env, &variant) {
+            Some(target) => target,
+            None => return, // Function was filtered out
+        };
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -667,26 +677,24 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_declare_global_type_instances = self
             .targets
             .specs()
-            .map(|id| {
-                spec_global_variable_analysis::get_info(
-                    self.targets
-                        .get_data(id, &FunctionVariant::Baseline)
-                        .unwrap(),
-                )
-                .all_vars()
+            .filter_map(|id| {
+                self.targets
+                    .get_data(id, &FunctionVariant::Baseline)
+                    .map(|data| {
+                        spec_global_variable_analysis::get_info(data).all_vars()
+                    })
             })
             .flatten()
             .collect::<BTreeSet<_>>();
         let ghost_declare_global_mut_type_instances = self
             .targets
             .specs()
-            .map(|id| {
-                spec_global_variable_analysis::get_info(
-                    self.targets
-                        .get_data(id, &FunctionVariant::Baseline)
-                        .unwrap(),
-                )
-                .mut_vars()
+            .filter_map(|id| {
+                self.targets
+                    .get_data(id, &FunctionVariant::Baseline)
+                    .map(|data| {
+                        spec_global_variable_analysis::get_info(data).mut_vars()
+                    })
             })
             .flatten()
             .collect::<BTreeSet<_>>();
@@ -696,13 +704,19 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
-        let ghost_global_fun_target = self
+        let ghost_global_fun_target = match self
             .targets
-            .get_target(&ghost_global_fun_env, &FunctionVariant::Baseline);
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline) {
+            Some(target) => target,
+            None => return, // Ghost function was filtered out (shouldn't happen for essential functions)
+        };
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
-        let ghost_havoc_global_fun_target = self
+        let ghost_havoc_global_fun_target = match self
             .targets
-            .get_target(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline);
+            .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline) {
+            Some(target) => target,
+            None => return, // Ghost function was filtered out (shouldn't happen for essential functions)
+        };
 
         let empty_set = &BTreeSet::new();
         let ghost_global_type_instances = mono_info

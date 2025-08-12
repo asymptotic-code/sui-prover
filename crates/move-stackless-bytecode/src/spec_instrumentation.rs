@@ -1117,13 +1117,19 @@ fn check_caller_callee_modifies_relation(
     if fun_env.is_native() {
         return;
     }
-    let caller_func_target = targets.get_target(fun_env, &FunctionVariant::Baseline);
+    let caller_func_target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+        Some(target) => target,
+        None => return, // Function was filtered out
+    };
     for callee in fun_env.get_called_functions() {
         let callee_fun_env = env.get_function(callee);
         if callee_fun_env.is_native() {
             continue;
         }
-        let callee_func_target = targets.get_target(&callee_fun_env, &FunctionVariant::Baseline);
+        let callee_func_target = match targets.get_target_opt(&callee_fun_env, &FunctionVariant::Baseline) {
+            Some(target) => target,
+            None => continue, // Callee function was filtered out
+        };
         let callee_modified_memory = usage_analysis::get_memory_usage(&callee_func_target)
             .modified
             .get_all_uninst();
@@ -1155,7 +1161,10 @@ fn check_opaque_modifies_completeness(
     targets: &FunctionTargetsHolder,
     fun_env: &FunctionEnv,
 ) {
-    let target = targets.get_target(fun_env, &FunctionVariant::Baseline);
+    let target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+        Some(target) => target,
+        None => return, // Function was filtered out
+    };
     if !target.is_opaque() {
         return;
     }

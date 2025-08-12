@@ -823,27 +823,32 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                                     &callee_qid,
                                 )
                                 .unwrap_or(&callee_qid);
-                            let data = if fun_qid_with_info
-                                != &self.func_target.func_env.get_qualified_id()
-                            {
-                                self.targets
+                            if fun_qid_with_info != &self.func_target.func_env.get_qualified_id() {
+                                match self.targets
                                     .get_data(fun_qid_with_info, &FunctionVariant::Baseline)
-                                    .expect(&format!(
-                                        "spec function not found: {}",
-                                        self.func_target
-                                            .global_env()
-                                            .get_function(*fun_qid_with_info)
-                                            .get_full_name_str()
-                                    ))
+                                {
+                                    Some(data) => {
+                                        spec_global_variable_analysis::get_info(data)
+                                            .instantiate(targs)
+                                            .unwrap()
+                                            .all_vars()
+                                            .cloned()
+                                            .collect_vec()
+                                    }
+                                    None => {
+                                        // Spec function was removed by a previous processor
+                                        // Skip the spec variable checking for this call
+                                        vec![]
+                                    }
+                                }
                             } else {
-                                self.func_target.data
-                            };
-                            spec_global_variable_analysis::get_info(data)
-                                .instantiate(targs)
-                                .unwrap()
-                                .all_vars()
-                                .cloned()
-                                .collect_vec()
+                                spec_global_variable_analysis::get_info(self.func_target.data)
+                                    .instantiate(targs)
+                                    .unwrap()
+                                    .all_vars()
+                                    .cloned()
+                                    .collect_vec()
+                            }
                         };
                         for var in spec_vars {
                             if state

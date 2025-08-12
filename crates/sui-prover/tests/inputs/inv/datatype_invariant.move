@@ -1,4 +1,4 @@
-module 0x42::datatype_invariant_tests;
+    module 0x42::datatype_invariant_tests;
 
 use prover::prover::requires;
 

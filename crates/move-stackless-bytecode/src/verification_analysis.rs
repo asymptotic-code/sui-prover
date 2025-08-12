@@ -7,13 +7,16 @@
 //! each function as well as collect information on how these invariants should be handled (i.e.,
 //! checked after bytecode, checked at function exit, or deferred to caller).
 
+use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
+use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
-use codespan_reporting::diagnostic::Severity;
-use move_model::model::{FunctionEnv, GlobalEnv, Loc, VerificationScope};
 
 use crate::{
-  function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions, stackless_bytecode::{Bytecode, Operation}
+    function_target::{FunctionData, FunctionTarget},
+    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
+    options::ProverOptions,
 };
+use move_model::model::{FunId, QualifiedId};
 
 /// The annotation for information about verification.
 #[derive(Clone, Default)]
@@ -23,6 +26,9 @@ pub struct VerificationInfo {
     /// Whether the function needs to have an inlined variant since it is called from a verified
     /// function and is not opaque.
     pub inlined: bool,
+    /// Whether the function is essential for the verification pipeline (e.g., native functions
+    /// needed for compilation) even if not verified or inlined.
+    pub essential: bool,
 }
 
 /// Get verification information for this function.
@@ -74,6 +80,15 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
+        let fun_name = fun_env.get_full_name_str();
+
+        // Rule 0a: mark essential functions that are needed for the verification pipeline
+        let info = data
+            .annotations
+            .get_or_default_mut::<VerificationInfo>(true);
+        if Self::is_essential_function(fun_env) {
+            info.essential = true;
+        }
 
         // Rule 0: mark invariant functions as inlined
         if targets
@@ -147,6 +162,82 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         "verification_analysis".to_string()
     }
 
+    fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        // Remove functions that aren't used for verification
+        // Keep: verified functions, inlined functions, essential functions, datatype invariant functions
+
+        let mut functions_to_keep = BTreeSet::new();
+
+        // Keep all datatype invariant functions
+        for (_, inv_fun_id) in targets.get_datatype_invs() {
+            functions_to_keep.insert(*inv_fun_id);
+        }
+
+        // Collect all function IDs first to avoid borrowing issues
+        let all_function_ids: Vec<QualifiedId<FunId>> = targets.get_funs().collect();
+
+        // Keep functions that are verified, inlined, or essential
+        for fun_id in &all_function_ids {
+            let fun_env = env.get_function(*fun_id);
+            let fun_name = fun_env.get_full_name_str();
+
+            // Check if this function should be kept
+            let mut should_keep = false;
+            
+            // Check verification status across all variants
+            for variant in targets.get_target_variants(&fun_env) {
+                if let Some(data) = targets.get_data(fun_id, &variant) {
+                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                    if info.verified || info.inlined || info.essential {
+                        should_keep = true;
+                        break;
+                    }
+                }
+            }
+
+            // Also keep essential functions (prover, ghost packages)
+            if !should_keep && Self::is_essential_function(&fun_env) {
+                should_keep = true;
+            }
+
+            if should_keep {
+                functions_to_keep.insert(*fun_id);
+            }
+        }
+
+        // Recursively keep all callees of kept functions
+        let mut work_queue: Vec<QualifiedId<FunId>> = functions_to_keep.iter().cloned().collect();
+        let mut processed = BTreeSet::new();
+
+        while let Some(fun_id) = work_queue.pop() {
+            if processed.contains(&fun_id) {
+                continue;
+            }
+            processed.insert(fun_id);
+
+            let fun_env = env.get_function(fun_id);
+
+            // Add all callees to the keep set and work queue
+                for callee in fun_env.get_called_functions() {
+                if functions_to_keep.insert(callee) {
+                    // Only add to work queue if it's a new function we haven't seen
+                    work_queue.push(callee);
+                }
+            }
+        }
+
+        // Remove functions that are not in the keep set
+        let functions_to_remove: Vec<QualifiedId<FunId>> = all_function_ids
+            .into_iter()
+            .filter(|fun_id| !functions_to_keep.contains(fun_id))
+            .collect();
+
+        // Remove functions from targets (remove entire function entry, not just variants)
+        for fun_id in functions_to_remove {
+            targets.remove_target(&fun_id);
+        }
+    }
+
     fn dump_result(
         &self,
         f: &mut Formatter<'_>,
@@ -217,21 +308,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // writeln!(f, "]\n")?;
 
         writeln!(f, "verification analysis: [")?;
-        for (fun_id, fun_variant) in targets.get_funs_and_variants() {
+        for fun_id in targets.get_funs() {
             let fenv = env.get_function(fun_id);
-            let target = targets.get_target(&fenv, &fun_variant);
-            let result = get_info(&target);
-            write!(f, "  {}: ", fenv.get_full_name_str())?;
-            if result.verified {
-                if result.inlined {
-                    writeln!(f, "verified + inlined")?;
+            for fun_variant in targets.get_target_variants(&fenv) {
+                let target = targets.get_target(&fenv, &fun_variant);
+                let result = get_info(&target);
+                write!(f, "  {}: ", fenv.get_full_name_str())?;
+                if result.verified {
+                    if result.inlined {
+                        writeln!(f, "verified + inlined")?;
+                    } else {
+                        writeln!(f, "verified")?;
+                    }
+                } else if result.inlined {
+                    writeln!(f, "inlined")?;
                 } else {
-                    writeln!(f, "verified")?;
+                    writeln!(f, "not verified and not inlined")?;
                 }
-            } else if result.inlined {
-                writeln!(f, "inlined")?;
-            } else {
-                writeln!(f, "not verified and not inlined")?;
             }
         }
         writeln!(f, "]")
@@ -360,6 +453,31 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
+    /// Check if a function is essential for the verification pipeline
+    pub fn is_essential_function(fun_env: &FunctionEnv) -> bool {
+        let name = fun_env.get_full_name_str();
+
+        // Handle ghost functions first (since they're also native)
+        if name.contains("ghost::") {
+            return true; // Keep all ghost functions
+        }
+
+        // All prover functions are essential
+        if name.contains("prover::") {
+            return true;
+        }
+
+        // Essential stdlib functions that are needed for verification
+        if name.starts_with("vector::")
+            || name.starts_with("option::")
+            || name.starts_with("object::")
+        {
+            return true;
+        }
+
+        false
+    }
+
     /// Check whether the function falls within the verification scope given in the options
     fn is_within_verification_scope(fun_env: &FunctionEnv) -> bool {
         let env = fun_env.module_env.env;
@@ -443,7 +561,7 @@ impl VerificationAnalysisProcessor {
     }
 
     // pub fn find_dynamics_in_function(
-    //     &self, 
+    //     &self,
     //     func_env: &FunctionEnv,
     //     data: &FunctionData,
     // ) -> Option<Loc> {
@@ -464,7 +582,7 @@ impl VerificationAnalysisProcessor {
     //                             );
 
     //                         if ["dynamic_field", "dynamic_object_field"].contains(&module_name.as_str()) {
-    //                             return Some(target.get_bytecode_loc(*attr)); 
+    //                             return Some(target.get_bytecode_loc(*attr));
     //                         }
     //                     },
     //                     _ => {}

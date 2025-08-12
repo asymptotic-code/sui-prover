@@ -321,11 +321,13 @@ pub fn collect_dynamic_field_info(
                 return None;
             }
 
-            let info = get_fun_info(
-                targets
-                    .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .unwrap(),
-            );
+            let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
+                Some(data) => get_fun_info(data),
+                None => {
+                    // Function was removed by a previous processor (e.g., verification analysis)
+                    return None;
+                }
+            };
             Some(info.instantiate(type_inst))
         }
         _ => None,
@@ -468,14 +470,14 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let combined_info = DynamicFieldInfo::iter_union(targets.specs().map(|fun_id| {
+        let combined_info = DynamicFieldInfo::iter_union(targets.specs().filter_map(|fun_id| {
             targets
                 .get_data(&fun_id, &FunctionVariant::Baseline)
-                .unwrap()
-                .annotations
-                .get::<DynamicFieldInfo>()
-                .unwrap()
-                .clone()
+                .and_then(|data| {
+                    data.annotations
+                        .get::<DynamicFieldInfo>()
+                        .map(|info| info.clone())
+                })
         }));
 
         // Set the combined info in the environment
