@@ -70,6 +70,7 @@ petgraph = "0.5.1"
 tokio = "1.43.0"
 datatest-stable = "0.3.2"
 sha2 = "0.10.9"
+dir-test = "0.4.1"
 
 move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
