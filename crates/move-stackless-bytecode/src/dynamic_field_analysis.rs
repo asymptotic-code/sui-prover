@@ -324,10 +324,14 @@ pub fn collect_dynamic_field_info(
             let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
                 Some(data) => get_fun_info(data),
                 None => {
-                    // Function was removed by a previous processor (e.g., verification analysis)
+                    dbg!(&format!(
+                        "callee `{}` was filtered out",
+                        builder.fun_env.get_full_name_str()
+                    ));
                     return None;
                 }
             };
+
             Some(info.instantiate(type_inst))
         }
         _ => None,

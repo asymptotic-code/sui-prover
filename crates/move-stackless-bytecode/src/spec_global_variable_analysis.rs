@@ -234,6 +234,10 @@ pub fn collect_spec_global_variable_info(
             let data = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
                 Some(data) => data,
                 None => {
+                    dbg!(&format!(
+                        "callee `{}` was filtered out",
+                        fun_target.func_env.get_full_name_str()
+                    ));
                     return None;
                 }
             };
@@ -447,7 +451,10 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
             let spec_data = match targets.get_data_mut(&spec_id, &FunctionVariant::Baseline) {
                 Some(data) => data,
                 None => {
-                    // Function was removed by a previous processor (e.g., verification analysis)
+                    dbg!(&format!(
+                        "spec function `{}` was filtered out",
+                        spec_env.get_full_name_str()
+                    ));
                     continue;
                 }
             };

@@ -173,62 +173,29 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             functions_to_keep.insert(*inv_fun_id);
         }
 
-        // Collect all function IDs first to avoid borrowing issues
-        let all_function_ids: Vec<QualifiedId<FunId>> = targets.get_funs().collect();
-
         // Keep functions that are verified, inlined, or essential
-        for fun_id in &all_function_ids {
-            let fun_env = env.get_function(*fun_id);
-            let fun_name = fun_env.get_full_name_str();
-
+        for fun_id in targets.get_funs() {
+            let fun_env = env.get_function(fun_id);
             // Check if this function should be kept
             let mut should_keep = false;
-            
+
             // Check verification status across all variants
             for variant in targets.get_target_variants(&fun_env) {
-                if let Some(data) = targets.get_data(fun_id, &variant) {
-                    let info = get_info(&FunctionTarget::new(&fun_env, data));
-                    if info.verified || info.inlined || info.essential {
-                        should_keep = true;
-                        break;
-                    }
+                let data = targets.get_data(&fun_id, &variant).unwrap();
+                let info = get_info(&FunctionTarget::new(&fun_env, data));
+                if info.verified || info.inlined || info.essential {
+                    should_keep = true;
+                    break;
                 }
-            }
-
-            // Also keep essential functions (prover, ghost packages)
-            if !should_keep && Self::is_essential_function(&fun_env) {
-                should_keep = true;
             }
 
             if should_keep {
-                functions_to_keep.insert(*fun_id);
-            }
-        }
-
-        // Recursively keep all callees of kept functions
-        let mut work_queue: Vec<QualifiedId<FunId>> = functions_to_keep.iter().cloned().collect();
-        let mut processed = BTreeSet::new();
-
-        while let Some(fun_id) = work_queue.pop() {
-            if processed.contains(&fun_id) {
-                continue;
-            }
-            processed.insert(fun_id);
-
-            let fun_env = env.get_function(fun_id);
-
-            // Add all callees to the keep set and work queue
-                for callee in fun_env.get_called_functions() {
-                if functions_to_keep.insert(callee) {
-                    // Only add to work queue if it's a new function we haven't seen
-                    work_queue.push(callee);
-                }
+                functions_to_keep.insert(fun_id);
             }
         }
 
         // Remove functions that are not in the keep set
-        let functions_to_remove: Vec<QualifiedId<FunId>> = all_function_ids
-            .into_iter()
+        let functions_to_remove: Vec<QualifiedId<FunId>> = targets.get_funs()
             .filter(|fun_id| !functions_to_keep.contains(fun_id))
             .collect();
 
@@ -471,6 +438,8 @@ impl VerificationAnalysisProcessor {
         if name.starts_with("vector::")
             || name.starts_with("option::")
             || name.starts_with("object::")
+            || name.starts_with("tx_context::")
+            || name.starts_with("integer::")
         {
             return true;
         }

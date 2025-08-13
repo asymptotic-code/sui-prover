@@ -56,7 +56,7 @@ use move_stackless_bytecode::{
 };
 
 use crate::boogie_backend::{
-   boogie_helpers::{
+    boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
         boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
@@ -219,12 +219,15 @@ impl<'env> BoogieTranslator<'env> {
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
-                
+
                 // Generate object::borrow_uid function for type parameter with uid field
                 let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
-                emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
-                    param_object_borrow_uid_fun_name, 
-                    param_type);
+                emitln!(
+                    writer,
+                    "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+                    param_object_borrow_uid_fun_name,
+                    param_type
+                );
                 writer.indent();
                 emitln!(writer, "res := obj->$id;");
                 writer.unindent();
@@ -339,8 +342,14 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
-                            self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+                            self.translate_function_style(
+                                fun_env,
+                                FunctionTranslationStyle::Asserts,
+                            );
+                            self.translate_function_style(
+                                fun_env,
+                                FunctionTranslationStyle::Aborts,
+                            );
                         }
                         continue;
                     }
@@ -355,7 +364,10 @@ impl<'env> BoogieTranslator<'env> {
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                 } else {
                     // Skip functions that were removed by verification analysis
-                    let fun_target = match self.targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+                    let fun_target = match self
+                        .targets
+                        .get_target_opt(fun_env, &FunctionVariant::Baseline)
+                    {
                         Some(target) => target,
                         None => continue, // Function was filtered out
                     };
@@ -408,7 +420,8 @@ impl<'env> BoogieTranslator<'env> {
                     let inv_fun_env = self.env.get_function(*inv_fun_id);
                     let inv_fun_target = match self
                         .targets
-                        .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
+                        .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
+                    {
                         Some(target) => target,
                         None => continue, // Invariant function was filtered out (shouldn't happen)
                     };
@@ -642,7 +655,12 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
-            if self.targets.get_fun_by_spec(&fun_target.func_env.get_qualified_id()).is_none() { // is scenario spec
+            if self
+                .targets
+                .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
+                .is_none()
+            {
+                // is scenario spec
                 return;
             }
             mono_analysis::get_info(self.env)
@@ -680,9 +698,7 @@ impl<'env> BoogieTranslator<'env> {
             .filter_map(|id| {
                 self.targets
                     .get_data(id, &FunctionVariant::Baseline)
-                    .map(|data| {
-                        spec_global_variable_analysis::get_info(data).all_vars()
-                    })
+                    .map(|data| spec_global_variable_analysis::get_info(data).all_vars())
             })
             .flatten()
             .collect::<BTreeSet<_>>();
@@ -692,9 +708,7 @@ impl<'env> BoogieTranslator<'env> {
             .filter_map(|id| {
                 self.targets
                     .get_data(id, &FunctionVariant::Baseline)
-                    .map(|data| {
-                        spec_global_variable_analysis::get_info(data).mut_vars()
-                    })
+                    .map(|data| spec_global_variable_analysis::get_info(data).mut_vars())
             })
             .flatten()
             .collect::<BTreeSet<_>>();
@@ -704,19 +718,15 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
-        let ghost_global_fun_target = match self
+        let ghost_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline) {
-            Some(target) => target,
-            None => return, // Ghost function was filtered out (shouldn't happen for essential functions)
-        };
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline).unwrap();
+       
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
-        let ghost_havoc_global_fun_target = match self
+        let ghost_havoc_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline) {
-            Some(target) => target,
-            None => return, // Ghost function was filtered out (shouldn't happen for essential functions)
-        };
+            .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline)
+            .unwrap();
 
         let empty_set = &BTreeSet::new();
         let ghost_global_type_instances = mono_info
@@ -1043,16 +1053,24 @@ impl<'env> StructTranslator<'env> {
 
         // Generate object::borrow_uid function for structs with key ability
         if struct_env.get_abilities().has_key() {
-            let object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", 
-                boogie_type_suffix(env, &Type::Datatype(
-                    struct_env.module_env.get_id(),
-                    struct_env.get_id(),
-                    self.type_inst.to_vec()
-                )));
+            let object_borrow_uid_fun_name = format!(
+                "$2_object_borrow_uid'{}'",
+                boogie_type_suffix(
+                    env,
+                    &Type::Datatype(
+                        struct_env.module_env.get_id(),
+                        struct_env.get_id(),
+                        self.type_inst.to_vec()
+                    )
+                )
+            );
             let writer = self.parent.writer;
-            emitln!(writer, "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{", 
-                object_borrow_uid_fun_name, 
-                struct_name);
+            emitln!(
+                writer,
+                "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+                object_borrow_uid_fun_name,
+                struct_name
+            );
             writer.indent();
             emitln!(writer, "res := obj->$id;");
             writer.unindent();
@@ -1697,7 +1715,11 @@ impl<'env> FunctionTranslator<'env> {
                 ghost_vars
                     .into_iter()
                     .map(|type_inst| {
-                        format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                        format!(
+                            "{}: {}",
+                            self.ghost_var_name(&type_inst),
+                            boogie_type(env, &type_inst[1])
+                        )
                     })
                     .collect::<Vec<_>>()
             } else {
@@ -2187,9 +2209,11 @@ impl<'env> FunctionTranslator<'env> {
                                 };
                                 format!("{}t{}", prefix, i)
                             })
-                            .chain(self.get_ghost_vars().into_iter().map(|type_inst| {
-                                self.ghost_var_name(&type_inst)
-                            }))
+                            .chain(
+                                self.get_ghost_vars()
+                                    .into_iter()
+                                    .map(|type_inst| { self.ghost_var_name(&type_inst) })
+                            )
                             .join(", "),
                     );
                 }
@@ -2522,9 +2546,7 @@ impl<'env> FunctionTranslator<'env> {
                                 let ghost_args = if !self.get_ghost_vars().is_empty() {
                                     self.get_ghost_vars()
                                         .into_iter()
-                                        .map(|type_inst| {
-                                            self.ghost_var_name(&type_inst)
-                                        })
+                                        .map(|type_inst| self.ghost_var_name(&type_inst))
                                         .collect::<Vec<_>>()
                                 } else {
                                     Vec::new()
@@ -2772,29 +2794,26 @@ impl<'env> FunctionTranslator<'env> {
                     Pack(mid, sid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let struct_env = env.get_module(*mid).into_struct(*sid);
-                        
+
                         // Get regular field arguments
                         let regular_args = srcs.iter().cloned().map(str_local).collect_vec();
-                        
+
                         // Get dynamic field arguments
                         let struct_type = Type::Datatype(*mid, *sid, inst.to_owned());
                         let dynamic_field_info = dynamic_field_analysis::get_env_info(env);
                         let dynamic_field_names_values = dynamic_field_info
                             .dynamic_field_names_values(&struct_type)
                             .collect_vec();
-                        
+
                         // Create EmptyTable() arguments for each dynamic field
                         let dynamic_args = dynamic_field_names_values
                             .iter()
                             .map(|_| "EmptyTable()".to_string())
                             .collect_vec();
-                        
+
                         // Combine all arguments
-                        let all_args = regular_args
-                            .into_iter()
-                            .chain(dynamic_args)
-                            .join(", ");
-                        
+                        let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
+
                         let dest_str = str_local(dests[0]);
                         emitln!(
                             self.writer(),
@@ -3745,7 +3764,11 @@ impl<'env> FunctionTranslator<'env> {
                         self.get_ghost_vars()
                             .into_iter()
                             .map(|type_inst| {
-                                format!("{}: {}", self.ghost_var_name(&type_inst), boogie_type(env, &type_inst[1]))
+                                format!(
+                                    "{}: {}",
+                                    self.ghost_var_name(&type_inst),
+                                    boogie_type(env, &type_inst[1])
+                                )
                             })
                             .collect::<Vec<_>>()
                     } else {

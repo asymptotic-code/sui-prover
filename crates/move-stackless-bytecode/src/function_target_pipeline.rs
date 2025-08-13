@@ -694,16 +694,11 @@ impl FunctionTargetsHolder {
         func_env: &'env FunctionEnv<'env>,
         variant: &FunctionVariant,
     ) -> FunctionTarget<'env> {
-        let data = self
-            .get_data(&func_env.get_qualified_id(), variant)
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected function target: {} ({:?})",
-                    func_env.get_full_name_str(),
-                    variant
-                )
-            });
-        FunctionTarget::new(func_env, data)
+        self.get_target_opt(func_env, variant).expect(&format!(
+            "expected function target: {} ({:?})",
+            func_env.get_full_name_str(),
+            variant
+        ))
     }
 
     pub fn get_target_opt<'env>(
