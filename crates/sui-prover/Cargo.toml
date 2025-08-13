@@ -30,6 +30,8 @@ insta.workspace = true
 termcolor.workspace = true
 sha2.workspace = true
 petgraph.workspace = true
+dir-test.workspace = true
+tempfile.workspace = true
 
 tokio = { workspace = true, features = ["full"] }
 

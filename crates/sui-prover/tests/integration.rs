@@ -1,5 +1,4 @@
 use codespan_reporting::term::termcolor::Buffer;
-use glob;
 use move_compiler::editions::Flavor;
 use move_compiler::shared::known_attributes::ModeAttribute;
 use move_package::BuildConfig as MoveBuildConfig;
@@ -7,15 +6,31 @@ use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
 };
 use regex::Regex;
-use std::fs::{copy, create_dir_all, remove_dir_all, remove_file};
+use std::fs::{copy, create_dir_all};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
+use dir_test::{dir_test, Fixture};
 
 /// Runs the prover on the given file path and returns the output as a string
-fn run_prover(file_path: &PathBuf) -> String {
-    // the file_dir path is `tests`, make it as a Path
-    let file_dir = Path::new("tests");
-    let sources_dir = file_dir.join("sources");
+fn run_prover(file_path: &Path) -> String {
+    let prover_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap().parent().unwrap()
+        .join("packages").join("sui-prover");
+    let prover_dir_dis = prover_dir.display();
+    let tmp = tempfile::tempdir().unwrap();
+    let tmp_dir = tmp.path();
+    std::fs::write(tmp_dir.join("Move.toml"), format!(r###"
+[package]
+name = "integration-test"
+version = "0.0.1"
+published-at = "0x2"
+edition = "2024.beta"
+[dependencies]
+SuiProver = {{ local = "{prover_dir_dis}", override = true }}
+[addresses]
+integration-test = "0x9"
+"###)).unwrap();
+    let sources_dir = tmp_dir.join("sources");
     // create the sources_dir if it doesn't exist
     if !sources_dir.clone().exists() {
         create_dir_all(sources_dir.clone()).unwrap();
@@ -46,7 +61,7 @@ fn run_prover(file_path: &PathBuf) -> String {
         config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
 
         // Try to build the model
-        let result = match move_model_for_package_legacy(config, file_dir) {
+        let result = match move_model_for_package_legacy(config, tmp_dir) {
             Ok(model) => {
                 // Create prover options
                 let mut options = Options::default();
@@ -80,15 +95,10 @@ fn run_prover(file_path: &PathBuf) -> String {
             }
         };
 
-        post_process_output(result)
+        post_process_output(result, sources_dir)
     });
 
-    // Remove the copied file
-    if new_file_path.exists() {
-        remove_file(&new_file_path).unwrap_or_else(|e| {
-            eprintln!("Failed to remove file {}: {}", new_file_path.display(), e);
-        });
-    }
+    tmp.close().unwrap();
 
     // Now handle the result of our operation
     match result {
@@ -97,48 +107,44 @@ fn run_prover(file_path: &PathBuf) -> String {
     }
 }
 
-fn post_process_output(output: String) -> String {
+fn post_process_output(output: String, sources_dir: PathBuf) -> String {
     // replace numbers such as 52571u64 with ELIDEDu64 to avoid snapshot diffs
-    let output = output.replace("tests/sources/", "tests/inputs/");
+    let output = output.replace(&format!("{}", sources_dir.display()), "tests/inputs");
+
+    // make absolute paths referencing other packages (e.g. prover) relative
+    let base_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap().parent().unwrap();
+    let output = output.replace(&format!("{}", base_dir.display()), "tests/../../..");
 
     // Use regex to replace numbers with more than one digit followed by u64 with ELIDEDu64
     let re = Regex::new(r"\d{2,}u64").unwrap();
     re.replace_all(&output, "ELIDEDu64").to_string()
 }
 
-/// Clears all files in the sources directory
-fn clear_sources_directory() {
-    let sources_dir = Path::new("tests/sources");
-    if sources_dir.exists() {
-        let _ = remove_dir_all(sources_dir);
-    }
-}
-
-#[test]
-fn run_move_tests() {
-    clear_sources_directory();
-    for entry in glob::glob("tests/inputs/**/*.move").expect("Invalid glob pattern") {
-        let move_path = entry.expect("Failed to read file path");
-        let output = run_prover(&move_path);
-        let filename = move_path.file_name().unwrap().to_string_lossy().to_string();
-
-        let cp = move_path
-            .parent()
-            .unwrap()
-            .components()
-            .skip(2)
-            .collect::<Vec<_>>();
-        let cp_str = cp
-            .iter()
-            .map(|comp| comp.as_os_str().to_string_lossy().into_owned())
-            .collect::<Vec<String>>();
-        let snapshot_path = format!("snapshots/{}", cp_str.join("/"));
-
-        insta::with_settings!({
-            prepend_module_to_snapshot => false,
-            snapshot_path => snapshot_path,
-        }, {
-            insta::assert_snapshot!(filename, output);
-        });
-    }
+#[dir_test(
+    dir: "$CARGO_MANIFEST_DIR/tests/inputs",
+    glob: "**/*.move",
+)]
+fn move_test(fix: Fixture<&str>) {
+    let absolute_path = fix.path().parse::<PathBuf>().unwrap();
+    let move_path = absolute_path.strip_prefix(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let output = run_prover(move_path);
+    let filename = move_path.file_name().unwrap().to_string_lossy().to_string();
+    let cp = move_path
+        .parent()
+        .unwrap()
+        .components()
+        .skip(2)
+        .collect::<Vec<_>>();
+    let cp_str = cp
+        .iter()
+        .map(|comp| comp.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<String>>();
+    let snapshot_path = format!("snapshots/{}", cp_str.join("/"));
+    insta::with_settings!({
+        prepend_module_to_snapshot => false,
+        snapshot_path => snapshot_path,
+    }, {
+        insta::assert_snapshot!(filename, output);
+    });
 }
