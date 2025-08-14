@@ -2,6 +2,4 @@
 source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
-[internal] boogie exited with compilation errors:
-output/foo_spec::bar_spec.bpl(6000,11): Error: wrong number of arguments to function: $2_versioned_Versioned (2 instead of 3)
-1 type checking errors detected in output/foo_spec::bar_spec.bpl
+Verification successful
