@@ -195,11 +195,10 @@ impl MonoAnalysisProcessor {
         // Analyze ghost types
         targets
             .specs()
-            .map(|id| {
-                spec_global_variable_analysis::get_info(
-                    targets.get_data(id, &FunctionVariant::Baseline).unwrap(),
-                )
-                .all_vars()
+            .filter_map(|id| {
+                targets.get_data(id, &FunctionVariant::Baseline).map(|data| {
+                    spec_global_variable_analysis::get_info(data).all_vars()
+                })
             })
             .flatten()
             .collect::<BTreeSet<_>>()

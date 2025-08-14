@@ -1,9 +1,6 @@
 module 0x42::foo_spec;
 use sui::dynamic_field;
 
-/// The `Versioned` struct is used for testing dynamic field packing.
-/// It represents a versioned object with a unique identifier (`id`) and a version number (`version`).
-/// This struct interacts with the `dynamic_field` module to manage dynamic fields.
 public struct Versioned has key, store {
     id: UID,
     version: u64,
