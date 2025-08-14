@@ -1120,10 +1120,10 @@ fn check_caller_callee_modifies_relation(
     let caller_func_target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
         Some(target) => target,
         None => {
-            dbg!(&format!(
-                "caller `{}` was filtered out",
-                fun_env.get_full_name_str()
-            ));
+            // dbg!(&format!(
+            //     "caller `{}` was filtered out",
+            //     fun_env.get_full_name_str()
+            // ));
             return;
         }
     };
@@ -1169,10 +1169,10 @@ fn check_opaque_modifies_completeness(
     let target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
         Some(target) => target,
         None => {
-            dbg!(&format!(
-                "caller `{}` was filtered out",
-                fun_env.get_full_name_str()
-            ));
+            // dbg!(&format!(
+            //     "caller `{}` was filtered out",
+            //     fun_env.get_full_name_str()
+            // ));
             return;
         }
     };
