@@ -2,4 +2,4 @@
 source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
-🦀 No specifications found in the project. Nothing to verify.
+Verification successful

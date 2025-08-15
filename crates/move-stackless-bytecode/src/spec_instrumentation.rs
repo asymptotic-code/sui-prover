@@ -16,7 +16,7 @@ use move_model::{
     model::{
         DatatypeId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleId, QualifiedId, QualifiedInstId,
     },
-    ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE, NUM_TYPE},
+    ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
 };
 
 use crate::{
@@ -30,11 +30,11 @@ use crate::{
     livevar_analysis::LiveVarAnalysisProcessor,
     options::ProverOptions,
     reaching_def_analysis::ReachingDefProcessor,
+    spec_translator::{SpecTranslator, TranslatedSpec},
     stackless_bytecode::{
         AbortAction, AssignKind, AttrId, BorrowEdge, BorrowNode, Bytecode, HavocKind, Label,
         Operation, PropKind,
     },
-    spec_translator::{SpecTranslator, TranslatedSpec},
     usage_analysis, verification_analysis,
 };
 
@@ -643,10 +643,10 @@ impl<'a> Instrumenter<'a> {
                 .filter(|src| {
                     let ty = &self.builder.data.local_types[*src];
                     ty.is_mutable_reference()
-                        // && !self
-                        //     .builder
-                        //     .global_env()
-                        //     .is_wellknown_event_handle_type(ty.skip_reference())
+                    // && !self
+                    //     .builder
+                    //     .global_env()
+                    //     .is_wellknown_event_handle_type(ty.skip_reference())
                 })
                 .collect_vec();
             for src in &mut_srcs {
@@ -1117,13 +1117,24 @@ fn check_caller_callee_modifies_relation(
     if fun_env.is_native() {
         return;
     }
-    let caller_func_target = targets.get_target(fun_env, &FunctionVariant::Baseline);
+    let caller_func_target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+        Some(target) => target,
+        None => {
+            // dbg!(&format!(
+            //     "caller `{}` was filtered out",
+            //     fun_env.get_full_name_str()
+            // ));
+            return;
+        }
+    };
     for callee in fun_env.get_called_functions() {
         let callee_fun_env = env.get_function(callee);
         if callee_fun_env.is_native() {
             continue;
         }
-        let callee_func_target = targets.get_target(&callee_fun_env, &FunctionVariant::Baseline);
+        let callee_func_target = targets
+            .get_target_opt(&callee_fun_env, &FunctionVariant::Baseline)
+            .unwrap();
         let callee_modified_memory = usage_analysis::get_memory_usage(&callee_func_target)
             .modified
             .get_all_uninst();
@@ -1155,7 +1166,16 @@ fn check_opaque_modifies_completeness(
     targets: &FunctionTargetsHolder,
     fun_env: &FunctionEnv,
 ) {
-    let target = targets.get_target(fun_env, &FunctionVariant::Baseline);
+    let target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
+        Some(target) => target,
+        None => {
+            // dbg!(&format!(
+            //     "caller `{}` was filtered out",
+            //     fun_env.get_full_name_str()
+            // ));
+            return;
+        }
+    };
     if !target.is_opaque() {
         return;
     }

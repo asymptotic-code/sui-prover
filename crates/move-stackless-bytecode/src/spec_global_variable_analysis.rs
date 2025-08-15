@@ -231,11 +231,18 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
-            let info = get_info(
-                targets
-                    .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .unwrap(),
-            );
+            let data = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
+                Some(data) => data,
+                None => {
+                    // dbg!(&format!(
+                    //     "callee `{}` was filtered out",
+                    //     fun_target.func_env.get_full_name_str()
+                    // ));
+                    return None;
+                }
+            };
+            let info = get_info(data);
+
             match info.instantiate(type_inst) {
                 Ok(inst_info) => Some(inst_info),
                 Err(conflicts) => {
@@ -441,9 +448,16 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
         let spec_ids = targets.specs().map(|id| *id).collect_vec();
         for spec_id in spec_ids {
             let spec_env = env.get_function(spec_id);
-            let spec_data = targets
-                .get_data_mut(&spec_id, &FunctionVariant::Baseline)
-                .unwrap();
+            let spec_data = match targets.get_data_mut(&spec_id, &FunctionVariant::Baseline) {
+                Some(data) => data,
+                None => {
+                    // dbg!(&format!(
+                    //     "spec function `{}` was filtered out",
+                    //     spec_env.get_full_name_str()
+                    // ));
+                    continue;
+                }
+            };
             let spec_target = FunctionTarget::new(&spec_env, spec_data);
 
             let infos_iter = spec_data.code.iter().filter_map(|bc| match bc {

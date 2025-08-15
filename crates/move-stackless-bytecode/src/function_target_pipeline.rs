@@ -403,6 +403,10 @@ impl FunctionTargetsHolder {
         self.datatype_invs.get_by_right(id)
     }
 
+    pub fn get_datatype_invs(&self) -> &BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>> {
+        &self.datatype_invs
+    }
+
     /// Return the specification of the callee function if the specification can
     /// be used instead of the callee by the caller. This is the case if and
     /// only if
@@ -690,16 +694,20 @@ impl FunctionTargetsHolder {
         func_env: &'env FunctionEnv<'env>,
         variant: &FunctionVariant,
     ) -> FunctionTarget<'env> {
-        let data = self
-            .get_data(&func_env.get_qualified_id(), variant)
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected function target: {} ({:?})",
-                    func_env.get_full_name_str(),
-                    variant
-                )
-            });
-        FunctionTarget::new(func_env, data)
+        self.get_target_opt(func_env, variant).expect(&format!(
+            "expected function target: {} ({:?})",
+            func_env.get_full_name_str(),
+            variant
+        ))
+    }
+
+    pub fn get_target_opt<'env>(
+        &'env self,
+        func_env: &'env FunctionEnv<'env>,
+        variant: &FunctionVariant,
+    ) -> Option<FunctionTarget<'env>> {
+        self.get_data(&func_env.get_qualified_id(), variant)
+            .map(|data| FunctionTarget::new(func_env, data))
     }
 
     pub fn has_target(&self, func_env: &FunctionEnv<'_>, variant: &FunctionVariant) -> bool {
@@ -711,10 +719,8 @@ impl FunctionTargetsHolder {
     pub fn get_target_variants(&self, func_env: &FunctionEnv<'_>) -> Vec<FunctionVariant> {
         self.targets
             .get(&func_env.get_qualified_id())
-            .expect("function targets exist")
-            .keys()
-            .cloned()
-            .collect_vec()
+            .map(|vs| vs.keys().cloned().collect_vec())
+            .unwrap_or_default()
     }
 
     /// Gets targets for all available variants.
@@ -724,10 +730,12 @@ impl FunctionTargetsHolder {
     ) -> Vec<(FunctionVariant, FunctionTarget<'env>)> {
         self.targets
             .get(&func_env.get_qualified_id())
-            .expect("function targets exist")
-            .iter()
-            .map(|(v, d)| (v.clone(), FunctionTarget::new(func_env, d)))
-            .collect_vec()
+            .map(|vs| {
+                vs.iter()
+                    .map(|(v, d)| (v.clone(), FunctionTarget::new(func_env, d)))
+                    .collect_vec()
+            })
+            .unwrap_or_default()
     }
 
     /// Gets function data for a variant.
@@ -761,6 +769,11 @@ impl FunctionTargetsHolder {
             .expect("variant exists")
     }
 
+    /// Remove all variants of a function from targets
+    pub fn remove_target(&mut self, id: &QualifiedId<FunId>) {
+        self.targets.remove(id);
+    }
+
     /// Sets function data for a function's variant.
     pub fn insert_target_data(
         &mut self,
@@ -785,6 +798,13 @@ impl FunctionTargetsHolder {
         scc_opt: Option<&[FunctionEnv]>,
     ) {
         let id = func_env.get_qualified_id();
+        
+        // Check if this function exists in targets before processing
+        if !self.targets.contains_key(&id) {
+            // Function was removed from targets, skip processing
+            return;
+        }
+        
         for variant in self.get_target_variants(func_env) {
             // Remove data so we can own it.
             let data = self.remove_target_data(&id, &variant);
@@ -895,10 +915,12 @@ impl FunctionTargetPipeline {
                 let dst_qid = targets
                     .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
                     .unwrap_or(&callee);
-                let dst_idx = nodes
-                    .get(dst_qid)
-                    .expect("callee is not in function targets");
-                graph.add_edge(*src_idx, *dst_idx, ());
+                
+                // Check if the callee exists in targets before trying to access it
+                if let Some(dst_idx) = nodes.get(dst_qid) {
+                    graph.add_edge(*src_idx, *dst_idx, ());
+                }
+                // If the callee doesn't exist in targets (was removed), skip this edge
             }
         }
         graph
@@ -1094,3 +1116,4 @@ impl FunctionTargetPipeline {
         }
     }
 }
+
