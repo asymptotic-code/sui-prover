@@ -418,13 +418,10 @@ impl<'env> BoogieTranslator<'env> {
                     .get_inv_by_datatype(&struct_env.get_qualified_id())
                 {
                     let inv_fun_env = self.env.get_function(*inv_fun_id);
-                    let inv_fun_target = match self
+                    let inv_fun_target = self
                         .targets
                         .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                    {
-                        Some(target) => target,
-                        None => continue, // Invariant function was filtered out (shouldn't happen)
-                    };
+                        .unwrap();
                     let struct_type_instances = mono_info
                         .structs
                         .get(&struct_env.get_qualified_id())
@@ -720,8 +717,9 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
         let ghost_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline).unwrap();
-       
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
+            .unwrap();
+
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets

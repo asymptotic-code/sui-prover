@@ -427,21 +427,11 @@ impl VerificationAnalysisProcessor {
 
         // Handle ghost functions first (since they're also native)
         if name.contains("ghost::") {
-            return true; // Keep all ghost functions
+            return true;
         }
 
         // All prover functions are essential
         if name.contains("prover::") {
-            return true;
-        }
-
-        // Essential stdlib functions that are needed for verification
-        if name.starts_with("vector::")
-            || name.starts_with("option::")
-            || name.starts_with("object::")
-            || name.starts_with("tx_context::")
-            || name.starts_with("integer::")
-        {
             return true;
         }
 
@@ -547,7 +537,7 @@ impl VerificationAnalysisProcessor {
                 continue;
             }
             processed.insert(fun_id);
-            
+
             let fun_env = env.get_function(fun_id);
 
             // Mark all callees as reachable
@@ -555,30 +545,32 @@ impl VerificationAnalysisProcessor {
                 if processed.contains(&callee) {
                     continue;
                 }
-                
+
                 let callee_env = env.get_function(callee);
                 let mut should_mark_reachable = false;
-                
+
                 // Check if this function needs to be marked as reachable
                 for variant in targets.get_target_variants(&callee_env) {
                     if let Some(data) = targets.get_data(&callee, &variant) {
                         let info = get_info(&FunctionTarget::new(&callee_env, data));
-                        
+
                         // Skip if already processed (verified, inlined, essential, or reachable)
                         if info.verified || info.inlined || info.essential || info.reachable {
                             break;
                         }
-                        
+
                         should_mark_reachable = true;
                         break;
                     }
                 }
-                
+
                 if should_mark_reachable {
                     // Mark as reachable across all variants
                     for variant in targets.get_target_variants(&callee_env) {
                         if let Some(data) = targets.get_data_mut(&callee, &variant) {
-                            let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                            let info = data
+                                .annotations
+                                .get_or_default_mut::<VerificationInfo>(true);
                             info.reachable = true;
                         }
                     }
@@ -587,7 +579,7 @@ impl VerificationAnalysisProcessor {
                 }
             }
         }
-        
+
         reachable_functions
     }
 
