@@ -2039,7 +2039,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_generate_abort_condition(&self) -> bool {
-        self.parent.targets.is_verified_spec(&self.fun_target.func_env.get_qualified_id()) 
+        self.parent.targets.is_verified_spec(&self.fun_target.func_env.get_qualified_id())
     }
 
     /// Translates one bytecode instruction.
