@@ -1,0 +1,51 @@
+name: External Specs Verification
+
+on: [pull_request]
+
+jobs:
+  verify-external-specs:
+    runs-on: macos-latest
+    env: 
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+    concurrency:
+      group:  verify-external-specs-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /usr/local/Homebrew
+            /opt/homebrew
+          key: brew-${{ runner.os }}-dotnet8-z3-rust
+          restore-keys: |
+            brew-${{ runner.os }}-
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Install sui-prover
+        run: sh ./crates/sui-prover/tests/sui-prover.sh
+
+      - name: Clone smart contracts repo
+        run: |
+          git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
+
+      - name: Run verification
+        run: |
+          cd sui-smart-contracts/token-distribution-specs 
+          sui-prover -s 2
