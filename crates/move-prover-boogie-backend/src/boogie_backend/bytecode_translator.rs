@@ -720,8 +720,9 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
         let ghost_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline).unwrap();
-       
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
+            .unwrap();
+
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets
@@ -2470,6 +2471,12 @@ impl<'env> FunctionTranslator<'env> {
                                 self.loc_str(&self.writer().get_loc()),
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
+                            && self.style == FunctionTranslationStyle::Default
+                        {
                             processed = true;
                         }
 
