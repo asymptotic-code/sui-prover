@@ -114,6 +114,10 @@ pub struct BuildConfig {
     /// Additional named address mapping. Useful for tools in rust
     #[clap(skip)]
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
+
+    /// Sui Test Modes
+    #[clap(name = "sui-test-mode", long, global = true)]
+    pub sui_test_mode: bool,
 }
 
 pub async fn execute(
@@ -123,7 +127,14 @@ pub async fn execute(
     boogie_config: Option<String>,
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
-    let model = build_model(path, Some(build_config))?;
+    let test_mode = build_config.sui_test_mode;
+    let mut move_config: MoveBuildConfig = build_config.into();
+    if test_mode {
+        move_config.modes.push(ModeAttribute::TEST.into());
+        move_config.modes.push(ModeAttribute::TEST_ONLY.into());
+    }
+
+    let model = build_model(path, move_config)?;
     let mut options = Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
