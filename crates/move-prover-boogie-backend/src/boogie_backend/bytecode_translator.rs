@@ -355,12 +355,16 @@ impl<'env> BoogieTranslator<'env> {
                     }
 
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(
-                        fun_env,
-                        FunctionTranslationStyle::SpecNoAbortCheck,
-                    );
+
+                    if self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+                        self.translate_function_style(
+                            fun_env,
+                            FunctionTranslationStyle::SpecNoAbortCheck,
+                        );
+                    }
+
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                 } else {
                     // Skip functions that were removed by verification analysis
@@ -1891,7 +1895,10 @@ impl<'env> FunctionTranslator<'env> {
                 }
             }
         }
-        emitln!(writer, "var $abort_if_cond: bool;");
+
+        if self.should_generate_abort_condition() {
+            emitln!(writer, "var $abort_if_cond: bool;");
+        }
 
         // Generate memory snapshot variable declarations.
         let code = fun_target.get_bytecode();
@@ -2029,6 +2036,10 @@ impl<'env> FunctionTranslator<'env> {
 impl<'env> FunctionTranslator<'env> {
     fn writer(&self) -> &CodeWriter {
         self.parent.writer
+    }
+
+    fn should_generate_abort_condition(&self) -> bool {
+        self.parent.targets.is_verified_spec(&self.fun_target.func_env.get_qualified_id()) 
     }
 
     /// Translates one bytecode instruction.
@@ -2531,6 +2542,7 @@ impl<'env> FunctionTranslator<'env> {
                             .targets
                             .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
                             == Some(&mid.qualified(*fid))
+                            && self.should_generate_abort_condition()
                             && self.style == FunctionTranslationStyle::Opaque
                         {
                             if self
@@ -3742,6 +3754,7 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
+                    && self.should_generate_abort_condition()
                     && !self
                         .parent
                         .targets
