@@ -6,10 +6,10 @@ use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 
 use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps};
 
-pub fn build_model(path: Option<&Path>, move_config: MoveBuildConfig) -> Result<GlobalEnv, anyhow::Error> {
+pub fn build_model(path: Option<&Path>, build_config: Option<BuildConfig>) -> Result<GlobalEnv, anyhow::Error> {
     let rerooted_path = reroot_path(path)?;
     let mut move_build_config = resolve_lock_file_path(
-        move_config,
+        build_config.unwrap_or_default().into(),
         Some(&rerooted_path),
     )?;
 
