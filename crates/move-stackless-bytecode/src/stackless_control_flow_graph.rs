@@ -195,6 +195,15 @@ impl StacklessControlFlowGraph {
                 content: BlockContent::Dummy,
             },
         );
+        
+        // Ensure all successors point to existing blocks
+        let valid_block_ids: Set<BlockId> = blocks.keys().cloned().collect();
+        for block in blocks.values_mut() {
+            block.successors.retain(|&succ_id| {
+                succ_id == DUMMY_ENTRANCE || succ_id == DUMMY_EXIT || valid_block_ids.contains(&succ_id)
+            });
+        }
+        
         blocks
     }
 
