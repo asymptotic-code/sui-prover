@@ -421,7 +421,7 @@ impl<'env> BoogieTranslator<'env> {
                     let inv_fun_target = self
                         .targets
                         .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                        .unwrap();
+                        .expect("Invariant function was filtered out: could not find baseline target for invariant function");
                     let struct_type_instances = mono_info
                         .structs
                         .get(&struct_env.get_qualified_id())
@@ -718,13 +718,13 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_target = self
             .targets
             .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect("ghost global function target should exist");
 
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets
             .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect("ghost havoc global function target should exist");
 
         let empty_set = &BTreeSet::new();
         let ghost_global_type_instances = mono_info
