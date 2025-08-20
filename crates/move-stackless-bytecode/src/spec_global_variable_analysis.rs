@@ -231,16 +231,12 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
-            let data = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
-                Some(data) => data,
-                None => {
-                    // dbg!(&format!(
-                    //     "callee `{}` was filtered out",
-                    //     fun_target.func_env.get_full_name_str()
-                    // ));
-                    return None;
-                }
-            };
+            let data = targets
+                .get_data(fun_id_with_info, &FunctionVariant::Baseline)
+                .expect(&format!(
+                    "callee `{}` was filtered out",
+                    fun_target.func_env.get_full_name_str()
+                ));
             let info = get_info(data);
 
             match info.instantiate(type_inst) {
@@ -458,6 +454,11 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
                     continue;
                 }
             };
+
+            // .expect(&format!(
+            //     "spec function `{}` was filtered out",
+            //     spec_env.get_full_name_str()
+            // )); // THROWS: EVENT_SPEC::EMIT_SPEC WAS FILTERED OUT
             let spec_target = FunctionTarget::new(&spec_env, spec_data);
 
             let infos_iter = spec_data.code.iter().filter_map(|bc| match bc {

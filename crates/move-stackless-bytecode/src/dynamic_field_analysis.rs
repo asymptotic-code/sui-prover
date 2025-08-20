@@ -321,16 +321,13 @@ pub fn collect_dynamic_field_info(
                 return None;
             }
 
-            let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
-                Some(data) => get_fun_info(data),
-                None => {
-                    // dbg!(&format!(
-                    //     "callee `{}` was filtered out",
-                    //     builder.fun_env.get_full_name_str()
-                    // ));
-                    return None;
-                }
-            };
+            let data = targets
+                .get_data(fun_id_with_info, &FunctionVariant::Baseline)
+                .expect(&format!(
+                    "callee `{}` was filtered out",
+                    builder.fun_env.get_full_name_str()
+                ));
+            let info = get_fun_info(data);
 
             Some(info.instantiate(type_inst))
         }
