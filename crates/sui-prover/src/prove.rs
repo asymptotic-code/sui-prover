@@ -32,7 +32,7 @@ impl From<BuildConfig> for MoveBuildConfig {
             additional_named_addresses: config.additional_named_addresses,
             save_disassembly: false,
             implicit_dependencies: BTreeMap::new(),
-            modes: vec![ModeAttribute::VERIFY_ONLY.into()],
+            modes: vec![ModeAttribute::VERIFY_ONLY.into(), ModeAttribute::TEST_ONLY.into(), ModeAttribute::TEST.into()],
             force_lock_file: false,
         }
     }
