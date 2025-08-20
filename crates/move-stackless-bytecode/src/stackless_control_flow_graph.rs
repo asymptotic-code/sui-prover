@@ -180,35 +180,6 @@ impl StacklessControlFlowGraph {
             }
         }
         assert_eq!(block_entry, code.len() as CodeOffset);
-        
-        // Create blocks for any offsets that were assigned block IDs but never created
-        for (offset, block_id) in &offset_to_key {
-            if !blocks.contains_key(block_id) && *block_id != DUMMY_ENTRANCE && *block_id != DUMMY_EXIT {
-                // Find the next block boundary or end of code
-                let mut upper = *offset;
-                for pc in (*offset as usize)..code.len() {
-                    if bb_offsets.contains(&((pc + 1) as CodeOffset)) {
-                        upper = pc as CodeOffset;
-                        break;
-                    }
-                }
-                if upper == *offset {
-                    upper = code.len() as CodeOffset - 1;
-                }
-                
-                blocks.insert(
-                    *block_id,
-                    Block {
-                        successors: vec![],
-                        content: BlockContent::Basic {
-                            lower: *offset,
-                            upper,
-                        },
-                    },
-                );
-            }
-        }
-        
         let entry_bb = *offset_to_key.get(&0).unwrap();
         blocks.insert(
             DUMMY_ENTRANCE,
@@ -224,7 +195,6 @@ impl StacklessControlFlowGraph {
                 content: BlockContent::Dummy,
             },
         );
-        
         blocks
     }
 
