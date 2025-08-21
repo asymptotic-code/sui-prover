@@ -9,7 +9,10 @@ use codespan_reporting::term::termcolor::Buffer;
 use crate::{build_model::build_model};
 use crate::llm_explain::explain_err;
 
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{BoogieFileMode, Options}};
+use move_prover_boogie_backend::{
+    generator::{run_boogie_gen, run_move_prover_with_model}, 
+    generator_options::Options, boogie_backend::options::BoogieFileMode,
+};
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -139,7 +142,7 @@ pub async fn execute(
     options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    options.boogie_file_mode = general_config.boogie_file_mode;
+    options.backend.boogie_file_mode = general_config.boogie_file_mode;
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;

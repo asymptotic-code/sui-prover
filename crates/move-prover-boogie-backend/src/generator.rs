@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use crate::generator_options::{Options, BoogieFileMode};
+use crate::generator_options::Options;
 use anyhow::anyhow;
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::{
@@ -15,7 +15,10 @@ use move_model::{
     code_writer::CodeWriter, model::GlobalEnv, ty::Type,
 };
 use crate::boogie_backend::{
-    lib::add_prelude, boogie_wrapper::BoogieWrapper, bytecode_translator::BoogieTranslator,
+    lib::add_prelude,
+    boogie_wrapper::BoogieWrapper,
+    bytecode_translator::BoogieTranslator,
+    options::BoogieFileMode,
 };
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor, function_target_pipeline::{
@@ -122,7 +125,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
         return Ok("🦀 No specifications are marked for verification. Nothing to verify.".to_owned());
     }
 
-    let has_errors = match options.boogie_file_mode {
+    let has_errors = match options.backend.boogie_file_mode {
         BoogieFileMode::Function => run_prover_function_mode(env, error_writer, &options, &targets)?,
         BoogieFileMode::Module => run_prover_module_mode(env, error_writer, &options, &targets)?,
         BoogieFileMode::All => run_prover_all_mode(env, error_writer, &options, &targets)?,
@@ -147,12 +150,49 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     Ok(("Verification successful").to_string())
 }
 
+fn run_prover_no_abort<W: WriteColor>(
+    env: &GlobalEnv,
+    error_writer: &mut W,
+    options: &Options,
+    targets: &FunctionTargetsHolder,
+) -> anyhow::Result<bool> {
+    let file_name = "pre_abort_verification";
+    println!("🔄 {file_name}");
+    
+    let (code_writer, types) = generate_boogie(env, &options, &targets, true)?;
+    check_errors(
+        env,
+        &options,
+        error_writer,
+        "exiting with condition generation errors",
+    )?;
+    verify_boogie(env, &options, &targets, code_writer, types, file_name.clone().to_owned())?;
+    let is_error = env.has_errors();
+    env.report_diag(error_writer, options.prover.report_severity);
+
+    if is_error {
+        println!("❌ {file_name}");
+        return Ok(true);
+    }
+
+    print!("\x1B[1A\x1B[2K");
+    println!("✅ {file_name}");
+
+    return Ok(false);
+
+}
+
 pub fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
+    let error = run_prover_no_abort(env, error_writer, options, targets)?;
+    if error {
+        return Ok(true);
+    }
+
     let mut has_errors = false;
 
     for target in targets.specs() {
@@ -173,7 +213,7 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
 
         let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
-        let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
+        let (code_writer, types) = generate_boogie(env, &options, &new_targets, false)?;
 
         check_errors(
             env,
@@ -222,7 +262,7 @@ pub fn run_prover_all_mode<W: WriteColor>(
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
-    let (code_writer, types) = generate_boogie(env, &options, &targets)?;
+    let (code_writer, types) = generate_boogie(env, &options, &targets, false)?;
     check_errors(
         env,
         &options,
@@ -259,6 +299,11 @@ pub fn run_prover_module_mode<W: WriteColor>(
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
+    let error = run_prover_no_abort(env, error_writer, options, targets)?;
+    if error {
+        return Ok(true);
+    }
+
     let mut has_errors = false;
 
     for target in targets.target_modules() {
@@ -272,7 +317,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
         println!("🔄 {file_name}");
 
         let new_targets = FunctionTargetsHolder::for_one_module(target, targets.clone(), env);
-        let (code_writer, types) = generate_boogie(env, &options, &new_targets)?;
+        let (code_writer, types) = generate_boogie(env, &options, &new_targets, false)?;
 
         check_errors(
             env,
@@ -331,11 +376,12 @@ pub fn generate_boogie(
     env: &GlobalEnv,
     options: &Options,
     targets: &FunctionTargetsHolder,
+    verify_only: bool,
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
     add_prelude(env, &options.backend, &writer)?;
-    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types);
+    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types, verify_only);
     translator.translate();
     Ok((writer, types.into_inner()))
 }

@@ -71,7 +71,7 @@ use crate::boogie_backend::{
         boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
         FunctionTranslationStyle, TypeIdentToken,
     },
-    options::BoogieOptions,
+    options::{BoogieFileMode, BoogieOptions},
     spec_translator::SpecTranslator,
 };
 
@@ -84,6 +84,7 @@ pub struct BoogieTranslator<'env> {
     spec_translator: SpecTranslator<'env>,
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
+    verify_only: bool,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -112,6 +113,7 @@ impl<'env> BoogieTranslator<'env> {
         targets: &'env FunctionTargetsHolder,
         writer: &'env CodeWriter,
         types: &'env RefCell<BiBTreeMap<Type, String>>,
+        verify_only: bool,
     ) -> Self {
         Self {
             env,
@@ -119,6 +121,7 @@ impl<'env> BoogieTranslator<'env> {
             targets,
             writer,
             types,
+            verify_only,
             spec_translator: SpecTranslator::new(writer, env, options),
         }
     }
@@ -320,6 +323,15 @@ impl<'env> BoogieTranslator<'env> {
                 }
 
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                    if self.verify_only {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+                        if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
+                        }
+                        continue;
+                    }
+
                     verified_functions_count += 1;
 
                     if self
@@ -355,17 +367,13 @@ impl<'env> BoogieTranslator<'env> {
                     }
 
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-
-                    if self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
-                        self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                        self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                        self.translate_function_style(
-                            fun_env,
-                            FunctionTranslationStyle::SpecNoAbortCheck,
-                        );
-                    }
-
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+
+                    if self.options.boogie_file_mode == BoogieFileMode::All || self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                        self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
+                    }
                 } else {
                     // Skip functions that were removed by verification analysis
                     let fun_target = match self
@@ -1896,9 +1904,7 @@ impl<'env> FunctionTranslator<'env> {
             }
         }
 
-        if self.should_generate_abort_condition() {
-            emitln!(writer, "var $abort_if_cond: bool;");
-        }
+        emitln!(writer, "var $abort_if_cond: bool;");
 
         // Generate memory snapshot variable declarations.
         let code = fun_target.get_bytecode();
@@ -2036,10 +2042,6 @@ impl<'env> FunctionTranslator<'env> {
 impl<'env> FunctionTranslator<'env> {
     fn writer(&self) -> &CodeWriter {
         self.parent.writer
-    }
-
-    fn should_generate_abort_condition(&self) -> bool {
-        self.parent.targets.is_verified_spec(&self.fun_target.func_env.get_qualified_id())
     }
 
     /// Translates one bytecode instruction.
@@ -2542,7 +2544,6 @@ impl<'env> FunctionTranslator<'env> {
                             .targets
                             .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
                             == Some(&mid.qualified(*fid))
-                            && self.should_generate_abort_condition()
                             && self.style == FunctionTranslationStyle::Opaque
                         {
                             if self
@@ -3754,7 +3755,6 @@ impl<'env> FunctionTranslator<'env> {
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
-                    && self.should_generate_abort_condition()
                     && !self
                         .parent
                         .targets

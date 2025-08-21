@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::anyhow;
+use clap::ValueEnum;
 use itertools::Itertools;
 use move_command_line_common::env::{read_bool_env_var, read_env_var};
 use regex::Regex;
@@ -70,6 +71,23 @@ impl BorrowAggregate {
             name,
             read_aggregate,
             write_aggregate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BoogieFileMode {
+    Function,
+    Module,
+    All,
+}
+
+impl ToString for BoogieFileMode {
+    fn to_string(&self) -> String {
+        match self {
+            BoogieFileMode::Function => "function".to_string(),
+            BoogieFileMode::Module => "module".to_string(),
+            BoogieFileMode::All => "all".to_string(),
         }
     }
 }
@@ -150,6 +168,8 @@ pub struct BoogieOptions {
     pub bv_int_encoding: bool,
     /// All possible additional options as simle string
     pub string_options: Option<String>,
+    /// Boogie run mode
+    pub boogie_file_mode: BoogieFileMode,
 }
 
 impl Default for BoogieOptions {
@@ -191,6 +211,7 @@ impl Default for BoogieOptions {
             path_split: Some(10),
             bv_int_encoding: true,
             string_options: None,
+            boogie_file_mode: BoogieFileMode::Function,
         }
     }
 }
