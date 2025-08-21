@@ -1102,8 +1102,10 @@ fn check_modifies(env: &GlobalEnv, targets: &FunctionTargetsHolder) {
     for module_env in env.get_modules() {
         if module_env.is_target() {
             for fun_env in module_env.get_functions() {
-                check_caller_callee_modifies_relation(env, targets, &fun_env);
-                check_opaque_modifies_completeness(env, targets, &fun_env);
+                if targets.has_target(&fun_env, &FunctionVariant::Baseline) {
+                    check_caller_callee_modifies_relation(env, targets, &fun_env);
+                    check_opaque_modifies_completeness(env, targets, &fun_env);
+                }
             }
         }
     }
@@ -1117,27 +1119,24 @@ fn check_caller_callee_modifies_relation(
     if fun_env.is_native() {
         return;
     }
-    let caller_func_target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
-        Some(target) => target,
-        None => {
-            dbg!(&format!(
-                "caller `{}` was filtered out",
-                fun_env.get_full_name_str()
-            ));
-            return;
-        }
-    };
 
-    // let caller_func_target = targets.get_target_opt(fun_env, &FunctionVariant::Baseline).expect(&format!(
-    //     "caller `{}` was filtered out",
-    //     fun_env.get_full_name_str()
-    // )); //FAILS
+    let caller_func_target = targets
+        .get_target_opt(fun_env, &FunctionVariant::Baseline)
+        .expect(&format!(
+            "caller `{}` was filtered out",
+            fun_env.get_full_name_str()
+        ));
 
     for callee in fun_env.get_called_functions() {
         let callee_fun_env = env.get_function(callee);
         if callee_fun_env.is_native() {
             continue;
         }
+
+        if !targets.has_target(&callee_fun_env, &FunctionVariant::Baseline) {
+            continue;
+        }
+
         let callee_func_target = targets
             .get_target_opt(&callee_fun_env, &FunctionVariant::Baseline)
             .unwrap();
@@ -1172,21 +1171,12 @@ fn check_opaque_modifies_completeness(
     targets: &FunctionTargetsHolder,
     fun_env: &FunctionEnv,
 ) {
-    let target = match targets.get_target_opt(fun_env, &FunctionVariant::Baseline) {
-        Some(target) => target,
-        None => {
-            dbg!(&format!(
-                "caller `{}` was filtered out",
-                fun_env.get_full_name_str()
-            ));
-            return;
-        }
-    };
-
-    // let target = targets.get_target_opt(fun_env, &FunctionVariant::Baseline).expect(&format!(
-    //     "caller `{}` was filtered out",
-    //     fun_env.get_full_name_str()
-    // )); //FAILS
+    let target = targets
+        .get_target_opt(fun_env, &FunctionVariant::Baseline)
+        .expect(&format!(
+            "caller `{}` was filtered out",
+            fun_env.get_full_name_str()
+        ));
 
     if !target.is_opaque() {
         return;

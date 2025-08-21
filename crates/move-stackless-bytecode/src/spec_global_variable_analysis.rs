@@ -444,21 +444,15 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
         let spec_ids = targets.specs().map(|id| *id).collect_vec();
         for spec_id in spec_ids {
             let spec_env = env.get_function(spec_id);
-            let spec_data = match targets.get_data_mut(&spec_id, &FunctionVariant::Baseline) {
-                Some(data) => data,
-                None => {
-                    // dbg!(&format!(
-                    //     "spec function `{}` was filtered out",
-                    //     spec_env.get_full_name_str()
-                    // ));
-                    continue;
-                }
-            };
-
-            // .expect(&format!(
-            //     "spec function `{}` was filtered out",
-            //     spec_env.get_full_name_str()
-            // )); // THROWS: EVENT_SPEC::EMIT_SPEC WAS FILTERED OUT
+            if !targets.has_target(&spec_env, &FunctionVariant::Baseline) {
+                continue;
+            }
+            let spec_data = targets
+                .get_data_mut(&spec_id, &FunctionVariant::Baseline)
+                .expect(&format!(
+                    "spec function `{}` was filtered out",
+                    spec_env.get_full_name_str()
+                ));
             let spec_target = FunctionTarget::new(&spec_env, spec_data);
 
             let infos_iter = spec_data.code.iter().filter_map(|bc| match bc {
