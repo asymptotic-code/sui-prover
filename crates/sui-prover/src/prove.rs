@@ -32,7 +32,7 @@ impl From<BuildConfig> for MoveBuildConfig {
             additional_named_addresses: config.additional_named_addresses,
             save_disassembly: false,
             implicit_dependencies: BTreeMap::new(),
-            modes: vec![ModeAttribute::VERIFY_ONLY.into()],
+            modes: vec![ModeAttribute::VERIFY_ONLY.into(), ModeAttribute::TEST_ONLY.into(), ModeAttribute::TEST.into()],
             force_lock_file: false,
         }
     }
@@ -77,6 +77,10 @@ pub struct GeneralConfig {
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
+
+    /// Dump bytecode to file
+    #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
+    pub dump_bytecode: bool,
 }
 
 #[derive(Args, Default)]
@@ -138,6 +142,7 @@ pub async fn execute(
     options.boogie_file_mode = general_config.boogie_file_mode;
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
+    options.prover.dump_bytecode = general_config.dump_bytecode;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

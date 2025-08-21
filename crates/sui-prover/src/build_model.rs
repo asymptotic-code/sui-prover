@@ -9,7 +9,7 @@ use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_depen
 pub fn build_model(path: Option<&Path>, build_config: Option<BuildConfig>) -> Result<GlobalEnv, anyhow::Error> {
     let rerooted_path = reroot_path(path)?;
     let mut move_build_config = resolve_lock_file_path(
-        build_config.unwrap_or_default().into(), 
+        build_config.unwrap_or_default().into(),
         Some(&rerooted_path),
     )?;
 
