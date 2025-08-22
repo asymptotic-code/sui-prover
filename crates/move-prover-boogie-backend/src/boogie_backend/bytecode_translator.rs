@@ -61,7 +61,7 @@ use crate::boogie_backend::{
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
         boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
         boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
-        boogie_enum_name_prefix, boogie_enum_variant_ctor_name, boogie_equality_for_type,
+        boogie_enum_variant_ctor_name, boogie_equality_for_type,
         boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name,
         boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name,
         boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
@@ -71,7 +71,7 @@ use crate::boogie_backend::{
         boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
         FunctionTranslationStyle, TypeIdentToken,
     },
-    options::BoogieOptions,
+    options::{BoogieFileMode, BoogieOptions},
     spec_translator::SpecTranslator,
 };
 
@@ -84,6 +84,7 @@ pub struct BoogieTranslator<'env> {
     spec_translator: SpecTranslator<'env>,
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
+    spec_no_abort_check: bool,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -112,6 +113,7 @@ impl<'env> BoogieTranslator<'env> {
         targets: &'env FunctionTargetsHolder,
         writer: &'env CodeWriter,
         types: &'env RefCell<BiBTreeMap<Type, String>>,
+        spec_no_abort_check: bool,
     ) -> Self {
         Self {
             env,
@@ -119,6 +121,7 @@ impl<'env> BoogieTranslator<'env> {
             targets,
             writer,
             types,
+            spec_no_abort_check,
             spec_translator: SpecTranslator::new(writer, env, options),
         }
     }
@@ -320,48 +323,8 @@ impl<'env> BoogieTranslator<'env> {
                 }
 
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                    self.translate_spec(&fun_env);
                     verified_functions_count += 1;
-
-                    if self
-                        .targets
-                        .scenario_specs()
-                        .contains(&fun_env.get_qualified_id())
-                    {
-                        if self.targets.has_target(
-                            fun_env,
-                            &FunctionVariant::Verification(VerificationFlavor::Regular),
-                        ) {
-                            let fun_target = self.targets.get_target(
-                                fun_env,
-                                &FunctionVariant::Verification(VerificationFlavor::Regular),
-                            );
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                FunctionTranslationStyle::Default,
-                            )
-                            .translate();
-                            self.translate_function_style(
-                                fun_env,
-                                FunctionTranslationStyle::Asserts,
-                            );
-                            self.translate_function_style(
-                                fun_env,
-                                FunctionTranslationStyle::Aborts,
-                            );
-                        }
-                        continue;
-                    }
-
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
-                    self.translate_function_style(
-                        fun_env,
-                        FunctionTranslationStyle::SpecNoAbortCheck,
-                    );
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                 } else {
                     // Skip functions that were removed by verification analysis
                     let fun_target = match self
@@ -448,6 +411,58 @@ impl<'env> BoogieTranslator<'env> {
         // Emit any finalization items required by spec translation.
         self.spec_translator.finalize();
         info!("{} verification conditions", verified_functions_count);
+    }
+
+    fn translate_spec(&self, fun_env: &FunctionEnv<'env>) {
+        if self.spec_no_abort_check {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+                self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
+            }
+            return;
+        }
+
+        if self
+            .targets
+            .scenario_specs()
+            .contains(&fun_env.get_qualified_id())
+        {
+            if self.targets.has_target(
+                fun_env,
+                &FunctionVariant::Verification(VerificationFlavor::Regular),
+            ) {
+                let fun_target = self.targets.get_target(
+                    fun_env,
+                    &FunctionVariant::Verification(VerificationFlavor::Regular),
+                );
+                FunctionTranslator::new(
+                    self,
+                    &fun_target,
+                    &[],
+                    FunctionTranslationStyle::Default,
+                )
+                .translate();
+                self.translate_function_style(
+                    fun_env,
+                    FunctionTranslationStyle::Asserts,
+                );
+                self.translate_function_style(
+                    fun_env,
+                    FunctionTranslationStyle::Aborts,
+                );
+            }
+            return;
+        }
+
+        self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
+        self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+        self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+
+        if self.options.boogie_file_mode == BoogieFileMode::All || self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+            self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
+        }
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
@@ -1891,6 +1906,7 @@ impl<'env> FunctionTranslator<'env> {
                 }
             }
         }
+
         emitln!(writer, "var $abort_if_cond: bool;");
 
         // Generate memory snapshot variable declarations.
@@ -2848,7 +2864,7 @@ impl<'env> FunctionTranslator<'env> {
                             args
                         );
                     }
-                    UnpackVariant(mid, eid, vid, inst, ref_type) => {
+                    UnpackVariant(mid, eid, vid, _inst, ref_type) => {
                         let enum_env = env.get_module(*mid).into_enum(*eid);
                         let variant_env = enum_env.get_variant(*vid);
 
