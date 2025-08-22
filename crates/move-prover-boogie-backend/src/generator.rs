@@ -150,13 +150,13 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     Ok(("Verification successful").to_string())
 }
 
-fn run_prover_no_abort<W: WriteColor>(
+fn run_prover_spec_no_abort_check<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
-    let file_name = "pre_abort_verification";
+    let file_name = "spec_no_abort_check";
     println!("🔄 {file_name}");
     
     let (code_writer, types) = generate_boogie(env, &options, &targets, true)?;
@@ -188,7 +188,7 @@ pub fn run_prover_function_mode<W: WriteColor>(
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
-    let error = run_prover_no_abort(env, error_writer, options, targets)?;
+    let error = run_prover_spec_no_abort_check(env, error_writer, options, targets)?;
     if error {
         return Ok(true);
     }
@@ -299,7 +299,7 @@ pub fn run_prover_module_mode<W: WriteColor>(
     options: &Options,
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
-    let error = run_prover_no_abort(env, error_writer, options, targets)?;
+    let error = run_prover_spec_no_abort_check(env, error_writer, options, targets)?;
     if error {
         return Ok(true);
     }
@@ -376,12 +376,12 @@ pub fn generate_boogie(
     env: &GlobalEnv,
     options: &Options,
     targets: &FunctionTargetsHolder,
-    verify_only: bool,
+    spec_no_abort_check: bool,
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
     add_prelude(env, &options.backend, &writer)?;
-    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types, verify_only);
+    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types, spec_no_abort_check);
     translator.translate();
     Ok((writer, types.into_inner()))
 }
