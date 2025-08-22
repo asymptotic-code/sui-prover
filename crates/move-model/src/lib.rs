@@ -48,6 +48,7 @@ pub mod pragmas;
 pub mod symbol;
 pub mod ty;
 pub mod well_known;
+pub mod sui_native_deterministic_functions;
 
 // =================================================================================================
 // Entry Point
