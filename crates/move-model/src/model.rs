@@ -3157,7 +3157,7 @@ pub struct StructEnv<'env> {
     pub module_env: ModuleEnv<'env>,
 
     /// Reference to the struct data.
-    pub data: &'env StructData,
+    data: &'env StructData,
 }
 
 impl<'env> StructEnv<'env> {
