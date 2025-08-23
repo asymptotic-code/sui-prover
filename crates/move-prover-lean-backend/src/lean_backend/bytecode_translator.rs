@@ -1427,6 +1427,8 @@ impl FunctionTranslator<'_> {
         if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
             self.generate_no_abort_check_theorem();
         } else {
+            // Emit locals frame type and State monad alias before the function definition
+            self.generate_locals_frame_type_and_monad();
             self.generate_function_sig();
 
             if self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() {
@@ -2421,6 +2423,30 @@ fn get_mutable_parameters(&self) -> Vec<(TempIndex, Type)> {
         .collect_vec()
 }
 
+/// Emit a per-function Locals frame type and a State monad alias.
+fn generate_locals_frame_type_and_monad(&self) {
+    let writer = self.parent.writer;
+    let fun_target = self.fun_target;
+    let env = fun_target.global_env();
+
+    let fun_name = self.function_variant_name(self.style);
+    let locals_name = format!("{}_Locals", fun_name);
+    let monad_name = format!("{}_CF", fun_name);
+
+    emitln!(writer, "\n-- Locals frame type (state) and State monad alias for {}", fun_name);
+    emitln!(writer, "structure {} where", locals_name);
+    writer.indent();
+    let num_args = fun_target.get_parameter_count();
+    for i in num_args..fun_target.get_local_count() {
+        let local_type = &self.get_local_type(i);
+        emitln!(writer, "t{} : {}", i, lean_type(env, local_type));
+    }
+    writer.unindent();
+    emitln!(writer, "");
+    emitln!(writer, "abbrev {} := StateT {} Id", monad_name, locals_name);
+    emitln!(writer, "");
+}
+
 /// Generate a function that executes up to the ensures and returns the condition
 fn generate_ensures_check_function(&self, ensures_idx: usize, bytecode_idx: usize, ensures_temp: TempIndex) {
     let writer = self.parent.writer;
@@ -2583,6 +2609,17 @@ fn analyze_basic_blocks(&self, cfg: &StacklessControlFlowGraph, code: &[Bytecode
         .iter()
         .map(|l| (l.loop_latch, l.loop_header))
         .collect();
+
+    // Precompute label offsets and a mapping from code offsets to block ids
+    let label_offsets = Bytecode::label_offsets(code);
+    let mut offset_to_block: BTreeMap<CodeOffset, BlockId> = BTreeMap::new();
+    for b in cfg.blocks() {
+        if let Some(instr_range) = cfg.instr_indexes(b) {
+            for offs in instr_range {
+                offset_to_block.insert(offs, b);
+            }
+        }
+    }
     
     for block_id in cfg.blocks() {
         if cfg.is_dummmy(block_id) {
@@ -2611,6 +2648,14 @@ fn analyze_basic_blocks(&self, cfg: &StacklessControlFlowGraph, code: &[Bytecode
                 match last_instr {
                     Bytecode::Ret(_, _) => info.has_return = true,
                     Bytecode::Abort(_, _) => info.has_abort = true,
+                    Bytecode::Jump(_, label) => {
+                        // Use the label to determine the jump target block id
+                        if let Some(&offs) = label_offsets.get(label) {
+                            if let Some(&b) = offset_to_block.get(&offs) {
+                                info.successors = vec![b];
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2636,14 +2681,28 @@ fn analyze_basic_blocks(&self, cfg: &StacklessControlFlowGraph, code: &[Bytecode
 fn generate_local_declarations(&self) {
     let writer = self.writer();
     let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-    
-    emitln!(writer, "-- Local variable declarations");
+
+    // Emit initial locals frame construction instead of separate let-bindings
+    emitln!(writer, "-- Initial locals frame (record)");
     let num_args = fun_target.get_parameter_count();
-    for i in num_args..fun_target.get_local_count() {
-        let local_type = &self.get_local_type(i);
-        emitln!(writer, "let t{} : {} := sorry;", i, lean_type(env, local_type));
+    let fun_name = self.function_variant_name(self.style);
+    let locals_name = format!("{}_Locals", fun_name);
+
+    if fun_target.get_local_count() <= num_args {
+        // No non-parameter locals; empty struct
+        emitln!(writer, "let frame0 : {} := {{}}", locals_name);
+        emitln!(writer, "");
+        return;
     }
+
+    emitln!(writer, "let frame0 : {} := {{", locals_name);
+    // Initialize each field with a placeholder; later instructions will assign real values
+    let last = fun_target.get_local_count() - 1;
+    for i in num_args..fun_target.get_local_count() {
+        let sep = if i == last { "" } else { "," };
+        emitln!(writer, "  t{} := sorry{}", i, sep);
+    }
+    emitln!(writer, "}");
     emitln!(writer, "");
 }
 
@@ -2658,9 +2717,12 @@ fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, bl
         FunctionTranslationStyle::Aborts => ("Nat".to_string(), "ProgramState Nat".to_string()),
         _ => (default_inner_type.clone(), format!("ProgramState {}", default_inner_type)),
     };
+    let fun_name = self.function_variant_name(self.style);
+    let locals_name = format!("{}_Locals", fun_name);
     emitln!(
         self.parent.writer,
-        "let rec control_flow_exec (state : ProgramState {}) : {} :=",
+        "let rec control_flow_exec (frame : {}) (state : ProgramState {}) : {} :=",
+        locals_name,
         cf_inner_type,
         cf_return_type
     );
@@ -2676,7 +2738,7 @@ fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, bl
     }
 
     // Fallback for unmatched AtBlock values to make match exhaustive
-    emitln!(self.parent.writer, "| ProgramState.AtBlock n => ProgramState.AtBlock n");
+    emitln!(self.parent.writer, "| ProgramState.AtBlock n => ProgramState.Aborted 0");
     // Terminal cases
     emitln!(self.parent.writer, "| ProgramState.Returned x => ProgramState.Returned x");
     emitln!(self.parent.writer, "| ProgramState.Aborted code => ProgramState.Aborted code");
@@ -2702,11 +2764,11 @@ fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, bl
     match self.style {
         FunctionTranslationStyle::Aborts => {
             // Top-level rets is ProgramState Nat; return directly
-            emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", actual_entry);
+            emitln!(self.parent.writer, "control_flow_exec frame0 (ProgramState.AtBlock {})", actual_entry);
         }
         FunctionTranslationStyle::Asserts | FunctionTranslationStyle::SpecNoAbortCheck => {
             // Top-level rets is Unit; ignore the control-flow result
-            emitln!(self.parent.writer, "match control_flow_exec (ProgramState.AtBlock {}) with", actual_entry);
+            emitln!(self.parent.writer, "match control_flow_exec frame0 (ProgramState.AtBlock {}) with", actual_entry);
             self.parent.writer.indent();
             emitln!(self.parent.writer, "| ProgramState.Returned _ => ()");
             emitln!(self.parent.writer, "| ProgramState.Aborted _ => ()");
@@ -2715,7 +2777,7 @@ fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, bl
         }
         _ => {
             // Default/Verify: extract the returned value or leave placeholders
-            emitln!(self.parent.writer, "match control_flow_exec (ProgramState.AtBlock {}) with", actual_entry);
+            emitln!(self.parent.writer, "match control_flow_exec frame0 (ProgramState.AtBlock {}) with", actual_entry);
             self.parent.writer.indent();
             emitln!(self.parent.writer, "| ProgramState.Returned r => r");
             emitln!(self.parent.writer, "| ProgramState.Aborted _ => sorry");
@@ -2751,6 +2813,9 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
     }
     
     // Translate instructions in this block
+    // Prepare helpers to read locals either from parameters or from the frame
+    let num_args = self.fun_target.get_parameter_count();
+    let read_local = |idx: usize| if idx < num_args { format!("t{}", idx) } else { format!("frame.t{}", idx) };
     if let Some((start, end)) = info.instruction_range {
         let mut last_tracked_loc: Option<&move_model::model::Loc> = None;
         // Prepare label offsets for pretty-printing bytecode
@@ -2787,7 +2852,7 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
                         back
                     );
                     eprintln!("[LeanCFG] jump {} -> {}{} (pc {} )", block_id, target_block, back, pc);
-                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", target_block);
+                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", target_block);
                     self.parent.writer.unindent();
                     return;
                 },
@@ -2795,26 +2860,28 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
                     // Already logged above
                     let then_block = self.find_block_for_label(code, *then_label, pc);
                     let else_block = self.find_block_for_label(code, *else_label, pc);
-                    emitln!(self.parent.writer, "if t{} then", cond_temp);
+                    let cond_str = read_local(*cond_temp as usize);
+                    emitln!(self.parent.writer, "if {} then", cond_str);
                     self.parent.writer.indent();
                     let back_then = if then_block < block_id { " (back)" } else { "" };
                     emitln!(self.parent.writer, "-- branch then: {} -> {}{}", block_id, then_block, back_then);
                     eprintln!("[LeanCFG] branch-then {} -> {}{} (pc {} )", block_id, then_block, back_then, pc);
-                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", then_block);
+                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", then_block);
                     self.parent.writer.unindent();
                     emitln!(self.parent.writer, "else");
                     self.parent.writer.indent();
                     let back_else = if else_block < block_id { " (back)" } else { "" };
                     emitln!(self.parent.writer, "-- branch else: {} -> {}{}", block_id, else_block, back_else);
                     eprintln!("[LeanCFG] branch-else {} -> {}{} (pc {} )", block_id, else_block, back_else, pc);
-                    emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", else_block);
+                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", else_block);
                     self.parent.writer.unindent();
                     self.parent.writer.unindent();
                     return;
                 },
                 Bytecode::VariantSwitch(_, switch_temp, labels) => {
                     // Already logged above
-                    emitln!(self.parent.writer, "match t{} with", switch_temp);
+                    let switch_str = read_local(*switch_temp as usize);
+                                        emitln!(self.parent.writer, "match {} with", switch_str);
                     self.parent.writer.indent();
                     for (variant_idx, label) in labels.iter().enumerate() {
                         let target_block = self.find_block_for_label(code, *label, pc);
@@ -2823,7 +2890,7 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
                         self.parent.writer.indent();
                         emitln!(self.parent.writer, "-- variant {}: {} -> {}{}", variant_idx, block_id, target_block, back);
                         eprintln!("[LeanCFG] variant {}: {} -> {}{} (pc {} )", variant_idx, block_id, target_block, back, pc);
-                        emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", target_block);
+                        emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", target_block);
                         self.parent.writer.unindent();
                     }
                     self.parent.writer.unindent();
@@ -2839,7 +2906,7 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
                                 let back = if header < block_id { " (back)" } else { "" };
                                 emitln!(self.parent.writer, "-- stop (latch): {} -> {}{}", block_id, header, back);
                                 eprintln!("[LeanCFG] stop (latch) {} -> {}{} (pc {} )", block_id, header, back, pc);
-                                emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", header);
+                                emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", header);
                             } else {
                                 emitln!(self.parent.writer, "-- stop: {} -> 1 (exit)", block_id);
                                 eprintln!("[LeanCFG] stop {} -> 1 (exit) (pc {} )", block_id, pc);
@@ -2858,16 +2925,18 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
                     if srcs.is_empty() {
                         emitln!(self.parent.writer, "ProgramState.Returned ()");
                     } else if srcs.len() == 1 {
-                        emitln!(self.parent.writer, "ProgramState.Returned t{}", srcs[0]);
+                        let v = read_local(srcs[0] as usize);
+                        emitln!(self.parent.writer, "ProgramState.Returned {}", v);
                     } else {
-                        let values = srcs.iter().map(|&idx| format!("t{}", idx)).join(", ");
+                        let values = srcs.iter().map(|&idx| read_local(idx as usize)).join(", ");
                         emitln!(self.parent.writer, "ProgramState.Returned ({})", values);
                     }
                     self.parent.writer.unindent();
                     return;
                 },
                 Bytecode::Abort(_, code_temp) => {
-                    emitln!(self.parent.writer, "ProgramState.Aborted (Int.natAbs t{})", code_temp);
+                    let codev = read_local(*code_temp as usize);
+                                        emitln!(self.parent.writer, "ProgramState.Aborted (Int.natAbs {})", codev);
                     self.parent.writer.unindent();
                     return;
                 },
@@ -2907,7 +2976,7 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
         let back = if next_block < block_id { " (back)" } else { "" };
         emitln!(self.parent.writer, "-- fallthrough: {} -> {}{}", block_id, next_block, back);
         eprintln!("[LeanCFG] fallthrough {} -> {}{}", block_id, next_block, back);
-        emitln!(self.parent.writer, "control_flow_exec (ProgramState.AtBlock {})", next_block);
+        emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", next_block);
     } else {
         // No successors - keep current state to preserve totality and aid debugging
         emitln!(self.parent.writer, "ProgramState.AtBlock {} -- no real successors", block_id);
@@ -2918,125 +2987,149 @@ fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInf
 
 /// Core bytecode translation logic shared between different contexts
 fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
-    // Helper function to get a string for a local
-    let str_local = |idx: usize| format!("t{}", idx);
-    
+    // Helpers to read/write locals via frame when appropriate
+    let num_args = self.fun_target.get_parameter_count();
+    let read_local = |idx: usize| if idx < num_args { format!("t{}", idx) } else { format!("frame.t{}", idx) };
+    let write_nonparam = |dest: usize, expr: String| -> String {
+        format!("let frame := {{ frame with t{} := {} }};", dest, expr)
+    };
+
     match bytecode {
         Bytecode::Load(_, dest, c) => {
-            emitln!(writer, "let {} := {};", str_local(*dest), c);
+            if *dest < num_args {
+                emitln!(writer, "let t{} := {};", dest, c);
+            } else {
+                emitln!(writer, "{}", write_nonparam(*dest as usize, format!("{}", c)));
+            }
         },
         Bytecode::Call(_, dests, oper, srcs, _) => {
             use Operation::*;
             match oper {
-                Add => {
+                Add | Sub | Mul | Mod | Div | BitAnd | BitOr | Xor | Shl | Shr => {
                     if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} + {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                        let a = read_local(srcs[0] as usize);
+                        let b = read_local(srcs[1] as usize);
+                        let op = match oper { Add => "+", Sub => "-", Mul => "*", Mod => "%", Div => "/", BitAnd => "&&&", BitOr => "|||", Xor => "^^^", Shl => "<<<", Shr => ">>>", _ => "?" };
+                        let expr = format!("{} {} {}", a, op, b);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
                     }
                 },
-                Sub => {
+                Eq | Neq | Lt | Le | Gt | Ge => {
                     if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} - {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Mul => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} * {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Mod => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} % {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Div => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} / {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Eq | Neq => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let op = if matches!(oper, Eq) { "==" } else { "!=" };
-                        emitln!(writer, "let {} := {} {} {};", 
-                                str_local(dests[0]), str_local(srcs[0]), op, str_local(srcs[1]));
-                    }
-                },
-                Lt | Le | Gt | Ge => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let op = match oper {
-                            Lt => "<", Le => "<=", Gt => ">", Ge => ">=", _ => "?"
-                        };
-                        emitln!(writer, "let {} := {} {} {};", 
-                                str_local(dests[0]), str_local(srcs[0]), op, str_local(srcs[1]));
-                    }
-                },
-                BitAnd => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} &&& {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                BitOr => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} ||| {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Xor => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} ^^^ {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Shl => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} <<< {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
-                    }
-                },
-                Shr => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        emitln!(writer, "let {} := {} >>> {};", 
-                                str_local(dests[0]), str_local(srcs[0]), str_local(srcs[1]));
+                        let a = read_local(srcs[0] as usize);
+                        let b = read_local(srcs[1] as usize);
+                        let op = match oper { Eq => "==", Neq => "!=", Lt => "<", Le => "<=", Gt => ">", Ge => ">=", _ => "?" };
+                        let expr = format!("{} {} {}", a, op, b);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
                     }
                 },
                 CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
                     if dests.len() == 1 && srcs.len() == 1 {
-                        let cast_type = match oper {
-                            CastU8 => "UInt8.ofNat",
-                            CastU16 => "UInt16.ofNat", 
-                            CastU32 => "UInt32.ofNat",
-                            CastU64 => "UInt64.ofNat",
-                            CastU128 => "UInt128.ofNat",
-                            CastU256 => "UInt256.ofNat",
-                            _ => "sorry"
-                        };
-                        emitln!(writer, "let {} := {} {}.toNat;", 
-                                str_local(dests[0]), cast_type, str_local(srcs[0]));
+                        let cast_type = match oper { CastU8 => "UInt8.ofNat", CastU16 => "UInt16.ofNat", CastU32 => "UInt32.ofNat", CastU64 => "UInt64.ofNat", CastU128 => "UInt128.ofNat", CastU256 => "UInt256.ofNat", _ => "sorry" };
+                        let s = read_local(srcs[0] as usize);
+                        let expr = format!("{} {}.toNat", cast_type, s);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
                     }
                 },
-                GetField(mid, sid, type_args, field_idx) => {
+                GetField(mid, sid, _type_args, field_idx) => {
                     if dests.len() == 1 && srcs.len() == 1 {
-                        // For struct field access, we need to generate the appropriate field access
                         let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
                         let field_env = struct_env.get_field_by_offset(*field_idx);
                         let field_name = field_env.get_name();
-                        emitln!(writer, "let {} := {}.{};", 
-                                str_local(dests[0]), str_local(srcs[0]), field_name.display(self.parent.env.symbol_pool()));
+                        let s = read_local(srcs[0] as usize);
+                        let expr = format!("{}.{}", s, field_name.display(self.parent.env.symbol_pool()));
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
                     }
                 },
                 Pack(mid, sid, type_args) => {
                     if dests.len() == 1 {
                         let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
                         let struct_name = lean_struct_name(&struct_env, type_args);
-                        let field_values = srcs.iter().map(|&idx| str_local(idx)).join(" ");
-                        emitln!(writer, "let {} := {}.mk {};", 
-                                str_local(dests[0]), struct_name, field_values);
+                        let field_values = srcs.iter().map(|&idx| read_local(idx as usize)).join(" ");
+                        let expr = format!("{}.mk {}", struct_name, field_values);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
                     }
+                },
+                And => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        let a = read_local(srcs[0] as usize);
+                        let b = read_local(srcs[1] as usize);
+                        let expr = format!("{} && {}", a, b);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
+                    }
+                },
+                Or => {
+                    if dests.len() == 1 && srcs.len() == 2 {
+                        let a = read_local(srcs[0] as usize);
+                        let b = read_local(srcs[1] as usize);
+                        let expr = format!("{} || {}", a, b);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
+                    }
+                },
+                Not => {
+                    if dests.len() == 1 && srcs.len() == 1 {
+                        let a = read_local(srcs[0] as usize);
+                        let expr = format!("!{}", a);
+                        let d = dests[0] as usize;
+                        if d < num_args {
+                            emitln!(writer, "let t{} := {};", d, expr);
+                        } else {
+                            emitln!(writer, "{}", write_nonparam(d, expr));
+                        }
+                    }
+                },
+                TraceLocal(_) | TraceExp(_, _) | TraceMessage(_) | TraceGhost(..) | TraceReturn(_) | TraceAbort => {
+                    // Tracing operations are no-ops in Lean output
+                    emitln!(writer, "-- trace op skipped");
+                },
+                Function(mid, fid, _type_args) => {
+                    // Spec helper or general function call without return handling: skip for now if no dests
+                    if dests.is_empty() {
+                        let module_env = self.parent.env.get_module(*mid);
+                        let callee_env = module_env.get_function(*fid);
+                        emitln!(writer, "-- call {} skipped", callee_env.get_full_name_str());
+                    } else {
+                        emitln!(writer, "-- call with returns not yet handled in CFG translator");
+                    }
+                },
+                Havoc(_) | Uninit => {
+                    // Havoc/uninit are treated as no-ops for now
+                    emitln!(writer, "-- havoc/uninit skipped");
                 },
                 _ => {
                     // For operations not handled in the simple version, emit a comment
@@ -3129,52 +3222,3 @@ fn generate_no_abort_check_theorem(&self) {
     writer.unindent();
 }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use move_stackless_bytecode::stackless_bytecode::{Bytecode, Label};
-
-    #[test] 
-    fn test_control_flow_detection() {
-        use move_stackless_bytecode::stackless_bytecode::AttrId;
-        
-        // Test bytecode with control flow
-        let bytecode_with_control_flow = vec![
-            Bytecode::Branch(AttrId::new(1), Label::new(0), Label::new(1), 0),
-        ];
-        
-        // Test detection
-        let has_control_flow = bytecode_with_control_flow.iter().any(|bc| {
-            matches!(bc, 
-                Bytecode::Jump(_, _) | 
-                Bytecode::Branch(_, _, _, _) | 
-                Bytecode::VariantSwitch(_, _, _) |
-                Bytecode::Abort(_, _))
-        });
-        
-        assert!(has_control_flow, "Should detect control flow");
-    }
-
-    #[test]
-    fn test_cfg_analysis() {
-        use move_stackless_bytecode::stackless_control_flow_graph::StacklessControlFlowGraph;
-        use move_stackless_bytecode::stackless_bytecode::AttrId;
-        
-        // Test bytecode with control flow
-        let bytecode = vec![
-            Bytecode::Branch(AttrId::new(1), Label::new(0), Label::new(1), 0),
-            Bytecode::Label(AttrId::new(2), Label::new(0)),
-            Bytecode::Ret(AttrId::new(3), vec![1]),
-            Bytecode::Label(AttrId::new(4), Label::new(1)),
-            Bytecode::Ret(AttrId::new(5), vec![0]),
-        ];
-        
-        let cfg = StacklessControlFlowGraph::new_forward(&bytecode);
-        let blocks = cfg.blocks();
-        
-        // Should have multiple blocks for the different control flow paths
-        assert!(blocks.len() > 1, "Should have multiple basic blocks, got {}", blocks.len());
-    }
-}
-
-

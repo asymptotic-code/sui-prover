@@ -371,3 +371,28 @@ def m1_integer_neg (x : m1_integer_Integer) : m1_integer_Integer :=
 
 def m1_integer_pow (x : m1_integer_Integer) (y : m1_integer_Integer) : m1_integer_Integer :=
     sorry
+
+-- Program state for control flow
+inductive ProgramState (α : Type) where
+  | AtBlock : Nat -> ProgramState α
+  | Returned : α -> ProgramState α
+  | Aborted : Nat -> ProgramState α
+
+def ProgramState.pure {α : Type} (a : α) : ProgramState α :=
+  ProgramState.Returned a
+
+def ProgramState.bind {α β : Type} (ma : ProgramState α) (f : α → ProgramState β) : ProgramState β :=
+  match ma with
+  | ProgramState.AtBlock n => ProgramState.AtBlock n
+  | ProgramState.Returned a => f a
+  | ProgramState.Aborted n => ProgramState.Aborted n
+
+instance : Monad ProgramState where
+  pure := ProgramState.pure
+  bind := ProgramState.bind
+
+def prover_requires (cond : Bool) : ProgramState Unit :=
+  if cond then
+    pure ()
+  else
+    ProgramState.Aborted 0
