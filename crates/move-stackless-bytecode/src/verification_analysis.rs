@@ -174,17 +174,27 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // Keep all datatype invariant functions
         for (_, inv_fun_id) in targets.get_datatype_invs() {
             functions_to_keep.insert(*inv_fun_id);
+            println!(
+                "DEBUG: Keeping datatype invariant function: {}",
+                env.get_function(*inv_fun_id).get_full_name_str()
+            );
         }
 
         // Keep functions that are verified, inlined, or essential
         for fun_id in targets.get_funs() {
             let fun_env = env.get_function(fun_id);
+            let fun_name = fun_env.get_full_name_str();
+
             // Check verification status across all variants
             for variant in targets.get_target_variants(&fun_env) {
                 let data = targets.get_data(&fun_id, &variant).unwrap();
                 let info = get_info(&FunctionTarget::new(&fun_env, data));
                 if info.verified || info.inlined || info.essential {
                     functions_to_keep.insert(fun_id);
+                    println!(
+                        "DEBUG: Keeping function {}: verified={}, inlined={}, essential={}",
+                        fun_name, info.verified, info.inlined, info.essential
+                    );
                     break;
                 }
             }
@@ -200,8 +210,36 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .filter(|fun_id| !functions_to_keep.contains(fun_id))
             .collect();
 
+        println!("DEBUG: Total functions: {}", targets.get_funs().count());
+        println!("DEBUG: Functions to keep: {}", functions_to_keep.len());
+        println!("DEBUG: Functions to remove: {}", functions_to_remove.len());
+
+        // Log specific information about event_spec::emit_spec
+        for fun_id in targets.get_funs() {
+            let fun_env = env.get_function(fun_id);
+            let fun_name = fun_env.get_full_name_str();
+            if fun_name.contains("event_spec::emit_spec") {
+                println!("DEBUG: Found event_spec::emit_spec function: {}", fun_name);
+                println!("DEBUG: Function ID: {:?}", fun_id);
+                println!(
+                    "DEBUG: Is in keep set: {}",
+                    functions_to_keep.contains(&fun_id)
+                );
+
+                // Check verification status
+                for variant in targets.get_target_variants(&fun_env) {
+                    let data = targets.get_data(&fun_id, &variant).unwrap();
+                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                    println!("DEBUG: event_spec::emit_spec verification info: verified={}, inlined={}, essential={}, reachable={}", 
+                             info.verified, info.inlined, info.essential, info.reachable);
+                }
+            }
+        }
+
         // Remove functions from targets (remove entire function entry, not just variants)
         for fun_id in functions_to_remove {
+            let fun_name = env.get_function(fun_id).get_full_name_str();
+            println!("DEBUG: Removing function: {}", fun_name);
             targets.remove_target(&fun_id);
         }
     }
@@ -427,7 +465,7 @@ impl VerificationAnalysisProcessor {
 
         // Handle ghost functions first (since they're also native)
         if name.contains("ghost::") {
-            return true; // Keep all ghost functions
+            return true;
         }
 
         // All prover functions are essential
@@ -435,12 +473,14 @@ impl VerificationAnalysisProcessor {
             return true;
         }
 
-        // Essential stdlib functions that are needed for verification
-        if name.starts_with("vector::")
-            || name.starts_with("option::")
-            || name.starts_with("object::")
-            || name.starts_with("tx_context::")
-            || name.starts_with("integer::")
+        //TODO: remove these
+        if name.contains("emit_spec")
+            || name.contains("has_access_spec")
+            || name.contains("has_item_with_type_spec")
+            || name.contains("delete_impl_spec")
+            || name.contains("record_new_uid_spec")
+            || name.contains("new_generator_spec")
+            || name.contains("u128_in_range_spec")
         {
             return true;
         }
@@ -547,7 +587,7 @@ impl VerificationAnalysisProcessor {
                 continue;
             }
             processed.insert(fun_id);
-            
+
             let fun_env = env.get_function(fun_id);
 
             // Mark all callees as reachable
@@ -555,30 +595,32 @@ impl VerificationAnalysisProcessor {
                 if processed.contains(&callee) {
                     continue;
                 }
-                
+
                 let callee_env = env.get_function(callee);
                 let mut should_mark_reachable = false;
-                
+
                 // Check if this function needs to be marked as reachable
                 for variant in targets.get_target_variants(&callee_env) {
                     if let Some(data) = targets.get_data(&callee, &variant) {
                         let info = get_info(&FunctionTarget::new(&callee_env, data));
-                        
+
                         // Skip if already processed (verified, inlined, essential, or reachable)
                         if info.verified || info.inlined || info.essential || info.reachable {
                             break;
                         }
-                        
+
                         should_mark_reachable = true;
                         break;
                     }
                 }
-                
+
                 if should_mark_reachable {
                     // Mark as reachable across all variants
                     for variant in targets.get_target_variants(&callee_env) {
                         if let Some(data) = targets.get_data_mut(&callee, &variant) {
-                            let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                            let info = data
+                                .annotations
+                                .get_or_default_mut::<VerificationInfo>(true);
                             info.reachable = true;
                         }
                     }
@@ -587,7 +629,7 @@ impl VerificationAnalysisProcessor {
                 }
             }
         }
-        
+
         reachable_functions
     }
 
