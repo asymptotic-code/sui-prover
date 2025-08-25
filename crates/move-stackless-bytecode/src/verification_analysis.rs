@@ -473,18 +473,6 @@ impl VerificationAnalysisProcessor {
             return true;
         }
 
-        //TODO: remove these
-        if name.contains("emit_spec")
-            || name.contains("has_access_spec")
-            || name.contains("has_item_with_type_spec")
-            || name.contains("delete_impl_spec")
-            || name.contains("record_new_uid_spec")
-            || name.contains("new_generator_spec")
-            || name.contains("u128_in_range_spec")
-        {
-            return true;
-        }
-
         false
     }
 
@@ -516,6 +504,13 @@ impl VerificationAnalysisProcessor {
             info.verified = true;
             info.inlined = true;
             Self::mark_callees_inlined(fun_env, targets);
+            
+            // If this is a spec function, also mark its target function as inlined
+            if targets.is_spec(&fun_env.get_qualified_id()) {
+                if let Some(target_id) = targets.get_fun_by_spec(&fun_env.get_qualified_id()) {
+                    Self::mark_inlined(&fun_env.module_env.env.get_function(*target_id), targets);
+                }
+            }
         }
     }
 

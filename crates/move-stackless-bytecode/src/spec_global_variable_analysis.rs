@@ -441,22 +441,13 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
     }
 
     fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        let spec_ids = targets.specs().map(|id| *id).collect_vec();
-        println!("DEBUG: Total spec functions found: {}", spec_ids.len());
+        let spec_ids = targets.valid_specs(env).map(|id| *id).collect_vec();
+        println!("DEBUG: Total valid spec functions found: {}", spec_ids.len());
         
         for spec_id in spec_ids {
             let spec_env = env.get_function(spec_id);
             let spec_name = spec_env.get_full_name_str();
             println!("DEBUG: Processing spec function: {}", spec_name);
-            
-            if !targets.has_target(&spec_env, &FunctionVariant::Baseline) {
-                continue; //TODO: REMOVE
-            }
-            
-            // Check if the function has a baseline target
-            if !targets.has_target(&spec_env, &FunctionVariant::Baseline) {
-                println!("DEBUG: Spec function {} does not have baseline target, skipping", spec_name);
-            }
             
             let spec_data = targets
                 .get_data_mut(&spec_id, &FunctionVariant::Baseline)

@@ -350,6 +350,20 @@ impl FunctionTargetsHolder {
         self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
     }
 
+    pub fn is_valid_spec(&self, id: &QualifiedId<FunId>, env: &GlobalEnv) -> bool {
+        if self.scenario_specs.contains(id) {
+            return true;
+        }
+        
+        if let Some(target_id) = self.get_fun_by_spec(id) {
+            // Check if the target function still exists
+            let target_env = env.get_function(*target_id);
+            return self.has_target(&target_env, &FunctionVariant::Baseline);
+        }
+        
+        false
+    }
+
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some()
     }
@@ -377,6 +391,18 @@ impl FunctionTargetsHolder {
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
             .left_values()
+            .chain(self.scenario_specs.iter())
+    }
+
+    pub fn valid_specs<'a>(&'a self, env: &'a GlobalEnv) -> impl Iterator<Item = &'a QualifiedId<FunId>> {
+        self.function_specs
+            .iter()
+            .filter(|(_spec_id, target_id)| {
+                // Only include spec functions whose target functions still exist
+                let target_env = env.get_function(**target_id);
+                self.has_target(&target_env, &FunctionVariant::Baseline)
+            })
+            .map(|(spec_id, _)| spec_id)
             .chain(self.scenario_specs.iter())
     }
 
@@ -425,6 +451,10 @@ impl FunctionTargetsHolder {
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
     pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
+        let func_name = func_env.get_full_name_str();
+        let is_targeted = self.filter.is_targeted(func_env);
+        println!("DEBUG: Adding target for function: {} (is_targeted: {})", func_name, is_targeted);
+        
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets
