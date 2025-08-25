@@ -1133,10 +1133,6 @@ fn check_caller_callee_modifies_relation(
             continue;
         }
 
-        if !targets.has_target(&callee_fun_env, &FunctionVariant::Baseline) {
-            continue;
-        }
-
         let callee_func_target = targets
             .get_target_opt(&callee_fun_env, &FunctionVariant::Baseline)
             .unwrap();

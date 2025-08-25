@@ -174,17 +174,27 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // Keep all datatype invariant functions
         for (_, inv_fun_id) in targets.get_datatype_invs() {
             functions_to_keep.insert(*inv_fun_id);
+            println!(
+                "DEBUG: Keeping datatype invariant function: {}",
+                env.get_function(*inv_fun_id).get_full_name_str()
+            );
         }
 
         // Keep functions that are verified, inlined, or essential
         for fun_id in targets.get_funs() {
             let fun_env = env.get_function(fun_id);
+            let fun_name = fun_env.get_full_name_str();
+
             // Check verification status across all variants
             for variant in targets.get_target_variants(&fun_env) {
                 let data = targets.get_data(&fun_id, &variant).unwrap();
                 let info = get_info(&FunctionTarget::new(&fun_env, data));
                 if info.verified || info.inlined || info.essential {
                     functions_to_keep.insert(fun_id);
+                    println!(
+                        "DEBUG: Keeping function {}: verified={}, inlined={}, essential={}",
+                        fun_name, info.verified, info.inlined, info.essential
+                    );
                     break;
                 }
             }
@@ -200,8 +210,36 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .filter(|fun_id| !functions_to_keep.contains(fun_id))
             .collect();
 
+        println!("DEBUG: Total functions: {}", targets.get_funs().count());
+        println!("DEBUG: Functions to keep: {}", functions_to_keep.len());
+        println!("DEBUG: Functions to remove: {}", functions_to_remove.len());
+
+        // Log specific information about event_spec::emit_spec
+        for fun_id in targets.get_funs() {
+            let fun_env = env.get_function(fun_id);
+            let fun_name = fun_env.get_full_name_str();
+            if fun_name.contains("event_spec::emit_spec") {
+                println!("DEBUG: Found event_spec::emit_spec function: {}", fun_name);
+                println!("DEBUG: Function ID: {:?}", fun_id);
+                println!(
+                    "DEBUG: Is in keep set: {}",
+                    functions_to_keep.contains(&fun_id)
+                );
+
+                // Check verification status
+                for variant in targets.get_target_variants(&fun_env) {
+                    let data = targets.get_data(&fun_id, &variant).unwrap();
+                    let info = get_info(&FunctionTarget::new(&fun_env, data));
+                    println!("DEBUG: event_spec::emit_spec verification info: verified={}, inlined={}, essential={}, reachable={}", 
+                             info.verified, info.inlined, info.essential, info.reachable);
+                }
+            }
+        }
+
         // Remove functions from targets (remove entire function entry, not just variants)
         for fun_id in functions_to_remove {
+            let fun_name = env.get_function(fun_id).get_full_name_str();
+            println!("DEBUG: Removing function: {}", fun_name);
             targets.remove_target(&fun_id);
         }
     }
@@ -432,6 +470,18 @@ impl VerificationAnalysisProcessor {
 
         // All prover functions are essential
         if name.contains("prover::") {
+            return true;
+        }
+
+        //TODO: remove these
+        if name.contains("emit_spec")
+            || name.contains("has_access_spec")
+            || name.contains("has_item_with_type_spec")
+            || name.contains("delete_impl_spec")
+            || name.contains("record_new_uid_spec")
+            || name.contains("new_generator_spec")
+            || name.contains("u128_in_range_spec")
+        {
             return true;
         }
 

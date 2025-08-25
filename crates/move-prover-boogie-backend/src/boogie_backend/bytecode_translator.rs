@@ -489,10 +489,13 @@ impl<'env> BoogieTranslator<'env> {
         if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
             return;
         }
-        let spec_fun_target = match self.targets.get_target_opt(fun_env, &variant) {
-            Some(target) => target,
-            None => return, // Function was filtered out
-        };
+        let spec_fun_target = self
+            .targets
+            .get_target_opt(fun_env, &variant)
+            .expect(&format!(
+                "Spec function was filtered out: could not find target for function: {}",
+                fun_env.get_full_name_str()
+            ));
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
