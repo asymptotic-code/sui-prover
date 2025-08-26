@@ -1,4 +1,4 @@
-use move_model::model::{FunctionEnv, GlobalEnv, QualifiedId, FunId};
+use move_model::model::{FunctionEnv, GlobalEnv};
 use std::fmt::{self, Formatter};
 
 use crate::{
@@ -11,7 +11,6 @@ use move_model::sui_native_deterministic_functions::is_deterministic;
 #[derive(Clone, Default, Debug)]
 pub struct DeterministicInfo {
     pub is_deterministic: bool,
-    pub checked: bool,
 }
 
 pub struct DeterministicAnalysisProcessor();
@@ -19,74 +18,6 @@ pub struct DeterministicAnalysisProcessor();
 impl DeterministicAnalysisProcessor {
     pub fn new() -> Box<Self> {
         Box::new(Self())
-    }
-
-    fn analyze_function_determinism(
-        fun_env: &FunctionEnv,
-        targets: &mut FunctionTargetsHolder,
-    ) -> bool {
-        let env = fun_env.module_env.env;
-        let fun_id = fun_env.get_qualified_id();        
-        Self::compute_determinism_recursive(env, fun_id, targets)
-    }
-
-    fn compute_determinism_recursive(
-        env: &GlobalEnv,
-        fun_id: QualifiedId<FunId>,
-        targets: &mut FunctionTargetsHolder,
-    ) -> bool {
-        let variant = FunctionVariant::Baseline;
-        
-        if let Some(data) = targets.get_data(&fun_id, &variant) {
-            let info = data
-                .annotations
-                .get::<DeterministicInfo>()
-                .cloned()
-                .unwrap_or_default();
-            
-            if info.checked {
-                return info.is_deterministic;
-            }
-        }
-
-        match is_deterministic(env, fun_id) {
-            Some(result) => {
-                Self::save_determinism_result(fun_id, result, targets);
-                return result;
-            },
-            None => {
-                let fun_env = env.get_function(fun_id);
-                
-                for callee_id in fun_env.get_called_functions() {
-                    if !Self::compute_determinism_recursive(env, callee_id, targets) {
-                        Self::save_determinism_result(fun_id, false, targets);
-                        return false;
-                    }
-                }
-                
-                Self::save_determinism_result(fun_id, true, targets);
-                return true;
-            }
-        }
-    }
-
-    fn save_determinism_result(
-        fun_id: QualifiedId<FunId>,
-        is_deterministic: bool,
-        targets: &mut FunctionTargetsHolder,
-    ) {
-        let variant = FunctionVariant::Baseline;
-        
-        if let Some(data) = targets.get_data_mut(&fun_id, &variant) {
-            let info = data
-                .annotations
-                .get_or_default_mut::<DeterministicInfo>(true);
-            
-            if !info.checked {
-                info.is_deterministic = is_deterministic;
-                info.checked = true;
-            }
-        }
     }
 }
 
@@ -102,31 +33,34 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
             .annotations
             .get_or_default_mut::<DeterministicInfo>(true);
 
-        if !info.checked {
-            let env = fun_env.module_env.env;
-            let qualified_id = fun_env.get_qualified_id();
-            
-            match is_deterministic(env, qualified_id) {
-                Some(result) => {
-                    info.is_deterministic = result;
-                },
-                None => {
-                    info.is_deterministic = Self::analyze_function_determinism(fun_env, targets);
-                }
-            }
-            info.checked = true;
-        }
+        let env = fun_env.module_env.env;
+        let qualified_id = fun_env.get_qualified_id();
+        let variant = FunctionVariant::Baseline;
 
-        println!(
-            "Deterministic analysis for {}: {}",
-            fun_env.get_full_name_str(),
-            if info.is_deterministic {
-                "deterministic"
-            } else {
-                "non-deterministic"
+        info.is_deterministic = match is_deterministic(env, qualified_id) {
+            Some(result) => result,
+            None => {
+                let mut all_deterministic = true;
+
+                for callee_id in fun_env.get_called_functions() {
+                    let info = targets
+                        .get_data_mut(&callee_id, &variant)
+                        .unwrap()
+                        .annotations
+                        .get_or_default_mut::<DeterministicInfo>(true);
+
+
+                    if !info.is_deterministic {
+                        all_deterministic = false;
+                        break;
+                    }
+                }
+                // NOTE: Check returns for non-native functions, currenly supports only 1 return
+                let returns = fun_env.get_return_count();
+                all_deterministic && returns == 1
             }
-        );
-        
+        };
+
         data
     }
 
@@ -153,17 +87,17 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
                     .cloned()
                     .unwrap_or_default();
                 write!(f, "  {}: ", fenv.get_full_name_str())?;
-                if result.checked {
-                    if result.is_deterministic {
-                        writeln!(f, "deterministic")?;
-                    } else {
-                        writeln!(f, "non-deterministic")?;
-                    }
+                if result.is_deterministic {
+                    writeln!(f, "deterministic")?;
                 } else {
-                    writeln!(f, "unknown (not analyzed)")?;
+                    writeln!(f, "non-deterministic")?;
                 }
             }
         }
         writeln!(f, "]")
     }
+}
+
+pub fn get_info(data: &FunctionData) -> &DeterministicInfo {
+    data.annotations.get::<DeterministicInfo>().unwrap()
 }

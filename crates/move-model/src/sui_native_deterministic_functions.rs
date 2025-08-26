@@ -38,10 +38,6 @@ pub fn is_deterministic(env: &GlobalEnv, qid: QualifiedId<FunId>) -> Option<bool
 
 const ALL_PACKAGES: &[&str] = &["0x0", "0x1", "0x2"]; // prover, std, sui
 
-const PROVER_PROVER_MODULE_NAME: &'static str = "0x0::prover";
-const PROVER_LOG_MODULE_NAME: &'static str = "0x0::log";
-const PROVER_GHOST_MODULE_NAME: &'static str = "0x0::ghost";
-
 const STD_ADDRESS_MODULE_NAME: &'static str = "0x1::address";
 const STD_ASCII_MODULE_NAME: &'static str = "0x1::ascii";
 const STD_BCS_MODULE_NAME: &'static str = "0x1::bcs";
@@ -92,10 +88,6 @@ const SUI_PRIORITY_QUEUE_MODULE_NAME: &'static str = "0x2::priority_queue";
 const SUI_PARTY_MODULE_NAME: &'static str = "0x2::party";
 
 static DETERMINISTIC_MODULES: &[&str] = &[
-    // Prover modules
-    PROVER_PROVER_MODULE_NAME,
-    PROVER_LOG_MODULE_NAME,
-    PROVER_GHOST_MODULE_NAME,
     // STD modules
     STD_ADDRESS_MODULE_NAME,
     STD_ASCII_MODULE_NAME,
@@ -148,6 +140,19 @@ static DETERMINISTIC_MODULES: &[&str] = &[
 ];
 
 static DETERMINISTIC_FUNCTIONS: &[&str] = &[
+    // Prover
+    "0x0::prover::requires",
+    "0x0::prover::ensures",
+    "0x0::prover::asserts",
+    "0x0::prover::implies",
+    "0x0::prover::invariant_begin",
+    "0x0::prover::invariant_end",
+    "0x0::prover::val",
+    "0x0::prover::ref",
+    "0x0::prover::old",
+    "0x0::prover::fresh",
+    "0x0::prover::type_inv",
+
     // Transfer
     "0x2::transfer::receiving_object_id",
     "0x2::transfer::make_receiver",

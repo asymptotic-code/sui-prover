@@ -32,27 +32,15 @@ use move_model::{
     well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 use move_stackless_bytecode::{
-    ast::{TempIndex, TraceKind},
-    dynamic_field_analysis,
-    function_data_builder::FunctionDataBuilder,
-    function_target::FunctionTarget,
-    function_target_pipeline::{
+    ast::{TempIndex, TraceKind}, deterministic_analysis, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
-    },
-    livevar_analysis::LiveVarAnalysisProcessor,
-    mono_analysis::{self, MonoInfo},
-    number_operation::{
+    }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
-    },
-    options::ProverOptions,
-    reaching_def_analysis::ReachingDefProcessor,
-    spec_global_variable_analysis::{self},
-    stackless_bytecode::{
+    }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind,
-    },
-    verification_analysis,
+    }, verification_analysis
 };
 
 use crate::boogie_backend::{
@@ -1631,6 +1619,7 @@ impl<'env> FunctionTranslator<'env> {
         let options = self.parent.options;
         let fun_target = self.fun_target;
         let (args, prerets) = self.generate_function_args_and_returns();
+        let deterministic_info = deterministic_analysis::get_info(&fun_target.data);
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
@@ -1670,9 +1659,11 @@ impl<'env> FunctionTranslator<'env> {
 
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
+            let prefix = if deterministic_info.is_deterministic { "function" } else { "procedure" };
             emitln!(
                 writer,
-                "procedure {}$opaque({}) returns ({});",
+                "{} {}$opaque({}) returns ({});",
+                prefix,
                 self.function_variant_name(FunctionTranslationStyle::Opaque),
                 args,
                 rets,
@@ -2621,6 +2612,8 @@ impl<'env> FunctionTranslator<'env> {
 
                             let id = &self.fun_target.func_env.get_qualified_id();
 
+                            let mut use_func = false;
+
                             if self.parent.targets.get_fun_by_spec(id)
                                 == Some(&QualifiedId {
                                     module_id: *mid,
@@ -2646,11 +2639,15 @@ impl<'env> FunctionTranslator<'env> {
                                             ""
                                         }
                                     } else {
+                                        let info = deterministic_analysis::get_info(self.fun_target.data);
+                                        use_func = info.is_deterministic;
                                         "$opaque"
                                     };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
+
+                            
 
                             // Helper function to check whether the idx corresponds to a bitwise operation
                             let compute_flag = |idx: TempIndex| {
@@ -2773,9 +2770,12 @@ impl<'env> FunctionTranslator<'env> {
                                     }
                                 }
 
+                                let call_line = if use_func { "" } else { "call " };
+
                                 emitln!(
                                     self.writer(),
-                                    "call {} := {}({});",
+                                    "{}{} := {}({});",
+                                    call_line,
                                     dest_str,
                                     fun_name,
                                     args_str
