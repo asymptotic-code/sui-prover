@@ -236,6 +236,6 @@ static DETERMINISTIC_FUNCTIONS: &[&str] = &[
     "0x2::zklogin_verified_id::issuer",
     "0x2::zklogin_verified_id::audience",
     // ZK issuer
-    "0x2::zklogin_verified_id::owner",
-    "0x2::zklogin_verified_id::issuer",
+    "0x2::zklogin_verified_issuer::owner",
+    "0x2::zklogin_verified_issuer::issuer",
 ];
