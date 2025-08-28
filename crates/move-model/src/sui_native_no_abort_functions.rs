@@ -8,7 +8,7 @@ pub fn does_not_abort(env: &GlobalEnv, qid: QualifiedId<FunId>) -> Result<bool, 
     let func_env = module_env.get_function(qid.id);
 
     if !func_env.is_native() {
-        bail!("Warning: Function {} is not native", func_env.get_full_name_str());
+        bail!("Error: Function {} is not native", func_env.get_full_name_str());
     }
 
     let module_name = module_env.get_full_name_str();
