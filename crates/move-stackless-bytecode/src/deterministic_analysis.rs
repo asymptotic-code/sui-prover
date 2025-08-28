@@ -55,9 +55,7 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
                         break;
                     }
                 }
-                // NOTE: Check returns for non-native functions, currenly supports only 1 return
-                let returns = fun_env.get_return_count();
-                all_deterministic && returns == 1
+                all_deterministic
             }
         };
 
