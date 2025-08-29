@@ -6,8 +6,6 @@ use crate::{
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
 };
 
-use move_model::sui_native_deterministic_functions::is_deterministic;
-
 #[derive(Clone, Default, Debug)]
 pub struct DeterministicInfo {
     pub is_deterministic: bool,
@@ -37,28 +35,26 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
         let qualified_id = fun_env.get_qualified_id();
         let variant = FunctionVariant::Baseline;
 
-        info.is_deterministic = match is_deterministic(env, qualified_id) {
-            Some(result) => result,
-            None => {
-                let mut all_deterministic = true;
+        if fun_env.is_native() {
+            info.is_deterministic = env.is_deterministic(qualified_id).unwrap();
+            return data;
+        }
 
-                for callee_id in fun_env.get_called_functions() {
-                    let info = targets
-                        .get_data_mut(&callee_id, &variant)
-                        .unwrap()
-                        .annotations
-                        .get_or_default_mut::<DeterministicInfo>(true);
+        for callee_id in fun_env.get_called_functions() {
+            let info = targets
+                .get_data_mut(&callee_id, &variant)
+                .unwrap()
+                .annotations
+                .get_or_default_mut::<DeterministicInfo>(true);
 
 
-                    if !info.is_deterministic {
-                        all_deterministic = false;
-                        break;
-                    }
-                }
-                all_deterministic
+            if !info.is_deterministic {
+                info.is_deterministic = false;
+                return data;
             }
-        };
+        }
 
+        info.is_deterministic = true;
         data
     }
 

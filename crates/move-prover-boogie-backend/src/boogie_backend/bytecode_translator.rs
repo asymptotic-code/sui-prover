@@ -1655,27 +1655,17 @@ impl<'env> FunctionTranslator<'env> {
 
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
-            let deterministic_info = deterministic_analysis::get_info(&fun_target.data);
-            if deterministic_info.is_deterministic {
-                let (args, orets) = self.generate_function_args_and_returns(true);
-                emitln!(
-                    writer,
-                    "function {}$opaque({}) returns ({});",
-                    self.function_variant_name(FunctionTranslationStyle::Opaque),
-                    args,
-                    orets,
-                );
-                emitln!(writer, "");
-            } else {
-                emitln!(
-                    writer,
-                    "procedure {}$opaque({}) returns ({});",
-                    self.function_variant_name(FunctionTranslationStyle::Opaque),
-                    args,
-                    rets,
-                );
-                emitln!(writer, "");
-            }
+            let (args, orets) = self.generate_function_args_and_returns(self.should_use_temp_datatypes());
+            let prefix = if self.should_use_opaque_function() { "function" } else { "procedure" };
+            emitln!(
+                writer,
+                "{} {}$opaque({}) returns ({});",
+                prefix,
+                self.function_variant_name(FunctionTranslationStyle::Opaque),
+                args,
+                orets,
+            );
+            emitln!(writer, "");
         }
 
         emitln!(
@@ -1702,7 +1692,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     /// Generate boogie representation of function args and return args.
-    fn generate_function_args_and_returns(&self, is_deterministic: bool) -> (String, String) {
+    fn generate_function_args_and_returns(&self, generate_custom_datatype: bool) -> (String, String) {
         let fun_target = self.fun_target;
         let env = fun_target.global_env();
         let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
@@ -1800,7 +1790,7 @@ impl<'env> FunctionTranslator<'env> {
             )
             .join(", ");
 
-        if self.style != FunctionTranslationStyle::Opaque || !is_deterministic {
+        if !generate_custom_datatype {
             return (args, rets);
         }
 
@@ -2079,7 +2069,17 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
-        let dinfo = deterministic_analysis::get_info(self.fun_target.data);
+        let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
+            .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
+            .count();
+
+        let returns_count = self.fun_target.func_env.get_return_count() + mut_ref_inputs_count;
+
+        returns_count != 1 && self.should_use_opaque_function()
+    }
+
+    fn should_use_opaque_function(&self) -> bool {
+        let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(self.fun_target.data);
         dinfo.is_deterministic && (self.style == FunctionTranslationStyle::Opaque || self.style == FunctionTranslationStyle::SpecNoAbortCheck)
     }
 
@@ -2424,17 +2424,19 @@ impl<'env> FunctionTranslator<'env> {
                         let id = &self.fun_target.func_env.get_qualified_id();
                         let use_impl = self.parent.targets.omits_opaque(&id);
                         let mut use_func = false;
+                        let mut use_func_datatypes = false;
 
                         let is_spec_call = self.parent.targets.get_fun_by_spec(id)
                             == Some(&QualifiedId { module_id: *mid, id: *fid });
 
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
-                        if is_spec_call && !use_impl && self.should_use_temp_datatypes() {
+                        if is_spec_call && !use_impl && self.should_use_opaque_function() {
                             use_func = true;
+                            use_func_datatypes = self.should_use_temp_datatypes();
                         }
 
-                        let dest_str = if use_func {
+                        let dest_str = if use_func_datatypes {
                             "$temp_opaque_res_var".to_string()
                         } else {
                             dests
@@ -2858,7 +2860,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                         };
 
-                        if use_func {
+                        if use_func_datatypes {
                             dests
                                 .iter()
                                 .enumerate()

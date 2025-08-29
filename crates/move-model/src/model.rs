@@ -24,6 +24,7 @@ use std::{
     rc::Rc,
 };
 
+use anyhow::bail;
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, Severity},
@@ -1431,10 +1432,14 @@ impl GlobalEnv {
         self.extlib_address.clone().unwrap_or_else(|| 2u16.into())
     }
 
-    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+    fn find_module_id(&self, module_name: &str) -> ModuleId {
         self.find_module_by_name(self.symbol_pool().make(module_name))
             .expect(&format!("module not found: {}", module_name))
             .get_id()
+    }
+
+    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+        self.find_module_id(module_name)
             .qualified(FunId::new(self.symbol_pool().make(fun_name)))
     }
 
@@ -1481,6 +1486,31 @@ impl GlobalEnv {
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
+
+    const STD_BCS_MODULE_NAME: &'static str = "bcs";
+    const STD_DEBUG_MODULE_NAME: &'static str = "debug";
+    const STD_HASH_MODULE_NAME: &'static str = "hash";
+    const STD_INTEGER_MODULE_NAME: &'static str = "integer";
+    const STD_REAL_MODULE_NAME: &'static str = "real";
+    const STD_STRING_MODULE_NAME: &'static str = "string";
+    const STD_TYPE_NAME_MODULE_NAME: &'static str = "type_name";
+    const STD_UNIT_TEST_MODULE_NAME: &'static str = "unit_test";
+
+    const SUI_ADDRESS_MODULE_NAME: &'static str = "address";
+    const SUI_TYPES_MODULE_NAME: &'static str = "types";
+    const SUI_BLS12381_MODULE_NAME: &'static str = "bls12381";
+    const SUI_ECDSA_K1_MODULE_NAME: &'static str = "ecdsa_k1";
+    const SUI_ECDSA_R1_MODULE_NAME: &'static str = "ecdsa_r1";
+    const SUI_ECVRF_MODULE_NAME: &'static str = "ecvrf";
+    const SUI_ED25519_MODULE_NAME: &'static str = "ed25519";
+    const SUI_GROTH16_MODULE_NAME: &'static str = "groth16";
+    const SUI_GROUP_OPS_MODULE_NAME: &'static str = "group_ops";
+    const SUI_HASH_MODULE_NAME: &'static str = "hash";
+    const SUI_HMAC_MODULE_NAME: &'static str = "hmac";
+    const SUI_NITRO_ATTESTATION_MODULE_NAME: &'static str = "nitro_attestation";
+    const SUI_POSEIDON_MODULE_NAME: &'static str = "poseidon";
+    const SUI_VDF_MODULE_NAME: &'static str = "vdf";
+    
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1559,6 +1589,142 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
     const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
     const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
+
+    pub fn prover_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::PROVER_MODULE_NAME)
+    }
+
+    pub fn ghost_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SPEC_MODULE_NAME)
+    }
+
+    pub fn log_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::LOG_MODULE_NAME)
+    }
+
+    pub fn vector_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VECTOR_MODULE_NAME)
+    }
+
+    pub fn vec_set_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_SET_MODULE_NAME)
+    }
+
+    pub fn vec_map_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_MAP_MODULE_NAME)
+    }
+
+    pub fn option_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OPTION_MODULE_NAME)
+    }
+
+    pub fn table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::TABLE_MODULE_NAME)
+    }
+
+    pub fn object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_MODULE_NAME)
+    }
+
+    pub fn object_table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_TABLE_MODULE_NAME)
+    }
+
+    pub fn dynamic_field_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_FIELD_MODULE_NAME)
+    }
+
+    pub fn dynamic_object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_OBJECT_MODULE_NAME)
+    }
+
+    pub fn std_bcs_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_BCS_MODULE_NAME)
+    }
+
+    pub fn std_debug_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_DEBUG_MODULE_NAME)
+    }
+
+    pub fn std_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_HASH_MODULE_NAME)
+    }
+
+    pub fn std_integer_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_INTEGER_MODULE_NAME)
+    }
+
+    pub fn std_real_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_REAL_MODULE_NAME)
+    }
+
+    pub fn std_string_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_STRING_MODULE_NAME)
+    }
+
+    pub fn std_type_name_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_TYPE_NAME_MODULE_NAME)
+    }
+
+    pub fn std_unit_test_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_UNIT_TEST_MODULE_NAME)
+    }
+
+    pub fn sui_address_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ADDRESS_MODULE_NAME)
+    }
+
+    pub fn sui_types_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_TYPES_MODULE_NAME)
+    }
+
+    pub fn sui_bls12381_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_BLS12381_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_k1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_K1_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_r1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_R1_MODULE_NAME)
+    }
+
+    pub fn sui_ecvrf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECVRF_MODULE_NAME)
+    }
+
+    pub fn sui_ed25519_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ED25519_MODULE_NAME)
+    }
+
+    pub fn sui_groth16_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROTH16_MODULE_NAME)
+    }
+
+    pub fn sui_group_ops_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROUP_OPS_MODULE_NAME)
+    }
+
+    pub fn sui_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HASH_MODULE_NAME)
+    }
+
+    pub fn sui_hmac_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HMAC_MODULE_NAME)
+    }
+
+    pub fn sui_nitro_attestation_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_NITRO_ATTESTATION_MODULE_NAME)
+    }
+
+    pub fn sui_poseidon_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_POSEIDON_MODULE_NAME)
+    }
+
+    pub fn sui_vdf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_VDF_MODULE_NAME)
+    }
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1986,6 +2152,67 @@ impl GlobalEnv {
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
         )
+    }
+
+    pub fn is_deterministic(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
+        let module_env = self.get_module(qid.module_id);
+        let function_env = self.get_function(qid);
+
+        if !function_env.is_native() {
+            bail!("Function {} is not native", function_env.get_full_name_str());
+        }
+
+        if self.deterministic_modules().contains(&module_env.get_id()) {
+            return Ok(true);
+        }
+
+        let function_name = function_env.get_name_str();
+
+        // Name of the no-op unit test function
+        const UNIT_TEST_POISON_FUN_NAME: &str = "unit_test_poison";
+        if UNIT_TEST_POISON_FUN_NAME == function_name {
+            return Ok(true);
+        }
+
+        return Ok(false)
+    }
+
+    pub fn deterministic_modules(&self) -> BTreeSet<ModuleId> {
+        vec![
+            // Prover modules
+            self.prover_module_id(),
+            self.ghost_module_id(),
+            self.log_module_id(),
+            // STD modules
+            self.std_bcs_module_id(),
+            self.std_debug_module_id(),
+            self.std_hash_module_id(),
+            self.std_integer_module_id(),
+            self.std_real_module_id(),
+            self.std_string_module_id(),
+            self.std_type_name_module_id(),
+            self.std_unit_test_module_id(),
+            self.vector_module_id(),
+            // Sui modules
+            self.sui_types_module_id(),
+            self.sui_address_module_id(),
+            // Sui crypto modules
+            self.sui_hash_module_id(),
+            self.sui_hmac_module_id(),
+            self.sui_ed25519_module_id(),
+            self.sui_ecdsa_k1_module_id(),
+            self.sui_ecdsa_r1_module_id(),
+            self.sui_ecvrf_module_id(),
+            self.sui_bls12381_module_id(),
+            self.sui_group_ops_module_id(),
+            self.sui_groth16_module_id(),
+            self.sui_poseidon_module_id(),
+            self.sui_vdf_module_id(),
+            self.sui_nitro_attestation_module_id(),
+        ]
+        .into_iter()
+        .filter_map(|x| Some(x))
+        .collect()
     }
 
     pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
