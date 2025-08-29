@@ -499,6 +499,17 @@ impl<'env> BoogieTranslator<'env> {
             Some(target) => target,
             None => return, // Function was filtered out
         };
+
+        if style == FunctionTranslationStyle::Aborts {
+            if let Some(fid) = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()) {
+                let fenv: &FunctionEnv<'_> = &self.env.get_function(*fid);
+                let data = self.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                if no_abort_analysis::get_info(&data).does_not_abort {
+                    return;
+                }
+            }
+        }
+
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -3748,6 +3759,13 @@ impl<'env> FunctionTranslator<'env> {
                 }
             }
             Abort(_, src) => {
+                let mut underlying_aborts = true;
+                if let Some(fid) = self.parent.targets.get_fun_by_spec(&self.fun_target.func_env.get_qualified_id()) {
+                    let fenv = &self.parent.env.get_function(*fid);
+                    let underlying_data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                    underlying_aborts = !no_abort_analysis::get_info(&underlying_data).does_not_abort;
+                }
+
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
@@ -3756,6 +3774,7 @@ impl<'env> FunctionTranslator<'env> {
                         .targets
                         .ignore_aborts()
                         .contains(&self.fun_target.func_env.get_qualified_id())
+                    && underlying_aborts
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
                     let regular_args = (0..fun_target.get_parameter_count())

@@ -41,28 +41,37 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         if fun_env.is_native() {
             info.does_not_abort = does_not_abort(env, qualified_id).unwrap();
             return data;
-        } 
+        }
+
+        for callee in fun_env.get_called_functions() {
+            let callee_info = targets
+                .get_data(&callee, &variant)
+                .unwrap()
+                .annotations
+                .get::<NoAbortInfo>()
+                .unwrap();
+
+            if !callee_info.does_not_abort {
+                info.does_not_abort = false;
+                return data;
+            }
+        }
 
         for bytecode in data.code.iter() {
             let aborts = match bytecode {
-                Bytecode::Call(_, _, op, _, _) => {
-                    match op {
-                        Operation::Function(mid, fid, _) => {
-                            let callee_id = &mid.qualified(*fid);
-                            let callee_info = targets
-                                .get_data_mut(&callee_id, &variant)
-                                .unwrap()
-                                .annotations
-                                .get_or_default_mut::<NoAbortInfo>(true);
-
-                            !callee_info.does_not_abort
-                        },
-                        _ => op.can_abort()
-                    }
-                }
+                // calles covered upper
+                Bytecode::Call(_, _, op, _, _) =>  op.can_abort() && !matches!(op, Operation::Function { .. }),
                 Bytecode::Abort(_, _) => true,
                 Bytecode::Prop(_, kind, _) => *kind == PropKind::Assert,
-                _ => false,
+                Bytecode::Assign(_, _, _, _) |
+                Bytecode::Branch(_, _, _, _) |
+                Bytecode::Load(_, _, _) |
+                Bytecode::Ret(_, _) |
+                Bytecode::Jump(_, _) |
+                Bytecode::VariantSwitch(_, _, _) |
+                Bytecode::Label(_, _) |
+                Bytecode::Nop(_) |
+                Bytecode::SaveMem(_, _, _) => false,
             };
 
             if aborts {
