@@ -1656,7 +1656,7 @@ impl<'env> FunctionTranslator<'env> {
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
             let (args, orets) = self.generate_function_args_and_returns(self.should_use_temp_datatypes());
-            let prefix = if self.should_use_opaque_function() { "function" } else { "procedure" };
+            let prefix = if self.should_use_opaque_as_function() { "function" } else { "procedure" };
             emitln!(
                 writer,
                 "{} {}$opaque({}) returns ({});",
@@ -2075,10 +2075,10 @@ impl<'env> FunctionTranslator<'env> {
 
         let returns_count = self.fun_target.func_env.get_return_count() + mut_ref_inputs_count;
 
-        returns_count != 1 && self.should_use_opaque_function()
+        returns_count != 1 && self.should_use_opaque_as_function()
     }
 
-    fn should_use_opaque_function(&self) -> bool {
+    fn should_use_opaque_as_function(&self) -> bool {
         let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(self.fun_target.data);
         dinfo.is_deterministic && (self.style == FunctionTranslationStyle::Opaque || self.style == FunctionTranslationStyle::SpecNoAbortCheck)
     }
@@ -2431,7 +2431,7 @@ impl<'env> FunctionTranslator<'env> {
 
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
-                        if is_spec_call && !use_impl && self.should_use_opaque_function() {
+                        if is_spec_call && !use_impl && self.should_use_opaque_as_function() {
                             use_func = true;
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
@@ -3135,25 +3135,29 @@ impl<'env> FunctionTranslator<'env> {
                         emitln!(self.writer(), "}");
                     }
                     Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => {
-                        let var_str = str_local(dests[0]);
-                        emitln!(self.writer(), "havoc {};", var_str);
+                        if !self.should_use_opaque_as_function() {
+                            let var_str = str_local(dests[0]);
+                            emitln!(self.writer(), "havoc {};", var_str);
+                        }
                     }
                     Havoc(HavocKind::MutationValue) => {
-                        let ty = &self.get_local_type(dests[0]);
-                        let num_oper = global_state
-                            .get_temp_index_oper(mid, fid, dests[0], baseline_flag)
-                            .unwrap();
-                        let bv_flag = self.bv_flag(num_oper);
-                        let var_str = str_local(dests[0]);
-                        let temp_str = boogie_temp(env, ty.skip_reference(), 0, bv_flag);
-                        emitln!(self.writer(), "havoc {};", temp_str);
-                        emitln!(
-                            self.writer(),
-                            "{} := $UpdateMutation({}, {});",
-                            var_str,
-                            var_str,
-                            temp_str
-                        );
+                        if !self.should_use_opaque_as_function() {
+                            let ty = &self.get_local_type(dests[0]);
+                            let num_oper = global_state
+                                .get_temp_index_oper(mid, fid, dests[0], baseline_flag)
+                                .unwrap();
+                            let bv_flag = self.bv_flag(num_oper);
+                            let var_str = str_local(dests[0]);
+                            let temp_str = boogie_temp(env, ty.skip_reference(), 0, bv_flag);
+                            emitln!(self.writer(), "havoc {};", temp_str);
+                            emitln!(
+                                self.writer(),
+                                "{} := $UpdateMutation({}, {});",
+                                var_str,
+                                var_str,
+                                temp_str
+                            );
+                        }
                     }
                     Stop => {
                         // the two statements combined terminate any execution trace that reaches it
