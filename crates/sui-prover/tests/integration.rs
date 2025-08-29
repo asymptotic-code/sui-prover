@@ -58,7 +58,11 @@ integration-test = "0x9"
         let mut config = MoveBuildConfig::default();
         config.default_flavor = Some(Flavor::Sui);
         config.silence_warnings = false; // Disable warning suppression
-        config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
+        config.modes = vec![
+            ModeAttribute::VERIFY_ONLY.into(),
+            ModeAttribute::TEST.into(),
+            ModeAttribute::TEST_ONLY.into(),
+        ];
 
         // Try to build the model
         let result = match move_model_for_package_legacy(config, tmp_dir) {
@@ -103,7 +107,8 @@ integration-test = "0x9"
     // Now handle the result of our operation
     match result {
         Ok(output) => output,
-        Err(_) => "Verification failed: panic during verification".to_string(),
+        Err(err) => 
+            format!("Verification failed, panic during verification: {:?}", err.downcast_ref::<String>().unwrap_or(&String::new())),
     }
 }
 
