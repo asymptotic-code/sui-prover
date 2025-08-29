@@ -103,7 +103,8 @@ integration-test = "0x9"
     // Now handle the result of our operation
     match result {
         Ok(output) => output,
-        Err(_) => "Verification failed: panic during verification".to_string(),
+        Err(err) => 
+            format!("Verification failed, panic during verification: {:?}", err.downcast_ref::<String>().unwrap_or(&String::new())),
     }
 }
 
