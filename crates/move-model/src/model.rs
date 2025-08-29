@@ -1494,7 +1494,6 @@ impl GlobalEnv {
     const STD_REAL_MODULE_NAME: &'static str = "real";
     const STD_STRING_MODULE_NAME: &'static str = "string";
     const STD_TYPE_NAME_MODULE_NAME: &'static str = "type_name";
-    const STD_UNIT_TEST_MODULE_NAME: &'static str = "unit_test";
 
     const SUI_ADDRESS_MODULE_NAME: &'static str = "address";
     const SUI_TYPES_MODULE_NAME: &'static str = "types";
@@ -1590,6 +1589,8 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
     const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
 
+    const UNIT_TEST_POISON_FUN_NAME: &str = "unit_test_poison";
+
     pub fn prover_module_id(&self) -> ModuleId {
         self.find_module_id(Self::PROVER_MODULE_NAME)
     }
@@ -1664,10 +1665,6 @@ impl GlobalEnv {
 
     pub fn std_type_name_module_id(&self) -> ModuleId {
         self.find_module_id(Self::STD_TYPE_NAME_MODULE_NAME)
-    }
-
-    pub fn std_unit_test_module_id(&self) -> ModuleId {
-        self.find_module_id(Self::STD_UNIT_TEST_MODULE_NAME)
     }
 
     pub fn sui_address_module_id(&self) -> ModuleId {
@@ -2168,9 +2165,7 @@ impl GlobalEnv {
 
         let function_name = function_env.get_name_str();
 
-        // Name of the no-op unit test function
-        const UNIT_TEST_POISON_FUN_NAME: &str = "unit_test_poison";
-        if UNIT_TEST_POISON_FUN_NAME == function_name {
+        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
             return Ok(true);
         }
 
@@ -2191,7 +2186,6 @@ impl GlobalEnv {
             self.std_real_module_id(),
             self.std_string_module_id(),
             self.std_type_name_module_id(),
-            self.std_unit_test_module_id(),
             self.vector_module_id(),
             // Sui modules
             self.sui_types_module_id(),
