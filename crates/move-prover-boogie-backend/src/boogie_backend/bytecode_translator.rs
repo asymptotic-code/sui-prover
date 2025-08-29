@@ -32,27 +32,15 @@ use move_model::{
     well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 use move_stackless_bytecode::{
-    ast::{TempIndex, TraceKind},
-    dynamic_field_analysis,
-    function_data_builder::FunctionDataBuilder,
-    function_target::FunctionTarget,
-    function_target_pipeline::{
+    ast::{TempIndex, TraceKind}, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
-    },
-    livevar_analysis::LiveVarAnalysisProcessor,
-    mono_analysis::{self, MonoInfo},
-    number_operation::{
+    }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
-    },
-    options::ProverOptions,
-    reaching_def_analysis::ReachingDefProcessor,
-    spec_global_variable_analysis::{self},
-    stackless_bytecode::{
+    }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind,
-    },
-    verification_analysis,
+    }, verification_analysis
 };
 
 use crate::boogie_backend::{
@@ -511,6 +499,17 @@ impl<'env> BoogieTranslator<'env> {
             Some(target) => target,
             None => return, // Function was filtered out
         };
+
+        if style == FunctionTranslationStyle::Aborts {
+            if let Some(fid) = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()) {
+                let fenv: &FunctionEnv<'_> = &self.env.get_function(*fid);
+                let data = self.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                if no_abort_analysis::get_info(&data).does_not_abort {
+                    return;
+                }
+            }
+        }
+
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -2573,14 +2572,19 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-
-                                emitln!(
-                                    self.writer(),
-                                    "call $abort_if_cond := {}({});",
-                                    self.function_variant_name(FunctionTranslationStyle::Aborts),
-                                    args_str,
-                                );
-                                emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
+                                
+                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
+                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                                let info = no_abort_analysis::get_info(data);
+                                if !info.does_not_abort {
+                                    emitln!(
+                                        self.writer(),
+                                        "call $abort_if_cond := {}({});",
+                                        self.function_variant_name(FunctionTranslationStyle::Aborts),
+                                        args_str,
+                                    );
+                                    emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
+                                }
                             }
                         }
 
@@ -3755,6 +3759,13 @@ impl<'env> FunctionTranslator<'env> {
                 }
             }
             Abort(_, src) => {
+                let mut underlying_aborts = true;
+                if let Some(fid) = self.parent.targets.get_fun_by_spec(&self.fun_target.func_env.get_qualified_id()) {
+                    let fenv = &self.parent.env.get_function(*fid);
+                    let underlying_data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                    underlying_aborts = !no_abort_analysis::get_info(&underlying_data).does_not_abort;
+                }
+
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
@@ -3763,6 +3774,7 @@ impl<'env> FunctionTranslator<'env> {
                         .targets
                         .ignore_aborts()
                         .contains(&self.fun_target.func_env.get_qualified_id())
+                    && underlying_aborts
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
                     let regular_args = (0..fun_target.get_parameter_count())
