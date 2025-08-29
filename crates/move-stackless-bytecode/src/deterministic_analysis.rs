@@ -41,14 +41,14 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
         }
 
         for callee_id in fun_env.get_called_functions() {
-            let info = targets
-                .get_data_mut(&callee_id, &variant)
+            let callee_info = targets
+                .get_data(&callee_id, &variant)
                 .unwrap()
                 .annotations
-                .get_or_default_mut::<DeterministicInfo>(true);
+                .get::<DeterministicInfo>()
+                .unwrap();
 
-
-            if !info.is_deterministic {
+            if !callee_info.is_deterministic {
                 info.is_deterministic = false;
                 return data;
             }
