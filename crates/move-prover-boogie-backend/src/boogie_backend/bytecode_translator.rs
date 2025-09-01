@@ -504,9 +504,13 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
+        let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(spec_fun_target.data);
+        let should_use_opaque_as_func = dinfo.is_deterministic && (style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::SpecNoAbortCheck);
+
         let omit_havoc = self
             .targets
-            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+            || should_use_opaque_as_func;
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -3135,29 +3139,25 @@ impl<'env> FunctionTranslator<'env> {
                         emitln!(self.writer(), "}");
                     }
                     Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => {
-                        if !self.should_use_opaque_as_function() {
-                            let var_str = str_local(dests[0]);
-                            emitln!(self.writer(), "havoc {};", var_str);
-                        }
+                        let var_str = str_local(dests[0]);
+                        emitln!(self.writer(), "havoc {};", var_str);
                     }
                     Havoc(HavocKind::MutationValue) => {
-                        if !self.should_use_opaque_as_function() {
-                            let ty = &self.get_local_type(dests[0]);
-                            let num_oper = global_state
-                                .get_temp_index_oper(mid, fid, dests[0], baseline_flag)
-                                .unwrap();
-                            let bv_flag = self.bv_flag(num_oper);
-                            let var_str = str_local(dests[0]);
-                            let temp_str = boogie_temp(env, ty.skip_reference(), 0, bv_flag);
-                            emitln!(self.writer(), "havoc {};", temp_str);
-                            emitln!(
-                                self.writer(),
-                                "{} := $UpdateMutation({}, {});",
-                                var_str,
-                                var_str,
-                                temp_str
-                            );
-                        }
+                        let ty = &self.get_local_type(dests[0]);
+                        let num_oper = global_state
+                            .get_temp_index_oper(mid, fid, dests[0], baseline_flag)
+                            .unwrap();
+                        let bv_flag = self.bv_flag(num_oper);
+                        let var_str = str_local(dests[0]);
+                        let temp_str = boogie_temp(env, ty.skip_reference(), 0, bv_flag);
+                        emitln!(self.writer(), "havoc {};", temp_str);
+                        emitln!(
+                            self.writer(),
+                            "{} := $UpdateMutation({}, {});",
+                            var_str,
+                            var_str,
+                            temp_str
+                        );
                     }
                     Stop => {
                         // the two statements combined terminate any execution trace that reaches it

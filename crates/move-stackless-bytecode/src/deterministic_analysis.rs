@@ -79,7 +79,7 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
                     .get_annotations()
                     .get::<DeterministicInfo>()
                     .cloned()
-                    .unwrap_or_default();
+                    .unwrap();
                 write!(f, "  {}: ", fenv.get_full_name_str())?;
                 if result.is_deterministic {
                     writeln!(f, "deterministic")?;
