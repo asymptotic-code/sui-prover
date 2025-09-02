@@ -46,17 +46,18 @@ pub mod pipeline_factory;
 pub mod reaching_def_analysis;
 pub mod spec_global_variable_analysis;
 pub mod spec_instrumentation;
+pub mod spec_purity_analysis;
 pub mod spec_translator;
+pub mod spec_well_formed_analysis;
+pub mod ssa_transformation;
 pub mod stackless_bytecode;
 pub mod stackless_bytecode_generator;
 pub mod stackless_control_flow_graph;
+pub mod target_filter;
 pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod spec_purity_analysis;
-pub mod spec_well_formed_analysis;
-pub mod target_filter;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(
