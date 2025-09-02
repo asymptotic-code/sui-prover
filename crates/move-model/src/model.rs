@@ -1588,8 +1588,8 @@ impl GlobalEnv {
 
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
-    const OBJECT_DELETE_EXECUTIONER_FUNCTION_NAME: &'static str = "delete_impl";
-    const OBJECT_UID_REGISTRAR_FUNCTION_NAME: &'static str = "record_new_uid";
+    const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
+    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid";
 
     // dynamic_field function names
     const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
@@ -1599,94 +1599,95 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
     const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
     const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
-    
-    // sui::dynamic_field native function names (with fun constants)
-    const DYNAMIC_FIELD_HASH_WIZARD_FUNCTION_NAME: &'static str = "hash_type_and_key";
-    const DYNAMIC_FIELD_CHILD_ADOPTER_FUNCTION_NAME: &'static str = "add_child_object";
-    const DYNAMIC_FIELD_CHILD_VISITOR_FUNCTION_NAME: &'static str = "borrow_child_object";
-    const DYNAMIC_FIELD_CHILD_BABYSITTER_FUNCTION_NAME: &'static str = "borrow_child_object_mut";
-    const DYNAMIC_FIELD_CHILD_RELEASER_FUNCTION_NAME: &'static str = "remove_child_object";
-    const DYNAMIC_FIELD_CHILD_DETECTOR_FUNCTION_NAME: &'static str = "has_child_object";
-    const DYNAMIC_FIELD_TYPED_CHILD_DETECTOR_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
 
-    const UNIT_TEST_POISON_FUN_NAME: &str = "unit_test_poison";
-    
+    // sui::dynamic_field native function names
+    const DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME: &'static str = "hash_type_and_key";
+    const DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME: &'static str = "add_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME: &'static str = "borrow_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME: &'static str = "borrow_child_object_mut";
+    const DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME: &'static str = "remove_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME: &'static str = "has_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
+
+
+    const UNIT_TEST_POISON_FUN_NAME: &'static str = "unit_test_poison";
+
     // std::hash native function names (with fun constants)
-    const HASH_SHA2_WIZARD_FUNCTION_NAME: &'static str = "sha2_256";
-    const HASH_SHA3_SORCERER_FUNCTION_NAME: &'static str = "sha3_256";
+    const HASH_SHA2_FUNCTION_NAME: &'static str = "sha2_256";
+    const HASH_SHA3_FUNCTION_NAME: &'static str = "sha3_256";
     
     // std::bcs native function names (with fun constants)
     const BCS_BYTE_TRANSFORMER_FUNCTION_NAME: &'static str = "to_bytes";
     
     // std::debug native function names (with fun constants)
-    const DEBUG_CHATTERBOX_FUNCTION_NAME: &'static str = "print";
-    const DEBUG_TRACE_DETECTIVE_FUNCTION_NAME: &'static str = "print_stack_trace";
+    const DEBUG_PRINT_FUNCTION_NAME: &'static str = "print";
+    const DEBUG_PRINT_TRACE_FUNCTION_NAME: &'static str = "print_stack_trace";
     
     // std::type_name native function names (with fun constants)
-    const TYPE_NAME_IDENTIFIER_FUNCTION_NAME: &'static str = "get";
+    const TYPE_NAME_GETTER_FUNCTION_NAME: &'static str = "get";
     const TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME: &'static str = "get_with_original_ids";
     
     // std::string native function names (with fun constants)
-    const STRING_UTF8_VALIDATOR_FUNCTION_NAME: &'static str = "internal_check_utf8";
-    const STRING_BOUNDARY_CHECKER_FUNCTION_NAME: &'static str = "internal_is_char_boundary";
-    const STRING_SLICER_DICER_FUNCTION_NAME: &'static str = "internal_sub_string";
-    const STRING_TREASURE_HUNTER_FUNCTION_NAME: &'static str = "internal_index_of";
+    const STRING_CHECK_UTF8_FUNCTION_NAME: &'static str = "internal_check_utf8";
+    const STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME: &'static str = "internal_is_char_boundary";
+    const STRING_SUB_STRING_FUNCTION_NAME: &'static str = "internal_sub_string";
+    const STRING_INDEX_OF_FUNCTION_NAME: &'static str = "internal_index_of";
     
     // sui::address native function names (with fun constants)
-    const ADDRESS_U256_CONVERTER_FUNCTION_NAME: &'static str = "to_u256";
-    const ADDRESS_U256_MATERIALIZER_FUNCTION_NAME: &'static str = "from_u256";
-    const ADDRESS_BYTE_ALCHEMIST_FUNCTION_NAME: &'static str = "from_bytes";
+    const ADDRESS_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const ADDRESS_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const ADDRESS_FROM_BYTES_FUNCTION_NAME: &'static str = "from_bytes";
     
     // sui::types native function names (with fun constants)
     const TYPES_WITNESS_INSPECTOR_FUNCTION_NAME: &'static str = "is_one_time_witness";
     
     // sui::crypto::hash native function names (with fun constants)
-    const CRYPTO_HASH_BLAKE_BLASTER_FUNCTION_NAME: &'static str = "blake2b256";
-    const CRYPTO_HASH_KECCAK_CRUSHER_FUNCTION_NAME: &'static str = "keccak256";
+    const CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME: &'static str = "blake2b256";
+    const CRYPTO_HASH_KECCAK_FUNCTION_NAME: &'static str = "keccak256";
     
     // sui::crypto::hmac native function names (with fun constants)
-    const CRYPTO_HMAC_SHA3_AUTHENTICATOR_FUNCTION_NAME: &'static str = "hmac_sha3_256";
+    const CRYPTO_HMAC_SHA3_FUNCTION_NAME: &'static str = "hmac_sha3_256";
     
     // sui::crypto::ed25519 native function names (with fun constants)
-    const CRYPTO_ED25519_TRUTH_VERIFIER_FUNCTION_NAME: &'static str = "ed25519_verify";
+    const CRYPTO_ED25519_VERIFIER_FUNCTION_NAME: &'static str = "ed25519_verify";
     
     // sui::crypto::ecvrf native function names (with fun constants)
-    const CRYPTO_ECVRF_RANDOMNESS_VERIFIER_FUNCTION_NAME: &'static str = "ecvrf_verify";
+    const CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME: &'static str = "ecvrf_verify";
     
     // sui::crypto::ecdsa_r1 native function names (with fun constants)
     const CRYPTO_ECDSA_R1_KEY_RECOVERER_FUNCTION_NAME: &'static str = "secp256r1_ecrecover";
     const CRYPTO_ECDSA_R1_SIG_VALIDATOR_FUNCTION_NAME: &'static str = "secp256r1_verify";
     
     // sui::crypto::ecdsa_k1 native function names (with fun constants)
-    const CRYPTO_ECDSA_K1_RESURRECTION_FUNCTION_NAME: &'static str = "secp256k1_ecrecover";
-    const CRYPTO_ECDSA_K1_KEY_DECOMPRESSOR_FUNCTION_NAME: &'static str = "decompress_pubkey";
-    const CRYPTO_ECDSA_K1_SIGNATURE_CHECKER_FUNCTION_NAME: &'static str = "secp256k1_verify";
-    const CRYPTO_ECDSA_K1_SIGNATURE_CREATOR_FUNCTION_NAME: &'static str = "secp256k1_sign";
-    const CRYPTO_ECDSA_K1_KEYPAIR_GARDENER_FUNCTION_NAME: &'static str = "secp256k1_keypair_from_seed";
-    
+    const CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME: &'static str = "secp256k1_ecrecover";
+    const CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME: &'static str = "decompress_pubkey";
+    const CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME: &'static str = "secp256k1_verify";
+    const CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME: &'static str = "secp256k1_sign";
+    const CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME: &'static str = "secp256k1_keypair_from_seed";
+
     // sui::crypto::bls12381 native function names (with fun constants)
-    const CRYPTO_BLS_MIN_SIG_GUARDIAN_FUNCTION_NAME: &'static str = "bls12381_min_sig_verify";
-    const CRYPTO_BLS_MIN_PK_GUARDIAN_FUNCTION_NAME: &'static str = "bls12381_min_pk_verify";
-    
+    const CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_sig_verify";
+    const CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_pk_verify";
+
     // sui::crypto::group_ops native function names (with fun constants)
-    const CRYPTO_GROUP_OPS_VALIDATOR_FUNCTION_NAME: &'static str = "internal_validate";
-    const CRYPTO_GROUP_OPS_ADDITION_MASTER_FUNCTION_NAME: &'static str = "internal_add";
-    const CRYPTO_GROUP_OPS_SUBTRACTION_NINJA_FUNCTION_NAME: &'static str = "internal_sub";
-    const CRYPTO_GROUP_OPS_MULTIPLICATION_WIZARD_FUNCTION_NAME: &'static str = "internal_mul";
-    const CRYPTO_GROUP_OPS_DIVISION_EXPERT_FUNCTION_NAME: &'static str = "internal_div";
-    const CRYPTO_GROUP_OPS_HASH_MAPPER_FUNCTION_NAME: &'static str = "internal_hash_to";
-    const CRYPTO_GROUP_OPS_SCALAR_MULTIPLIER_FUNCTION_NAME: &'static str = "internal_multi_scalar_mul";
-    const CRYPTO_GROUP_OPS_PAIRING_MAESTRO_FUNCTION_NAME: &'static str = "internal_pairing";
-    const CRYPTO_GROUP_OPS_CONVERTER_FUNCTION_NAME: &'static str = "internal_convert";
-    const CRYPTO_GROUP_OPS_SUMMATION_CHAMPION_FUNCTION_NAME: &'static str = "internal_sum";
-    
+    const CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME: &'static str = "internal_validate";
+    const CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME: &'static str = "internal_add";
+    const CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME: &'static str = "internal_sub";
+    const CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME: &'static str = "internal_mul";
+    const CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME: &'static str = "internal_div";
+    const CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME: &'static str = "internal_hash_to";
+    const CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME: &'static str = "internal_multi_scalar_mul";
+    const CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME: &'static str = "internal_pairing";
+    const CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME: &'static str = "internal_convert";
+    const CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME: &'static str = "internal_sum";
+
     // sui::crypto::groth16 native function names (with fun constants)
-    const CRYPTO_GROTH16_KEY_PREPARER_FUNCTION_NAME: &'static str = "prepare_verifying_key_internal";
-    const CRYPTO_GROTH16_PROOF_INSPECTOR_FUNCTION_NAME: &'static str = "verify_groth16_proof_internal";
-    
+    const CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME: &'static str = "prepare_verifying_key_internal";
+    const CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME: &'static str = "verify_groth16_proof_internal";
+
     // sui::crypto::poseidon native function names (with fun constants)
-    const CRYPTO_POSEIDON_BN254_ORACLE_FUNCTION_NAME: &'static str = "poseidon_bn254_internal";
-    
+    const CRYPTO_POSEIDON_BN254_FUNCTION_NAME: &'static str = "poseidon_bn254_internal";
+
     // sui::crypto::vdf native function names (with fun constants)
     const CRYPTO_VDF_INPUT_HASHER_FUNCTION_NAME: &'static str = "hash_to_input_internal";
     const CRYPTO_VDF_PROOF_VERIFIER_FUNCTION_NAME: &'static str = "vdf_verify_internal";
@@ -2282,10 +2283,10 @@ impl GlobalEnv {
 
     // std::hash native function QIDs
     pub fn std_hash_sha2_256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA2_WIZARD_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA2_FUNCTION_NAME)
     }
     pub fn std_hash_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA3_SORCERER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA3_FUNCTION_NAME)
     }
 
     // std::bcs native function QIDs
@@ -2295,15 +2296,15 @@ impl GlobalEnv {
 
     // std::debug native function QIDs
     pub fn std_debug_print_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_CHATTERBOX_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_FUNCTION_NAME)
     }
     pub fn std_debug_print_stack_trace_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_TRACE_DETECTIVE_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_TRACE_FUNCTION_NAME)
     }
 
     // std::type_name native function QIDs
     pub fn std_type_name_get_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_IDENTIFIER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_GETTER_FUNCTION_NAME)
     }
     pub fn std_type_name_get_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME)
@@ -2311,27 +2312,27 @@ impl GlobalEnv {
 
     // std::string native function QIDs
     pub fn std_string_internal_check_utf8_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_UTF8_VALIDATOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_CHECK_UTF8_FUNCTION_NAME)
     }
     pub fn std_string_internal_is_char_boundary_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_BOUNDARY_CHECKER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME)
     }
     pub fn std_string_internal_sub_string_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_SLICER_DICER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_SUB_STRING_FUNCTION_NAME)
     }
     pub fn std_string_internal_index_of_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_TREASURE_HUNTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_INDEX_OF_FUNCTION_NAME)
     }
 
     // sui::address native function QIDs
     pub fn sui_address_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_U256_CONVERTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_TO_U256_FUNCTION_NAME)
     }
     pub fn sui_address_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_U256_MATERIALIZER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_U256_FUNCTION_NAME)
     }
     pub fn sui_address_from_bytes_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_BYTE_ALCHEMIST_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_BYTES_FUNCTION_NAME)
     }
 
     // sui::types native function QIDs
@@ -2344,56 +2345,56 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_BORROW_UID_FUNCTION_NAME)
     }
     pub fn sui_object_delete_impl_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_EXECUTIONER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_FUNCTION_NAME)
     }
     pub fn sui_object_record_new_uid_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_UID_REGISTRAR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_RECORD_NEW_UID_FUNCTION_NAME)
     }
 
     // sui::dynamic_field native function QIDs
     pub fn sui_dynamic_field_hash_type_and_key_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HASH_WIZARD_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_add_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_CHILD_ADOPTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_borrow_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_CHILD_VISITOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_borrow_child_object_mut_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_CHILD_BABYSITTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_remove_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_CHILD_RELEASER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_has_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_CHILD_DETECTOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME)
     }
     pub fn sui_dynamic_field_has_child_object_with_ty_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_TYPED_CHILD_DETECTOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME)
     }
 
     // sui::crypto::hash native function QIDs
     pub fn sui_crypto_hash_blake2b256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_BLAKE_BLASTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME)
     }
     pub fn sui_crypto_hash_keccak256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_KECCAK_CRUSHER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_KECCAK_FUNCTION_NAME)
     }
 
     // sui::crypto::hmac native function QIDs
     pub fn sui_crypto_hmac_hmac_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_HMAC_MODULE_NAME, Self::CRYPTO_HMAC_SHA3_AUTHENTICATOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_HMAC_MODULE_NAME, Self::CRYPTO_HMAC_SHA3_FUNCTION_NAME)
     }
 
     // sui::crypto::ed25519 native function QIDs
     pub fn sui_crypto_ed25519_ed25519_verify_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ED25519_MODULE_NAME, Self::CRYPTO_ED25519_TRUTH_VERIFIER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ED25519_MODULE_NAME, Self::CRYPTO_ED25519_VERIFIER_FUNCTION_NAME)
     }
 
     // sui::crypto::ecvrf native function QIDs
     pub fn sui_crypto_ecvrf_ecvrf_verify_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECVRF_MODULE_NAME, Self::CRYPTO_ECVRF_RANDOMNESS_VERIFIER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECVRF_MODULE_NAME, Self::CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME)
     }
 
     // sui::crypto::ecdsa_r1 native function QIDs
@@ -2406,70 +2407,70 @@ impl GlobalEnv {
 
     // sui::crypto::ecdsa_k1 native function QIDs
     pub fn sui_crypto_ecdsa_k1_secp256k1_ecrecover_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_RESURRECTION_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME)
     }
     pub fn sui_crypto_ecdsa_k1_decompress_pubkey_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_KEY_DECOMPRESSOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME)
     }
     pub fn sui_crypto_ecdsa_k1_secp256k1_verify_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_SIGNATURE_CHECKER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME)
     }
     pub fn sui_crypto_ecdsa_k1_secp256k1_sign_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_SIGNATURE_CREATOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME)
     }
     pub fn sui_crypto_ecdsa_k1_secp256k1_keypair_from_seed_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_KEYPAIR_GARDENER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME)
     }
 
     // sui::crypto::bls12381 native function QIDs
     pub fn sui_crypto_bls12381_bls12381_min_sig_verify_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_SIG_GUARDIAN_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME)
     }
     pub fn sui_crypto_bls12381_bls12381_min_pk_verify_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_PK_GUARDIAN_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME)
     }
 
     // sui::crypto::group_ops native function QIDs
     pub fn sui_crypto_group_ops_internal_validate_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_VALIDATOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_add_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_ADDITION_MASTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_sub_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUBTRACTION_NINJA_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_mul_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MULTIPLICATION_WIZARD_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_div_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_DIVISION_EXPERT_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_hash_to_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_HASH_MAPPER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_multi_scalar_mul_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SCALAR_MULTIPLIER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_pairing_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_PAIRING_MAESTRO_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_convert_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_CONVERTER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME)
     }
     pub fn sui_crypto_group_ops_internal_sum_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUMMATION_CHAMPION_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME)
     }
 
     pub fn sui_crypto_groth16_prepare_verifying_key_internal_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_KEY_PREPARER_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME)
     }
     pub fn sui_crypto_groth16_verify_groth16_proof_internal_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_PROOF_INSPECTOR_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME)
     }
 
     pub fn sui_crypto_poseidon_poseidon_bn254_internal_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::SUI_POSEIDON_MODULE_NAME, Self::CRYPTO_POSEIDON_BN254_ORACLE_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::SUI_POSEIDON_MODULE_NAME, Self::CRYPTO_POSEIDON_BN254_FUNCTION_NAME)
     }
 
     pub fn sui_crypto_vdf_hash_to_input_internal_qid(&self) -> Option<QualifiedId<FunId>> {
