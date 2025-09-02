@@ -3717,6 +3717,20 @@ impl<'env> FunctionTranslator<'env> {
                         let node_id = env.new_node(env.unknown_loc(), mem.to_type());
                         self.track_global_mem(mem, node_id);
                     }
+                    TernaryConditional => {
+                        let cond_str = str_local(srcs[0]);
+                        let true_expr_str = str_local(srcs[1]);
+                        let false_expr_str = str_local(srcs[2]);
+                        let dest_str = str_local(srcs[0]);
+                        emitln!(
+                            self.writer(),
+                            "{} := (if {} then {} else {});",
+                            dest_str,
+                            cond_str,
+                            true_expr_str,
+                            false_expr_str
+                        );
+                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {
