@@ -505,7 +505,7 @@ impl<'env> BoogieTranslator<'env> {
         let code = std::mem::take(&mut builder.data.code);
 
         let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(spec_fun_target.data);
-        let should_use_opaque_as_func = dinfo.is_deterministic && (style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::SpecNoAbortCheck);
+        let should_use_opaque_as_func = dinfo.is_deterministic && style == FunctionTranslationStyle::Opaque;
 
         let omit_havoc = self
             .targets
@@ -1660,7 +1660,7 @@ impl<'env> FunctionTranslator<'env> {
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
             let (args, orets) = self.generate_function_args_and_returns(self.should_use_temp_datatypes());
-            let prefix = if self.should_use_opaque_as_function() { "function" } else { "procedure" };
+            let prefix = if self.should_use_opaque_as_function(true) { "function" } else { "procedure" };
             emitln!(
                 writer,
                 "{} {}$opaque({}) returns ({});",
@@ -2079,12 +2079,14 @@ impl<'env> FunctionTranslator<'env> {
 
         let returns_count = self.fun_target.func_env.get_return_count() + mut_ref_inputs_count;
 
-        returns_count != 1 && self.should_use_opaque_as_function()
+        returns_count != 1 && self.should_use_opaque_as_function(false)
     }
 
-    fn should_use_opaque_as_function(&self) -> bool {
+    fn should_use_opaque_as_function(&self, write: bool) -> bool {
         let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(self.fun_target.data);
-        dinfo.is_deterministic && (self.style == FunctionTranslationStyle::Opaque || self.style == FunctionTranslationStyle::SpecNoAbortCheck)
+        let correct_style = self.style == FunctionTranslationStyle::Opaque || (if write { false } else { self.style == FunctionTranslationStyle::SpecNoAbortCheck });
+
+        dinfo.is_deterministic && correct_style
     }
 
     /// Translates one bytecode instruction.
@@ -2420,7 +2422,7 @@ impl<'env> FunctionTranslator<'env> {
 
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
-                        if is_spec_call && !use_impl && self.should_use_opaque_as_function() {
+                        if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
