@@ -1633,6 +1633,51 @@ impl GlobalEnv {
     const STRING_SUB_STRING_FUNCTION_NAME: &'static str = "internal_sub_string";
     const STRING_INDEX_OF_FUNCTION_NAME: &'static str = "internal_index_of";
     
+    // std::integer native function names
+    const INTEGER_FROM_U8_FUNCTION_NAME: &'static str = "from_u8";
+    const INTEGER_FROM_U16_FUNCTION_NAME: &'static str = "from_u16";
+    const INTEGER_FROM_U32_FUNCTION_NAME: &'static str = "from_u32";
+    const INTEGER_FROM_U64_FUNCTION_NAME: &'static str = "from_u64";
+    const INTEGER_FROM_U128_FUNCTION_NAME: &'static str = "from_u128";
+    const INTEGER_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const INTEGER_TO_U8_FUNCTION_NAME: &'static str = "to_u8";
+    const INTEGER_TO_U16_FUNCTION_NAME: &'static str = "to_u16";
+    const INTEGER_TO_U32_FUNCTION_NAME: &'static str = "to_u32";
+    const INTEGER_TO_U64_FUNCTION_NAME: &'static str = "to_u64";
+    const INTEGER_TO_U128_FUNCTION_NAME: &'static str = "to_u128";
+    const INTEGER_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const INTEGER_ADD_FUNCTION_NAME: &'static str = "add";
+    const INTEGER_SUB_FUNCTION_NAME: &'static str = "sub";
+    const INTEGER_NEG_FUNCTION_NAME: &'static str = "neg";
+    const INTEGER_MUL_FUNCTION_NAME: &'static str = "mul";
+    const INTEGER_DIV_FUNCTION_NAME: &'static str = "div";
+    const INTEGER_MOD_FUNCTION_NAME: &'static str = "mod";
+    const INTEGER_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const INTEGER_POW_FUNCTION_NAME: &'static str = "pow";
+    const INTEGER_BIT_OR_FUNCTION_NAME: &'static str = "bit_or";
+    const INTEGER_BIT_AND_FUNCTION_NAME: &'static str = "bit_and";
+    const INTEGER_BIT_XOR_FUNCTION_NAME: &'static str = "bit_xor";
+    const INTEGER_BIT_NOT_FUNCTION_NAME: &'static str = "bit_not";
+    const INTEGER_LT_FUNCTION_NAME: &'static str = "lt";
+    const INTEGER_GT_FUNCTION_NAME: &'static str = "gt";
+    const INTEGER_LTE_FUNCTION_NAME: &'static str = "lte";
+    const INTEGER_GTE_FUNCTION_NAME: &'static str = "gte";
+    
+    // std::real native function names
+    const REAL_FROM_INTEGER_FUNCTION_NAME: &'static str = "from_integer";
+    const REAL_TO_INTEGER_FUNCTION_NAME: &'static str = "to_integer";
+    const REAL_ADD_FUNCTION_NAME: &'static str = "add";
+    const REAL_SUB_FUNCTION_NAME: &'static str = "sub";
+    const REAL_NEG_FUNCTION_NAME: &'static str = "neg";
+    const REAL_MUL_FUNCTION_NAME: &'static str = "mul";
+    const REAL_DIV_FUNCTION_NAME: &'static str = "div";
+    const REAL_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const REAL_EXP_FUNCTION_NAME: &'static str = "exp";
+    const REAL_LT_FUNCTION_NAME: &'static str = "lt";
+    const REAL_GT_FUNCTION_NAME: &'static str = "gt";
+    const REAL_LTE_FUNCTION_NAME: &'static str = "lte";
+    const REAL_GTE_FUNCTION_NAME: &'static str = "gte";
+    
     // sui::address native function names (with fun constants)
     const ADDRESS_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
     const ADDRESS_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
@@ -2324,6 +2369,133 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_INDEX_OF_FUNCTION_NAME)
     }
 
+    // std::integer native function QIDs
+    pub fn std_integer_from_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_ADD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SUB_FUNCTION_NAME)
+    }
+    pub fn std_integer_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_NEG_FUNCTION_NAME)
+    }
+    pub fn std_integer_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MUL_FUNCTION_NAME)
+    }
+    pub fn std_integer_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_DIV_FUNCTION_NAME)
+    }
+    pub fn std_integer_mod_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MOD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_integer_pow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_POW_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_or_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_OR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_and_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_AND_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_xor_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_XOR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_not_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_NOT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LT_FUNCTION_NAME)
+    }
+    pub fn std_integer_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LTE_FUNCTION_NAME)
+    }
+    pub fn std_integer_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GTE_FUNCTION_NAME)
+    }
+
+    // std::real native function QIDs
+    pub fn std_real_from_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_FROM_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_to_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_TO_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_ADD_FUNCTION_NAME)
+    }
+    pub fn std_real_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SUB_FUNCTION_NAME)
+    }
+    pub fn std_real_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_NEG_FUNCTION_NAME)
+    }
+    pub fn std_real_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_MUL_FUNCTION_NAME)
+    }
+    pub fn std_real_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_DIV_FUNCTION_NAME)
+    }
+    pub fn std_real_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_real_exp_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_EXP_FUNCTION_NAME)
+    }
+    pub fn std_real_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LT_FUNCTION_NAME)
+    }
+    pub fn std_real_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GT_FUNCTION_NAME)
+    }
+    pub fn std_real_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LTE_FUNCTION_NAME)
+    }
+    pub fn std_real_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GTE_FUNCTION_NAME)
+    }
+
     // sui::address native function QIDs
     pub fn sui_address_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_TO_U256_FUNCTION_NAME)
@@ -2567,6 +2739,51 @@ impl GlobalEnv {
             self.std_string_internal_is_char_boundary_qid(),
             self.std_string_internal_sub_string_qid(),
             self.std_string_internal_index_of_qid(),
+
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_to_u8_qid(),
+            self.std_integer_to_u16_qid(),
+            self.std_integer_to_u32_qid(),
+            self.std_integer_to_u64_qid(),
+            self.std_integer_to_u128_qid(),
+            self.std_integer_to_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_div_qid(),
+            self.std_integer_mod_qid(),
+            self.std_integer_sqrt_qid(),
+            self.std_integer_pow_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_div_qid(),
+            self.std_real_sqrt_qid(),
+            self.std_real_exp_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
 
             // sui::address native functions
             self.sui_address_to_u256_qid(),
