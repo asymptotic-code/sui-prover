@@ -2274,21 +2274,6 @@ impl<'env> FunctionTranslator<'env> {
                     );
                 }
 
-                // if self.should_use_temp_datatypes() {
-                //     let args = rets
-                //         .iter()
-                //         .cloned()
-                //         .map(str_local)
-                //         .chain(
-                //             (0..fun_target.get_parameter_count())
-                //                 .filter(|&i| self.get_local_type(i).is_mutable_reference())
-                //                 .map(str_local)
-                //         )
-                //         .join(", ");
-
-                //     if !args.is_empty() {
-                //         emitln!(self.writer(), "$ret := {}({});", self.wrap_return_datatype_name(), args);
-                //     }
                 for (i, r) in rets.iter().enumerate() {
                     emitln!(self.writer(), "$ret{} := {};", i, str_local(*r));
                 }
