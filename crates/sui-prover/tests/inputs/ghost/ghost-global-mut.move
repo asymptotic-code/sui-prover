@@ -22,7 +22,7 @@ public fun foo_spec(x: &mut u64): u64 {
     res
 }
 
-#[spec(prove)]
+#[spec(prove, no_opaque)]
 public fun bar_spec(x: &mut u64): u64 {
     ghost::declare_global_mut<Counter, u64>();
 

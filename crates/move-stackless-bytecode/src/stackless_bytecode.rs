@@ -497,14 +497,18 @@ impl Bytecode {
         let mut v = vec![];
         if !bytecode.is_branch() {
             // Fall through situation, just return the next pc.
-            v.push(pc + 1);
+            if pc + 1 < code.len() as CodeOffset {
+                v.push(pc + 1);
+            }
         } else {
             for label in bytecode.branch_dests() {
                 v.push(*label_offsets.get(&label).expect("label defined"));
             }
             if matches!(bytecode, Bytecode::Call(_, _, _, _, Some(_))) {
                 // Falls through.
-                v.push(pc + 1);
+                if pc + 1 < code.len() as CodeOffset {
+                    v.push(pc + 1);
+                }
             }
         }
         // always give successors in ascending order
