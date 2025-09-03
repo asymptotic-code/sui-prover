@@ -4,14 +4,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use move_binary_format::file_format::CodeOffset;
-use move_model::model::FunctionEnv;
+use move_model::{
+    model::FunctionEnv,
+    ty::{PrimitiveType, Type},
+};
 
 use crate::{
     ast::TempIndex,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::{DomRelation, Graph},
-    stackless_bytecode::{Bytecode, Label},
+    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
 };
 
@@ -211,7 +214,7 @@ impl SSATransformProcessor {
                     if let Bytecode::Assign(_, dest, src, _) = bytecode {
                         assignments.insert(*dest, *src);
                     }
-                    // TODO: calls that assign to destinations?
+                    // XXX: calls that assign to destinations?
                 }
             }
         }
@@ -241,6 +244,250 @@ impl SSATransformProcessor {
             BlockContent::Basic { lower, .. } => Some(*lower),
             BlockContent::Dummy => None,
         }
+    }
+
+    fn transform_to_ssa(
+        &self,
+        target: &FunctionTarget<'_>,
+        conditionals: Vec<ConditionalPattern>,
+    ) -> (Vec<Bytecode>, usize, BTreeMap<TempIndex, TempIndex>) {
+        // Invariant: conditionals is non-empty
+
+        let mut new_code = Vec::new();
+        let mut ssa_ctx = SSAContext::default();
+        let code = &target.data.code;
+
+        ssa_ctx.next_temp = target.get_local_count();
+        if self.debug {
+            println!(
+                "Transforming {} conditionals to SSA form",
+                conditionals.len()
+            );
+        }
+
+        let mut processed_locs = BTreeSet::new();
+
+        for (pc, bytecode) in code.iter().enumerate() {
+            let pc = pc as CodeOffset;
+            if processed_locs.contains(&pc) {
+                continue;
+            }
+            if let Some(conditional) = conditionals.iter().find(|p| p.branch_pc == pc) {
+                if self.debug {
+                    println!("Transforming conditional pattern at PC {}", pc);
+                    println!("  Condition: {:?}", conditional.condition);
+                    println!("  True assignments: {:?}", conditional.true_branch);
+                    println!("  False assignments: {:?}", conditional.false_branch);
+                    println!("  Phi vars: {:?}", conditional.phi_vars);
+                }
+
+                let conditional_bytecode = self.transform_conditional(conditional, &mut ssa_ctx);
+                new_code.extend(conditional_bytecode);
+                self.mark_conditional_locs_processed(target, conditional, &mut processed_locs);
+            } else {
+                // Regular instruction
+                let transformed_instruction =
+                    self.rename_variables_in_instruction(bytecode, &mut ssa_ctx);
+                new_code.push(transformed_instruction);
+                processed_locs.insert(pc);
+            }
+        }
+
+        if self.debug {
+            println!(
+                "SSA transformation completed. Generated {} instructions from {} original",
+                new_code.len(),
+                code.len()
+            );
+        }
+
+        (new_code, ssa_ctx.next_temp, ssa_ctx.temp_origins)
+    }
+
+    fn transform_conditional(
+        &self,
+        conditional: &ConditionalPattern,
+        ssa_ctx: &mut SSAContext,
+    ) -> Vec<Bytecode> {
+        let mut result = Vec::new();
+
+        // For each variable that gets assigned in both branches (phi variables)
+        for &phi_var in &conditional.phi_vars {
+            // Get the values assigned in then/else branches
+            let true_value = conditional
+                .true_branch
+                .get(&phi_var)
+                .copied()
+                .unwrap_or(phi_var); // Default to original if no assignment
+            let false_value = conditional
+                .false_branch
+                .get(&phi_var)
+                .copied()
+                .unwrap_or(phi_var); // Default to original if no assignment
+
+            // Create new SSA temporary for the merged value
+            let merge_point_temp_var = self.create_ssa_temp(ssa_ctx, phi_var, 0);
+
+            if self.debug {
+                println!(
+                    "Creating TernaryConditional: {} = if {:?} then {:?} else {:?}",
+                    merge_point_temp_var, conditional.condition, true_value, false_value
+                );
+            }
+
+            // Generate TernaryConditional operation
+            // Call(attr, dests, oper, srcs, abort_action)
+            let ternary_conditional = Bytecode::Call(
+                AttrId::new(conditional.branch_pc as usize), // Branch PC is attr
+                vec![merge_point_temp_var],                  // Destination: merged temp
+                Operation::TernaryConditional,
+                vec![conditional.condition, true_value, false_value], // Sources: condition, true_value, false_value
+                None,                                                 // No abort action
+            );
+
+            result.push(ternary_conditional);
+
+            // Update SSA context to map original variable to new temp
+            ssa_ctx.current_version.insert(phi_var, 1);
+            ssa_ctx
+                .version_map
+                .insert((phi_var, 1), merge_point_temp_var);
+        }
+
+        result
+    }
+
+    fn mark_conditional_locs_processed(
+        &self,
+        target: &FunctionTarget<'_>,
+        conditional: &ConditionalPattern,
+        processed_locs: &mut BTreeSet<CodeOffset>,
+    ) {
+        // Mark the branch instruction
+        processed_locs.insert(conditional.branch_pc);
+
+        // Mark instructions in then/else blocks
+        // For simplicity, we'll mark a range around the merge point
+        // In a full implementation, we'd track exact block boundaries
+        let code = &target.data.code;
+        let start_pc = conditional.branch_pc;
+        let end_pc = std::cmp::min(conditional.merge_pc + 5, code.len() as CodeOffset);
+
+        for pc in start_pc..end_pc {
+            processed_locs.insert(pc);
+        }
+    }
+
+    /// Rename variables in a regular (non-conditional) instruction based on SSA context
+    fn rename_variables_in_instruction(
+        &self,
+        bytecode: &Bytecode,
+        ssa_ctx: &mut SSAContext,
+    ) -> Bytecode {
+        use Bytecode::*;
+
+        match bytecode {
+            // Handle assignments: dest = src
+            Assign(attr, dest, src, assign_kind) => {
+                // Rename source variable to its latest SSA version
+                let renamed_src = self.get_current_ssa_version(*src, ssa_ctx);
+
+                // Create new SSA version for destination
+                let new_dest = self.create_new_ssa_version(*dest, ssa_ctx);
+
+                Assign(attr.clone(), new_dest, renamed_src, *assign_kind)
+            }
+
+            // Handle calls: may have multiple sources and destinations
+            Call(attr, dests, oper, srcs, abort_action) => {
+                // Rename all source variables
+                let renamed_srcs: Vec<TempIndex> = srcs
+                    .iter()
+                    .map(|&src| self.get_current_ssa_version(src, ssa_ctx))
+                    .collect();
+
+                // Create new SSA versions for destinations
+                let new_dests: Vec<TempIndex> = dests
+                    .iter()
+                    .map(|&dest| self.create_new_ssa_version(dest, ssa_ctx))
+                    .collect();
+
+                Call(
+                    attr.clone(),
+                    new_dests,
+                    oper.clone(),
+                    renamed_srcs,
+                    abort_action.clone(),
+                )
+            }
+
+            // Handle other instructions that may reference variables
+            Load(attr, dest, constant) => {
+                let new_dest = self.create_new_ssa_version(*dest, ssa_ctx);
+                Load(attr.clone(), new_dest, constant.clone())
+            }
+
+            // Most other instructions don't need renaming
+            _ => bytecode.clone(),
+        }
+    }
+
+    fn get_current_ssa_version(&self, original: TempIndex, ssa_ctx: &mut SSAContext) -> TempIndex {
+        let current_version = ssa_ctx.current_version.get(&original).copied().unwrap_or(0);
+
+        // Check if we already have a mapping for this version
+        if let Some(&ssa_temp) = ssa_ctx.version_map.get(&(original, current_version)) {
+            ssa_temp
+        } else {
+            // If this is version 0 and no mapping exists, use original temp
+            if current_version == 0 {
+                original
+            } else {
+                // Create a new temp for this version
+                let new_temp = ssa_ctx.next_temp;
+                ssa_ctx.next_temp += 1;
+                ssa_ctx
+                    .version_map
+                    .insert((original, current_version), new_temp);
+                ssa_ctx.temp_origins.insert(new_temp, original);
+                new_temp
+            }
+        }
+    }
+
+    /// Create a new SSA version for a variable being assigned to
+    fn create_new_ssa_version(&self, original: TempIndex, ssa_ctx: &mut SSAContext) -> TempIndex {
+        // Increment the version for this variable
+        let new_version = ssa_ctx.current_version.get(&original).copied().unwrap_or(0) + 1;
+        ssa_ctx.current_version.insert(original, new_version);
+
+        // Create new temp index for this version
+        let new_temp = ssa_ctx.next_temp;
+        ssa_ctx.next_temp += 1;
+        ssa_ctx
+            .version_map
+            .insert((original, new_version), new_temp);
+        ssa_ctx.temp_origins.insert(new_temp, original);
+
+        new_temp
+    }
+
+    /// Create a new temporary index for SSA
+    fn create_ssa_temp(
+        &self,
+        ctx: &mut SSAContext,
+        original: TempIndex,
+        version: usize,
+    ) -> TempIndex {
+        if let Some(&existing) = ctx.version_map.get(&(original, version)) {
+            return existing;
+        }
+
+        let new_temp = ctx.next_temp;
+        ctx.next_temp += 1;
+        ctx.version_map.insert((original, version), new_temp);
+        ctx.temp_origins.insert(new_temp, original);
+        new_temp
     }
 }
 
@@ -275,7 +522,7 @@ impl FunctionTargetProcessor for SSATransformProcessor {
         &self,
         _targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if func_env.is_native() {
@@ -291,7 +538,38 @@ impl FunctionTargetProcessor for SSATransformProcessor {
 
         let target = FunctionTarget::new(func_env, &data);
         let cfg = StacklessControlFlowGraph::new_forward(&data.code);
-        let _conditionals = self.collect_conditionals(&target, &cfg);
+        let conditionals = self.collect_conditionals(&target, &cfg);
+
+        if conditionals.is_empty() {
+            return data;
+        }
+
+        let (new_code, max_temp_used, temp_origins) = self.transform_to_ssa(&target, conditionals);
+
+        // replace function data
+        data.code = new_code;
+
+        // Update local_types to include new temporaries created during SSA transformation
+        let original_local_count = data.local_types.len();
+        while data.local_types.len() < max_temp_used {
+            // For new SSA temporaries, we need to determine their type
+            let new_temp_index = data.local_types.len();
+            let temp_type = if new_temp_index < original_local_count {
+                // This is an existing temporary
+                data.local_types[new_temp_index].clone()
+            } else if let Some(&original_temp) = temp_origins.get(&new_temp_index) {
+                // This is a new SSA temporary derived from an original temp
+                data.local_types[original_temp].clone()
+            } else {
+                // Fallback - use a reasonable default type
+                if !data.local_types.is_empty() {
+                    data.local_types[0].clone()
+                } else {
+                    Type::Primitive(PrimitiveType::U64)
+                }
+            };
+            data.local_types.push(temp_type);
+        }
 
         if self.debug {
             println!(
