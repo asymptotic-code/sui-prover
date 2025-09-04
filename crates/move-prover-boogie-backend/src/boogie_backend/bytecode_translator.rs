@@ -366,13 +366,10 @@ impl<'env> BoogieTranslator<'env> {
                     .get_inv_by_datatype(&struct_env.get_qualified_id())
                 {
                     let inv_fun_env = self.env.get_function(*inv_fun_id);
-                    let inv_fun_target = match self
+                    let inv_fun_target = self
                         .targets
                         .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                    {
-                        Some(target) => target,
-                        None => continue, // Invariant function was filtered out (shouldn't happen)
-                    };
+                        .expect("Invariant function was filtered out: could not find baseline target for invariant function");
                     let struct_type_instances = mono_info
                         .structs
                         .get(&struct_env.get_qualified_id())
@@ -492,10 +489,13 @@ impl<'env> BoogieTranslator<'env> {
         if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
             return;
         }
-        let spec_fun_target = match self.targets.get_target_opt(fun_env, &variant) {
-            Some(target) => target,
-            None => return, // Function was filtered out
-        };
+        let spec_fun_target = self
+            .targets
+            .get_target_opt(fun_env, &variant)
+            .expect(&format!(
+                "Spec function was filtered out: could not find target for function: {}",
+                fun_env.get_full_name_str()
+            ));
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -732,13 +732,14 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
         let ghost_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline).unwrap();
-       
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
+            .expect("ghost global function target should exist");
+
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets
             .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect("ghost havoc global function target should exist");
 
         let empty_set = &BTreeSet::new();
         let ghost_global_type_instances = mono_info
@@ -2738,7 +2739,7 @@ impl<'env> FunctionTranslator<'env> {
                             let callee_name = callee_env.get_name_str();
                             if dest_str.is_empty() {
                                 let bv_flag = !srcs.is_empty() && compute_flag(srcs[0]);
-                                if module_env.is_std_vector() {
+                                if module_env.is_std_vector() {inv_foo::get_values
                                     // Check the target vector contains bv values
                                     if callee_name.contains("insert") {
                                         let mut args_str_vec =
@@ -3063,7 +3064,7 @@ impl<'env> FunctionTranslator<'env> {
                                 dest_str,
                                 memory,
                                 addr_str
-                            );
+                            );inv_foo::get_values
                         });
                         emitln!(self.writer(), "}");
                     }
