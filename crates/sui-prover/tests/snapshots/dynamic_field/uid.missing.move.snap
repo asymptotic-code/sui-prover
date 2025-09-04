@@ -1,0 +1,5 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+🦀 No specifications are marked for verification. Nothing to verify.
