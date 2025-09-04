@@ -17,7 +17,7 @@ public fun add_address(uid: &mut UID, address: address) {
     event::emit(Event { address, id: object::uid_to_inner(uid) });
 }
 
-#[spec(ignore_abort)]
+#[spec]
 fun add_address_spec(uid: &mut UID, address: address) {
     add_address(uid, address);
 }
