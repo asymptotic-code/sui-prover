@@ -3721,7 +3721,7 @@ impl<'env> FunctionTranslator<'env> {
                         let cond_str = str_local(srcs[0]);
                         let true_expr_str = str_local(srcs[1]);
                         let false_expr_str = str_local(srcs[2]);
-                        let dest_str = str_local(srcs[0]);
+                        let dest_str = str_local(dests[0]);
                         emitln!(
                             self.writer(),
                             "{} := (if {} then {} else {});",
