@@ -24,6 +24,7 @@ use std::{
     rc::Rc,
 };
 
+use anyhow::bail;
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, Severity},
@@ -1431,10 +1432,14 @@ impl GlobalEnv {
         self.extlib_address.clone().unwrap_or_else(|| 2u16.into())
     }
 
-    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+    fn find_module_id(&self, module_name: &str) -> ModuleId {
         self.find_module_by_name(self.symbol_pool().make(module_name))
             .expect(&format!("module not found: {}", module_name))
             .get_id()
+    }
+
+    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+        self.find_module_id(module_name)
             .qualified(FunId::new(self.symbol_pool().make(fun_name)))
     }
 
@@ -1481,6 +1486,30 @@ impl GlobalEnv {
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
+
+    const STD_BCS_MODULE_NAME: &'static str = "bcs";
+    const STD_DEBUG_MODULE_NAME: &'static str = "debug";
+    const STD_HASH_MODULE_NAME: &'static str = "hash";
+    const STD_INTEGER_MODULE_NAME: &'static str = "integer";
+    const STD_REAL_MODULE_NAME: &'static str = "real";
+    const STD_STRING_MODULE_NAME: &'static str = "string";
+    const STD_TYPE_NAME_MODULE_NAME: &'static str = "type_name";
+
+    const SUI_ADDRESS_MODULE_NAME: &'static str = "address";
+    const SUI_TYPES_MODULE_NAME: &'static str = "types";
+    const SUI_BLS12381_MODULE_NAME: &'static str = "bls12381";
+    const SUI_ECDSA_K1_MODULE_NAME: &'static str = "ecdsa_k1";
+    const SUI_ECDSA_R1_MODULE_NAME: &'static str = "ecdsa_r1";
+    const SUI_ECVRF_MODULE_NAME: &'static str = "ecvrf";
+    const SUI_ED25519_MODULE_NAME: &'static str = "ed25519";
+    const SUI_GROTH16_MODULE_NAME: &'static str = "groth16";
+    const SUI_GROUP_OPS_MODULE_NAME: &'static str = "group_ops";
+    const SUI_HASH_MODULE_NAME: &'static str = "hash";
+    const SUI_HMAC_MODULE_NAME: &'static str = "hmac";
+    const SUI_NITRO_ATTESTATION_MODULE_NAME: &'static str = "nitro_attestation";
+    const SUI_POSEIDON_MODULE_NAME: &'static str = "poseidon";
+    const SUI_VDF_MODULE_NAME: &'static str = "vdf";
+
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1509,7 +1538,15 @@ impl GlobalEnv {
     const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
     const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
     const VECTOR_TAKE_FUNCTION_NAME: &'static str = "take";
-    const VECTOR_SKIP_FUNCTION_NAME: &'static str = "skip";
+    const VECTOR_SKIP_FUNCTION_NAME: &'static str = "skip";    
+    const VECTOR_MAGIC_EMPTY_FUNCTION_NAME: &'static str = "empty";
+    const VECTOR_SIZE_DETECTIVE_FUNCTION_NAME: &'static str = "length";
+    const VECTOR_PEEK_A_BOO_FUNCTION_NAME: &'static str = "borrow";
+    const VECTOR_STACK_PUSHER_FUNCTION_NAME: &'static str = "push_back";
+    const VECTOR_MUTANT_PEEKER_FUNCTION_NAME: &'static str = "borrow_mut";
+    const VECTOR_STACK_POPPER_FUNCTION_NAME: &'static str = "pop_back";
+    const VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME: &'static str = "destroy_empty";
+    const VECTOR_SWITCHEROO_FUNCTION_NAME: &'static str = "swap";
 
     // vec_set struct name
     const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
@@ -1551,7 +1588,10 @@ impl GlobalEnv {
 
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
+    const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
+    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid";
 
+    // dynamic_field function names
     const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
     const DYNAMIC_FIELD_BORROW_FUNCTION_NAME: &'static str = "borrow";
     const DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
@@ -1559,6 +1599,278 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
     const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
     const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
+
+    // sui::dynamic_field native function names
+    const DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME: &'static str = "hash_type_and_key";
+    const DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME: &'static str = "add_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME: &'static str = "borrow_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME: &'static str = "borrow_child_object_mut";
+    const DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME: &'static str = "remove_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME: &'static str = "has_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
+
+
+    const UNIT_TEST_POISON_FUN_NAME: &'static str = "unit_test_poison";
+
+    // std::hash native function names (with fun constants)
+    const HASH_SHA2_FUNCTION_NAME: &'static str = "sha2_256";
+    const HASH_SHA3_FUNCTION_NAME: &'static str = "sha3_256";
+    
+    // std::bcs native function names (with fun constants)
+    const BCS_BYTE_TRANSFORMER_FUNCTION_NAME: &'static str = "to_bytes";
+    
+    // std::debug native function names (with fun constants)
+    const DEBUG_PRINT_FUNCTION_NAME: &'static str = "print";
+    const DEBUG_PRINT_TRACE_FUNCTION_NAME: &'static str = "print_stack_trace";
+    
+    // std::type_name native function names (with fun constants)
+    const TYPE_NAME_GETTER_FUNCTION_NAME: &'static str = "get";
+    const TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME: &'static str = "get_with_original_ids";
+    
+    // std::string native function names (with fun constants)
+    const STRING_CHECK_UTF8_FUNCTION_NAME: &'static str = "internal_check_utf8";
+    const STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME: &'static str = "internal_is_char_boundary";
+    const STRING_SUB_STRING_FUNCTION_NAME: &'static str = "internal_sub_string";
+    const STRING_INDEX_OF_FUNCTION_NAME: &'static str = "internal_index_of";
+    
+    // std::integer native function names
+    const INTEGER_FROM_U8_FUNCTION_NAME: &'static str = "from_u8";
+    const INTEGER_FROM_U16_FUNCTION_NAME: &'static str = "from_u16";
+    const INTEGER_FROM_U32_FUNCTION_NAME: &'static str = "from_u32";
+    const INTEGER_FROM_U64_FUNCTION_NAME: &'static str = "from_u64";
+    const INTEGER_FROM_U128_FUNCTION_NAME: &'static str = "from_u128";
+    const INTEGER_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const INTEGER_TO_U8_FUNCTION_NAME: &'static str = "to_u8";
+    const INTEGER_TO_U16_FUNCTION_NAME: &'static str = "to_u16";
+    const INTEGER_TO_U32_FUNCTION_NAME: &'static str = "to_u32";
+    const INTEGER_TO_U64_FUNCTION_NAME: &'static str = "to_u64";
+    const INTEGER_TO_U128_FUNCTION_NAME: &'static str = "to_u128";
+    const INTEGER_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const INTEGER_ADD_FUNCTION_NAME: &'static str = "add";
+    const INTEGER_SUB_FUNCTION_NAME: &'static str = "sub";
+    const INTEGER_NEG_FUNCTION_NAME: &'static str = "neg";
+    const INTEGER_MUL_FUNCTION_NAME: &'static str = "mul";
+    const INTEGER_DIV_FUNCTION_NAME: &'static str = "div";
+    const INTEGER_MOD_FUNCTION_NAME: &'static str = "mod";
+    const INTEGER_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const INTEGER_POW_FUNCTION_NAME: &'static str = "pow";
+    const INTEGER_BIT_OR_FUNCTION_NAME: &'static str = "bit_or";
+    const INTEGER_BIT_AND_FUNCTION_NAME: &'static str = "bit_and";
+    const INTEGER_BIT_XOR_FUNCTION_NAME: &'static str = "bit_xor";
+    const INTEGER_BIT_NOT_FUNCTION_NAME: &'static str = "bit_not";
+    const INTEGER_LT_FUNCTION_NAME: &'static str = "lt";
+    const INTEGER_GT_FUNCTION_NAME: &'static str = "gt";
+    const INTEGER_LTE_FUNCTION_NAME: &'static str = "lte";
+    const INTEGER_GTE_FUNCTION_NAME: &'static str = "gte";
+    
+    // std::real native function names
+    const REAL_FROM_INTEGER_FUNCTION_NAME: &'static str = "from_integer";
+    const REAL_TO_INTEGER_FUNCTION_NAME: &'static str = "to_integer";
+    const REAL_ADD_FUNCTION_NAME: &'static str = "add";
+    const REAL_SUB_FUNCTION_NAME: &'static str = "sub";
+    const REAL_NEG_FUNCTION_NAME: &'static str = "neg";
+    const REAL_MUL_FUNCTION_NAME: &'static str = "mul";
+    const REAL_DIV_FUNCTION_NAME: &'static str = "div";
+    const REAL_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const REAL_EXP_FUNCTION_NAME: &'static str = "exp";
+    const REAL_LT_FUNCTION_NAME: &'static str = "lt";
+    const REAL_GT_FUNCTION_NAME: &'static str = "gt";
+    const REAL_LTE_FUNCTION_NAME: &'static str = "lte";
+    const REAL_GTE_FUNCTION_NAME: &'static str = "gte";
+    
+    // sui::address native function names (with fun constants)
+    const ADDRESS_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const ADDRESS_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const ADDRESS_FROM_BYTES_FUNCTION_NAME: &'static str = "from_bytes";
+    
+    // sui::types native function names (with fun constants)
+    const TYPES_WITNESS_INSPECTOR_FUNCTION_NAME: &'static str = "is_one_time_witness";
+    
+    // sui::crypto::hash native function names (with fun constants)
+    const CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME: &'static str = "blake2b256";
+    const CRYPTO_HASH_KECCAK_FUNCTION_NAME: &'static str = "keccak256";
+    
+    // sui::crypto::hmac native function names (with fun constants)
+    const CRYPTO_HMAC_SHA3_FUNCTION_NAME: &'static str = "hmac_sha3_256";
+    
+    // sui::crypto::ed25519 native function names (with fun constants)
+    const CRYPTO_ED25519_VERIFIER_FUNCTION_NAME: &'static str = "ed25519_verify";
+    
+    // sui::crypto::ecvrf native function names (with fun constants)
+    const CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME: &'static str = "ecvrf_verify";
+    
+    // sui::crypto::ecdsa_r1 native function names (with fun constants)
+    const CRYPTO_ECDSA_R1_KEY_RECOVERER_FUNCTION_NAME: &'static str = "secp256r1_ecrecover";
+    const CRYPTO_ECDSA_R1_SIG_VALIDATOR_FUNCTION_NAME: &'static str = "secp256r1_verify";
+    
+    // sui::crypto::ecdsa_k1 native function names (with fun constants)
+    const CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME: &'static str = "secp256k1_ecrecover";
+    const CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME: &'static str = "decompress_pubkey";
+    const CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME: &'static str = "secp256k1_verify";
+    const CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME: &'static str = "secp256k1_sign";
+    const CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME: &'static str = "secp256k1_keypair_from_seed";
+
+    // sui::crypto::bls12381 native function names (with fun constants)
+    const CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_sig_verify";
+    const CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_pk_verify";
+
+    // sui::crypto::group_ops native function names (with fun constants)
+    const CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME: &'static str = "internal_validate";
+    const CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME: &'static str = "internal_add";
+    const CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME: &'static str = "internal_sub";
+    const CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME: &'static str = "internal_mul";
+    const CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME: &'static str = "internal_div";
+    const CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME: &'static str = "internal_hash_to";
+    const CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME: &'static str = "internal_multi_scalar_mul";
+    const CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME: &'static str = "internal_pairing";
+    const CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME: &'static str = "internal_convert";
+    const CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME: &'static str = "internal_sum";
+
+    // sui::crypto::groth16 native function names (with fun constants)
+    const CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME: &'static str = "prepare_verifying_key_internal";
+    const CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME: &'static str = "verify_groth16_proof_internal";
+
+    // sui::crypto::poseidon native function names (with fun constants)
+    const CRYPTO_POSEIDON_BN254_FUNCTION_NAME: &'static str = "poseidon_bn254_internal";
+
+    // sui::crypto::vdf native function names (with fun constants)
+    const CRYPTO_VDF_INPUT_HASHER_FUNCTION_NAME: &'static str = "hash_to_input_internal";
+    const CRYPTO_VDF_PROOF_VERIFIER_FUNCTION_NAME: &'static str = "vdf_verify_internal";
+    
+    // sui::crypto::nitro_attestation native function names (with fun constants)
+    const CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME: &'static str = "load_nitro_attestation_internal";
+
+    pub fn prover_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::PROVER_MODULE_NAME)
+    }
+
+    pub fn ghost_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SPEC_MODULE_NAME)
+    }
+
+    pub fn log_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::LOG_MODULE_NAME)
+    }
+
+    pub fn vector_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VECTOR_MODULE_NAME)
+    }
+
+    pub fn vec_set_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_SET_MODULE_NAME)
+    }
+
+    pub fn vec_map_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_MAP_MODULE_NAME)
+    }
+
+    pub fn option_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OPTION_MODULE_NAME)
+    }
+
+    pub fn table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::TABLE_MODULE_NAME)
+    }
+
+    pub fn object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_MODULE_NAME)
+    }
+
+    pub fn object_table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_TABLE_MODULE_NAME)
+    }
+
+    pub fn dynamic_field_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_FIELD_MODULE_NAME)
+    }
+
+    pub fn dynamic_object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_OBJECT_MODULE_NAME)
+    }
+
+    pub fn std_bcs_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_BCS_MODULE_NAME)
+    }
+
+    pub fn std_debug_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_DEBUG_MODULE_NAME)
+    }
+
+    pub fn std_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_HASH_MODULE_NAME)
+    }
+
+    pub fn std_integer_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_INTEGER_MODULE_NAME)
+    }
+
+    pub fn std_real_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_REAL_MODULE_NAME)
+    }
+
+    pub fn std_string_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_STRING_MODULE_NAME)
+    }
+
+    pub fn std_type_name_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_TYPE_NAME_MODULE_NAME)
+    }
+
+    pub fn sui_address_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ADDRESS_MODULE_NAME)
+    }
+
+    pub fn sui_types_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_TYPES_MODULE_NAME)
+    }
+
+    pub fn sui_bls12381_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_BLS12381_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_k1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_K1_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_r1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_R1_MODULE_NAME)
+    }
+
+    pub fn sui_ecvrf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECVRF_MODULE_NAME)
+    }
+
+    pub fn sui_ed25519_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ED25519_MODULE_NAME)
+    }
+
+    pub fn sui_groth16_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROTH16_MODULE_NAME)
+    }
+
+    pub fn sui_group_ops_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROUP_OPS_MODULE_NAME)
+    }
+
+    pub fn sui_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HASH_MODULE_NAME)
+    }
+
+    pub fn sui_hmac_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HMAC_MODULE_NAME)
+    }
+
+    pub fn sui_nitro_attestation_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_NITRO_ATTESTATION_MODULE_NAME)
+    }
+
+    pub fn sui_poseidon_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_POSEIDON_MODULE_NAME)
+    }
+
+    pub fn sui_vdf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_VDF_MODULE_NAME)
+    }
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1986,6 +2298,571 @@ impl GlobalEnv {
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
         )
+    }
+
+    // std::vector native function QIDs
+    pub fn std_vector_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_MAGIC_EMPTY_FUNCTION_NAME)
+    }
+    pub fn std_vector_length_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SIZE_DETECTIVE_FUNCTION_NAME)
+    }
+    pub fn std_vector_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_PEEK_A_BOO_FUNCTION_NAME)
+    }
+    pub fn std_vector_push_back_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_STACK_PUSHER_FUNCTION_NAME)
+    }
+    pub fn std_vector_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_MUTANT_PEEKER_FUNCTION_NAME)
+    }
+    pub fn std_vector_pop_back_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_STACK_POPPER_FUNCTION_NAME)
+    }
+    pub fn std_vector_destroy_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME)
+    }
+    pub fn std_vector_swap_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SWITCHEROO_FUNCTION_NAME)
+    }
+
+    // std::hash native function QIDs
+    pub fn std_hash_sha2_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA2_FUNCTION_NAME)
+    }
+    pub fn std_hash_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA3_FUNCTION_NAME)
+    }
+
+    // std::bcs native function QIDs
+    pub fn std_bcs_to_bytes_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_BCS_MODULE_NAME, Self::BCS_BYTE_TRANSFORMER_FUNCTION_NAME)
+    }
+
+    // std::debug native function QIDs
+    pub fn std_debug_print_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_FUNCTION_NAME)
+    }
+    pub fn std_debug_print_stack_trace_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_TRACE_FUNCTION_NAME)
+    }
+
+    // std::type_name native function QIDs
+    pub fn std_type_name_get_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_GETTER_FUNCTION_NAME)
+    }
+    pub fn std_type_name_get_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME)
+    }
+
+    // std::string native function QIDs
+    pub fn std_string_internal_check_utf8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_CHECK_UTF8_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_is_char_boundary_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_sub_string_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_SUB_STRING_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_index_of_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_INDEX_OF_FUNCTION_NAME)
+    }
+
+    // std::integer native function QIDs
+    pub fn std_integer_from_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_ADD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SUB_FUNCTION_NAME)
+    }
+    pub fn std_integer_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_NEG_FUNCTION_NAME)
+    }
+    pub fn std_integer_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MUL_FUNCTION_NAME)
+    }
+    pub fn std_integer_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_DIV_FUNCTION_NAME)
+    }
+    pub fn std_integer_mod_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MOD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_integer_pow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_POW_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_or_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_OR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_and_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_AND_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_xor_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_XOR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_not_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_NOT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LT_FUNCTION_NAME)
+    }
+    pub fn std_integer_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LTE_FUNCTION_NAME)
+    }
+    pub fn std_integer_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GTE_FUNCTION_NAME)
+    }
+
+    // std::real native function QIDs
+    pub fn std_real_from_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_FROM_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_to_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_TO_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_ADD_FUNCTION_NAME)
+    }
+    pub fn std_real_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SUB_FUNCTION_NAME)
+    }
+    pub fn std_real_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_NEG_FUNCTION_NAME)
+    }
+    pub fn std_real_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_MUL_FUNCTION_NAME)
+    }
+    pub fn std_real_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_DIV_FUNCTION_NAME)
+    }
+    pub fn std_real_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_real_exp_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_EXP_FUNCTION_NAME)
+    }
+    pub fn std_real_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LT_FUNCTION_NAME)
+    }
+    pub fn std_real_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GT_FUNCTION_NAME)
+    }
+    pub fn std_real_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LTE_FUNCTION_NAME)
+    }
+    pub fn std_real_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GTE_FUNCTION_NAME)
+    }
+
+    // sui::address native function QIDs
+    pub fn sui_address_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_TO_U256_FUNCTION_NAME)
+    }
+    pub fn sui_address_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_U256_FUNCTION_NAME)
+    }
+    pub fn sui_address_from_bytes_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_BYTES_FUNCTION_NAME)
+    }
+
+    // sui::types native function QIDs
+    pub fn sui_types_is_one_time_witness_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TYPES_MODULE_NAME, Self::TYPES_WITNESS_INSPECTOR_FUNCTION_NAME)
+    }
+
+    // sui::object native function QIDs
+    pub fn sui_object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_BORROW_UID_FUNCTION_NAME)
+    }
+    pub fn sui_object_delete_impl_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_FUNCTION_NAME)
+    }
+    pub fn sui_object_record_new_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_RECORD_NEW_UID_FUNCTION_NAME)
+    }
+
+    // sui::dynamic_field native function QIDs
+    pub fn sui_dynamic_field_hash_type_and_key_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_add_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_borrow_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_borrow_child_object_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_remove_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_has_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_has_child_object_with_ty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME)
+    }
+
+    // sui::crypto::hash native function QIDs
+    pub fn sui_crypto_hash_blake2b256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_hash_keccak256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_KECCAK_FUNCTION_NAME)
+    }
+
+    // sui::crypto::hmac native function QIDs
+    pub fn sui_crypto_hmac_hmac_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HMAC_MODULE_NAME, Self::CRYPTO_HMAC_SHA3_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ed25519 native function QIDs
+    pub fn sui_crypto_ed25519_ed25519_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ED25519_MODULE_NAME, Self::CRYPTO_ED25519_VERIFIER_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecvrf native function QIDs
+    pub fn sui_crypto_ecvrf_ecvrf_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECVRF_MODULE_NAME, Self::CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecdsa_r1 native function QIDs
+    pub fn sui_crypto_ecdsa_r1_secp256r1_ecrecover_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_R1_MODULE_NAME, Self::CRYPTO_ECDSA_R1_KEY_RECOVERER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_r1_secp256r1_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_R1_MODULE_NAME, Self::CRYPTO_ECDSA_R1_SIG_VALIDATOR_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecdsa_k1 native function QIDs
+    pub fn sui_crypto_ecdsa_k1_secp256k1_ecrecover_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_decompress_pubkey_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_sign_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_keypair_from_seed_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME)
+    }
+
+    // sui::crypto::bls12381 native function QIDs
+    pub fn sui_crypto_bls12381_bls12381_min_sig_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_bls12381_bls12381_min_pk_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME)
+    }
+
+    // sui::crypto::group_ops native function QIDs
+    pub fn sui_crypto_group_ops_internal_validate_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_hash_to_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_multi_scalar_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_pairing_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_convert_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_sum_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_groth16_prepare_verifying_key_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_groth16_verify_groth16_proof_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_poseidon_poseidon_bn254_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_POSEIDON_MODULE_NAME, Self::CRYPTO_POSEIDON_BN254_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_vdf_hash_to_input_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_VDF_MODULE_NAME, Self::CRYPTO_VDF_INPUT_HASHER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_vdf_vdf_verify_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_VDF_MODULE_NAME, Self::CRYPTO_VDF_PROOF_VERIFIER_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_NITRO_ATTESTATION_MODULE_NAME, Self::CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME)
+    }
+
+    pub fn is_deterministic(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
+        let function_env = self.get_function(qid);
+
+        if !function_env.is_native() {
+            bail!("Function {} is not native", function_env.get_full_name_str());
+        }
+
+        if self.deterministic_native_functions().contains(&function_env.get_qualified_id()) {
+            return Ok(true);
+        }
+
+        let function_name = function_env.get_name_str();
+
+        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
+            return Ok(true);
+        }
+
+        return Ok(false)
+    }
+
+    pub fn deterministic_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
+        let mut qids = BTreeSet::new();
+
+        // Prover module functions
+        qids.extend(vec![
+            self.requires_qid(),
+            self.ensures_qid(), 
+            self.asserts_qid(),
+            self.invariant_begin_qid(),
+            self.invariant_end_qid(),
+            self.prover_val_qid(),
+            self.prover_ref_qid(),
+        ]);
+        
+        // Ghost module functions  
+        qids.extend(vec![
+            self.global_qid(),
+            self.global_set_qid(),
+            self.global_borrow_mut_qid(),
+            self.declare_global_qid(),
+            self.declare_global_mut_qid(),
+            self.havoc_global_qid(),
+        ]);
+        
+        // Log module functions
+        qids.extend(vec![
+            self.log_text_qid(),
+            self.log_var_qid(),
+            self.log_ghost_qid(),
+        ]);
+
+        // Add specific native function QIDs
+        qids.extend(vec![
+            // std::vector native functions
+            self.std_vector_empty_qid(),
+            self.std_vector_length_qid(),
+            self.std_vector_borrow_qid(),
+            self.std_vector_push_back_qid(),
+            self.std_vector_borrow_mut_qid(),
+            self.std_vector_pop_back_qid(),
+            self.std_vector_destroy_empty_qid(),
+            self.std_vector_swap_qid(),
+
+            // std::hash native functions
+            self.std_hash_sha2_256_qid(),
+            self.std_hash_sha3_256_qid(),
+
+            // std::bcs native functions
+            self.std_bcs_to_bytes_qid(),
+
+            // std::debug native functions
+            self.std_debug_print_qid(),
+            self.std_debug_print_stack_trace_qid(),
+
+            // std::type_name native functions
+            self.std_type_name_get_qid(),
+            self.std_type_name_get_with_original_ids_qid(),
+
+            // std::string native functions
+            self.std_string_internal_check_utf8_qid(),
+            self.std_string_internal_is_char_boundary_qid(),
+            self.std_string_internal_sub_string_qid(),
+            self.std_string_internal_index_of_qid(),
+
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_to_u8_qid(),
+            self.std_integer_to_u16_qid(),
+            self.std_integer_to_u32_qid(),
+            self.std_integer_to_u64_qid(),
+            self.std_integer_to_u128_qid(),
+            self.std_integer_to_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_div_qid(),
+            self.std_integer_mod_qid(),
+            self.std_integer_sqrt_qid(),
+            self.std_integer_pow_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_div_qid(),
+            self.std_real_sqrt_qid(),
+            self.std_real_exp_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
+
+            // sui::address native functions
+            self.sui_address_to_u256_qid(),
+            self.sui_address_from_u256_qid(),
+            self.sui_address_from_bytes_qid(),
+
+            // sui::types native functions
+            self.sui_types_is_one_time_witness_qid(),
+
+            // sui::object native functions
+            self.sui_object_borrow_uid_qid(),
+            self.sui_object_delete_impl_qid(),
+            self.sui_object_record_new_uid_qid(),
+
+            // sui::dynamic_field native functions
+            self.sui_dynamic_field_hash_type_and_key_qid(),
+            self.sui_dynamic_field_add_child_object_qid(),
+            self.sui_dynamic_field_borrow_child_object_qid(),
+            self.sui_dynamic_field_borrow_child_object_mut_qid(),
+            self.sui_dynamic_field_remove_child_object_qid(),
+            self.sui_dynamic_field_has_child_object_qid(),
+            self.sui_dynamic_field_has_child_object_with_ty_qid(),
+
+            // sui::crypto::hash native functions
+            self.sui_crypto_hash_blake2b256_qid(),
+            self.sui_crypto_hash_keccak256_qid(),
+
+            // sui::crypto::hmac native functions
+            self.sui_crypto_hmac_hmac_sha3_256_qid(),
+
+            // sui::crypto::ed25519 native functions
+            self.sui_crypto_ed25519_ed25519_verify_qid(),
+
+            // sui::crypto::ecvrf native functions
+            self.sui_crypto_ecvrf_ecvrf_verify_qid(),
+
+            // sui::crypto::ecdsa_r1 native functions
+            self.sui_crypto_ecdsa_r1_secp256r1_ecrecover_qid(),
+            self.sui_crypto_ecdsa_r1_secp256r1_verify_qid(),
+
+            // sui::crypto::ecdsa_k1 native functions
+            self.sui_crypto_ecdsa_k1_secp256k1_ecrecover_qid(),
+            self.sui_crypto_ecdsa_k1_decompress_pubkey_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_verify_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_sign_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_keypair_from_seed_qid(),
+
+            // sui::crypto::bls12381 native functions
+            self.sui_crypto_bls12381_bls12381_min_sig_verify_qid(),
+            self.sui_crypto_bls12381_bls12381_min_pk_verify_qid(),
+
+            // sui::crypto::group_ops native functions
+            self.sui_crypto_group_ops_internal_validate_qid(),
+            self.sui_crypto_group_ops_internal_add_qid(),
+            self.sui_crypto_group_ops_internal_sub_qid(),
+            self.sui_crypto_group_ops_internal_mul_qid(),
+            self.sui_crypto_group_ops_internal_div_qid(),
+            self.sui_crypto_group_ops_internal_hash_to_qid(),
+            self.sui_crypto_group_ops_internal_multi_scalar_mul_qid(),
+            self.sui_crypto_group_ops_internal_pairing_qid(),
+            self.sui_crypto_group_ops_internal_convert_qid(),
+            self.sui_crypto_group_ops_internal_sum_qid(),
+
+            // sui::crypto::groth16 native functions
+            self.sui_crypto_groth16_prepare_verifying_key_internal_qid(),
+            self.sui_crypto_groth16_verify_groth16_proof_internal_qid(),
+
+            // sui::crypto::poseidon native functions
+            self.sui_crypto_poseidon_poseidon_bn254_internal_qid(),
+
+            // sui::crypto::vdf native functions
+            self.sui_crypto_vdf_hash_to_input_internal_qid(),
+            self.sui_crypto_vdf_vdf_verify_internal_qid(),
+
+            // sui::crypto::nitro_attestation native functions
+            self.sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(),
+        ].into_iter().filter_map(|x| x).collect::<Vec<_>>());
+
+        qids
     }
 
     pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {

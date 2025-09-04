@@ -5,10 +5,7 @@
 //! This module translates the bytecode of a module to Boogie code.
 
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    iter,
-    str::FromStr,
+    cell::RefCell, collections::{BTreeMap, BTreeSet}, iter, str::FromStr
 };
 
 use bimap::btree::BiBTreeMap;
@@ -32,7 +29,7 @@ use move_model::{
     well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 use move_stackless_bytecode::{
-    ast::{TempIndex, TraceKind}, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
+    ast::{TempIndex, TraceKind}, deterministic_analysis, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
     }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
@@ -525,6 +522,9 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
+       let da = deterministic_analysis::get_info(&builder.data);
+       let skip_havok = da.is_deterministic && style == FunctionTranslationStyle::Opaque;
+
         let omit_havoc = self
             .targets
             .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
@@ -625,6 +625,7 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
+
                         builder.emit(bc);
                         if !omit_havoc {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
@@ -637,14 +638,22 @@ impl<'env> BoogieTranslator<'env> {
                                 } else {
                                     HavocKind::Value
                                 };
-                                builder.emit_havoc(*temp_idx, havoc_kind);
+                                if skip_havok {
+                                    builder.emit_well_formed(*temp_idx);
+                                } else {
+                                    builder.emit_havoc(*temp_idx, havoc_kind);
+                                }
                             }
                             for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
                                 if callee_fun_env
                                     .get_local_type(param_idx)
                                     .is_mutable_reference()
                                 {
-                                    builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                                    if skip_havok {
+                                        builder.emit_well_formed(*temp_idx);
+                                    } else {
+                                        builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                                    }
                                 };
                             }
                         }
@@ -1690,7 +1699,7 @@ impl<'env> FunctionTranslator<'env> {
         let writer = self.parent.writer;
         let options = self.parent.options;
         let fun_target = self.fun_target;
-        let (args, prerets) = self.generate_function_args_and_returns();
+        let (args, prerets) = self.generate_function_args_and_returns(false);
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
@@ -1730,15 +1739,19 @@ impl<'env> FunctionTranslator<'env> {
 
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
+            let (args, orets) = self.generate_function_args_and_returns(self.should_use_temp_datatypes());
+            let prefix = if self.should_use_opaque_as_function(true) { "function" } else { "procedure" };
             emitln!(
                 writer,
-                "procedure {}$opaque({}) returns ({});",
+                "{} {}$opaque({}) returns ({});",
+                prefix,
                 self.function_variant_name(FunctionTranslationStyle::Opaque),
                 args,
-                rets,
+                orets,
             );
             emitln!(writer, "");
         }
+
         emitln!(
             writer,
             "procedure {}{}({}) returns ({})",
@@ -1749,8 +1762,21 @@ impl<'env> FunctionTranslator<'env> {
         )
     }
 
+    fn wrap_return_datatype_name(&self) -> String {
+        format!("{}_opaque_return_type", self.function_variant_name(FunctionTranslationStyle::Opaque))
+    }
+
+    fn wrap_return_arg_in_tuple_datatype(&self, args: String) -> String {
+        let writer = self.parent.writer;
+        let name = self.wrap_return_datatype_name();
+        emitln!(writer, "datatype {} {{", name);
+        emitln!(writer, "    {}({})", name, args);
+        emitln!(writer, "}\n");
+        name
+    }
+
     /// Generate boogie representation of function args and return args.
-    fn generate_function_args_and_returns(&self) -> (String, String) {
+    fn generate_function_args_and_returns(&self, generate_custom_datatype: bool) -> (String, String) {
         let fun_target = self.fun_target;
         let env = fun_target.global_env();
         let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
@@ -1832,17 +1858,28 @@ impl<'env> FunctionTranslator<'env> {
                 format!("$ret{}: {}", i, self.boogie_type_for_fun(env, &s, num_oper))
             })
             // Add implicit return parameters for &mut
-            .chain(mut_ref_inputs.into_iter().enumerate().map(|(i, (_, ty))| {
-                let num_oper = &global_state
-                    .get_temp_index_oper(mid, fid, i, baseline_flag)
-                    .unwrap();
-                format!(
-                    "$ret{}: {}",
-                    usize::saturating_add(fun_target.get_return_count(), i),
-                    self.boogie_type_for_fun(env, &ty, num_oper)
-                )
-            }))
+            .chain(mut_ref_inputs
+                .into_iter()
+                .enumerate()
+                .map(|(i, (_, ty))| {
+                    let num_oper = &global_state
+                        .get_temp_index_oper(mid, fid, i, baseline_flag)
+                        .unwrap();
+                    format!(
+                        "$ret{}: {}",
+                        usize::saturating_add(fun_target.get_return_count(), i),
+                        self.boogie_type_for_fun(env, &ty, num_oper)
+                    )
+                })
+            )
             .join(", ");
+
+        if !generate_custom_datatype {
+            return (args, rets);
+        }
+
+        let tdt_name = self.wrap_return_arg_in_tuple_datatype(rets);
+        let rets = format!("$ret: {}", tdt_name);
         (args, rets)
     }
 
@@ -1933,6 +1970,14 @@ impl<'env> FunctionTranslator<'env> {
                     boogie_type(env, &type_inst[1])
                 );
             }
+        }
+
+        if self.should_use_temp_datatypes() {
+            emitln!(
+                writer,
+                "var $temp_opaque_res_var: {};",
+                self.wrap_return_datatype_name(),
+            );
         }
 
         // Generate declarations for modifies condition.
@@ -2105,6 +2150,23 @@ impl<'env> FunctionTranslator<'env> {
 impl<'env> FunctionTranslator<'env> {
     fn writer(&self) -> &CodeWriter {
         self.parent.writer
+    }
+
+    fn should_use_temp_datatypes(&self) -> bool {
+        let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
+            .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
+            .count();
+
+        let returns_count = self.fun_target.func_env.get_return_count() + mut_ref_inputs_count;
+
+        returns_count != 1 && self.should_use_opaque_as_function(false)
+    }
+
+    fn should_use_opaque_as_function(&self, write: bool) -> bool {
+        let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(self.fun_target.data);
+        let correct_style = self.style == FunctionTranslationStyle::Opaque || (if write { false } else { self.style == FunctionTranslationStyle::SpecNoAbortCheck });
+
+        dinfo.is_deterministic && correct_style
     }
 
     /// Translates one bytecode instruction.
@@ -2430,20 +2492,38 @@ impl<'env> FunctionTranslator<'env> {
                         let module_env = env.get_module(*mid);
                         let callee_env = module_env.get_function(*fid);
 
+                        let id = &self.fun_target.func_env.get_qualified_id();
+                        let use_impl = self.parent.targets.omits_opaque(&id);
+                        let mut use_func = false;
+                        let mut use_func_datatypes = false;
+
+                        let is_spec_call = self.parent.targets.get_fun_by_spec(id)
+                            == Some(&QualifiedId { module_id: *mid, id: *fid });
+
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
-                        let dest_str = dests
-                            .iter()
-                            .cloned()
-                            .map(str_local)
-                            // Add implict dest returns for &mut srcs:
-                            //  f(x) --> x := f(x)  if type(x) = &mut_
-                            .chain(
-                                srcs.iter()
-                                    .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
-                                    .cloned()
-                                    .map(str_local),
-                            )
-                            .join(",");
+
+                        if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
+                            use_func = true;
+                            use_func_datatypes = self.should_use_temp_datatypes();
+                        }
+
+                        let dest_str = if use_func_datatypes {
+                            "$temp_opaque_res_var".to_string()
+                        } else {
+                            dests
+                                .iter()
+                                .cloned()
+                                .map(str_local)
+                                // Add implict dest returns for &mut srcs:
+                                //  f(x) --> x := f(x)  if type(x) = &mut_
+                                .chain(
+                                    srcs.iter()
+                                        .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
+                                        .cloned()
+                                        .map(str_local),
+                                )
+                                .join(",")
+                        };
 
                         // special casing for type reflection
                         let mut processed = false;
@@ -2602,12 +2682,7 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if self
-                            .parent
-                            .targets
-                            .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-                            == Some(&mid.qualified(*fid))
-                            && self.style == FunctionTranslationStyle::Opaque
+                        if is_spec_call && self.style == FunctionTranslationStyle::Opaque
                         {
                             if self
                                 .parent
@@ -2684,14 +2759,7 @@ impl<'env> FunctionTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             );
 
-                            let id = &self.fun_target.func_env.get_qualified_id();
-
-                            if self.parent.targets.get_fun_by_spec(id)
-                                == Some(&QualifiedId {
-                                    module_id: *mid,
-                                    id: *fid,
-                                })
-                            {
+                            if is_spec_call {
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
                                         == FunctionVariant::Verification(
@@ -2702,7 +2770,6 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
-                                    let use_impl = self.parent.targets.omits_opaque(id);
                                     let verified = self.parent.targets.is_verified_spec(id);
                                     let suffix = if use_impl {
                                         if verified {
@@ -2838,9 +2905,12 @@ impl<'env> FunctionTranslator<'env> {
                                     }
                                 }
 
+                                let call_line = if use_func { "" } else { "call " };
+
                                 emitln!(
                                     self.writer(),
-                                    "call {} := {}({});",
+                                    "{}{} := {}({});",
+                                    call_line,
                                     dest_str,
                                     fun_name,
                                     args_str
@@ -2848,9 +2918,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                         }
 
-                        let id = &self.fun_target.func_env.get_qualified_id();
-
-                        if self.parent.targets.get_fun_by_spec(id) == Some(&mid.qualified(*fid))
+                        if is_spec_call
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                 || self.style == FunctionTranslationStyle::Opaque)
                         {
@@ -2867,6 +2935,17 @@ impl<'env> FunctionTranslator<'env> {
                                 }
                             }
                         };
+
+                        if use_func_datatypes {
+                            dests
+                                .iter()
+                                .enumerate()
+                                .for_each(|(idx, val)| emitln!(self.writer(), "{} := $temp_opaque_res_var -> $ret{};", str_local(*val), idx));
+                            srcs.iter()
+                                .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
+                                .enumerate()
+                                .for_each(|(idx, val)| emitln!(self.writer(), "{} := $temp_opaque_res_var -> $ret{};", str_local(*val), dests.len() + idx));
+                        }
 
                         // Clear the last track location after function call, as the call inserted
                         // location tracks before it returns.
