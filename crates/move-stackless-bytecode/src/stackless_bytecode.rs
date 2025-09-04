@@ -193,6 +193,9 @@ pub enum Operation {
     Neq,
     CastU256,
 
+    // Ternary Conditional represents if (x) { y } else { z }
+    TernaryConditional,
+
     // Debugging
     TraceLocal(TempIndex),
     TraceReturn(usize),
@@ -262,6 +265,7 @@ impl Operation {
             Operation::And => false,
             Operation::Eq => false,
             Operation::Neq => false,
+            Operation::TernaryConditional => false,
             Operation::TraceLocal(..) => false,
             Operation::TraceAbort => false,
             Operation::TraceReturn(..) => false,
@@ -1251,6 +1255,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EmitEvent => write!(f, "emit_event")?,
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
+            TernaryConditional => write!(f, "ternary_conditional")?,
         }
         Ok(())
     }
