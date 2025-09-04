@@ -7,8 +7,6 @@ use crate::{
     stackless_bytecode::{Bytecode, Operation, PropKind},
 };
 
-use move_model::sui_native_no_abort_functions::does_not_abort;
-
 #[derive(Clone, Default, Debug)]
 pub struct NoAbortInfo {
     pub does_not_abort: bool,
@@ -39,7 +37,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         let variant = FunctionVariant::Baseline;
 
         if fun_env.is_native() {
-            info.does_not_abort = does_not_abort(env, qualified_id).unwrap();
+            info.does_not_abort = env.func_not_aborts(qualified_id).unwrap();
             return data;
         }
 
