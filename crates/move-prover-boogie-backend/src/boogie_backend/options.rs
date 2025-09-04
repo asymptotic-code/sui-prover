@@ -170,6 +170,10 @@ pub struct BoogieOptions {
     pub string_options: Option<String>,
     /// Boogie run mode
     pub boogie_file_mode: BoogieFileMode,
+    /// Spec no abort only
+    pub spec_no_abort_check_only: bool,
+    /// Func abort only
+    pub func_abort_check_only: bool,
 }
 
 impl Default for BoogieOptions {
@@ -212,6 +216,8 @@ impl Default for BoogieOptions {
             bv_int_encoding: true,
             string_options: None,
             boogie_file_mode: BoogieFileMode::Function,
+            spec_no_abort_check_only: false,
+            func_abort_check_only: false,
         }
     }
 }
