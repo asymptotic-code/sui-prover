@@ -456,10 +456,6 @@ impl FunctionTargetsHolder {
             if *abort_check {
                 self.abort_check_functions.insert(func_env.get_qualified_id());
                 self.target_modules.insert(func_env.module_env.get_id());
-                self.targets
-                    .entry(func_env.get_qualified_id())
-                    .or_default()
-                    .insert(FunctionVariant::Verification(VerificationFlavor::Regular), data);
             }
         }
 

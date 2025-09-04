@@ -723,7 +723,7 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_function_no_abort(&self, fun_env: &FunctionEnv) {
         let style = FunctionTranslationStyle::SpecNoAbortCheck;
-        let variant = FunctionVariant::Verification(VerificationFlavor::Regular);
+        let variant = FunctionVariant::Baseline;
         use Bytecode::*;
 
         let requires_function =
@@ -1701,7 +1701,13 @@ impl<'env> FunctionTranslator<'env> {
         let fun_target = self.fun_target;
         let (args, prerets) = self.generate_function_args_and_returns(false);
 
-        let attribs = match &fun_target.data.variant {
+        let variant = if self.parent.options.func_abort_check_only && self.style == FunctionTranslationStyle::SpecNoAbortCheck {
+            &FunctionVariant::Verification(VerificationFlavor::Regular)
+        } else {
+            &fun_target.data.variant
+        };
+
+        let attribs = match &variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
             FunctionVariant::Verification(flavor) => {
                 // let timeout = fun_target
