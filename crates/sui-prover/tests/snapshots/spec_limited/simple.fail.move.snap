@@ -5,9 +5,9 @@ expression: output
 ---
 exiting with verification errors
 error: function code should not abort
-  ┌─ tests/inputs/spec_limited/simple.fail.move:5:8
+  ┌─ tests/inputs/spec_limited/simple.fail.move:6:8
   │
-5 │     (x * y) as u32
+6 │     (x * y) as u32
   │        ^
   │
-  =     at tests/inputs/spec_limited/simple.fail.move:4: test_spec_limited_abort
+  =     at tests/inputs/spec_limited/simple.fail.move:5: test_spec_limited_abort

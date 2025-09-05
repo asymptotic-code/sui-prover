@@ -7,9 +7,7 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Formatter,
-    fs,
+    collections::{BTreeMap, BTreeSet}, f64::consts::E, fmt::Formatter, fs
 };
 
 use itertools::{Either, Itertools};
@@ -17,9 +15,7 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::{
-        known_attributes::{AttributeKind_, KnownAttribute, VerificationAttribute},
-    }
+    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::known_attributes::{AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute}
 };
 
 use move_model::{
@@ -448,12 +444,17 @@ impl FunctionTargetsHolder {
             .or_default()
             .insert(FunctionVariant::Baseline, data.clone());
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecLimited { abort_check })) = func_env
+        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
             .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecLimited)
+            .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
-        {
-            if *abort_check {
+         {
+            let abort_check = attrs
+                .into_iter()
+                .any(|attr| 
+                    attr.2.value.name().value.as_str() == "no_abort".to_string()
+                );
+            if abort_check {
                 self.abort_check_functions.insert(func_env.get_qualified_id());
                 self.target_modules.insert(func_env.module_env.get_id());
             }
