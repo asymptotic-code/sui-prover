@@ -151,8 +151,8 @@ impl Display for BackendOptions {
 
 pub async fn execute(
     path: Option<&Path>,
+    general_config: GeneralConfig,
     build_config: BuildConfig,
-    general_config: &GeneralConfig,
     boogie_config: Option<String>,
 ) -> anyhow::Result<()> {
     let rerooted_path = reroot_path(path)?;
@@ -161,9 +161,9 @@ pub async fn execute(
     let model = move_model_for_package_legacy(move_build_config, &rerooted_path)?;
 
     if matches!(general_config.backend, BackendOptions::Boogie) {
-        execute_backend_boogie(model, general_config, boogie_config).await
+        execute_backend_boogie(model, &general_config, boogie_config).await
     } else {
-        execute_backend_lean(model, general_config).await
+        execute_backend_lean(model, &general_config).await
     }
 }
 

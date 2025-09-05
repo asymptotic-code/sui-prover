@@ -53,7 +53,7 @@ async fn main() {
 
     debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
-    let result = execute(args.package_path.as_deref(), args.build_config, &args.general_config, args.boogie_config).await;
+    let result = execute(args.package_path.as_deref(), args.general_config, args.build_config, args.boogie_config).await;
 
     match result {
         Ok(_) => (),
