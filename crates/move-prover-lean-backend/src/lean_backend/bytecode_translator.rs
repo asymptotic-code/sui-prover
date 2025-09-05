@@ -47,6 +47,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use move_stackless_bytecode::graph::Graph;
 use std::str::FromStr;
+use crate::wip;
 
 pub struct LeanTranslator<'env> {
     env: &'env GlobalEnv,
@@ -1508,7 +1509,7 @@ impl FunctionTranslator<'_> {
             *last_tracked_loc = None;
         }
 
-        // Helper function to get a a string for a local
+        // Helper function to get a string for a local
         let str_local = |idx: usize| format!("t{}", idx);
         let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
         let global_state = &self
@@ -1531,11 +1532,11 @@ impl FunctionTranslator<'_> {
                     OpaqueCallBegin(_, _, _) | OpaqueCallEnd(_, _, _) => {
                         // These are just markers.  There is no generated code.
                     }
-                    WriteBack(node, edge) => {}
-                    IsParent(node, edge) => {}
-                    BorrowLoc => {}
-                    ReadRef => {}
-                    WriteRef => {}
+                    WriteBack(node, edge) => wip!("WriteBack"),
+                    IsParent(node, edge) => wip!("IsParent"),
+                    BorrowLoc => wip!("BorrowLoc"),
+                    ReadRef => wip!("ReadRef"),
+                    WriteRef => wip!("WriteRef"),
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let module_env = env.get_module(*mid);
@@ -1800,12 +1801,10 @@ impl FunctionTranslator<'_> {
                         // location tracks before it returns.
                         *last_tracked_loc = None;
                     }
-                    Pack(mid, sid, inst) => {}
-                    Unpack(mid, sid, inst) => {
-                        // TODO
-                    }
-                    PackVariant(mid, eid, vid, inst) => {}
-                    UnpackVariant(mid, eid, vid, _inst, ref_type) => {}
+                    Pack(mid, sid, inst) => wip!("Pack"),
+                    Unpack(mid, sid, inst) => wip!("Unpack"),
+                    PackVariant(mid, eid, vid, inst) => wip!("PackVariant"),
+                    UnpackVariant(mid, eid, vid, _inst, ref_type) => wip!("UnpackVariant"),
                     BorrowField(mid, sid, inst, field_offset) => {
                         let inst = &self.inst_slice(inst);
                         let src = srcs[0];
@@ -1829,22 +1828,13 @@ impl FunctionTranslator<'_> {
                         let sel_fun = lean_field_sel(field_env, inst);
                         emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
                     }
-                    Exists(mid, sid, inst) => {
-                        todo!()
-                    }
-                    BorrowGlobal(mid, sid, inst) => {
-                        todo!()
-                    }
-                    GetGlobal(mid, sid, inst) => {
-                        todo!()
-                    }
-                    MoveTo(mid, sid, inst) => {
-                        todo!()
-                    }
-                    MoveFrom(mid, sid, inst) => {
-                        todo!()
-                    }
-                    Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => {}
+                    Exists(mid, sid, inst) => wip!("Exists"),
+                    BorrowGlobal(mid, sid, inst) => wip!("BorrowGlobal"),
+                    GetGlobal(mid, sid, inst) => wip!("GetGlobal"),
+                    MoveTo(mid, sid, inst) => wip!("MoveTo"),
+                    MoveFrom(mid, sid, inst) => wip!("MoveFrom"),
+                    Havoc(HavocKind::Value) | Havoc(HavocKind::MutationAll) => wip!("Havoc"),
+                    Havoc(HavocKind::MutationValue) => wip!("HavocMutationValue"),
                     CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
                         let dest = dests[0];
                         let src = srcs[0];
@@ -1865,8 +1855,7 @@ impl FunctionTranslator<'_> {
                             cast_type,
                         );
                     }
-                    Havoc(HavocKind::MutationValue) => {}
-                    Stop => {}
+                    Stop => wip!("Stop"),
                     Not => {
                         let src = srcs[0];
                         let dest = dests[0];
@@ -2029,24 +2018,16 @@ impl FunctionTranslator<'_> {
                             str_local(op2),
                         );
                     }
-                    Uninit => {
-                        todo!()
-                    }
-                    Destroy => {}
-                    TraceLocal(idx) => {}
-                    TraceReturn(i) => {}
-                    TraceAbort => {
-                        // TODO
-                    }
-                    TraceExp(kind, node_id) => {}
-                    TraceMessage(message) => {}
-                    TraceGhost(ghost_type, value_type) => {}
-                    EmitEvent => {
-                        todo!()
-                    }
-                    EventStoreDiverge => {
-                        todo!()
-                    }
+                    Uninit => wip!("Uninit"),
+                    Destroy => {},
+                    TraceLocal(idx) => wip!("TraceLocal"),
+                    TraceReturn(i) => wip!("TraceReturn"),
+                    TraceAbort => wip!("TraceAbort"),
+                    TraceExp(kind, node_id) => wip!("TraceExp"),
+                    TraceMessage(message) => wip!("TraceMessage"),
+                    TraceGhost(ghost_type, value_type) => wip!("TraceGhost"),
+                    EmitEvent => wip!("EmitEvent"),
+                    EventStoreDiverge => wip!("EventStoreDiverge"),
                     TraceGlobalMem(mem) => {}
                 }
                 match aa {
@@ -2093,9 +2074,10 @@ impl FunctionTranslator<'_> {
                 // Load constant
                 emitln!(self.writer(), "let {} := {};", str_local(*dest), c);
             }
-            un => {
-                //println!("Unimplemented bytecode: {:?}", un)
-            }
+            Abort(_, _) => wip!("Abort"),
+            SaveMem(_, _, _) => wip!("SaveMem"),
+            Prop(_, _, _) => wip!("Prop"),
+            Nop(_) => {}
         }
     }
 
@@ -2161,7 +2143,7 @@ fn generate_function_sig(&self) {
         )
 }
 
-/// Generate boogie representation of function args and return args.
+/// Generate lean representation of function args and return args.
 fn generate_function_args_and_returns(&self) -> (String, String) {
     let fun_target = self.fun_target;
     let env = fun_target.global_env();

@@ -5,6 +5,8 @@ use move_model::ty::Type;
 use move_model::ty::Type::Error;
 use move_stackless_bytecode::ast::MemoryLabel;
 
+/// This file is nearly identical to Boogie's boogie_helpers.rs, with minor var name changes.
+
 /// Return lean name of given structure.
 pub fn lean_struct_name(struct_env: &StructEnv<'_>, inst: &[Type]) -> String {
     lean_struct_name_bv(struct_env, inst, false)

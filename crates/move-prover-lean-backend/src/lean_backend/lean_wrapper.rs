@@ -10,7 +10,9 @@ use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 use std::fs;
 use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
 
-/// Represents the boogie wrapper.
+/// This file is nearly identical to Boogie's boogie_wrapper.rs, with minor var name changes.
+
+/// Represents the lean wrapper.
 pub struct LeanWrapper<'env> {
     pub env: &'env GlobalEnv,
     pub targets: &'env FunctionTargetsHolder,
@@ -49,8 +51,9 @@ impl LeanWrapper<'_> {
         // When running on complicated formulas(especially those with quantifiers), SMT solvers
         // can suffer from the so-called butterfly effect, where minor changes such as using
         // different random seeds cause significant instabilities in verification times.
-        // Thus by running multiple instances of Boogie with different random seeds, we can
+        // Thus by running multiple instances of Lean with different random seeds, we can
         // potentially alleviate the instability.
+        // TODO determine if Lean uses seeded random.
         let (seed, output_res) = if self.options.sequential_task {
             let seed = 0;
             (seed, task.run_sync(seed))
@@ -100,17 +103,17 @@ impl LeanWrapper<'_> {
     /// Calls lean and analyzes output.
     pub fn call_lean_and_verify_output(&self, lean_file: &str) -> anyhow::Result<()> {
         let LeanOutput { errors, all_output } = self.call_lean(lean_file)?;
-        let boogie_log_file = self.options.get_lean_log_file(lean_file);
-        let log_file_existed = std::path::Path::new(&boogie_log_file).exists();
-        debug!("writing boogie log to {}", boogie_log_file);
-        fs::write(&boogie_log_file, &all_output)?;
+        let lean_log_file = self.options.get_lean_log_file(lean_file);
+        let log_file_existed = std::path::Path::new(&lean_log_file).exists();
+        debug!("writing lean log to {}", lean_log_file);
+        fs::write(&lean_log_file, &all_output)?;
 
         for error in &errors {
             println!("Error: {error:?}");
         }
 
         if !log_file_existed && !self.options.keep_artifacts {
-            std::fs::remove_file(boogie_log_file).unwrap_or_default();
+            std::fs::remove_file(lean_log_file).unwrap_or_default();
         }
 
         Ok(())

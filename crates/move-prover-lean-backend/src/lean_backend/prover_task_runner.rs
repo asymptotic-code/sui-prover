@@ -5,6 +5,8 @@
 //! Prover task runner that runs multiple instances of the prover task and returns
 //! as soon as the fastest instance finishes.
 
+/// This file is nearly identical to Boogie's prover_task_runner.rs, with minor var name changes.
+///
 use async_trait::async_trait;
 use futures::{future::FutureExt, pin_mut, select};
 use log::debug;
@@ -115,7 +117,7 @@ impl ProverTaskRunner {
                     num_working_instances = usize::saturating_add(num_working_instances, 1);
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    // recv timeout, i.e. boogie/underlying solver is hanging
+                    // recv timeout, i.e. lean/underlying solver is hanging
                     let _ = master_tx.send(BroadcastMsg::Stop);
                     debug!(
                         "prover task exceeded hard timeout of {}s",
@@ -183,7 +185,7 @@ impl ProverTask for RunLeanWithSeeds {
     type TaskId = usize;
 
     fn init(&mut self, num_instances: usize) -> Vec<Self::TaskId> {
-        // If we are running only one Boogie instance, use the default random seed.
+        // If we are running only one Lean instance, use the default random seed.
         if num_instances == 1 {
             return vec![self.options.random_seed];
         }
@@ -234,14 +236,14 @@ impl RunLeanWithSeeds {
         self.options.get_lean_command(&self.lean_file)
     }
 
-    /// Returns whether the output string contains any Boogie compilation errors.
+    /// Returns whether the output string contains any Lean compilation errors.
     fn contains_compilation_error(&self, output: &str) -> bool {
         let regex =
             Regex::new(r"(?m)^.*\((?P<line>\d+),(?P<col>\d+)\).*(Error:|error:).*$").unwrap();
         regex.is_match(output)
     }
 
-    /// Returns whether the output string contains any Boogie timeouts/inconclusiveness.
+    /// Returns whether the output string contains any Lean timeouts/inconclusiveness.
     fn contains_timeout(&self, output: &str) -> bool {
         let regex =
             Regex::new(r"(?m)^.*\((?P<line>\d+),(?P<col>\d+)\).*Verification.*(inconclusive|out of resource|timed out).*$")

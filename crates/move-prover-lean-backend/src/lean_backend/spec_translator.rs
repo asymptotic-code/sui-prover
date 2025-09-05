@@ -2,7 +2,8 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module translates specification conditions to Boogie code.
+//! This module translates specification conditions to Lean code.
+/// This file is nearly identical to Boogie's spec_translator.rs, with minor var name changes.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -73,7 +74,7 @@ impl<'env> SpecTranslator<'env> {
 
     /// Emits a translation error.
     pub fn error(&self, loc: &Loc, msg: &str) {
-        self.env.error(loc, &format!("[boogie translator] {}", msg));
+        self.env.error(loc, &format!("[lean translator] {}", msg));
     }
 
     /// Sets the location of the code writer from node id.

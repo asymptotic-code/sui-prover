@@ -1,7 +1,7 @@
 use crate::legacy_builder::ModelBuilderLegacy;
 use crate::llm_explain::explain_err;
 use crate::package_resolution_graph::resolution_graph_for_package;
-use clap::Args;
+use clap::{Args, ValueEnum};
 use codespan_reporting::term::termcolor::Buffer;
 use log::LevelFilter;
 use move_compiler::editions::{Edition, Flavor};
@@ -16,7 +16,7 @@ use std::{
     ,
     path::{Path, PathBuf},
 };
-
+use std::fmt::{Display, Formatter};
 use move_prover_boogie_backend::{
     generator::run_boogie_gen,
     generator_options::BoogieFileMode,
@@ -92,8 +92,8 @@ pub struct GeneralConfig {
     pub boogie_file_mode: BoogieFileMode,
 
     /// Lean running mode
-    #[clap(name = "lean-backend", long, short = 'l', global = true)]
-    pub use_lean_backend: bool,
+    #[clap(name = "backend", long, global = true, default_value_t = BackendOptions::Boogie)]
+    pub backend: BackendOptions,
 }
 
 #[derive(Args, Default)]
@@ -133,6 +133,22 @@ pub struct BuildConfig {
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
 }
 
+#[derive(ValueEnum, Default, Clone)]
+pub enum BackendOptions {
+    #[default]
+    Boogie,
+    Lean
+}
+
+impl Display for BackendOptions {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackendOptions::Boogie => write!(f, "boogie"),
+            BackendOptions::Lean => write!(f, "lean"),
+        }
+    }
+}
+
 pub async fn execute(
     path: Option<&Path>,
     build_config: BuildConfig,
@@ -144,10 +160,10 @@ pub async fn execute(
 
     let model = move_model_for_package_legacy(move_build_config, &rerooted_path)?;
 
-    if general_config.use_lean_backend {
-        execute_backend_lean(model, general_config).await
-    } else {
+    if matches!(general_config.backend, BackendOptions::Boogie) {
         execute_backend_boogie(model, general_config, boogie_config).await
+    } else {
+        execute_backend_lean(model, general_config).await
     }
 }
 

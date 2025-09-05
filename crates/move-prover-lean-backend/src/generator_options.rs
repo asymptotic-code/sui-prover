@@ -12,7 +12,7 @@ use crate::lean_backend::options::LeanOptions;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Options {
-    /// The path to the boogie output which represents the verification problem.
+    /// The path to the lean output which represents the verification problem.
     pub output_path: String,
     /// Verbosity level for logging.
     pub verbosity_level: LevelFilter,

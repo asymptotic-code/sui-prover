@@ -21,7 +21,7 @@ pub struct LeanOptions {
     pub cvc5_exe: String,
     /// Whether to generate debug trace code.
     pub debug_trace: bool,
-    /// List of flags to pass on to boogie.
+    /// List of flags to pass on to lean.
     pub lean_flags: Vec<String>,
     /// Whether to use native array theory.
     pub use_array_theory: bool,
@@ -51,19 +51,19 @@ pub struct LeanOptions {
     pub proc_cores: usize,
     /// A (soft) timeout for the solver, per verification condition, in seconds.
     pub vc_timeout: usize,
-    /// Whether Boogie output and log should be saved.
+    /// Whether Lean output and log should be saved.
     pub keep_artifacts: bool,
     /// Eager threshold for quantifier instantiation.
     pub eager_threshold: usize,
     /// Lazy threshold for quantifier instantiation.
     pub lazy_threshold: usize,
-    /// Whether to use the new Boogie `{:debug ..}` attribute for tracking debug values.
+    /// Whether to use the new Lean `{:debug ..}` attribute for tracking debug values.
     pub stable_test_output: bool,
-    /// Number of Boogie instances to be run concurrently.
+    /// Number of Lean instances to be run concurrently.
     pub num_instances: usize,
-    /// Whether to run Boogie instances sequentially.
+    /// Whether to run Lean instances sequentially.
     pub sequential_task: bool,
-    /// A hard timeout for boogie execution; if the process does not terminate within
+    /// A hard timeout for lean execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.
     pub hard_timeout_secs: u64,
     /// Whether to generate a z3 trace file and where to put it.

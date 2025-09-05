@@ -1,3 +1,4 @@
+/// This file is nearly identical to Boogie's generator.rs, with minor var name changes.
 use std::cell::RefCell;
 use crate::generator_options::Options;
 use anyhow::anyhow;
