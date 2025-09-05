@@ -49,7 +49,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
                 .get::<NoAbortInfo>()
                 .unwrap();
 
-            if !callee_info.does_not_abort {
+            if !callee_info.does_not_abort && !targets.is_abort_check_fun(&callee) {
                 info.does_not_abort = false;
                 return data;
             }

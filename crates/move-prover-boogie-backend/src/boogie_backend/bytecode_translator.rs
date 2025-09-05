@@ -306,6 +306,7 @@ impl<'env> BoogieTranslator<'env> {
 
                 if self.options.func_abort_check_only && self.targets.is_abort_check_fun(&fun_env.get_qualified_id()) {
                     self.translate_function_no_abort(fun_env);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                     continue;
                 }
 
@@ -723,37 +724,23 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_function_no_abort(&self, fun_env: &FunctionEnv) {
         let style = FunctionTranslationStyle::SpecNoAbortCheck;
-        let variant = FunctionVariant::Baseline;
-        use Bytecode::*;
-
-        let requires_function =
-            Operation::apply_fun_qid(&fun_env.module_env.env.requires_qid(), vec![]);
-        let ensures_function =
-            Operation::apply_fun_qid(&fun_env.module_env.env.ensures_qid(), vec![]);
-        let asserts_function =
-            Operation::apply_fun_qid(&fun_env.module_env.env.asserts_qid(), vec![]);
-        let ensures_asserts_to_requires_subst = BTreeMap::from_iter(vec![
-            (ensures_function.clone(), requires_function.clone()),
-            (asserts_function.clone(), requires_function.clone()),
-        ]);
+        let variant = FunctionVariant::Verification(VerificationFlavor::Regular);
 
         let target = self.targets.get_target(fun_env, &variant);
 
         let mut builder = FunctionDataBuilder::new(target.func_env, target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-
         for bc in code.into_iter() {
             match bc {
-                Ret(..) => {}
+                Bytecode::Ret(..) => {}
                 _ => builder.emit(
-                    bc.substitute_operations(&ensures_asserts_to_requires_subst)
-                        .update_abort_action(|aa| match aa {
-                            Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
-                            Some(AbortAction::Check) => Some(AbortAction::Check),
-                            None => None,
-                        }),
-                ),
+                    bc.update_abort_action(|aa| match aa {
+                        Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
+                        Some(AbortAction::Check) => Some(AbortAction::Check),
+                        None => None,
+                    })
+                )
             }
         }
 
@@ -1701,13 +1688,7 @@ impl<'env> FunctionTranslator<'env> {
         let fun_target = self.fun_target;
         let (args, prerets) = self.generate_function_args_and_returns(false);
 
-        let variant = if self.parent.options.func_abort_check_only && self.style == FunctionTranslationStyle::SpecNoAbortCheck {
-            &FunctionVariant::Verification(VerificationFlavor::Regular)
-        } else {
-            &fun_target.data.variant
-        };
-
-        let attribs = match &variant {
+        let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
             FunctionVariant::Verification(flavor) => {
                 // let timeout = fun_target
