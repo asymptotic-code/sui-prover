@@ -18,6 +18,7 @@ pub mod compositional_analysis;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
+pub mod no_abort_analysis;
 pub mod deterministic_analysis;
 pub mod debug_instrumentation;
 pub mod dynamic_field_analysis;

@@ -7,9 +7,7 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Formatter,
-    fs,
+    collections::{BTreeMap, BTreeSet}, f64::consts::E, fmt::Formatter, fs
 };
 
 use itertools::{Either, Itertools};
@@ -17,9 +15,7 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::{
-        known_attributes::{AttributeKind_, KnownAttribute, VerificationAttribute},
-    }
+    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::known_attributes::{AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute}
 };
 
 use move_model::{
@@ -50,6 +46,7 @@ pub struct FunctionTargetsHolder {
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
+    abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     filter: TargetFilterOptions,
 }
 
@@ -196,6 +193,7 @@ impl FunctionTargetsHolder {
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
             filter: filter.unwrap_or_default(),
+            abort_check_functions: BTreeSet::new(),
         }
     }
 
@@ -243,6 +241,7 @@ impl FunctionTargetsHolder {
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
             filter: instance.filter,
+            abort_check_functions: instance.abort_check_functions,
         }
     }
 
@@ -285,6 +284,7 @@ impl FunctionTargetsHolder {
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
             filter: instance.filter,
+            abort_check_functions: instance.abort_check_functions,
         }
     }
 
@@ -346,6 +346,14 @@ impl FunctionTargetsHolder {
         self.ignore_aborts.contains(id)
     }
 
+    pub fn abort_check_funs(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.abort_check_functions
+    }
+
+    pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
+        self.abort_check_functions.contains(id)
+    }
+
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
     }
@@ -386,6 +394,10 @@ impl FunctionTargetsHolder {
 
     pub fn verify_specs_count(&self) -> usize {
         self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().len()
+    }
+
+    pub fn abort_checks_count(&self) -> usize {
+        self.abort_check_functions.len()
     }
 
     pub fn has_no_verify_spec(&self, id: &QualifiedId<FunId>) -> bool {
@@ -430,7 +442,23 @@ impl FunctionTargetsHolder {
         self.targets
             .entry(func_env.get_qualified_id())
             .or_default()
-            .insert(FunctionVariant::Baseline, data);
+            .insert(FunctionVariant::Baseline, data.clone());
+
+        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::External)
+            .map(|attr| &attr.value)
+         {
+            let abort_check = attrs
+                .into_iter()
+                .any(|attr| 
+                    attr.2.value.name().value.as_str() == "no_abort".to_string()
+                );
+            if abort_check {
+                self.abort_check_functions.insert(func_env.get_qualified_id());
+                self.target_modules.insert(func_env.module_env.get_id());
+            }
+        }
 
         if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort })) = func_env
             .get_toplevel_attributes()

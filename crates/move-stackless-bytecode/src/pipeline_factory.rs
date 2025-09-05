@@ -30,6 +30,7 @@ use crate::{
     type_invariant_analysis::TypeInvariantAnalysisProcessor,
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
+    no_abort_analysis::NoAbortAnalysisProcessor,
     deterministic_analysis::DeterministicAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
 };
@@ -54,6 +55,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
+        NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
     ];
 
