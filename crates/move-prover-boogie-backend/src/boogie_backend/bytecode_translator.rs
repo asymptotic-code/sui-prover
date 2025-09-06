@@ -3717,7 +3717,7 @@ impl<'env> FunctionTranslator<'env> {
                         let node_id = env.new_node(env.unknown_loc(), mem.to_type());
                         self.track_global_mem(mem, node_id);
                     }
-                    TernaryConditional => {
+                    IfThenElse => {
                         let cond_str = str_local(srcs[0]);
                         let true_expr_str = str_local(srcs[1]);
                         let false_expr_str = str_local(srcs[2]);

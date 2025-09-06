@@ -5,6 +5,7 @@
 use crate::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
+    conditional_merge_insertion::ConditionalMergeInsertionProcessor,
     // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
@@ -27,7 +28,6 @@ use crate::{
     spec_instrumentation::SpecInstrumentationProcessor,
     spec_purity_analysis::SpecPurityAnalysis,
     spec_well_formed_analysis::SpecWellFormedAnalysisProcessor,
-    ssa_transformation::SSATransformProcessor,
     type_invariant_analysis::TypeInvariantAnalysisProcessor,
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
@@ -47,9 +47,15 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         MoveLoopInvariantsProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
-        SSATransformProcessor::new_with_debug(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
+        // Re-run analyses after borrow analysis as it can invalidate them
+        ReachingDefProcessor::new(),
+        LiveVarAnalysisProcessor::new(),
+        ConditionalMergeInsertionProcessor::new_with_debug(), // AFTER borrow analysis
+        // Try rerun again
+        ReachingDefProcessor::new(),
+        LiveVarAnalysisProcessor::new(),
         MemoryInstrumentationProcessor::new(),
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),

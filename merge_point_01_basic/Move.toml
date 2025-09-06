@@ -1,0 +1,9 @@
+[package]
+name = "my_ssa_test"
+version = "0.0.1"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+my_ssa_test = "0x42"

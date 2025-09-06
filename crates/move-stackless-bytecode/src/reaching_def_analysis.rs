@@ -28,7 +28,7 @@ use crate::{
 /// aliases (assignment).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Def {
-    Alias(TempIndex),
+    Alias(TempIndex, CodeOffset),
 }
 
 type DefMap = BTreeMap<TempIndex, BTreeSet<Def>>;
@@ -42,8 +42,20 @@ pub struct ReachingDefState {
 
 /// The annotation for reaching definitions. For each code position, we have a map of local
 /// indices to the set of definitions reaching the code position.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ReachingDefAnnotation(BTreeMap<CodeOffset, ReachingDefState>);
+
+impl ReachingDefAnnotation {
+    /// Get the reaching definitions state at a specific code offset
+    pub fn get_reaching_def_info_at(&self, code_offset: CodeOffset) -> Option<&ReachingDefState> {
+        self.0.get(&code_offset)
+    }
+    
+    /// Get all reaching definition states
+    pub fn get_all_states(&self) -> &BTreeMap<CodeOffset, ReachingDefState> {
+        &self.0
+    }
+}
 
 pub struct ReachingDefProcessor {}
 
@@ -61,7 +73,7 @@ impl ReachingDefProcessor {
         if defs.len() != 1 {
             return None;
         }
-        let Def::Alias(def) = defs.iter().next().unwrap();
+        let Def::Alias(def, _) = defs.iter().next().unwrap();
         if havoc_vars.contains(def) {
             return None;
         }
@@ -160,9 +172,8 @@ impl FunctionTargetProcessor for ReachingDefProcessor {
             let new_code = Self::copy_propagation(&target, code, &annotations);
             data.code = new_code;
 
-            // Currently we do not need reaching defs after this phase. If so in the future, we
-            // need to uncomment this statement.
-            //data.annotations.set(annotations);
+            // Store reaching definitions annotation for use by later phases
+            data.annotations.set(annotations, true);
         }
 
         data
@@ -184,7 +195,7 @@ impl TransferFunctions for ReachingDefAnalysis<'_> {
     type State = ReachingDefState;
     const BACKWARD: bool = false;
 
-    fn execute(&self, state: &mut ReachingDefState, instr: &Bytecode, _offset: CodeOffset) {
+    fn execute(&self, state: &mut ReachingDefState, instr: &Bytecode, offset: CodeOffset) {
         use BorrowNode::*;
         use Bytecode::*;
         use Operation::*;
@@ -192,7 +203,7 @@ impl TransferFunctions for ReachingDefAnalysis<'_> {
             Assign(_, dest, src, _) => {
                 state.kill(*dest);
                 if !self.borrowed_locals.contains(dest) && !self.borrowed_locals.contains(src) {
-                    state.def_alias(*dest, *src);
+                    state.def_alias(*dest, *src, offset);
                 }
             }
             Load(_, dest, ..) => {
@@ -247,19 +258,19 @@ impl AbstractDomain for ReachingDefState {
 }
 
 impl ReachingDefState {
-    fn def_alias(&mut self, dest: TempIndex, src: TempIndex) {
+    fn def_alias(&mut self, dest: TempIndex, src: TempIndex, offset: CodeOffset) {
         // ensure that the previous def is killed
         assert!(!self.map.contains_key(&dest));
 
         // cascade the definition
         for defs in self.map.values_mut() {
-            if defs.contains(&Def::Alias(dest)) {
-                defs.insert(Def::Alias(src));
+            if defs.iter().any(|d| matches!(d, Def::Alias(t, _) if *t == dest)) {
+                defs.insert(Def::Alias(src, offset));
             }
         }
 
         // update the new alias
-        self.map.entry(dest).or_default().insert(Def::Alias(src));
+        self.map.entry(dest).or_default().insert(Def::Alias(src, offset));
     }
 
     fn kill(&mut self, dest: TempIndex) {
@@ -295,7 +306,7 @@ pub fn format_reaching_def_annotation(
                         defs.iter()
                             .map(|def| {
                                 match def {
-                                    Def::Alias(a) => {
+                                    Def::Alias(a, _) => {
                                         let local_name = format!(
                                             "{}",
                                             target.get_local_name(*a).display(target.symbol_pool())
