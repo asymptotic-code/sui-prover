@@ -31,7 +31,7 @@ use move_model::{
 use move_stackless_bytecode::{
     ast::{TempIndex, TraceKind}, deterministic_analysis, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
-    }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, number_operation::{
+    }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
     }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
@@ -69,7 +69,6 @@ pub struct BoogieTranslator<'env> {
     spec_translator: SpecTranslator<'env>,
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
-    spec_no_abort_check: bool,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -98,7 +97,6 @@ impl<'env> BoogieTranslator<'env> {
         targets: &'env FunctionTargetsHolder,
         writer: &'env CodeWriter,
         types: &'env RefCell<BiBTreeMap<Type, String>>,
-        spec_no_abort_check: bool,
     ) -> Self {
         Self {
             env,
@@ -106,7 +104,6 @@ impl<'env> BoogieTranslator<'env> {
             targets,
             writer,
             types,
-            spec_no_abort_check,
             spec_translator: SpecTranslator::new(writer, env, options),
         }
     }
@@ -307,52 +304,63 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                if self.targets.is_spec(&fun_env.get_qualified_id()) {
+                if self.options.func_abort_check_only && self.targets.is_abort_check_fun(&fun_env.get_qualified_id()) {
+                    self.translate_function_no_abort(fun_env);
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                    continue;
+                }
+
+                if self.options.func_abort_check_only && self.targets.is_spec(&fun_env.get_qualified_id()) {
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                    continue;
+                }
+
+                if !self.options.func_abort_check_only && self.targets.is_spec(&fun_env.get_qualified_id()) {
                     self.translate_spec(&fun_env);
                     verified_functions_count += 1;
-                } else {
-                    // Skip functions that were removed by verification analysis
-                    let fun_target = match self
-                        .targets
-                        .get_target_opt(fun_env, &FunctionVariant::Baseline)
-                    {
-                        Some(target) => target,
-                        None => continue, // Function was filtered out
-                    };
-                    if !verification_analysis::get_info(&fun_target).inlined {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if let Some(spec_qid) =
-                        self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
+                // Skip functions that were removed by verification analysis
+                let fun_target = match self
+                    .targets
+                    .get_target_opt(fun_env, &FunctionVariant::Baseline)
+                {
+                    Some(target) => target,
+                    None => continue, // Function was filtered out
+                };
+
+                if !verification_analysis::get_info(&fun_target).inlined {
+                    continue;
+                }
+
+                if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()){
+                    if !self.targets.no_verify_specs().contains(spec_qid) || self.options.func_abort_check_only {
+                        FunctionTranslator::new(
+                            self,
+                            &fun_target,
+                            &[],
+                            FunctionTranslationStyle::Default,
+                        )
+                        .translate();
+                    }
+                } else {
+                    // This variant is inlined, so translate for all type instantiations.
+                    for type_inst in mono_info
+                        .funs
+                        .get(&(
+                            fun_target.func_env.get_qualified_id(),
+                            FunctionVariant::Baseline,
+                        ))
+                        .unwrap_or(&BTreeSet::new())
                     {
-                        if !self.targets.no_verify_specs().contains(spec_qid) {
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                &[],
-                                FunctionTranslationStyle::Default,
-                            )
-                            .translate();
-                        }
-                    } else {
-                        // This variant is inlined, so translate for all type instantiations.
-                        for type_inst in mono_info
-                            .funs
-                            .get(&(
-                                fun_target.func_env.get_qualified_id(),
-                                FunctionVariant::Baseline,
-                            ))
-                            .unwrap_or(&BTreeSet::new())
-                        {
-                            FunctionTranslator::new(
-                                self,
-                                &fun_target,
-                                type_inst,
-                                FunctionTranslationStyle::Default,
-                            )
-                            .translate();
-                        }
+                        FunctionTranslator::new(
+                            self,
+                            &fun_target,
+                            type_inst,
+                            FunctionTranslationStyle::Default,
+                        )
+                        .translate();
                     }
                 }
             }
@@ -399,7 +407,7 @@ impl<'env> BoogieTranslator<'env> {
     }
 
     fn translate_spec(&self, fun_env: &FunctionEnv<'env>) {
-        if self.spec_no_abort_check {
+        if self.options.spec_no_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
             if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
@@ -496,6 +504,17 @@ impl<'env> BoogieTranslator<'env> {
             Some(target) => target,
             None => return, // Function was filtered out
         };
+
+        if style == FunctionTranslationStyle::Aborts {
+            if let Some(fid) = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()) {
+                let fenv: &FunctionEnv<'_> = &self.env.get_function(*fid);
+                let data = self.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                if no_abort_analysis::get_info(&data).does_not_abort {
+                    return;
+                }
+            }
+        }
+
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -701,6 +720,40 @@ impl<'env> BoogieTranslator<'env> {
                     FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
                 });
         }
+    }
+
+    fn translate_function_no_abort(&self, fun_env: &FunctionEnv) {
+        let style = FunctionTranslationStyle::SpecNoAbortCheck;
+        let variant = FunctionVariant::Verification(VerificationFlavor::Regular);
+
+        let target = self.targets.get_target(fun_env, &variant);
+
+        let mut builder = FunctionDataBuilder::new(target.func_env, target.data.clone());
+        let code = std::mem::take(&mut builder.data.code);
+
+        for bc in code.into_iter() {
+            match bc {
+                Bytecode::Ret(..) => {}
+                _ => builder.emit(
+                    bc.update_abort_action(|aa| match aa {
+                        Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
+                        Some(AbortAction::Check) => Some(AbortAction::Check),
+                        None => None,
+                    })
+                )
+            }
+        }
+
+        let mut data = builder.data;
+        let reach_def = ReachingDefProcessor::new();
+        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
+        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
+        data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
+
+        let fun_target = FunctionTarget::new(builder.fun_env, &data);
+        
+        FunctionTranslator::new(self, &fun_target, &[], style).translate();
     }
 
     fn translate_ghost_global(&mut self, mono_info: &std::rc::Rc<MonoInfo>) {
@@ -1618,7 +1671,13 @@ impl<'env> FunctionTranslator<'env> {
                     )
                 },
             );
-        format!("{}{}", fun_name, suffix)
+        let result = format!("{}{}", fun_name, suffix);
+
+        if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
+            result.replace("$spec_no_abort_check", "$abort_check")
+        } else {
+            result
+        }
     }
 
     /// Return a string for a boogie procedure header. Use inline attribute and name
@@ -2636,14 +2695,19 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-
-                                emitln!(
-                                    self.writer(),
-                                    "call $abort_if_cond := {}({});",
-                                    self.function_variant_name(FunctionTranslationStyle::Aborts),
-                                    args_str,
-                                );
-                                emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
+                                
+                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
+                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                                let info = no_abort_analysis::get_info(data);
+                                if !info.does_not_abort && !self.parent.options.func_abort_check_only {
+                                    emitln!(
+                                        self.writer(),
+                                        "call $abort_if_cond := {}({});",
+                                        self.function_variant_name(FunctionTranslationStyle::Aborts),
+                                        args_str,
+                                    );
+                                    emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
+                                }
                             }
                         }
 
@@ -3812,16 +3876,29 @@ impl<'env> FunctionTranslator<'env> {
                         emitln!(self.writer(), "}");
                     }
                     Some(AbortAction::Check) => {
+                        let label = if self.parent.options.func_abort_check_only {
+                            "function code should not abort"
+                        } else {
+                            "spec code itself should not abort"
+                        };
                         emitln!(
                             self.writer(),
-                            "assert {{:msg \"assert_failed{}: spec code itself should not abort\"}} !$abort_flag;",
+                            "assert {{:msg \"assert_failed{}: {}\"}} !$abort_flag;",
                             self.loc_str(&self.writer().get_loc()),
+                            label,
                         );
                     }
                     None => {}
                 }
             }
             Abort(_, src) => {
+                let mut underlying_aborts = true;
+                if let Some(fid) = self.parent.targets.get_fun_by_spec(&self.fun_target.func_env.get_qualified_id()) {
+                    let fenv = &self.parent.env.get_function(*fid);
+                    let underlying_data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                    underlying_aborts = !no_abort_analysis::get_info(&underlying_data).does_not_abort;
+                }
+
                 if FunctionTranslationStyle::Default == self.style
                     && self.fun_target.data.variant
                         == FunctionVariant::Verification(VerificationFlavor::Regular)
@@ -3830,6 +3907,7 @@ impl<'env> FunctionTranslator<'env> {
                         .targets
                         .ignore_aborts()
                         .contains(&self.fun_target.func_env.get_qualified_id())
+                    && underlying_aborts
                 {
                     emitln!(self.writer(), "$abort_flag := false;");
                     let regular_args = (0..fun_target.get_parameter_count())

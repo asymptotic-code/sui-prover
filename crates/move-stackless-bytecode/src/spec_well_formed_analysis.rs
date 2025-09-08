@@ -260,10 +260,22 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
         let underlying_func_id = targets.get_fun_by_spec(&func_env.get_qualified_id());
 
         if underlying_func_id.is_none() {
-            return  data;
+            return data;
         }
 
         let underlying_func = env.get_function(underlying_func_id.unwrap().clone());
+
+        // Func Abort Checking
+
+        if targets.is_abort_check_fun(&underlying_func.get_qualified_id()) {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                "Abort check in underlying function is redundant — already covered by spec.",
+            );
+
+            return data;
+        }
 
         // Signatures Checking
 
