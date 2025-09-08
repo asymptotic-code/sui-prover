@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/omit_opaque/omit_opaque_default.move:23:5
+   │
+23 │     ensures(x == 70); // issue
+   │     ^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/omit_opaque/omit_opaque_default.move:20: bar_spec

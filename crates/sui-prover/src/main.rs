@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::*;
 use colored::Colorize;
+use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use prove::{GeneralConfig, BuildConfig, execute};
 use tracing::debug;
 
@@ -9,7 +10,8 @@ mod prove;
 mod llm_explain;
 mod prompts;
 mod legacy_builder;
-mod package_resolution_graph;
+mod system_dependencies;
+mod build_model;
 
 #[derive(Parser)]
 #[clap(
@@ -35,6 +37,10 @@ pub struct Args {
     /// Package build options
     #[clap(flatten)]
     pub build_config: BuildConfig,
+
+    /// Filtering options
+    #[clap(flatten)]
+    pub filter_config: TargetFilterOptions,
 }
 
 #[tokio::main]
@@ -53,7 +59,13 @@ async fn main() {
 
     debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
-    let result = execute(args.package_path.as_deref(), args.general_config, args.build_config, args.boogie_config).await;
+    let result = execute(
+        args.package_path.as_deref(),
+        args.general_config,
+        args.build_config,
+        args.boogie_config,
+        args.filter_config,
+    ).await;
 
     match result {
         Ok(_) => (),

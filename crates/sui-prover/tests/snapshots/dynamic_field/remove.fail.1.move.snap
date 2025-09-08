@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/dynamic_field/remove.fail.1.move:21:5
+   │
+21 │     ensures(res != 0);
+   │     ^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/dynamic_field/remove.fail.1.move:16: foo_spec

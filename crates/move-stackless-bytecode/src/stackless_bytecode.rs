@@ -329,8 +329,12 @@ pub enum BorrowEdge {
     Direct,
     /// Field borrow with static offset.
     Field(QualifiedInstId<DatatypeId>, usize),
+    /// enum handling
+    EnumField(QualifiedInstId<DatatypeId>, usize, VariantId),
     /// Vector borrow with dynamic index.
     Index(IndexEdgeKind),
+    /// Dynamic field borrow with dynamic offset.
+    DynamicField(QualifiedInstId<DatatypeId>, Type, Type),
     /// Composed sequence of edges.
     Hyper(Vec<BorrowEdge>),
 }
@@ -347,11 +351,19 @@ impl BorrowEdge {
     pub fn instantiate(&self, params: &[Type]) -> Self {
         match self {
             Self::Field(qid, offset) => Self::Field(qid.instantiate_ref(params), *offset),
+            Self::EnumField(qid, offset, variant) => {
+                Self::EnumField(qid.instantiate_ref(params), *offset, *variant)
+            }
+            Self::DynamicField(qid, name_type, value_type) => Self::DynamicField(
+                qid.instantiate_ref(params),
+                name_type.instantiate(params),
+                value_type.instantiate(params),
+            ),
             Self::Hyper(edges) => {
                 let new_edges = edges.iter().map(|e| e.instantiate(params)).collect();
                 Self::Hyper(new_edges)
             }
-            _ => self.clone(),
+            Self::Direct | Self::Index(..) => self.clone(),
         }
     }
 }
@@ -485,14 +497,18 @@ impl Bytecode {
         let mut v = vec![];
         if !bytecode.is_branch() {
             // Fall through situation, just return the next pc.
-            v.push(pc + 1);
+            if pc + 1 < code.len() as CodeOffset {
+                v.push(pc + 1);
+            }
         } else {
             for label in bytecode.branch_dests() {
                 v.push(*label_offsets.get(&label).expect("label defined"));
             }
             if matches!(bytecode, Bytecode::Call(_, _, _, _, Some(_))) {
                 // Falls through.
-                v.push(pc + 1);
+                if pc + 1 < code.len() as CodeOffset {
+                    v.push(pc + 1);
+                }
             }
         }
         // always give successors in ascending order
@@ -1372,6 +1388,27 @@ impl std::fmt::Display for BorrowEdgeDisplay<'_> {
                     ".{} ({})",
                     field_env.get_name().display(self.env.symbol_pool()),
                     field_type.display(&tctx),
+                )
+            }
+            EnumField(qid, field, vid) => {
+                let enum_env = self.env.get_enum_qid(qid.to_qualified_id());
+                let variant_env = enum_env.get_variant(*vid);
+                let field_env = variant_env.get_field_by_offset(*field);
+                let field_type = field_env.get_type().instantiate(&qid.inst);
+                write!(
+                    f,
+                    ".{} -> {} ({})",
+                    variant_env.get_name().display(self.env.symbol_pool()),
+                    field_env.get_name().display(self.env.symbol_pool()),
+                    field_type.display(&tctx),
+                )
+            }
+            DynamicField(_qid, name_type, value_type) => {
+                write!(
+                    f,
+                    ".dynamic_field({}, {})",
+                    name_type.display(&tctx),
+                    value_type.display(&tctx)
                 )
             }
             Index(_) => write!(f, "[]"),

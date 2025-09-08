@@ -24,12 +24,10 @@ use crate::{
 };
 use itertools::Either;
 use move_binary_format::file_format::CodeOffset;
-use move_model::{
-    model::{FunId, GlobalEnv, ModuleId},
-};
+use move_model::model::{FunId, GlobalEnv, ModuleId};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    str,
+    fmt, str,
 };
 
 static CONFLICT_ERROR_MSG: &str = "cannot appear in both arithmetic and bitwise operation";
@@ -111,6 +109,18 @@ impl FunctionTargetProcessor for NumberOperationProcessor {
     fn name(&self) -> String {
         "number_operation_analysis".to_string()
     }
+
+    fn dump_result(
+        &self,
+        f: &mut fmt::Formatter,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+    ) -> fmt::Result {
+        let state = env
+            .get_extension::<GlobalNumberOperationState>()
+            .expect("number operation analysis not run");
+        state.dump(env, targets, f)
+    }
 }
 
 struct NumberOperationAnalysis<'a> {
@@ -139,6 +149,8 @@ fn vector_table_funs_name_propogate_to_dest(callee_name: &str) -> bool {
         || callee_name.contains("remove")
         || callee_name.contains("swap_remove")
         || callee_name.contains("spec_get")
+        || callee_name.contains("take")
+        || callee_name.contains("skip")
 }
 
 fn vector_funs_name_propogate_to_srcs(callee_name: &str) -> bool {
@@ -304,7 +316,13 @@ impl NumberOperationAnalysis<'_> {
             {
                 global_state
                     .get_mut_non_param_local_map(mid, fid, baseline_flag)
-                    .insert(i, Bottom);
+                    .insert(
+                        i,
+                        GlobalNumberOperationState::get_default_operation_for_type(
+                            &self.func_target.get_local_type(i),
+                            &self.func_target.func_env.module_env.env,
+                        ),
+                    );
             }
         }
     }
@@ -446,7 +464,12 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                             self.check_and_update_oper_dest(
                                 state,
                                 dests,
-                                Bitwise,
+                                if ProverOptions::get(self.func_target.global_env()).bv_int_encoding
+                                {
+                                    Arithmetic
+                                } else {
+                                    Bitwise
+                                },
                                 cur_mid,
                                 cur_fid,
                                 &mut global_state,

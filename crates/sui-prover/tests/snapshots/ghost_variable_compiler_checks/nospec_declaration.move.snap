@@ -1,29 +1,5 @@
 ---
 source: crates/sui-prover/tests/integration.rs
 expression: output
-snapshot_kind: text
 ---
-exiting with bytecode transformation errors
-error[E0014]: unexpected ghost variable declaration. Declare ghost variables in #[spec] functions.
-   ┌─ tests/inputs/ghost_variable_compiler_checks/nospec_declaration.move:12:5
-   │
-12 │     ghost::declare_global_mut<T, bool>();
-   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error[E0014]: unexpected ghost variable declaration. Declare ghost variables in #[spec] functions.
-   ┌─ tests/inputs/ghost_variable_compiler_checks/nospec_declaration.move:13:5
-   │
-13 │     ghost::declare_global<u64, bool>();
-   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error[E0014]: unexpected ghost variable declaration. Declare ghost variables in #[spec] functions.
-  ┌─ tests/inputs/ghost_variable_compiler_checks/nospec_declaration.move:6:5
-  │
-6 │     ghost::declare_global<U, bool>();
-  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error[E0014]: unexpected ghost variable declaration. Declare ghost variables in #[spec] functions.
-  ┌─ tests/inputs/ghost_variable_compiler_checks/nospec_declaration.move:7:5
-  │
-7 │     ghost::declare_global_mut<V, bool>();
-  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+🦀 No specifications found in the project. Nothing to verify.

@@ -7,13 +7,16 @@
 //! each function as well as collect information on how these invariants should be handled (i.e.,
 //! checked after bytecode, checked at function exit, or deferred to caller).
 
+use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
+use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
-use codespan_reporting::diagnostic::Severity;
-use move_model::model::{FunctionEnv, GlobalEnv, Loc, VerificationScope};
 
 use crate::{
-  function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, options::ProverOptions, stackless_bytecode::{Bytecode, Operation}
+    function_target::{FunctionData, FunctionTarget},
+    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
+    options::ProverOptions,
 };
+use move_model::model::{FunId, QualifiedId};
 
 /// The annotation for information about verification.
 #[derive(Clone, Default)]
@@ -23,6 +26,12 @@ pub struct VerificationInfo {
     /// Whether the function needs to have an inlined variant since it is called from a verified
     /// function and is not opaque.
     pub inlined: bool,
+    /// Whether the function is essential for the verification pipeline (e.g., native functions
+    /// needed for compilation) even if not verified or inlined.
+    pub essential: bool,
+    /// Whether the function is reachable from specs but not necessarily inlined.
+    /// These functions are needed by borrow analysis but can be skipped in other analyses.
+    pub reachable: bool,
 }
 
 /// Get verification information for this function.
@@ -74,6 +83,27 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
+        let fun_name = fun_env.get_full_name_str();
+
+        // Rule 0a: mark essential functions that are needed for the verification pipeline
+        let info = data
+            .annotations
+            .get_or_default_mut::<VerificationInfo>(true);
+        if Self::is_essential_function(fun_env) {
+            info.essential = true;
+        }
+
+        if targets.is_abort_check_fun(&fun_env.get_qualified_id()) {
+            let info = data
+                .annotations
+                .get_or_default_mut::<VerificationInfo>(true);
+            if !info.inlined {
+                info.verified = true;
+                info.inlined = true;
+                Self::mark_callees_inlined(fun_env, targets);
+            }
+            return data;
+        }
 
         // Rule 0: mark invariant functions as inlined
         if targets
@@ -107,14 +137,14 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 && Self::is_within_verification_scope(fun_env)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
-                let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
-                if dynamic_loc.is_some() {
-                    env.diag(
-                        Severity::Error,
-                        &dynamic_loc.unwrap(),
-                        "Function uses unsupported dynamic fields",
-                    );
-                }
+                // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
+                // if dynamic_loc.is_some() {
+                //     env.diag(
+                //         Severity::Error,
+                //         &dynamic_loc.unwrap(),
+                //         "Function uses unsupported dynamic fields",
+                //     );
+                // }
             }
             return data;
         }
@@ -145,6 +175,47 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
     fn name(&self) -> String {
         "verification_analysis".to_string()
+    }
+
+    fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        // Remove functions that aren't used for verification
+        // Keep: verified functions, inlined functions, essential functions, reachable functions, datatype invariant functions
+
+        let mut functions_to_keep = BTreeSet::new();
+
+        // Keep all datatype invariant functions
+        for (_, inv_fun_id) in targets.get_datatype_invs() {
+            functions_to_keep.insert(*inv_fun_id);
+        }
+
+        // Keep functions that are verified, inlined, or essential
+        for fun_id in targets.get_funs() {
+            let fun_env = env.get_function(fun_id);
+            // Check verification status across all variants
+            for variant in targets.get_target_variants(&fun_env) {
+                let data = targets.get_data(&fun_id, &variant).unwrap();
+                let info = get_info(&FunctionTarget::new(&fun_env, data));
+                if info.verified || info.inlined || info.essential {
+                    functions_to_keep.insert(fun_id);
+                    break;
+                }
+            }
+        }
+
+        // Mark functions reachable from verified/inlined/essential functions and collect them
+        let reachable_functions = Self::mark_reachable(env, targets, &functions_to_keep);
+        functions_to_keep.extend(reachable_functions);
+
+        // Remove functions that are not in the keep set
+        let functions_to_remove: Vec<QualifiedId<FunId>> = targets
+            .get_funs()
+            .filter(|fun_id| !functions_to_keep.contains(fun_id))
+            .collect();
+
+        // Remove functions from targets (remove entire function entry, not just variants)
+        for fun_id in functions_to_remove {
+            targets.remove_target(&fun_id);
+        }
     }
 
     fn dump_result(
@@ -217,21 +288,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // writeln!(f, "]\n")?;
 
         writeln!(f, "verification analysis: [")?;
-        for (fun_id, fun_variant) in targets.get_funs_and_variants() {
+        for fun_id in targets.get_funs() {
             let fenv = env.get_function(fun_id);
-            let target = targets.get_target(&fenv, &fun_variant);
-            let result = get_info(&target);
-            write!(f, "  {}: ", fenv.get_full_name_str())?;
-            if result.verified {
-                if result.inlined {
-                    writeln!(f, "verified + inlined")?;
+            for fun_variant in targets.get_target_variants(&fenv) {
+                let target = targets.get_target(&fenv, &fun_variant);
+                let result = get_info(&target);
+                write!(f, "  {}: ", fenv.get_full_name_str())?;
+                if result.verified {
+                    if result.inlined {
+                        writeln!(f, "verified + inlined")?;
+                    } else {
+                        writeln!(f, "verified")?;
+                    }
+                } else if result.inlined {
+                    writeln!(f, "inlined")?;
                 } else {
-                    writeln!(f, "verified")?;
+                    writeln!(f, "not verified and not inlined")?;
                 }
-            } else if result.inlined {
-                writeln!(f, "inlined")?;
-            } else {
-                writeln!(f, "not verified and not inlined")?;
             }
         }
         writeln!(f, "]")
@@ -360,6 +433,33 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
+    /// Check if a function is essential for the verification pipeline
+    pub fn is_essential_function(fun_env: &FunctionEnv) -> bool {
+        let name = fun_env.get_full_name_str();
+
+        // Handle ghost functions first (since they're also native)
+        if name.contains("ghost::") {
+            return true; // Keep all ghost functions
+        }
+
+        // All prover functions are essential
+        if name.contains("prover::") {
+            return true;
+        }
+
+        // Essential stdlib functions that are needed for verification
+        if name.starts_with("vector::")
+            || name.starts_with("option::")
+            || name.starts_with("object::")
+            || name.starts_with("tx_context::")
+            || name.starts_with("integer::")
+        {
+            return true;
+        }
+
+        false
+    }
+
     /// Check whether the function falls within the verification scope given in the options
     fn is_within_verification_scope(fun_env: &FunctionEnv) -> bool {
         let env = fun_env.module_env.env;
@@ -442,40 +542,101 @@ impl VerificationAnalysisProcessor {
         }
     }
 
-    pub fn find_dynamics_in_function(
-        &self, 
-        func_env: &FunctionEnv,
-        data: &FunctionData,
-    ) -> Option<Loc> {
-        let env = func_env.module_env.env;
-        let target = FunctionTarget::new(func_env, data);
+    /// Marks functions as reachable from verified, inlined, or essential functions.
+    /// This includes all transitively called functions that are needed by borrow analysis
+    /// but are not necessarily inlined.
+    fn mark_reachable(
+        env: &GlobalEnv,
+        targets: &mut FunctionTargetsHolder,
+        initial_functions: &BTreeSet<QualifiedId<FunId>>,
+    ) -> BTreeSet<QualifiedId<FunId>> {
+        let mut work_queue: Vec<QualifiedId<FunId>> = initial_functions.iter().cloned().collect();
+        let mut processed = BTreeSet::new();
+        let mut reachable_functions = BTreeSet::new();
 
-        for cp in target.get_bytecode() {
-            match cp {
-                Bytecode::Call(attr, _, operation, _, _) => {
-                    match operation {
-                        Operation::Function(mod_id, _, _) => {
-                            let module_name = env
-                                .symbol_pool()
-                                .string(env
-                                    .get_module(*mod_id)
-                                    .get_name()
-                                    .name()
-                                );
+        while let Some(fun_id) = work_queue.pop() {
+            if processed.contains(&fun_id) {
+                continue;
+            }
+            processed.insert(fun_id);
+            
+            let fun_env = env.get_function(fun_id);
 
-                            if ["dynamic_field", "dynamic_object_field"].contains(&module_name.as_str()) {
-                                return Some(target.get_bytecode_loc(*attr)); 
-                            }
-                        },
-                        _ => {}
-                    };
-                },
-                _ => {},
+            // Mark all callees as reachable
+            for callee in fun_env.get_called_functions() {
+                if processed.contains(&callee) {
+                    continue;
+                }
+                
+                let callee_env = env.get_function(callee);
+                let mut should_mark_reachable = false;
+                
+                // Check if this function needs to be marked as reachable
+                for variant in targets.get_target_variants(&callee_env) {
+                    if let Some(data) = targets.get_data(&callee, &variant) {
+                        let info = get_info(&FunctionTarget::new(&callee_env, data));
+                        
+                        // Skip if already processed (verified, inlined, essential, or reachable)
+                        if info.verified || info.inlined || info.essential || info.reachable {
+                            break;
+                        }
+                        
+                        should_mark_reachable = true;
+                        break;
+                    }
+                }
+                
+                if should_mark_reachable {
+                    // Mark as reachable across all variants
+                    for variant in targets.get_target_variants(&callee_env) {
+                        if let Some(data) = targets.get_data_mut(&callee, &variant) {
+                            let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                            info.reachable = true;
+                        }
+                    }
+                    work_queue.push(callee);
+                    reachable_functions.insert(callee);
+                }
             }
         }
-
-        None
+        
+        reachable_functions
     }
+
+    // pub fn find_dynamics_in_function(
+    //     &self,
+    //     func_env: &FunctionEnv,
+    //     data: &FunctionData,
+    // ) -> Option<Loc> {
+    //     let env = func_env.module_env.env;
+    //     let target = FunctionTarget::new(func_env, data);
+
+    //     for cp in target.get_bytecode() {
+    //         match cp {
+    //             Bytecode::Call(attr, _, operation, _, _) => {
+    //                 match operation {
+    //                     Operation::Function(mod_id, _, _) => {
+    //                         let module_name = env
+    //                             .symbol_pool()
+    //                             .string(env
+    //                                 .get_module(*mod_id)
+    //                                 .get_name()
+    //                                 .name()
+    //                             );
+
+    //                         if ["dynamic_field", "dynamic_object_field"].contains(&module_name.as_str()) {
+    //                             return Some(target.get_bytecode_loc(*attr));
+    //                         }
+    //                     },
+    //                     _ => {}
+    //                 };
+    //             },
+    //             _ => {},
+    //         }
+    //     }
+
+    //     None
+    // }
 }
 
 // /// This impl block contains functions on global invariant applicability analysis

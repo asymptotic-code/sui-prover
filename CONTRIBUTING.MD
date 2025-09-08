@@ -24,6 +24,10 @@ export PATH="$DOTNET_ROOT/bin:$PATH"
 git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
 cd boogie-src
 dotnet build Source/Boogie.sln -c Release
+
+export BOOGIE_EXE=$(which boogie)
+export Z3_EXE=$(which z3)
+
 ```
 
 ## Installation

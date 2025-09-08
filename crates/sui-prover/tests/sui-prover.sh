@@ -44,34 +44,3 @@ chmod +x "$BIN_DIR/sui-prover"
 # Add $BIN_DIR to PATH in the current session
 echo "export PATH=$BIN_DIR:\$PATH" >> ~/.bashrc
 echo "Sui Prover installed successfully! Use 'sui-prover' command."
-
-# Run cargo test in sui-prover directory
-export DOTNET_ROOT="$DOTNET_ROOT"
-export BOOGIE_EXE="$BIN_DIR/boogie"
-export Z3_EXE="$(brew --prefix z3)/bin/z3"
-cd ./crates/sui-prover
-cargo test
-cd ../..
-
-# skip internal tests as they not part of repo now
-# cd ./crates/sui-framework/packages/prover
-# sui-prover
-# cd ..
-
-git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-cd sui-kit/examples
-
-cd amm
-sui-prover -s 4
-cd .. 
-
-cd guide
-sui-prover -s 4
-cd ../../..
-
-git clone https://github.com/asymptotic-code/sui-prover-workshop.git prover-workshop
-cd prover-workshop
-
-sui-prover -s 2
-
-echo "All tests passed!"

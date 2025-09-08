@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::anyhow;
+use clap::ValueEnum;
 use itertools::Itertools;
 use move_command_line_common::env::{read_bool_env_var, read_env_var};
 use regex::Regex;
@@ -70,6 +71,23 @@ impl BorrowAggregate {
             name,
             read_aggregate,
             write_aggregate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BoogieFileMode {
+    Function,
+    Module,
+    All,
+}
+
+impl ToString for BoogieFileMode {
+    fn to_string(&self) -> String {
+        match self {
+            BoogieFileMode::Function => "function".to_string(),
+            BoogieFileMode::Module => "module".to_string(),
+            BoogieFileMode::All => "all".to_string(),
         }
     }
 }
@@ -147,8 +165,15 @@ pub struct BoogieOptions {
     pub borrow_aggregates: Vec<BorrowAggregate>,
     pub prelude_extra: Option<PathBuf>,
     pub path_split: Option<usize>,
+    pub bv_int_encoding: bool,
     /// All possible additional options as simle string
     pub string_options: Option<String>,
+    /// Boogie run mode
+    pub boogie_file_mode: BoogieFileMode,
+    /// Spec no abort only
+    pub spec_no_abort_check_only: bool,
+    /// Func abort only
+    pub func_abort_check_only: bool,
 }
 
 impl Default for BoogieOptions {
@@ -161,7 +186,7 @@ impl Default for BoogieOptions {
             use_cvc5: false,
             cvc5_exe: read_env_var("CVC5_EXE"),
             boogie_flags: vec![],
-            debug_trace: false,
+            debug_trace: true,
             use_array_theory: false,
             generate_smt: false,
             native_equality: false,
@@ -188,7 +213,11 @@ impl Default for BoogieOptions {
             borrow_aggregates: vec![],
             prelude_extra: Some(PathBuf::from("prelude_extra.bpl")),
             path_split: Some(10),
+            bv_int_encoding: true,
             string_options: None,
+            boogie_file_mode: BoogieFileMode::Function,
+            spec_no_abort_check_only: false,
+            func_abort_check_only: false,
         }
     }
 }
@@ -227,12 +256,20 @@ impl BoogieOptions {
 
         add(DEFAULT_BOOGIE_FLAGS);
         if self.use_cvc5 {
-            add(&[
-                "-proverOpt:SOLVER=cvc5",
-                &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
-            ]);
+            if self.cvc5_exe.is_empty() {
+                anyhow::bail!("No cvc5 executable set.  Please set CVC5_EXE");
+            } else {
+                add(&[
+                    "-proverOpt:SOLVER=cvc5",
+                    &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
+                ]);
+            }
         } else {
-            add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+            if self.z3_exe.is_empty() {
+                anyhow::bail!("No z3 executable set.  Please set Z3_EXE");
+            } else {
+                add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+            }
         }
         if self.use_array_theory {
             add(&["-useArrayAxioms"]);

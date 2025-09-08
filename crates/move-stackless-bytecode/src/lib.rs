@@ -18,7 +18,10 @@ pub mod compositional_analysis;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
+pub mod no_abort_analysis;
+pub mod deterministic_analysis;
 pub mod debug_instrumentation;
+pub mod dynamic_field_analysis;
 pub mod eliminate_imm_refs;
 pub mod escape_analysis;
 pub mod exp_generator;
@@ -55,6 +58,7 @@ pub mod verification_analysis;
 pub mod well_formed_instrumentation;
 pub mod spec_purity_analysis;
 pub mod spec_well_formed_analysis;
+pub mod target_filter;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(

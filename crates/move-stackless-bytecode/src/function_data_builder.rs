@@ -321,26 +321,30 @@ impl<'env> FunctionDataBuilder<'env> {
         // processor in the pipeline, *before* the bytecode translation to
         // boogie. If the GlobalNumberOperationState is computed, insert the
         // computed value for the temporary variable.
-        if let Some(global_state) = &self
+        let global_state = &self
             .fun_env
             .module_env
             .env
             .get_extension::<GlobalNumberOperationState>()
-        {
-            if let Some(num_oper) = global_state.get_temp_index_oper(
-                self.fun_env.module_env.get_id(),
-                self.fun_env.get_id(),
-                temp,
-                self.data.variant == FunctionVariant::Baseline,
-            ) {
-                self.fun_env
-                    .module_env
-                    .env
-                    .update_extension::<GlobalNumberOperationState>(|state| {
-                        state.insert_node_num_oper(temp_exp_node_id, *num_oper);
-                    });
-            }
-        }
+            .expect("GlobalNumberOperationState not found");
+        let temp_exp_num_oper = match global_state.get_temp_index_oper(
+            self.fun_env.module_env.get_id(),
+            self.fun_env.get_id(),
+            temp,
+            self.data.variant == FunctionVariant::Baseline,
+        ) {
+            Some(num_oper) => *num_oper,
+            None => GlobalNumberOperationState::get_default_operation_for_type(
+                &self.get_local_type(temp),
+                self.global_env(),
+            ),
+        };
+        self.fun_env
+            .module_env
+            .env
+            .update_extension::<GlobalNumberOperationState>(|state| {
+                state.insert_node_num_oper(temp_exp_node_id, temp_exp_num_oper);
+            });
     }
 
     pub fn dup_code(&mut self, code: &[Bytecode]) -> Vec<Bytecode> {

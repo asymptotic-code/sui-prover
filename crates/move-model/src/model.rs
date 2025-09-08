@@ -21,10 +21,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     ffi::OsStr,
     fmt::{self, Formatter},
-    ops::Index,
     rc::Rc,
 };
 
+use anyhow::bail;
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, Severity},
@@ -44,16 +44,15 @@ use move_binary_format::{
     file_format::{
         AddressIdentifierIndex, Bytecode, Constant as VMConstant, ConstantPoolIndex,
         DatatypeHandleIndex, EnumDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex,
-        FunctionHandleIndex, FunctionInstantiation, IdentifierIndex, ModuleHandle, SignatureIndex,
+        FunctionHandleIndex, IdentifierIndex, ModuleHandle, SignatureIndex,
         SignatureToken, StructDefinitionIndex, StructFieldInformation, VariantJumpTable,
         Visibility,
     },
-    normalized::{FunctionRef, Type as MType},
     CompiledModule,
 };
 use move_bytecode_source_map::{mapping::SourceMapping, source_map::SourceMap};
 use move_command_line_common::files::FileHash;
-use move_core_types::parsing::address::NumericalAddress;
+use move_core_types::{language_storage::StructTag, parsing::address::NumericalAddress};
 use move_core_types::{
     account_address::AccountAddress,
     identifier::{IdentStr, Identifier},
@@ -65,7 +64,7 @@ use move_disassembler::disassembler::{Disassembler, DisassemblerOptions};
 use crate::{
     ast::{Attribute, ModuleName, QualifiedSymbol, Value},
     symbol::{Symbol, SymbolPool},
-    ty::{PrimitiveType, Type, TypeDisplayContext, TypeUnificationAdapter, Variance},
+    ty::{PrimitiveType, Type, TypeDisplayContext},
 };
 
 // =================================================================================================
@@ -79,14 +78,6 @@ pub const SCRIPT_BYTECODE_FUN_NAME: &str = "<SELF>";
 
 /// A prefix used for structs which are backing specification ("ghost") memory.
 pub const GHOST_MEMORY_PREFIX: &str = "Ghost$";
-
-const SUI_FRAMEWORK_ADDRESS: AccountAddress = address_from_single_byte(2);
-
-const fn address_from_single_byte(b: u8) -> AccountAddress {
-    let mut addr = [0u8; AccountAddress::LENGTH];
-    addr[AccountAddress::LENGTH - 1] = b;
-    AccountAddress::new(addr)
-}
 
 // =================================================================================================
 // # Locations
@@ -159,13 +150,6 @@ impl Default for Loc {
         let dummy_id = files.add(String::new(), String::new());
         Loc::new(dummy_id, Span::default())
     }
-}
-
-/// Return true if `f` is a Sui framework function declared in `module` with a name in `names`
-fn is_framework_function(f: &FunctionRef, module: &str, names: Vec<&str>) -> bool {
-    *f.module_id.address() == SUI_FRAMEWORK_ADDRESS
-        && f.module_id.name().to_string() == module
-        && names.contains(&f.function_ident.as_str())
 }
 
 /// Alias for the Loc variant of MoveIR. This uses a `&static str` instead of `FileId` for the
@@ -1165,6 +1149,10 @@ impl GlobalEnv {
             .and_then(|menv| menv.find_function(menv.symbol_pool().make(name.as_str())))
     }
 
+    pub fn find_function_by_name(&self, module_id: ModuleId, simple_name: Symbol) -> Option<FunctionEnv<'_>> {
+        self.get_module(module_id).find_function(simple_name)
+    }
+
     /// Gets a StructEnv in this module by its `StructTag`
     pub fn find_datatype_by_tag(
         &self,
@@ -1285,17 +1273,7 @@ impl GlobalEnv {
 
     /// Attempt to compute a struct tag for (`mid`, `sid`, `ts`). Returns `Some` if all types in
     /// `ts` are closed, `None` otherwise
-    pub fn get_struct_tag(
-        &self,
-        mid: ModuleId,
-        sid: DatatypeId,
-        ts: &[Type],
-    ) -> Option<language_storage::StructTag> {
-        self.get_datatype(mid, sid, ts)?.into_struct_tag()
-    }
-
-    /// Attempt to compute a struct type for (`mid`, `sid`, `ts`).
-    pub fn get_datatype(&self, mid: ModuleId, sid: DatatypeId, ts: &[Type]) -> Option<MType> {
+    pub fn get_struct_tag(&self, mid: ModuleId, sid: DatatypeId, ts: &[Type]) -> Option<StructTag> {
         let menv = self.get_module(mid);
         let name = menv
             .find_struct(sid.symbol())
@@ -1304,13 +1282,13 @@ impl GlobalEnv {
                 menv.find_enum(sid.symbol())
                     .map(|eenv| eenv.get_identifier())
             })??;
-        Some(MType::Struct {
+        Some(StructTag {
             address: *menv.self_address(),
             module: menv.get_identifier(),
             name,
-            type_arguments: ts
+            type_params: ts
                 .iter()
-                .map(|t| t.clone().into_normalized_type(self).unwrap())
+                .map(|t| t.clone().into_type_tag(self).unwrap())
                 .collect(),
         })
     }
@@ -1454,10 +1432,14 @@ impl GlobalEnv {
         self.extlib_address.clone().unwrap_or_else(|| 2u16.into())
     }
 
-    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+    fn find_module_id(&self, module_name: &str) -> ModuleId {
         self.find_module_by_name(self.symbol_pool().make(module_name))
             .expect(&format!("module not found: {}", module_name))
             .get_id()
+    }
+
+    fn get_fun_qid(&self, module_name: &str, fun_name: &str) -> QualifiedId<FunId> {
+        self.find_module_id(module_name)
             .qualified(FunId::new(self.symbol_pool().make(fun_name)))
     }
 
@@ -1484,13 +1466,53 @@ impl GlobalEnv {
 
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
+    pub const SPECS_MODULES_NAMES: &'static [&'static str] = &[
+        Self::PROVER_MODULE_NAME,
+        Self::SPEC_MODULE_NAME,
+        "transfer_spec",
+        "tx_context_spec",
+        "random_spec",
+        "object_spec",
+        "kiosk_spec",
+        "event_spec",
+    ];
     const LOG_MODULE_NAME: &'static str = "log";
     const VECTOR_MODULE_NAME: &'static str = "vector";
     const VEC_SET_MODULE_NAME: &'static str = "vec_set";
     const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
     const OPTION_MODULE_NAME: &'static str = "option";
     const TABLE_MODULE_NAME: &'static str = "table";
+    const OBJECT_MODULE_NAME: &'static str = "object";
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
+    const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
+    const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
+
+    const STD_BCS_MODULE_NAME: &'static str = "bcs";
+    const STD_DEBUG_MODULE_NAME: &'static str = "debug";
+    const STD_HASH_MODULE_NAME: &'static str = "hash";
+    const STD_INTEGER_MODULE_NAME: &'static str = "integer";
+    const STD_REAL_MODULE_NAME: &'static str = "real";
+    const STD_STRING_MODULE_NAME: &'static str = "string";
+    const STD_TYPE_NAME_MODULE_NAME: &'static str = "type_name";
+
+    const SUI_ADDRESS_MODULE_NAME: &'static str = "address";
+    const SUI_TYPES_MODULE_NAME: &'static str = "types";
+    const SUI_BLS12381_MODULE_NAME: &'static str = "bls12381";
+    const SUI_ECDSA_K1_MODULE_NAME: &'static str = "ecdsa_k1";
+    const SUI_ECDSA_R1_MODULE_NAME: &'static str = "ecdsa_r1";
+    const SUI_ECVRF_MODULE_NAME: &'static str = "ecvrf";
+    const SUI_ED25519_MODULE_NAME: &'static str = "ed25519";
+    const SUI_GROTH16_MODULE_NAME: &'static str = "groth16";
+    const SUI_GROUP_OPS_MODULE_NAME: &'static str = "group_ops";
+    const SUI_HASH_MODULE_NAME: &'static str = "hash";
+    const SUI_HMAC_MODULE_NAME: &'static str = "hmac";
+    const SUI_NITRO_ATTESTATION_MODULE_NAME: &'static str = "nitro_attestation";
+    const SUI_POSEIDON_MODULE_NAME: &'static str = "poseidon";
+    const SUI_VDF_MODULE_NAME: &'static str = "vdf";
+    const SUI_ACCUMULATOR_MODULE_NAME: &'static str = "accumulator";
+    const SUI_EVENT_MODULE_NAME: &'static str = "event";
+    const SUI_TX_CONTEXT_MODULE_NAME: &'static str = "tx_context";
+
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
@@ -1506,6 +1528,8 @@ impl GlobalEnv {
     const LOG_TEXT_FUNCTION_NAME: &'static str = "text";
     const LOG_VAR_FUNCTION_NAME: &'static str = "var";
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
+    const PROVER_VAL_FUNCTION_NAME: &'static str = "val";
+    const PROVER_REF_FUNCTION_NAME: &'static str = "ref";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1516,6 +1540,16 @@ impl GlobalEnv {
     const VECTOR_REMOVE_FUNCTION_NAME: &'static str = "remove";
     const VECTOR_INSERT_FUNCTION_NAME: &'static str = "insert";
     const VECTOR_SWAP_REMOVE_FUNCTION_NAME: &'static str = "swap_remove";
+    const VECTOR_TAKE_FUNCTION_NAME: &'static str = "take";
+    const VECTOR_SKIP_FUNCTION_NAME: &'static str = "skip";    
+    const VECTOR_MAGIC_EMPTY_FUNCTION_NAME: &'static str = "empty";
+    const VECTOR_SIZE_DETECTIVE_FUNCTION_NAME: &'static str = "length";
+    const VECTOR_PEEK_A_BOO_FUNCTION_NAME: &'static str = "borrow";
+    const VECTOR_STACK_PUSHER_FUNCTION_NAME: &'static str = "push_back";
+    const VECTOR_MUTANT_PEEKER_FUNCTION_NAME: &'static str = "borrow_mut";
+    const VECTOR_STACK_POPPER_FUNCTION_NAME: &'static str = "pop_back";
+    const VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME: &'static str = "destroy_empty";
+    const VECTOR_SWITCHEROO_FUNCTION_NAME: &'static str = "swap";
 
     // vec_set struct name
     const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
@@ -1523,6 +1557,8 @@ impl GlobalEnv {
     // vec_set function names
     const VEC_SET_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_SET_FROM_KEYS_FUNCTION_NAME: &'static str = "from_keys";
+    const VEC_SET_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    const VEC_SET_REMOVE_FUNCTION_NAME: &'static str = "remove";
 
     // vec_map struct name
     const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
@@ -1552,6 +1588,313 @@ impl GlobalEnv {
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
     const TABLE_DROP_FUNCTION_NAME: &'static str = "drop";
     const OBJECT_TABLE_VALUE_ID_FUNCTION_NAME: &'static str = "value_id";
+
+    // object function names
+    const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
+    const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
+    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid";
+
+    // dynamic_field function names
+    const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
+    const DYNAMIC_FIELD_BORROW_FUNCTION_NAME: &'static str = "borrow";
+    const DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
+    const DYNAMIC_FIELD_REMOVE_FUNCTION_NAME: &'static str = "remove";
+    const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
+    const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
+    const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
+
+    // sui::dynamic_field native function names
+    const DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME: &'static str = "hash_type_and_key";
+    const DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME: &'static str = "add_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME: &'static str = "borrow_child_object";
+    const DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME: &'static str = "borrow_child_object_mut";
+    const DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME: &'static str = "remove_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME: &'static str = "has_child_object";
+    const DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
+
+
+    const UNIT_TEST_POISON_FUN_NAME: &'static str = "unit_test_poison";
+
+    // std::hash native function names (with fun constants)
+    const HASH_SHA2_FUNCTION_NAME: &'static str = "sha2_256";
+    const HASH_SHA3_FUNCTION_NAME: &'static str = "sha3_256";
+    
+    // std::bcs native function names (with fun constants)
+    const BCS_BYTE_TRANSFORMER_FUNCTION_NAME: &'static str = "to_bytes";
+    
+    // std::debug native function names (with fun constants)
+    const DEBUG_PRINT_FUNCTION_NAME: &'static str = "print";
+    const DEBUG_PRINT_TRACE_FUNCTION_NAME: &'static str = "print_stack_trace";
+    
+    // std::type_name native function names (with fun constants)
+    const TYPE_NAME_GETTER_FUNCTION_NAME: &'static str = "get";
+    const TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME: &'static str = "get_with_original_ids";
+    
+    // std::string native function names (with fun constants)
+    const STRING_CHECK_UTF8_FUNCTION_NAME: &'static str = "internal_check_utf8";
+    const STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME: &'static str = "internal_is_char_boundary";
+    const STRING_SUB_STRING_FUNCTION_NAME: &'static str = "internal_sub_string";
+    const STRING_INDEX_OF_FUNCTION_NAME: &'static str = "internal_index_of";
+    
+    // std::integer native function names
+    const INTEGER_FROM_U8_FUNCTION_NAME: &'static str = "from_u8";
+    const INTEGER_FROM_U16_FUNCTION_NAME: &'static str = "from_u16";
+    const INTEGER_FROM_U32_FUNCTION_NAME: &'static str = "from_u32";
+    const INTEGER_FROM_U64_FUNCTION_NAME: &'static str = "from_u64";
+    const INTEGER_FROM_U128_FUNCTION_NAME: &'static str = "from_u128";
+    const INTEGER_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const INTEGER_TO_U8_FUNCTION_NAME: &'static str = "to_u8";
+    const INTEGER_TO_U16_FUNCTION_NAME: &'static str = "to_u16";
+    const INTEGER_TO_U32_FUNCTION_NAME: &'static str = "to_u32";
+    const INTEGER_TO_U64_FUNCTION_NAME: &'static str = "to_u64";
+    const INTEGER_TO_U128_FUNCTION_NAME: &'static str = "to_u128";
+    const INTEGER_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const INTEGER_ADD_FUNCTION_NAME: &'static str = "add";
+    const INTEGER_SUB_FUNCTION_NAME: &'static str = "sub";
+    const INTEGER_NEG_FUNCTION_NAME: &'static str = "neg";
+    const INTEGER_MUL_FUNCTION_NAME: &'static str = "mul";
+    const INTEGER_DIV_FUNCTION_NAME: &'static str = "div";
+    const INTEGER_MOD_FUNCTION_NAME: &'static str = "mod";
+    const INTEGER_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const INTEGER_POW_FUNCTION_NAME: &'static str = "pow";
+    const INTEGER_BIT_OR_FUNCTION_NAME: &'static str = "bit_or";
+    const INTEGER_BIT_AND_FUNCTION_NAME: &'static str = "bit_and";
+    const INTEGER_BIT_XOR_FUNCTION_NAME: &'static str = "bit_xor";
+    const INTEGER_BIT_NOT_FUNCTION_NAME: &'static str = "bit_not";
+    const INTEGER_LT_FUNCTION_NAME: &'static str = "lt";
+    const INTEGER_GT_FUNCTION_NAME: &'static str = "gt";
+    const INTEGER_LTE_FUNCTION_NAME: &'static str = "lte";
+    const INTEGER_GTE_FUNCTION_NAME: &'static str = "gte";
+    
+    // std::real native function names
+    const REAL_FROM_INTEGER_FUNCTION_NAME: &'static str = "from_integer";
+    const REAL_TO_INTEGER_FUNCTION_NAME: &'static str = "to_integer";
+    const REAL_ADD_FUNCTION_NAME: &'static str = "add";
+    const REAL_SUB_FUNCTION_NAME: &'static str = "sub";
+    const REAL_NEG_FUNCTION_NAME: &'static str = "neg";
+    const REAL_MUL_FUNCTION_NAME: &'static str = "mul";
+    const REAL_DIV_FUNCTION_NAME: &'static str = "div";
+    const REAL_SQRT_FUNCTION_NAME: &'static str = "sqrt";
+    const REAL_EXP_FUNCTION_NAME: &'static str = "exp";
+    const REAL_LT_FUNCTION_NAME: &'static str = "lt";
+    const REAL_GT_FUNCTION_NAME: &'static str = "gt";
+    const REAL_LTE_FUNCTION_NAME: &'static str = "lte";
+    const REAL_GTE_FUNCTION_NAME: &'static str = "gte";
+    
+    // sui::address native function names (with fun constants)
+    const ADDRESS_TO_U256_FUNCTION_NAME: &'static str = "to_u256";
+    const ADDRESS_FROM_U256_FUNCTION_NAME: &'static str = "from_u256";
+    const ADDRESS_FROM_BYTES_FUNCTION_NAME: &'static str = "from_bytes";
+    
+    // sui::types native function names (with fun constants)
+    const TYPES_WITNESS_INSPECTOR_FUNCTION_NAME: &'static str = "is_one_time_witness";
+    
+    // sui::crypto::hash native function names (with fun constants)
+    const CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME: &'static str = "blake2b256";
+    const CRYPTO_HASH_KECCAK_FUNCTION_NAME: &'static str = "keccak256";
+    
+    // sui::crypto::hmac native function names (with fun constants)
+    const CRYPTO_HMAC_SHA3_FUNCTION_NAME: &'static str = "hmac_sha3_256";
+    
+    // sui::crypto::ed25519 native function names (with fun constants)
+    const CRYPTO_ED25519_VERIFIER_FUNCTION_NAME: &'static str = "ed25519_verify";
+    
+    // sui::crypto::ecvrf native function names (with fun constants)
+    const CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME: &'static str = "ecvrf_verify";
+    
+    // sui::crypto::ecdsa_r1 native function names (with fun constants)
+    const CRYPTO_ECDSA_R1_KEY_RECOVERER_FUNCTION_NAME: &'static str = "secp256r1_ecrecover";
+    const CRYPTO_ECDSA_R1_SIG_VALIDATOR_FUNCTION_NAME: &'static str = "secp256r1_verify";
+    
+    // sui::crypto::ecdsa_k1 native function names (with fun constants)
+    const CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME: &'static str = "secp256k1_ecrecover";
+    const CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME: &'static str = "decompress_pubkey";
+    const CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME: &'static str = "secp256k1_verify";
+    const CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME: &'static str = "secp256k1_sign";
+    const CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME: &'static str = "secp256k1_keypair_from_seed";
+
+    // sui::crypto::bls12381 native function names (with fun constants)
+    const CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_sig_verify";
+    const CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME: &'static str = "bls12381_min_pk_verify";
+
+    // sui::crypto::group_ops native function names (with fun constants)
+    const CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME: &'static str = "internal_validate";
+    const CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME: &'static str = "internal_add";
+    const CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME: &'static str = "internal_sub";
+    const CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME: &'static str = "internal_mul";
+    const CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME: &'static str = "internal_div";
+    const CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME: &'static str = "internal_hash_to";
+    const CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME: &'static str = "internal_multi_scalar_mul";
+    const CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME: &'static str = "internal_pairing";
+    const CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME: &'static str = "internal_convert";
+    const CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME: &'static str = "internal_sum";
+
+    // sui::crypto::groth16 native function names (with fun constants)
+    const CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME: &'static str = "prepare_verifying_key_internal";
+    const CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME: &'static str = "verify_groth16_proof_internal";
+
+    // sui::crypto::poseidon native function names (with fun constants)
+    const CRYPTO_POSEIDON_BN254_FUNCTION_NAME: &'static str = "poseidon_bn254_internal";
+
+    // sui::crypto::vdf native function names (with fun constants)
+    const CRYPTO_VDF_INPUT_HASHER_FUNCTION_NAME: &'static str = "hash_to_input_internal";
+    const CRYPTO_VDF_PROOF_VERIFIER_FUNCTION_NAME: &'static str = "vdf_verify_internal";
+    
+    // sui::crypto::nitro_attestation native function names (with fun constants)
+    const CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME: &'static str = "load_nitro_attestation_internal";
+    
+    // sui::accumulator native function names (with fun constants)
+    const ACCUMULATOR_EMIT_DEPOSIT_EVENT_FUNCTION_NAME: &'static str = "emit_deposit_event";
+    const ACCUMULATOR_EMIT_WITHDRAW_EVENT_FUNCTION_NAME: &'static str = "emit_withdraw_event";
+    
+    // sui::event native function names (with fun constants)
+    const EVENT_EMIT_FUNCTION_NAME: &'static str = "emit";
+    
+    // sui::tx_context native function names (with fun constants)
+    const TX_CONTEXT_SENDER_FUNCTION_NAME: &'static str = "native_sender";
+    const TX_CONTEXT_EPOCH_FUNCTION_NAME: &'static str = "native_epoch";
+    const TX_CONTEXT_EPOCH_TIMESTAMP_MS_FUNCTION_NAME: &'static str = "native_epoch_timestamp_ms";
+    const TX_CONTEXT_FRESH_ID_FUNCTION_NAME: &'static str = "fresh_id";
+    const TX_CONTEXT_REFERENCE_GAS_PRICE_FUNCTION_NAME: &'static str = "native_rgp";
+    const TX_CONTEXT_GAS_PRICE_FUNCTION_NAME: &'static str = "native_gas_price";
+    const TX_CONTEXT_IDS_CREATED_FUNCTION_NAME: &'static str = "native_ids_created";
+    const TX_CONTEXT_GAS_BUDGET_FUNCTION_NAME: &'static str = "native_gas_budget";
+    const TX_CONTEXT_LAST_CREATED_ID_FUNCTION_NAME: &'static str = "last_created_id";
+    const TX_CONTEXT_SPONSOR_FUNCTION_NAME: &'static str = "native_sponsor";
+    const TX_CONTEXT_REPLACE_FUNCTION_NAME: &'static str = "replace";
+    const TX_CONTEXT_DERIVE_ID_FUNCTION_NAME: &'static str = "derive_id";
+
+    pub fn prover_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::PROVER_MODULE_NAME)
+    }
+
+    pub fn ghost_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SPEC_MODULE_NAME)
+    }
+
+    pub fn log_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::LOG_MODULE_NAME)
+    }
+
+    pub fn vector_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VECTOR_MODULE_NAME)
+    }
+
+    pub fn vec_set_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_SET_MODULE_NAME)
+    }
+
+    pub fn vec_map_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::VEC_MAP_MODULE_NAME)
+    }
+
+    pub fn option_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OPTION_MODULE_NAME)
+    }
+
+    pub fn table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::TABLE_MODULE_NAME)
+    }
+
+    pub fn object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_MODULE_NAME)
+    }
+
+    pub fn object_table_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::OBJECT_TABLE_MODULE_NAME)
+    }
+
+    pub fn dynamic_field_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_FIELD_MODULE_NAME)
+    }
+
+    pub fn dynamic_object_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::DYNAMIC_OBJECT_MODULE_NAME)
+    }
+
+    pub fn std_bcs_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_BCS_MODULE_NAME)
+    }
+
+    pub fn std_debug_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_DEBUG_MODULE_NAME)
+    }
+
+    pub fn std_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_HASH_MODULE_NAME)
+    }
+
+    pub fn std_integer_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_INTEGER_MODULE_NAME)
+    }
+
+    pub fn std_real_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_REAL_MODULE_NAME)
+    }
+
+    pub fn std_string_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_STRING_MODULE_NAME)
+    }
+
+    pub fn std_type_name_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::STD_TYPE_NAME_MODULE_NAME)
+    }
+
+    pub fn sui_address_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ADDRESS_MODULE_NAME)
+    }
+
+    pub fn sui_types_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_TYPES_MODULE_NAME)
+    }
+
+    pub fn sui_bls12381_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_BLS12381_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_k1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_K1_MODULE_NAME)
+    }
+
+    pub fn sui_ecdsa_r1_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECDSA_R1_MODULE_NAME)
+    }
+
+    pub fn sui_ecvrf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ECVRF_MODULE_NAME)
+    }
+
+    pub fn sui_ed25519_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_ED25519_MODULE_NAME)
+    }
+
+    pub fn sui_groth16_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROTH16_MODULE_NAME)
+    }
+
+    pub fn sui_group_ops_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_GROUP_OPS_MODULE_NAME)
+    }
+
+    pub fn sui_hash_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HASH_MODULE_NAME)
+    }
+
+    pub fn sui_hmac_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_HMAC_MODULE_NAME)
+    }
+
+    pub fn sui_nitro_attestation_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_NITRO_ATTESTATION_MODULE_NAME)
+    }
+
+    pub fn sui_poseidon_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_POSEIDON_MODULE_NAME)
+    }
+
+    pub fn sui_vdf_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::SUI_VDF_MODULE_NAME)
+    }
 
     pub fn requires_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::REQUIRES_FUNCTION_NAME)
@@ -1608,6 +1951,14 @@ impl GlobalEnv {
 
     pub fn invariant_end_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::INVARIANT_END_FUNCTION_NAME)
+    }
+
+    pub fn prover_val_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_VAL_FUNCTION_NAME)
+    }
+
+    pub fn prover_ref_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_REF_FUNCTION_NAME)
     }
 
     pub fn log_text_qid(&self) -> QualifiedId<FunId> {
@@ -1667,6 +2018,14 @@ impl GlobalEnv {
         )
     }
 
+    pub fn vector_take_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_TAKE_FUNCTION_NAME)
+    }
+
+    pub fn vector_skip_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SKIP_FUNCTION_NAME)
+    }
+
     // vec_set struct name
     pub fn vec_set_qid(&self) -> Option<QualifiedId<DatatypeId>> {
         self.get_struct_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_STRUCT_NAME)
@@ -1685,6 +2044,14 @@ impl GlobalEnv {
             Self::VEC_SET_MODULE_NAME,
             Self::VEC_SET_FROM_KEYS_FUNCTION_NAME,
         )
+    }
+
+    pub fn vec_set_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_CONTAINS_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_REMOVE_FUNCTION_NAME)
     }
 
     // vec_map struct name
@@ -1852,6 +2219,900 @@ impl GlobalEnv {
         )
     }
 
+    pub fn object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_MODULE_NAME,
+            Self::OBJECT_BORROW_UID_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_ADD_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_exists_with_type_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_ADD_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_exists_with_type_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
+        )
+    }
+
+    // std::vector native function QIDs
+    pub fn std_vector_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_MAGIC_EMPTY_FUNCTION_NAME)
+    }
+    pub fn std_vector_length_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SIZE_DETECTIVE_FUNCTION_NAME)
+    }
+    pub fn std_vector_borrow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_PEEK_A_BOO_FUNCTION_NAME)
+    }
+    pub fn std_vector_push_back_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_STACK_PUSHER_FUNCTION_NAME)
+    }
+    pub fn std_vector_borrow_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_MUTANT_PEEKER_FUNCTION_NAME)
+    }
+    pub fn std_vector_pop_back_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_STACK_POPPER_FUNCTION_NAME)
+    }
+    pub fn std_vector_destroy_empty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME)
+    }
+    pub fn std_vector_swap_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SWITCHEROO_FUNCTION_NAME)
+    }
+
+    // std::hash native function QIDs
+    pub fn std_hash_sha2_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA2_FUNCTION_NAME)
+    }
+    pub fn std_hash_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_HASH_MODULE_NAME, Self::HASH_SHA3_FUNCTION_NAME)
+    }
+
+    // std::bcs native function QIDs
+    pub fn std_bcs_to_bytes_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_BCS_MODULE_NAME, Self::BCS_BYTE_TRANSFORMER_FUNCTION_NAME)
+    }
+
+    // std::debug native function QIDs
+    pub fn std_debug_print_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_FUNCTION_NAME)
+    }
+    pub fn std_debug_print_stack_trace_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_DEBUG_MODULE_NAME, Self::DEBUG_PRINT_TRACE_FUNCTION_NAME)
+    }
+
+    // std::type_name native function QIDs
+    pub fn std_type_name_get_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_GETTER_FUNCTION_NAME)
+    }
+    pub fn std_type_name_get_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_TYPE_NAME_MODULE_NAME, Self::TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME)
+    }
+
+    // std::string native function QIDs
+    pub fn std_string_internal_check_utf8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_CHECK_UTF8_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_is_char_boundary_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_IS_CHAR_BOUNDARY_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_sub_string_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_SUB_STRING_FUNCTION_NAME)
+    }
+    pub fn std_string_internal_index_of_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_STRING_MODULE_NAME, Self::STRING_INDEX_OF_FUNCTION_NAME)
+    }
+
+    // std::integer native function QIDs
+    pub fn std_integer_from_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_FROM_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u8_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U8_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u16_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U16_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u32_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U32_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u64_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U64_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u128_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U128_FUNCTION_NAME)
+    }
+    pub fn std_integer_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_TO_U256_FUNCTION_NAME)
+    }
+    pub fn std_integer_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_ADD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SUB_FUNCTION_NAME)
+    }
+    pub fn std_integer_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_NEG_FUNCTION_NAME)
+    }
+    pub fn std_integer_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MUL_FUNCTION_NAME)
+    }
+    pub fn std_integer_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_DIV_FUNCTION_NAME)
+    }
+    pub fn std_integer_mod_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_MOD_FUNCTION_NAME)
+    }
+    pub fn std_integer_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_integer_pow_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_POW_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_or_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_OR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_and_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_AND_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_xor_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_XOR_FUNCTION_NAME)
+    }
+    pub fn std_integer_bit_not_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_BIT_NOT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LT_FUNCTION_NAME)
+    }
+    pub fn std_integer_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GT_FUNCTION_NAME)
+    }
+    pub fn std_integer_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_LTE_FUNCTION_NAME)
+    }
+    pub fn std_integer_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_INTEGER_MODULE_NAME, Self::INTEGER_GTE_FUNCTION_NAME)
+    }
+
+    // std::real native function QIDs
+    pub fn std_real_from_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_FROM_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_to_integer_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_TO_INTEGER_FUNCTION_NAME)
+    }
+    pub fn std_real_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_ADD_FUNCTION_NAME)
+    }
+    pub fn std_real_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SUB_FUNCTION_NAME)
+    }
+    pub fn std_real_neg_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_NEG_FUNCTION_NAME)
+    }
+    pub fn std_real_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_MUL_FUNCTION_NAME)
+    }
+    pub fn std_real_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_DIV_FUNCTION_NAME)
+    }
+    pub fn std_real_sqrt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_SQRT_FUNCTION_NAME)
+    }
+    pub fn std_real_exp_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_EXP_FUNCTION_NAME)
+    }
+    pub fn std_real_lt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LT_FUNCTION_NAME)
+    }
+    pub fn std_real_gt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GT_FUNCTION_NAME)
+    }
+    pub fn std_real_lte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_LTE_FUNCTION_NAME)
+    }
+    pub fn std_real_gte_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::STD_REAL_MODULE_NAME, Self::REAL_GTE_FUNCTION_NAME)
+    }
+
+    // sui::address native function QIDs
+    pub fn sui_address_to_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_TO_U256_FUNCTION_NAME)
+    }
+    pub fn sui_address_from_u256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_U256_FUNCTION_NAME)
+    }
+    pub fn sui_address_from_bytes_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ADDRESS_MODULE_NAME, Self::ADDRESS_FROM_BYTES_FUNCTION_NAME)
+    }
+
+    // sui::types native function QIDs
+    pub fn sui_types_is_one_time_witness_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TYPES_MODULE_NAME, Self::TYPES_WITNESS_INSPECTOR_FUNCTION_NAME)
+    }
+
+    // sui::object native function QIDs
+    pub fn sui_object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_BORROW_UID_FUNCTION_NAME)
+    }
+    pub fn sui_object_delete_impl_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_FUNCTION_NAME)
+    }
+    pub fn sui_object_record_new_uid_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_RECORD_NEW_UID_FUNCTION_NAME)
+    }
+
+    // sui::dynamic_field native function QIDs
+    pub fn sui_dynamic_field_hash_type_and_key_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HASH_TYPE_AND_KEY_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_add_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_ADD_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_borrow_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_borrow_child_object_mut_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_BORROW_CHILD_OBJECT_MUT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_remove_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_has_child_object_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME)
+    }
+    pub fn sui_dynamic_field_has_child_object_with_ty_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::DYNAMIC_FIELD_MODULE_NAME, Self::DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME)
+    }
+
+    // sui::crypto::hash native function QIDs
+    pub fn sui_crypto_hash_blake2b256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_BLAKE_2B_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_hash_keccak256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HASH_MODULE_NAME, Self::CRYPTO_HASH_KECCAK_FUNCTION_NAME)
+    }
+
+    // sui::crypto::hmac native function QIDs
+    pub fn sui_crypto_hmac_hmac_sha3_256_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_HMAC_MODULE_NAME, Self::CRYPTO_HMAC_SHA3_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ed25519 native function QIDs
+    pub fn sui_crypto_ed25519_ed25519_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ED25519_MODULE_NAME, Self::CRYPTO_ED25519_VERIFIER_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecvrf native function QIDs
+    pub fn sui_crypto_ecvrf_ecvrf_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECVRF_MODULE_NAME, Self::CRYPTO_ECVRF_VERIFIER_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecdsa_r1 native function QIDs
+    pub fn sui_crypto_ecdsa_r1_secp256r1_ecrecover_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_R1_MODULE_NAME, Self::CRYPTO_ECDSA_R1_KEY_RECOVERER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_r1_secp256r1_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_R1_MODULE_NAME, Self::CRYPTO_ECDSA_R1_SIG_VALIDATOR_FUNCTION_NAME)
+    }
+
+    // sui::crypto::ecdsa_k1 native function QIDs
+    pub fn sui_crypto_ecdsa_k1_secp256k1_ecrecover_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_EC_RECOVER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_decompress_pubkey_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_DECOMPRESS_PUBKEY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_VERIFY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_sign_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_SIGN_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_ecdsa_k1_secp256k1_keypair_from_seed_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ECDSA_K1_MODULE_NAME, Self::CRYPTO_ECDSA_K1_KEYPAIR_FROM_SEED_FUNCTION_NAME)
+    }
+
+    // sui::crypto::bls12381 native function QIDs
+    pub fn sui_crypto_bls12381_bls12381_min_sig_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_SIG_VERIFY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_bls12381_bls12381_min_pk_verify_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_BLS12381_MODULE_NAME, Self::CRYPTO_BLS_MIN_PK_VERIFY_FUNCTION_NAME)
+    }
+
+    // sui::crypto::group_ops native function QIDs
+    pub fn sui_crypto_group_ops_internal_validate_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_VALIDATE_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_add_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_ADD_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_sub_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUB_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MUL_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_div_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_DIV_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_hash_to_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_HASH_TO_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_multi_scalar_mul_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_MULTI_SCALAR_MUL_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_pairing_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_PAIRING_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_convert_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_CONVERT_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_group_ops_internal_sum_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROUP_OPS_MODULE_NAME, Self::CRYPTO_GROUP_OPS_SUM_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_groth16_prepare_verifying_key_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_PREPARE_VERIFYING_KEY_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_groth16_verify_groth16_proof_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_GROTH16_MODULE_NAME, Self::CRYPTO_GROTH16_VERIFY_PROOF_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_poseidon_poseidon_bn254_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_POSEIDON_MODULE_NAME, Self::CRYPTO_POSEIDON_BN254_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_vdf_hash_to_input_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_VDF_MODULE_NAME, Self::CRYPTO_VDF_INPUT_HASHER_FUNCTION_NAME)
+    }
+    pub fn sui_crypto_vdf_vdf_verify_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_VDF_MODULE_NAME, Self::CRYPTO_VDF_PROOF_VERIFIER_FUNCTION_NAME)
+    }
+
+    pub fn sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_NITRO_ATTESTATION_MODULE_NAME, Self::CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME)
+    }
+
+    // sui::accumulator native function QIDs
+    pub fn sui_accumulator_emit_deposit_event_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ACCUMULATOR_MODULE_NAME, Self::ACCUMULATOR_EMIT_DEPOSIT_EVENT_FUNCTION_NAME)
+    }
+    pub fn sui_accumulator_emit_withdraw_event_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ACCUMULATOR_MODULE_NAME, Self::ACCUMULATOR_EMIT_WITHDRAW_EVENT_FUNCTION_NAME)
+    }
+
+    // sui::event native function QIDs  
+    pub fn sui_event_emit_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_EVENT_MODULE_NAME, Self::EVENT_EMIT_FUNCTION_NAME)
+    }
+
+    // sui::tx_context native function QIDs
+    pub fn sui_tx_context_sender_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_SENDER_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_epoch_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_EPOCH_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_epoch_timestamp_ms_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_EPOCH_TIMESTAMP_MS_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_fresh_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_FRESH_ID_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_reference_gas_price_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_REFERENCE_GAS_PRICE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_gas_price_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_GAS_PRICE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_ids_created_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_IDS_CREATED_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_gas_budget_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_GAS_BUDGET_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_last_created_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_LAST_CREATED_ID_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_sponsor_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_SPONSOR_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_replace_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_REPLACE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_derive_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_DERIVE_ID_FUNCTION_NAME)
+    }
+
+    pub fn is_deterministic(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
+        let function_env = self.get_function(qid);
+
+        if !function_env.is_native() {
+            bail!("Function {} is not native", function_env.get_full_name_str());
+        }
+
+        if self.deterministic_native_functions().contains(&function_env.get_qualified_id()) {
+            return Ok(true);
+        }
+
+        let function_name = function_env.get_name_str();
+
+        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
+            return Ok(true);
+        }
+
+        return Ok(false)
+    }
+
+    pub fn deterministic_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
+        let mut qids = BTreeSet::new();
+
+        // Prover module functions
+        qids.extend(vec![
+            self.requires_qid(),
+            self.ensures_qid(), 
+            self.asserts_qid(),
+            self.invariant_begin_qid(),
+            self.invariant_end_qid(),
+            self.prover_val_qid(),
+            self.prover_ref_qid(),
+        ]);
+        
+        // Ghost module functions  
+        qids.extend(vec![
+            self.global_qid(),
+            self.global_set_qid(),
+            self.global_borrow_mut_qid(),
+            self.declare_global_qid(),
+            self.declare_global_mut_qid(),
+            self.havoc_global_qid(),
+        ]);
+        
+        // Log module functions
+        qids.extend(vec![
+            self.log_text_qid(),
+            self.log_var_qid(),
+            self.log_ghost_qid(),
+        ]);
+
+        // Add specific native function QIDs
+        qids.extend(vec![
+            // std::vector native functions
+            self.std_vector_empty_qid(),
+            self.std_vector_length_qid(),
+            self.std_vector_borrow_qid(),
+            self.std_vector_push_back_qid(),
+            self.std_vector_borrow_mut_qid(),
+            self.std_vector_pop_back_qid(),
+            self.std_vector_destroy_empty_qid(),
+            self.std_vector_swap_qid(),
+
+            // std::hash native functions
+            self.std_hash_sha2_256_qid(),
+            self.std_hash_sha3_256_qid(),
+
+            // std::bcs native functions
+            self.std_bcs_to_bytes_qid(),
+
+            // std::debug native functions
+            self.std_debug_print_qid(),
+            self.std_debug_print_stack_trace_qid(),
+
+            // std::type_name native functions
+            self.std_type_name_get_qid(),
+            self.std_type_name_get_with_original_ids_qid(),
+
+            // std::string native functions
+            self.std_string_internal_check_utf8_qid(),
+            self.std_string_internal_is_char_boundary_qid(),
+            self.std_string_internal_sub_string_qid(),
+            self.std_string_internal_index_of_qid(),
+
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_to_u8_qid(),
+            self.std_integer_to_u16_qid(),
+            self.std_integer_to_u32_qid(),
+            self.std_integer_to_u64_qid(),
+            self.std_integer_to_u128_qid(),
+            self.std_integer_to_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_div_qid(),
+            self.std_integer_mod_qid(),
+            self.std_integer_sqrt_qid(),
+            self.std_integer_pow_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_div_qid(),
+            self.std_real_sqrt_qid(),
+            self.std_real_exp_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
+
+            // sui::address native functions
+            self.sui_address_to_u256_qid(),
+            self.sui_address_from_u256_qid(),
+            self.sui_address_from_bytes_qid(),
+
+            // sui::types native functions
+            self.sui_types_is_one_time_witness_qid(),
+
+            // sui::object native functions
+            self.sui_object_borrow_uid_qid(),
+            self.sui_object_delete_impl_qid(),
+            self.sui_object_record_new_uid_qid(),
+
+            // sui::dynamic_field native functions
+            self.sui_dynamic_field_hash_type_and_key_qid(),
+            self.sui_dynamic_field_add_child_object_qid(),
+            self.sui_dynamic_field_borrow_child_object_qid(),
+            self.sui_dynamic_field_borrow_child_object_mut_qid(),
+            self.sui_dynamic_field_remove_child_object_qid(),
+            self.sui_dynamic_field_has_child_object_qid(),
+            self.sui_dynamic_field_has_child_object_with_ty_qid(),
+
+            // sui::crypto::hash native functions
+            self.sui_crypto_hash_blake2b256_qid(),
+            self.sui_crypto_hash_keccak256_qid(),
+
+            // sui::crypto::hmac native functions
+            self.sui_crypto_hmac_hmac_sha3_256_qid(),
+
+            // sui::crypto::ed25519 native functions
+            self.sui_crypto_ed25519_ed25519_verify_qid(),
+
+            // sui::crypto::ecvrf native functions
+            self.sui_crypto_ecvrf_ecvrf_verify_qid(),
+
+            // sui::crypto::ecdsa_r1 native functions
+            self.sui_crypto_ecdsa_r1_secp256r1_ecrecover_qid(),
+            self.sui_crypto_ecdsa_r1_secp256r1_verify_qid(),
+
+            // sui::crypto::ecdsa_k1 native functions
+            self.sui_crypto_ecdsa_k1_secp256k1_ecrecover_qid(),
+            self.sui_crypto_ecdsa_k1_decompress_pubkey_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_verify_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_sign_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_keypair_from_seed_qid(),
+
+            // sui::crypto::bls12381 native functions
+            self.sui_crypto_bls12381_bls12381_min_sig_verify_qid(),
+            self.sui_crypto_bls12381_bls12381_min_pk_verify_qid(),
+
+            // sui::crypto::group_ops native functions
+            self.sui_crypto_group_ops_internal_validate_qid(),
+            self.sui_crypto_group_ops_internal_add_qid(),
+            self.sui_crypto_group_ops_internal_sub_qid(),
+            self.sui_crypto_group_ops_internal_mul_qid(),
+            self.sui_crypto_group_ops_internal_div_qid(),
+            self.sui_crypto_group_ops_internal_hash_to_qid(),
+            self.sui_crypto_group_ops_internal_multi_scalar_mul_qid(),
+            self.sui_crypto_group_ops_internal_pairing_qid(),
+            self.sui_crypto_group_ops_internal_convert_qid(),
+            self.sui_crypto_group_ops_internal_sum_qid(),
+
+            // sui::crypto::groth16 native functions
+            self.sui_crypto_groth16_prepare_verifying_key_internal_qid(),
+            self.sui_crypto_groth16_verify_groth16_proof_internal_qid(),
+
+            // sui::crypto::poseidon native functions
+            self.sui_crypto_poseidon_poseidon_bn254_internal_qid(),
+
+            // sui::crypto::vdf native functions
+            self.sui_crypto_vdf_hash_to_input_internal_qid(),
+            self.sui_crypto_vdf_vdf_verify_internal_qid(),
+
+            // sui::crypto::nitro_attestation native functions
+            self.sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(),
+        ].into_iter().filter_map(|x| x).collect::<Vec<_>>());
+
+        qids
+    }
+
+    pub fn func_not_aborts(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
+        let function_env = self.get_function(qid);
+
+        if !function_env.is_native() {
+            bail!("Function {} is not native", function_env.get_full_name_str());
+        }
+
+        if self.no_aborting_native_functions().contains(&function_env.get_qualified_id()) {
+            return Ok(true);
+        }
+
+        let function_name = function_env.get_name_str();
+
+        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
+            return Ok(true);
+        }
+
+        return Ok(false)
+    }
+
+    pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
+        let mut qids = BTreeSet::new();
+        
+        // Ghost module functions  
+        qids.extend(vec![
+            self.global_qid(),
+            self.global_set_qid(),
+            self.global_borrow_mut_qid(),
+            self.declare_global_qid(),
+            self.declare_global_mut_qid(),
+            self.havoc_global_qid(),
+        ]);
+        
+        // Log module functions
+        qids.extend(vec![
+            self.log_text_qid(),
+            self.log_var_qid(),
+            self.log_ghost_qid(),
+        ]);
+
+        // Add specific native function QIDs
+        qids.extend(vec![
+            // std::vector native functions
+            self.std_vector_empty_qid(),
+            self.std_vector_length_qid(),
+
+            // std::hash native functions
+            self.std_hash_sha2_256_qid(),
+            self.std_hash_sha3_256_qid(),
+
+            // std::bcs native functions
+            self.std_bcs_to_bytes_qid(),
+
+            // std::debug native functions
+            self.std_debug_print_qid(),
+            self.std_debug_print_stack_trace_qid(),
+
+            // std::type_name native functions
+            self.std_type_name_get_qid(),
+            self.std_type_name_get_with_original_ids_qid(),
+
+            // std::string native functions
+            self.std_string_internal_check_utf8_qid(),
+            self.std_string_internal_is_char_boundary_qid(),
+            self.std_string_internal_sub_string_qid(),
+            self.std_string_internal_index_of_qid(),
+
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
+
+            // sui::address native functions
+            self.sui_address_to_u256_qid(),
+
+            // sui::accumulator native functions
+            self.sui_accumulator_emit_deposit_event_qid(),
+            self.sui_accumulator_emit_withdraw_event_qid(),
+
+            // sui::event native functions
+            self.sui_event_emit_qid(),
+
+            // sui::tx_context native functions
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_fresh_id_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
+            self.sui_tx_context_ids_created_qid(),
+            self.sui_tx_context_gas_budget_qid(),
+            self.sui_tx_context_last_created_id_qid(),
+            self.sui_tx_context_sponsor_qid(),
+            self.sui_tx_context_replace_qid(),
+            self.sui_tx_context_derive_id_qid(),
+
+            // sui::crypto::ecdsa_k1 native functions
+            self.sui_crypto_ecdsa_k1_secp256k1_verify_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_sign_qid(),            
+            self.sui_crypto_ecdsa_r1_secp256r1_verify_qid(),
+            
+            // sui::crypto::ed25519 native functions
+            self.sui_crypto_ed25519_ed25519_verify_qid(),
+
+            // sui::crypto::bls12381 native functions
+            self.sui_crypto_bls12381_bls12381_min_sig_verify_qid(),
+            self.sui_crypto_bls12381_bls12381_min_pk_verify_qid(),
+
+            // sui::types native functions
+            self.sui_types_is_one_time_witness_qid(),
+
+            // sui::object native functions
+            self.sui_object_borrow_uid_qid(),
+            self.sui_object_delete_impl_qid(),
+            self.sui_object_record_new_uid_qid(),
+
+            // sui::crypto::hash native functions
+            self.sui_crypto_hash_blake2b256_qid(),
+            self.sui_crypto_hash_keccak256_qid(),
+
+            // sui::crypto::hmac native functions
+            self.sui_crypto_hmac_hmac_sha3_256_qid(),
+
+            // sui::crypto::group_ops native functions
+            self.sui_crypto_group_ops_internal_validate_qid(),
+            self.sui_crypto_group_ops_internal_add_qid(),
+            self.sui_crypto_group_ops_internal_sub_qid(),
+            self.sui_crypto_group_ops_internal_mul_qid(),
+            self.sui_crypto_group_ops_internal_div_qid(),
+            self.sui_crypto_group_ops_internal_hash_to_qid(),
+            self.sui_crypto_group_ops_internal_multi_scalar_mul_qid(),
+            self.sui_crypto_group_ops_internal_pairing_qid(),
+            self.sui_crypto_group_ops_internal_convert_qid(),
+            self.sui_crypto_group_ops_internal_sum_qid(),
+
+            // sui::crypto::vdf native functions
+            self.sui_crypto_vdf_hash_to_input_internal_qid(),
+            self.sui_crypto_vdf_vdf_verify_internal_qid(),
+
+            // sui::crypto::nitro_attestation native functions
+            self.sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(),
+        ].into_iter().filter_map(|x| x).collect::<Vec<_>>());
+
+        qids
+    }
+
     pub fn intrinsic_fun_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
         vec![
             self.vector_reverse_qid(),
@@ -1862,8 +3123,12 @@ impl GlobalEnv {
             self.vector_remove_qid(),
             self.vector_insert_qid(),
             self.vector_swap_remove_qid(),
+            self.vector_take_qid(),
+            self.vector_skip_qid(),
             self.vec_set_get_idx_opt_qid(),
             self.vec_set_from_keys_qid(),
+            self.vec_set_contains_qid(),
+            self.vec_set_remove_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_from_keys_values_qid(),
             self.vec_map_into_keys_values_qid(),
@@ -1888,6 +3153,20 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_destroy_empty_qid(),
             self.object_table_value_id_qid(),
+            self.dynamic_field_add_qid(),
+            self.dynamic_field_borrow_qid(),
+            self.dynamic_field_borrow_mut_qid(),
+            self.dynamic_field_remove_qid(),
+            self.dynamic_field_exists_qid(),
+            self.dynamic_field_remove_if_exists_qid(),
+            self.dynamic_field_exists_with_type_qid(),
+            self.dynamic_object_field_add_qid(),
+            self.dynamic_object_field_borrow_qid(),
+            self.dynamic_object_field_borrow_mut_qid(),
+            self.dynamic_object_field_remove_qid(),
+            self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_remove_if_exists_qid(),
+            self.dynamic_object_field_exists_with_type_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
@@ -2047,7 +3326,7 @@ pub struct ModuleEnv<'env> {
     pub env: &'env GlobalEnv,
 
     /// Reference to the data of the module.
-    data: &'env ModuleData,
+    pub data: &'env ModuleData,
 }
 
 impl<'env> ModuleEnv<'env> {
@@ -2502,81 +3781,6 @@ impl<'env> ModuleEnv<'env> {
             .filter(|s| s.get_abilities().has_key())
     }
 
-    /// Returns the object types that are shared by code in this module
-    /// If `transitive` is false, only return objects directly shared by functions declared in this module
-    /// If `transitive` is true, return objects shared by both functions declared in this module and by transitive callees
-    /// Note that this can include both types declared inside this module (common case) and types declared outside
-    /// Note that objects with `store` can be shared by modules that depend on this one (e.g., by returning the object and subsequently calling `public_share_object`)
-    pub fn get_shared_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut shared = BTreeSet::new();
-        for f in self.get_functions() {
-            shared.extend(f.get_shared_objects(transitive));
-        }
-        shared
-    }
-
-    /// Returns the object types that are frozen by this module
-    /// If `transitive` is false, only return objects directly transferred by functions declared in this module
-    /// If `transitive` is true, return objects transferred by both functions declared in this module and by transitive callees
-    /// Note that this function can return both types declared inside this module (common case) and types declared outside
-    /// Note that objects with `store` can be transferred by modules that depend on this one (e.g., by returning the object and subsequently calling `public_transfer`),
-    /// or transferred by a command in a programmable transaction block
-    pub fn get_transferred_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut transferred = BTreeSet::new();
-        for f in self.get_functions() {
-            transferred.extend(f.get_transferred_objects(transitive))
-        }
-        transferred
-    }
-
-    /// Returns the object types that are frozen by this module
-    /// If `transitive` is false, only return objects directly frozen by functions declared in this module
-    /// If `transitive` is true, return objects frozen by both functions declared in this module and by transitive callees
-    /// Note that this function can return both types declared inside this module (common case) and types declared outside
-    /// Note that objects with `store` can be frozen by modules that depend on this one (e.g., by returning the object and subsequently calling `public_freeze`)
-    pub fn get_frozen_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut frozen = BTreeSet::new();
-        for f in self.get_functions() {
-            frozen.extend(f.get_frozen_objects(transitive))
-        }
-        frozen
-    }
-
-    /// Returns the event types that are emitted by this module
-    /// If `transitive` is false, only return events directly emitted by functions declared in this module
-    /// If `transitive` is true, return events emitted by both functions declared in this module and by transitive callees
-    /// Note that this function can return both event types declared inside this module (common case) and event types declared outside
-    pub fn get_events(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut frozen = BTreeSet::new();
-        for f in self.get_functions() {
-            frozen.extend(f.get_frozen_objects(transitive))
-        }
-        frozen
-    }
-
-    /// Returns the objects types that are returned by externally callable (`public`, `entry`, and `friend`) functions in this module
-    /// Returned objects with `store` can be transferred, shared, frozen, or wrapped by a different module
-    /// Note that this function returns object types both with and without `store`
-    pub fn get_externally_returned_objects(&'env self) -> BTreeSet<Type> {
-        let mut returned = BTreeSet::new();
-        for f in self.get_functions() {
-            if !f.is_exposed() {
-                continue;
-            }
-            // Objects returned by a public function can be transferred, shared, frozen, or wrapped
-            // by a different module or (in the case of transfer) by a command in a programmable transaction block.
-            for f in f.get_return_types() {
-                if let Type::Datatype(mid, sid, _) = f {
-                    let struct_env = self.env.get_module(mid).into_struct(sid);
-                    if struct_env.get_abilities().has_key() {
-                        returned.insert(f);
-                    }
-                }
-            }
-        }
-        returned
-    }
-
     /// Returns iterator over structs in this module.
     pub fn into_structs(self) -> impl Iterator<Item = StructEnv<'env>> {
         self.data.struct_data.values().map(move |data| StructEnv {
@@ -2869,6 +4073,27 @@ impl<'env> EnumEnv<'env> {
             .map(move |data| VariantEnv {
                 enum_env: self.clone(),
                 data,
+            })
+    }
+
+    pub fn get_all_fields(&'env self) -> impl Iterator<Item = FieldEnv<'env>> {
+        self.data
+            .variant_data
+            .values()
+            .sorted_by_key(|data| data.tag)
+            .flat_map(move |data| {
+                data
+                    .field_data
+                    .values()
+                    .sorted_by_key(|data| data.offset)
+                    .map(move |fdata| FieldEnv {
+                        parent_env: EnclosingEnv::Variant(VariantEnv {
+                                enum_env: self.clone(),
+                                data,
+                            }
+                        ),
+                        data: fdata,
+                    })
             })
     }
 
@@ -4244,142 +5469,6 @@ impl<'env> FunctionEnv<'env> {
             type_param_names: Some(type_param_names),
         }
     }
-
-    /// Returns the object types that may be shared by this function
-    /// If `transitive` is false, only return objects directly shared by this function
-    /// If `transitive` is true, return objects shared by both this function and its transitive callees
-    pub fn get_shared_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut shared = BTreeSet::new();
-        if transitive {
-            let callees = self.get_transitive_closure_of_called_functions();
-            for callee in callees {
-                let fenv = self.module_env.env.get_function(callee);
-                shared.extend(fenv.get_shared_objects(false));
-            }
-        } else {
-            let module = &self.module_env.data.module;
-            for b in self.get_bytecode() {
-                if let Bytecode::CallGeneric(fi_idx) = b {
-                    let FunctionInstantiation {
-                        handle,
-                        type_parameters,
-                    } = module.function_instantiation_at(*fi_idx);
-                    let f_ref = FunctionRef::from_idx(module, handle);
-                    if is_framework_function(
-                        &f_ref,
-                        "transfer",
-                        vec!["share_object", "public_share_object"],
-                    ) {
-                        let type_params = module.signature_at(*type_parameters);
-                        shared.insert(self.module_env.globalize_signature(&type_params.0[0]));
-                    }
-                }
-            }
-        }
-
-        shared
-    }
-
-    /// Returns the object types that may be transferred by this function
-    /// If `transitive` is false, only objects directly transferred by this function
-    /// If `transitive` is true, return objects transferred by both this function and its transitive callees
-    pub fn get_transferred_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut transferred = BTreeSet::new();
-        if transitive {
-            let callees = self.get_transitive_closure_of_called_functions();
-            for callee in callees {
-                let fenv = self.module_env.env.get_function(callee);
-                transferred.extend(fenv.get_shared_objects(false));
-            }
-        } else {
-            let module = &self.module_env.data.module;
-            for b in self.get_bytecode() {
-                if let Bytecode::CallGeneric(fi_idx) = b {
-                    let FunctionInstantiation {
-                        handle,
-                        type_parameters,
-                    } = module.function_instantiation_at(*fi_idx);
-                    let f_ref = FunctionRef::from_idx(module, handle);
-                    if is_framework_function(
-                        &f_ref,
-                        "transfer",
-                        vec!["transfer", "public_transfer"],
-                    ) {
-                        let type_params = module.signature_at(*type_parameters);
-                        transferred.insert(self.module_env.globalize_signature(&type_params.0[0]));
-                    }
-                }
-            }
-        }
-
-        transferred
-    }
-
-    /// Returns the object types that may be frozen by this function
-    /// If `transitive` is false, only return objects directly frozen by this function
-    /// If `transitive` is true, return objects frozen by both this function and its transitive callees
-    pub fn get_frozen_objects(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut frozen = BTreeSet::new();
-        if transitive {
-            let callees = self.get_transitive_closure_of_called_functions();
-            for callee in callees {
-                let fenv = self.module_env.env.get_function(callee);
-                frozen.extend(fenv.get_shared_objects(false));
-            }
-        } else {
-            let module = &self.module_env.data.module;
-            for b in self.get_bytecode() {
-                if let Bytecode::CallGeneric(fi_idx) = b {
-                    let FunctionInstantiation {
-                        handle,
-                        type_parameters,
-                    } = module.function_instantiation_at(*fi_idx);
-                    let f_ref = FunctionRef::from_idx(module, handle);
-                    if is_framework_function(
-                        &f_ref,
-                        "transfer",
-                        vec!["freeze_object", "public_freeze_object"],
-                    ) {
-                        let type_params = module.signature_at(*type_parameters);
-                        frozen.insert(self.module_env.globalize_signature(&type_params.0[0]));
-                    }
-                }
-            }
-        }
-
-        frozen
-    }
-
-    /// Returns the event types that may be emitted by this function
-    /// If `transitive` is false, only return events directly emitted by this function
-    /// If `transitive` is true, return events emitted by both this function and its transitive callees
-    pub fn get_events(&'env self, transitive: bool) -> BTreeSet<Type> {
-        let mut events = BTreeSet::new();
-        if transitive {
-            let callees = self.get_transitive_closure_of_called_functions();
-            for callee in callees {
-                let fenv = self.module_env.env.get_function(callee);
-                events.extend(fenv.get_events(false));
-            }
-        } else {
-            let module = &self.module_env.data.module;
-            for b in self.get_bytecode() {
-                if let Bytecode::CallGeneric(fi_idx) = b {
-                    let FunctionInstantiation {
-                        handle,
-                        type_parameters,
-                    } = module.function_instantiation_at(*fi_idx);
-                    let f_ref = FunctionRef::from_idx(module, handle);
-                    if is_framework_function(&f_ref, "event", vec!["emit"]) {
-                        let type_params = module.signature_at(*type_parameters);
-                        events.insert(self.module_env.globalize_signature(&type_params.0[0]));
-                    }
-                }
-            }
-        }
-
-        events
-    }
 }
 
 // =================================================================================================
@@ -4510,8 +5599,9 @@ fn filter_out_sensetives(input: &str) -> String {
     if input.is_empty() {
         return input.to_string();
     }
-    let filter_regex = Regex::new(r"/Users/[^/]+/\.move/[^/]+/(?:crates|packages)/([^/]+)/").unwrap();
-    filter_regex
-        .replace_all(&input,"$1/")
-        .to_string()
+
+    let filter_regex =
+        Regex::new(r"/(?:Users|home)/[^/]+/\.move/[^/]+/(?:crates|packages)/([^/]+)/").unwrap();
+
+    filter_regex.replace_all(input, "$1/").to_string()
 }

@@ -1,0 +1,22 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+warning: unused variable
+   ┌─ tests/inputs/logging.move:14:9
+   │
+14 │     let x_int = x.to_int();
+   │         ^^^^^ Unused local variable 'x_int'. Consider removing or prefixing with an underscore: '_x_int'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/logging.move:17:5
+   │
+17 │     ensures(res_int == 0u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/logging.move:11: foo_spec
+   =     Checking value of x
+   =     at tests/inputs/logging.move:17: foo_spec

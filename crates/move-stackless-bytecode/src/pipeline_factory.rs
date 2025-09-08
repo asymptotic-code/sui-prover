@@ -7,6 +7,7 @@ use crate::{
     clean_and_optimize::CleanAndOptimizeProcessor,
     // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
+    dynamic_field_analysis::DynamicFieldAnalysisProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
     // global_invariant_analysis::GlobalInvariantAnalysisProcessor,
@@ -24,17 +25,20 @@ use crate::{
     reaching_def_analysis::ReachingDefProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
+    spec_purity_analysis::SpecPurityAnalysis,
+    spec_well_formed_analysis::SpecWellFormedAnalysisProcessor,
     type_invariant_analysis::TypeInvariantAnalysisProcessor,
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
+    no_abort_analysis::NoAbortAnalysisProcessor,
+    deterministic_analysis::DeterministicAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
-    spec_well_formed_analysis::SpecWellFormedAnalysisProcessor,
-    spec_purity_analysis::SpecPurityAnalysis,
 };
 
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {
     // NOTE: the order of these processors is import!
     let mut processors: Vec<Box<dyn FunctionTargetProcessor>> = vec![
+        VerificationAnalysisProcessor::new(),
         SpecGlobalVariableAnalysisProcessor::new(),
         SpecPurityAnalysis::new(),
         DebugInstrumenter::new(),
@@ -42,6 +46,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         EliminateImmRefsProcessor::new(),
         MutRefInstrumenter::new(),
         MoveLoopInvariantsProcessor::new(),
+        DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
@@ -49,8 +54,9 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
-        VerificationAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
+        NoAbortAnalysisProcessor::new(),
+        DeterministicAnalysisProcessor::new(),
     ];
 
     if !options.skip_loop_analysis {

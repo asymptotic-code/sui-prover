@@ -38,7 +38,6 @@ impl From<BuildConfig> for MoveBuildConfig {
         Self {
             dev_mode: true,
             test_mode: false,
-            verify_mode: true,
             json_errors: false,
             generate_docs: false,
             silence_warnings: true,
@@ -55,6 +54,8 @@ impl From<BuildConfig> for MoveBuildConfig {
             additional_named_addresses: config.additional_named_addresses,
             save_disassembly: false,
             implicit_dependencies: BTreeMap::new(),
+            modes: vec![ModeAttribute::VERIFY_ONLY.into(), ModeAttribute::TEST_ONLY.into(), ModeAttribute::TEST.into()],
+            force_lock_file: false,
         }
     }
 }
@@ -75,6 +76,10 @@ pub struct GeneralConfig {
     #[clap(name = "verbose", long, short = 'v', global = true)]
     pub verbose: bool,
 
+    /// Don't display counterexample trace
+    #[clap(name = "no-counterexample-trace", long, global = true)]
+    pub no_counterexample_trace: bool,
+
     /// Explain the proving outputs via LLM
     #[clap(name = "explain", long, global = true)]
     pub explain: bool,
@@ -87,6 +92,10 @@ pub struct GeneralConfig {
     #[clap(name = "split-paths", long, short = 's', global = true)]
     pub split_paths: Option<usize>,
 
+    /// Encode u8/u16/u32/u64/u128/u256 as bitvector instead of integer in boogie
+    #[clap(name = "no-bv-int-encoding", long, global = true)]
+    pub no_bv_int_encoding: bool,
+
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
@@ -94,6 +103,10 @@ pub struct GeneralConfig {
     /// Lean running mode
     #[clap(name = "backend", long, global = true, default_value_t = BackendOptions::Boogie)]
     pub backend: BackendOptions,
+
+    /// Dump bytecode to file
+    #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
+    pub dump_bytecode: bool,
 }
 
 #[derive(Args, Default)]
@@ -154,6 +167,7 @@ pub async fn execute(
     general_config: GeneralConfig,
     build_config: BuildConfig,
     boogie_config: Option<String>,
+    filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let rerooted_path = reroot_path(path)?;
     let move_build_config = resolve_lock_file_path(build_config.into(), Some(&rerooted_path))?;
@@ -172,6 +186,7 @@ async fn execute_backend_boogie(
     general_config: &GeneralConfig,
     boogie_config: Option<String>,
 ) -> anyhow::Result<()> {
+    let model = build_model(path, Some(build_config))?;
     let mut options = move_prover_boogie_backend::generator_options::Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
@@ -179,13 +194,14 @@ async fn execute_backend_boogie(
     options.backend.keep_artifacts = general_config.keep_temp;
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
     options.backend.path_split = general_config.split_paths;
-    options.verbosity_level = if general_config.verbose {
-        LevelFilter::Trace
-    } else {
-        LevelFilter::Info
-    };
+    options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
+    options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
+    options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    options.boogie_file_mode = general_config.boogie_file_mode.clone();
+    options.backend.boogie_file_mode = general_config.boogie_file_mode;
+    options.backend.debug_trace = !general_config.no_counterexample_trace;
+    options.filter = filter;
+    options.prover.dump_bytecode = general_config.dump_bytecode;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
@@ -200,7 +216,8 @@ async fn execute_backend_boogie(
             }
         }
     } else {
-        run_boogie_gen(&model, options)?;
+       let result_str = run_boogie_gen(&model, options)?;
+       println!("{}", result_str)
     }
 
     Ok(())
@@ -227,27 +244,4 @@ async fn execute_backend_lean(
         }
     }
     Ok(())
-}
-
-pub fn resolve_lock_file_path(
-    mut build_config: MoveBuildConfig,
-    package_path: Option<&Path>,
-) -> Result<MoveBuildConfig, anyhow::Error> {
-    if build_config.lock_file.is_none() {
-        let package_root = reroot_path(package_path)?;
-        let lock_file_path = package_root.join(SourcePackageLayout::Lock.path());
-        build_config.lock_file = Some(lock_file_path);
-    }
-    Ok(build_config)
-}
-
-pub fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let path = path
-        .map(Path::canonicalize)
-        .unwrap_or_else(|| PathBuf::from(".").canonicalize())?;
-    // Always root ourselves to the package root, and then compile relative to that.
-    let rooted_path = SourcePackageLayout::try_find_root(&path)?;
-    std::env::set_current_dir(rooted_path).unwrap();
-
-    Ok(PathBuf::from("."))
 }

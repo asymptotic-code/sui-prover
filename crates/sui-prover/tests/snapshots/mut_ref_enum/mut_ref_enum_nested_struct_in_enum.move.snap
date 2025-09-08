@@ -1,0 +1,75 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 126
+expression: output
+---
+Verification successful
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:19:20
+   │
+19 │         Color::Hex(x) => {
+   │                    ^ Unused local variable 'x'. Consider removing or prefixing with an underscore: '_x'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:34:32
+   │
+34 │         Color::RGB{red, green, blue} => {
+   │                                ^^^^ Unused local variable 'blue'. Consider removing or prefixing with an underscore: '_blue'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:34:25
+   │
+34 │         Color::RGB{red, green, blue} => {
+   │                         ^^^^^ Unused local variable 'green'. Consider removing or prefixing with an underscore: '_green'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:34:20
+   │
+34 │         Color::RGB{red, green, blue} => {
+   │                    ^^^ Unused local variable 'red'. Consider removing or prefixing with an underscore: '_red'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:37:20
+   │
+37 │         Color::Hex(x) => {
+   │                    ^ Unused local variable 'x'. Consider removing or prefixing with an underscore: '_x'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:14:44
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                                        --- ^^^^ The variable 'blue' is never used mutably
+   │                                        │    
+   │                                        Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:14:33
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                             --- ^^^^^ The variable 'green' is never used mutably
+   │                             │    
+   │                             Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused 'mut' modifiers
+   ┌─ tests/inputs/mut_ref_enum/mut_ref_enum_nested_struct_in_enum.move:14:24
+   │
+14 │         Color::RGB{mut red, mut green, mut blue} => {
+   │                    --- ^^^ The variable 'red' is never used mutably
+   │                    │    
+   │                    Consider removing the 'mut' declaration here
+   │
+   = This warning can be suppressed with '#[allow(unused_let_mut)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

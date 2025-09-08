@@ -1,0 +1,15 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 149
+expression: output
+---
+exiting with bytecode transformation errors
+error: Abort check in underlying function is redundant — already covered by spec.
+   ┌─ tests/inputs/spec_limited/as_spec.fail.move:13:1
+   │  
+13 │ ╭ fun sum_spec(x: u32, y: u32): u64 {
+14 │ │     let r = sum(x, y);
+15 │ │     ensures(r == (x as u64) + (y as u64));
+16 │ │     r
+17 │ │ }
+   │ ╰─^

@@ -8,7 +8,7 @@ The relevant file content is below:
 
 {file_contents}
 
-Please analyze this specific error only.
+Please analyze this specific error only. Keep your explanation short, at most a few lines.
 
 1. Explain clearly what caused this specific compiler error.
 2. Point to the exact line(s) or construct in the Move code that triggered it.
