@@ -734,7 +734,7 @@ impl<'env> LeanTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
-        let mut dummy_targets = FunctionTargetsHolder::new();
+        let mut dummy_targets = FunctionTargetsHolder::new(None);
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 

@@ -170,7 +170,7 @@ pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new();
+    let mut targets = FunctionTargetsHolder::new(None);
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");

@@ -1,37 +1,24 @@
-use crate::legacy_builder::ModelBuilderLegacy;
 use crate::llm_explain::explain_err;
-use crate::package_resolution_graph::resolution_graph_for_package;
 use clap::{Args, ValueEnum};
 use codespan_reporting::term::termcolor::Buffer;
 use log::LevelFilter;
 use move_compiler::editions::{Edition, Flavor};
+use move_compiler::shared::known_attributes::ModeAttribute;
 use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{
-    package_lock::PackageLock, source_package::layout::SourcePackageLayout,
     BuildConfig as MoveBuildConfig, LintFlag,
 };
+use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
+use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_stackless_bytecode::target_filter::TargetFilterOptions;
+use std::fmt::{Display, Formatter};
 use std::{
     collections::BTreeMap
     ,
     path::{Path, PathBuf},
 };
-use std::fmt::{Display, Formatter};
-use move_prover_boogie_backend::{
-    generator::run_boogie_gen,
-    generator_options::BoogieFileMode,
-};
-
-pub fn move_model_for_package_legacy(
-    config: MoveBuildConfig,
-    path: &Path,
-) -> Result<GlobalEnv, anyhow::Error> {
-    let flags = config.compiler_flags();
-    let resolved_graph = resolution_graph_for_package(config, path, None, &mut Buffer::no_color())?;
-    let _mutx = PackageLock::lock(); // held until function returns
-
-    ModelBuilderLegacy::create(resolved_graph).build_model(flags)
-}
+use crate::build_model::build_model;
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -169,13 +156,10 @@ pub async fn execute(
     boogie_config: Option<String>,
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
-    let rerooted_path = reroot_path(path)?;
-    let move_build_config = resolve_lock_file_path(build_config.into(), Some(&rerooted_path))?;
-
-    let model = move_model_for_package_legacy(move_build_config, &rerooted_path)?;
+    let model = build_model(path, Some(build_config))?;
 
     if matches!(general_config.backend, BackendOptions::Boogie) {
-        execute_backend_boogie(model, &general_config, boogie_config).await
+        execute_backend_boogie(model, &general_config, boogie_config, filter).await
     } else {
         execute_backend_lean(model, &general_config).await
     }
@@ -185,8 +169,8 @@ async fn execute_backend_boogie(
     model: GlobalEnv,
     general_config: &GeneralConfig,
     boogie_config: Option<String>,
+    filter: TargetFilterOptions
 ) -> anyhow::Result<()> {
-    let model = build_model(path, Some(build_config))?;
     let mut options = move_prover_boogie_backend::generator_options::Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
@@ -198,7 +182,7 @@ async fn execute_backend_boogie(
     options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
-    options.backend.boogie_file_mode = general_config.boogie_file_mode;
+    options.backend.boogie_file_mode = general_config.boogie_file_mode.clone();
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
