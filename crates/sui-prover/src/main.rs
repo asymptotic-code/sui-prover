@@ -21,7 +21,7 @@ mod build_model;
     author,
     version = env!("CARGO_PKG_VERSION"),
 )]
-struct Args {
+pub struct Args {
     /// Path to package directory with a Move.toml inside
     #[clap(long = "path", short = 'p', global = true)]
     pub package_path: Option<PathBuf>,
