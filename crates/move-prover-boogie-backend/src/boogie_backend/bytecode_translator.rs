@@ -1205,7 +1205,7 @@ impl<'env> StructTranslator<'env> {
         emitln!(writer, "}");
     }
     
-     fn emit_option_axioms_after_procedure(&self, suffix: &str) {
+    fn emit_option_axioms_after_procedure(&self, suffix: &str) {
         let writer = self.parent.writer;
         // Axiom: Option constraint - internal vector length is always 0 or 1
         emitln!(writer, "// Axiom: Option internal vector must have length 0 or 1");
