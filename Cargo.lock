@@ -743,7 +743,7 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 [[package]]
 name = "enum-compat-util"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "serde_yaml",
 ]
@@ -1610,17 +1610,17 @@ dependencies = [
 [[package]]
 name = "move-abstract-interpreter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 
 [[package]]
 name = "move-abstract-stack"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 
 [[package]]
 name = "move-binary-format"
 version = "0.0.3"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "enum-compat-util",
@@ -1636,12 +1636,12 @@ dependencies = [
 [[package]]
 name = "move-borrow-graph"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 
 [[package]]
 name = "move-bytecode-source-map"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1657,7 +1657,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-utils"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "indexmap 2.11.1",
@@ -1670,7 +1670,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "move-abstract-interpreter",
  "move-abstract-stack",
@@ -1685,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier-meter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -1695,7 +1695,7 @@ dependencies = [
 [[package]]
 name = "move-command-line-common"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1716,7 +1716,7 @@ dependencies = [
 [[package]]
 name = "move-compiler"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1752,7 +1752,7 @@ dependencies = [
 [[package]]
 name = "move-core-types"
 version = "0.0.4"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1777,7 +1777,7 @@ dependencies = [
 [[package]]
 name = "move-coverage"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1802,7 +1802,7 @@ dependencies = [
 [[package]]
 name = "move-disassembler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1823,7 +1823,7 @@ dependencies = [
 [[package]]
 name = "move-docgen"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "clap",
@@ -1846,7 +1846,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "codespan-reporting",
@@ -1864,7 +1864,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode-syntax"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "hex",
@@ -1877,7 +1877,7 @@ dependencies = [
 [[package]]
 name = "move-ir-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "hex",
  "move-command-line-common",
@@ -1915,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "move-model"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "codespan",
@@ -1940,7 +1940,7 @@ dependencies = [
 [[package]]
 name = "move-model-2"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "bcs",
@@ -1963,7 +1963,7 @@ dependencies = [
 [[package]]
 name = "move-package"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "clap",
@@ -2000,7 +2000,7 @@ dependencies = [
 [[package]]
 name = "move-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "enum-compat-util",
  "quote",
@@ -2105,7 +2105,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "anyhow",
  "hex",
@@ -2124,7 +2124,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib-natives"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "hex",
  "move-binary-format",
@@ -2139,7 +2139,7 @@ dependencies = [
 [[package]]
 name = "move-symbol-pool"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "once_cell",
  "phf",
@@ -2149,7 +2149,7 @@ dependencies = [
 [[package]]
 name = "move-trace-format"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -2161,7 +2161,7 @@ dependencies = [
 [[package]]
 name = "move-vm-config"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "move-binary-format",
  "once_cell",
@@ -2170,9 +2170,8 @@ dependencies = [
 [[package]]
 name = "move-vm-profiler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
- "move-trace-format",
  "move-vm-config",
  "once_cell",
  "serde",
@@ -2183,7 +2182,7 @@ dependencies = [
 [[package]]
 name = "move-vm-runtime"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "better_any",
  "fail",
@@ -2192,6 +2191,7 @@ dependencies = [
  "move-core-types",
  "move-trace-format",
  "move-vm-config",
+ "move-vm-profiler",
  "move-vm-types",
  "once_cell",
  "parking_lot 0.11.2",
@@ -2202,7 +2202,7 @@ dependencies = [
 [[package]]
 name = "move-vm-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#d6d93f69c5971b58012236d9103882b6f30ede87"
+source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
 dependencies = [
  "bcs",
  "move-binary-format",
