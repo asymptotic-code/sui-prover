@@ -1182,6 +1182,13 @@ impl<'env> StructTranslator<'env> {
         writer.unindent();
         emitln!(writer, "}");
 
+        // Add Option-specific axioms if this is an Option type
+        if let Some(option_qid) = env.option_qid() {
+            if self.struct_env.get_qualified_id() == option_qid {
+                self.emit_option_axioms_after_procedure(&suffix);
+            }
+        }
+
         emitln!(writer);
     }
 
@@ -1196,6 +1203,16 @@ impl<'env> StructTranslator<'env> {
         body_fn();
         writer.unindent();
         emitln!(writer, "}");
+    }
+    
+    fn emit_option_axioms_after_procedure(&self, suffix: &str) {
+        let writer = self.parent.writer;
+        // Axiom: Option constraint - internal vector length is always 0 or 1
+        emitln!(writer, "// Axiom: Option internal vector must have length 0 or 1");
+        emitln!(writer, "axiom (forall opt: {} :: {{LenVec(opt->$vec)}}", suffix);
+        emitln!(writer, "    LenVec(opt->$vec) == 0 || LenVec(opt->$vec) == 1");
+        emitln!(writer, ");");
+        emitln!(writer);
     }
 }
 
