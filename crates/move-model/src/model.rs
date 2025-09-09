@@ -1612,9 +1612,6 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME: &'static str = "has_child_object";
     const DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
 
-
-    const UNIT_TEST_POISON_FUN_NAME: &'static str = "unit_test_poison";
-
     // std::hash native function names (with fun constants)
     const HASH_SHA2_FUNCTION_NAME: &'static str = "sha2_256";
     const HASH_SHA3_FUNCTION_NAME: &'static str = "sha3_256";
@@ -2738,17 +2735,7 @@ impl GlobalEnv {
             bail!("Function {} is not native", function_env.get_full_name_str());
         }
 
-        if self.deterministic_native_functions().contains(&function_env.get_qualified_id()) {
-            return Ok(true);
-        }
-
-        let function_name = function_env.get_name_str();
-
-        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
-            return Ok(true);
-        }
-
-        return Ok(false)
+        Ok(self.deterministic_native_functions().contains(&function_env.get_qualified_id()))
     }
 
     pub fn deterministic_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
@@ -2947,17 +2934,7 @@ impl GlobalEnv {
             bail!("Function {} is not native", function_env.get_full_name_str());
         }
 
-        if self.no_aborting_native_functions().contains(&function_env.get_qualified_id()) {
-            return Ok(true);
-        }
-
-        let function_name = function_env.get_name_str();
-
-        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
-            return Ok(true);
-        }
-
-        return Ok(false)
+        Ok(self.no_aborting_native_functions().contains(&function_env.get_qualified_id()))
     }
 
     pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
