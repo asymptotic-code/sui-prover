@@ -1,0 +1,21 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 149
+expression: output
+---
+Verification successful
+warning: unused alias
+  ┌─ tests/inputs/test_only_attr.ok.move:7:22
+  │
+7 │ use prover::prover::{asserts, requires, ensures};
+  │                      ^^^^^^^ Unused 'use' of alias 'asserts'. Consider removing it
+  │
+  = This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused alias
+  ┌─ tests/inputs/test_only_attr.ok.move:4:22
+  │
+4 │ use sui::test_utils::destroy; // check test imports
+  │                      ^^^^^^^ Unused 'use' of alias 'destroy'. Consider removing it
+  │
+  = This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
