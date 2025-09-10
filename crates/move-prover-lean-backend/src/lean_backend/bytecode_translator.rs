@@ -1537,6 +1537,7 @@ impl FunctionTranslator<'_> {
                     BorrowLoc => wip!("BorrowLoc"),
                     ReadRef => wip!("ReadRef"),
                     WriteRef => wip!("WriteRef"),
+                    IfThenElse => wip!("IfThenElse"),
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let module_env = env.get_module(*mid);
