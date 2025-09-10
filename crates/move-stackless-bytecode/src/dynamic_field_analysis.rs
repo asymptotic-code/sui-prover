@@ -460,7 +460,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
-        if !info.verified || !info.inlined {
+        if !info.verified && !info.inlined {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
