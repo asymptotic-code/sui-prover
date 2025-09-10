@@ -5,6 +5,7 @@
 use crate::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
+    conditional_merge_insertion::ConditionalMergeInsertionProcessor,
     // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
@@ -50,6 +51,11 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
+        ReachingDefProcessor::new(), // Re-run analyses after borrow analysis for ConditionalMergeInsertion as it removes liveness
+        LiveVarAnalysisProcessor::new(),
+        ConditionalMergeInsertionProcessor::new(),
+        ReachingDefProcessor::new(), // Re-run analyses after ConditionalMergeInsertion to mark liveness
+        LiveVarAnalysisProcessor::new(),
         MemoryInstrumentationProcessor::new(),
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
