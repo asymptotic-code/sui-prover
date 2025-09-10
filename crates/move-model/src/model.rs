@@ -1509,6 +1509,9 @@ impl GlobalEnv {
     const SUI_NITRO_ATTESTATION_MODULE_NAME: &'static str = "nitro_attestation";
     const SUI_POSEIDON_MODULE_NAME: &'static str = "poseidon";
     const SUI_VDF_MODULE_NAME: &'static str = "vdf";
+    const SUI_ACCUMULATOR_MODULE_NAME: &'static str = "accumulator";
+    const SUI_EVENT_MODULE_NAME: &'static str = "event";
+    const SUI_TX_CONTEXT_MODULE_NAME: &'static str = "tx_context";
 
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
@@ -1608,9 +1611,6 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_REMOVE_CHILD_OBJECT_FUNCTION_NAME: &'static str = "remove_child_object";
     const DYNAMIC_FIELD_HAS_CHILD_OBJECT_FUNCTION_NAME: &'static str = "has_child_object";
     const DYNAMIC_FIELD_HAS_CHILD_OBJECT_WITH_TYPE_FUNCTION_NAME: &'static str = "has_child_object_with_ty";
-
-
-    const UNIT_TEST_POISON_FUN_NAME: &'static str = "unit_test_poison";
 
     // std::hash native function names (with fun constants)
     const HASH_SHA2_FUNCTION_NAME: &'static str = "sha2_256";
@@ -1739,6 +1739,27 @@ impl GlobalEnv {
     
     // sui::crypto::nitro_attestation native function names (with fun constants)
     const CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME: &'static str = "load_nitro_attestation_internal";
+    
+    // sui::accumulator native function names (with fun constants)
+    const ACCUMULATOR_EMIT_DEPOSIT_EVENT_FUNCTION_NAME: &'static str = "emit_deposit_event";
+    const ACCUMULATOR_EMIT_WITHDRAW_EVENT_FUNCTION_NAME: &'static str = "emit_withdraw_event";
+    
+    // sui::event native function names (with fun constants)
+    const EVENT_EMIT_FUNCTION_NAME: &'static str = "emit";
+    
+    // sui::tx_context native function names (with fun constants)
+    const TX_CONTEXT_SENDER_FUNCTION_NAME: &'static str = "native_sender";
+    const TX_CONTEXT_EPOCH_FUNCTION_NAME: &'static str = "native_epoch";
+    const TX_CONTEXT_EPOCH_TIMESTAMP_MS_FUNCTION_NAME: &'static str = "native_epoch_timestamp_ms";
+    const TX_CONTEXT_FRESH_ID_FUNCTION_NAME: &'static str = "fresh_id";
+    const TX_CONTEXT_REFERENCE_GAS_PRICE_FUNCTION_NAME: &'static str = "native_rgp";
+    const TX_CONTEXT_GAS_PRICE_FUNCTION_NAME: &'static str = "native_gas_price";
+    const TX_CONTEXT_IDS_CREATED_FUNCTION_NAME: &'static str = "native_ids_created";
+    const TX_CONTEXT_GAS_BUDGET_FUNCTION_NAME: &'static str = "native_gas_budget";
+    const TX_CONTEXT_LAST_CREATED_ID_FUNCTION_NAME: &'static str = "last_created_id";
+    const TX_CONTEXT_SPONSOR_FUNCTION_NAME: &'static str = "native_sponsor";
+    const TX_CONTEXT_REPLACE_FUNCTION_NAME: &'static str = "replace";
+    const TX_CONTEXT_DERIVE_ID_FUNCTION_NAME: &'static str = "derive_id";
 
     pub fn prover_module_id(&self) -> ModuleId {
         self.find_module_id(Self::PROVER_MODULE_NAME)
@@ -2656,6 +2677,57 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::SUI_NITRO_ATTESTATION_MODULE_NAME, Self::CRYPTO_NITRO_ATTESTATION_LOADER_FUNCTION_NAME)
     }
 
+    // sui::accumulator native function QIDs
+    pub fn sui_accumulator_emit_deposit_event_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ACCUMULATOR_MODULE_NAME, Self::ACCUMULATOR_EMIT_DEPOSIT_EVENT_FUNCTION_NAME)
+    }
+    pub fn sui_accumulator_emit_withdraw_event_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_ACCUMULATOR_MODULE_NAME, Self::ACCUMULATOR_EMIT_WITHDRAW_EVENT_FUNCTION_NAME)
+    }
+
+    // sui::event native function QIDs  
+    pub fn sui_event_emit_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_EVENT_MODULE_NAME, Self::EVENT_EMIT_FUNCTION_NAME)
+    }
+
+    // sui::tx_context native function QIDs
+    pub fn sui_tx_context_sender_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_SENDER_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_epoch_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_EPOCH_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_epoch_timestamp_ms_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_EPOCH_TIMESTAMP_MS_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_fresh_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_FRESH_ID_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_reference_gas_price_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_REFERENCE_GAS_PRICE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_gas_price_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_GAS_PRICE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_ids_created_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_IDS_CREATED_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_gas_budget_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_GAS_BUDGET_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_last_created_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_LAST_CREATED_ID_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_sponsor_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_SPONSOR_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_replace_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_REPLACE_FUNCTION_NAME)
+    }
+    pub fn sui_tx_context_derive_id_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::SUI_TX_CONTEXT_MODULE_NAME, Self::TX_CONTEXT_DERIVE_ID_FUNCTION_NAME)
+    }
+
     pub fn is_deterministic(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
         let function_env = self.get_function(qid);
 
@@ -2663,17 +2735,7 @@ impl GlobalEnv {
             bail!("Function {} is not native", function_env.get_full_name_str());
         }
 
-        if self.deterministic_native_functions().contains(&function_env.get_qualified_id()) {
-            return Ok(true);
-        }
-
-        let function_name = function_env.get_name_str();
-
-        if Self::UNIT_TEST_POISON_FUN_NAME == function_name {
-            return Ok(true);
-        }
-
-        return Ok(false)
+        Ok(self.deterministic_native_functions().contains(&function_env.get_qualified_id()))
     }
 
     pub fn deterministic_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
@@ -2853,6 +2915,169 @@ impl GlobalEnv {
 
             // sui::crypto::poseidon native functions
             self.sui_crypto_poseidon_poseidon_bn254_internal_qid(),
+
+            // sui::crypto::vdf native functions
+            self.sui_crypto_vdf_hash_to_input_internal_qid(),
+            self.sui_crypto_vdf_vdf_verify_internal_qid(),
+
+            // sui::crypto::nitro_attestation native functions
+            self.sui_crypto_nitro_attestation_load_nitro_attestation_internal_qid(),
+        ].into_iter().filter_map(|x| x).collect::<Vec<_>>());
+
+        qids
+    }
+
+    pub fn func_not_aborts(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
+        let function_env = self.get_function(qid);
+
+        if !function_env.is_native() {
+            bail!("Function {} is not native", function_env.get_full_name_str());
+        }
+
+        Ok(self.no_aborting_native_functions().contains(&function_env.get_qualified_id()))
+    }
+
+    pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
+        let mut qids = BTreeSet::new();
+        
+        // Ghost module functions  
+        qids.extend(vec![
+            self.global_qid(),
+            self.global_set_qid(),
+            self.global_borrow_mut_qid(),
+            self.declare_global_qid(),
+            self.declare_global_mut_qid(),
+            self.havoc_global_qid(),
+        ]);
+        
+        // Log module functions
+        qids.extend(vec![
+            self.log_text_qid(),
+            self.log_var_qid(),
+            self.log_ghost_qid(),
+        ]);
+
+        // Add specific native function QIDs
+        qids.extend(vec![
+            // std::vector native functions
+            self.std_vector_empty_qid(),
+            self.std_vector_length_qid(),
+
+            // std::hash native functions
+            self.std_hash_sha2_256_qid(),
+            self.std_hash_sha3_256_qid(),
+
+            // std::bcs native functions
+            self.std_bcs_to_bytes_qid(),
+
+            // std::debug native functions
+            self.std_debug_print_qid(),
+            self.std_debug_print_stack_trace_qid(),
+
+            // std::type_name native functions
+            self.std_type_name_get_qid(),
+            self.std_type_name_get_with_original_ids_qid(),
+
+            // std::string native functions
+            self.std_string_internal_check_utf8_qid(),
+            self.std_string_internal_is_char_boundary_qid(),
+            self.std_string_internal_sub_string_qid(),
+            self.std_string_internal_index_of_qid(),
+
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
+
+            // sui::address native functions
+            self.sui_address_to_u256_qid(),
+
+            // sui::accumulator native functions
+            self.sui_accumulator_emit_deposit_event_qid(),
+            self.sui_accumulator_emit_withdraw_event_qid(),
+
+            // sui::event native functions
+            self.sui_event_emit_qid(),
+
+            // sui::tx_context native functions
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_fresh_id_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
+            self.sui_tx_context_ids_created_qid(),
+            self.sui_tx_context_gas_budget_qid(),
+            self.sui_tx_context_last_created_id_qid(),
+            self.sui_tx_context_sponsor_qid(),
+            self.sui_tx_context_replace_qid(),
+            self.sui_tx_context_derive_id_qid(),
+
+            // sui::crypto::ecdsa_k1 native functions
+            self.sui_crypto_ecdsa_k1_secp256k1_verify_qid(),
+            self.sui_crypto_ecdsa_k1_secp256k1_sign_qid(),            
+            self.sui_crypto_ecdsa_r1_secp256r1_verify_qid(),
+            
+            // sui::crypto::ed25519 native functions
+            self.sui_crypto_ed25519_ed25519_verify_qid(),
+
+            // sui::crypto::bls12381 native functions
+            self.sui_crypto_bls12381_bls12381_min_sig_verify_qid(),
+            self.sui_crypto_bls12381_bls12381_min_pk_verify_qid(),
+
+            // sui::types native functions
+            self.sui_types_is_one_time_witness_qid(),
+
+            // sui::object native functions
+            self.sui_object_borrow_uid_qid(),
+            self.sui_object_delete_impl_qid(),
+            self.sui_object_record_new_uid_qid(),
+
+            // sui::crypto::hash native functions
+            self.sui_crypto_hash_blake2b256_qid(),
+            self.sui_crypto_hash_keccak256_qid(),
+
+            // sui::crypto::hmac native functions
+            self.sui_crypto_hmac_hmac_sha3_256_qid(),
+
+            // sui::crypto::group_ops native functions
+            self.sui_crypto_group_ops_internal_validate_qid(),
+            self.sui_crypto_group_ops_internal_add_qid(),
+            self.sui_crypto_group_ops_internal_sub_qid(),
+            self.sui_crypto_group_ops_internal_mul_qid(),
+            self.sui_crypto_group_ops_internal_div_qid(),
+            self.sui_crypto_group_ops_internal_hash_to_qid(),
+            self.sui_crypto_group_ops_internal_multi_scalar_mul_qid(),
+            self.sui_crypto_group_ops_internal_pairing_qid(),
+            self.sui_crypto_group_ops_internal_convert_qid(),
+            self.sui_crypto_group_ops_internal_sum_qid(),
 
             // sui::crypto::vdf native functions
             self.sui_crypto_vdf_hash_to_input_internal_qid(),
