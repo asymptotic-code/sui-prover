@@ -3197,9 +3197,10 @@ impl GlobalEnv {
             compiled_module
                 .address_identifiers
                 .push(AccountAddress::ZERO);
+            // Use a valid identifier for stub module handle name; "<SELF>" is disallowed.
             compiled_module
                 .identifiers
-                .push(Identifier::new("<SELF>").unwrap());
+                .push(Identifier::new("SELF").unwrap());
             self.module_data.push(ModuleData {
                 name: ModuleName::new(Default::default(), module_symbol),
                 id: ModuleId::new(self.get_module_count()),

@@ -5,14 +5,15 @@
 use crate::{
     annotations::Annotations,
     ast::{Exp, ExpData, TempIndex},
-    borrow_analysis, livevar_analysis, reaching_def_analysis,
+    borrow_analysis, conditional_merge_insertion, livevar_analysis, reaching_def_analysis,
     stackless_bytecode::{AttrId, Bytecode, Label},
 };
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
 use move_model::{
     model::{
-        DatatypeId, FunId, FunctionEnv, FunctionVisibility, GlobalEnv, Loc, ModuleEnv, QualifiedId, QualifiedInstId,
+        DatatypeId, FunId, FunctionEnv, FunctionVisibility, GlobalEnv, Loc, ModuleEnv, QualifiedId,
+        QualifiedInstId,
     },
     symbol::{Symbol, SymbolPool},
     ty::{Type, TypeDisplayContext},
@@ -551,6 +552,30 @@ impl FunctionTarget<'_> {
         self.register_annotation_formatter(Box::new(
             reaching_def_analysis::format_reaching_def_annotation,
         ));
+    }
+
+    /// Like `register_annotation_formatters_for_test`, but with toggles.
+    /// This allows tests to selectively show or hide specific annotations
+    /// in pretty-printed bytecode (e.g., hide liveness for cleaner diffs).
+    pub fn register_annotation_formatters_for_test_with_flags(
+        &self,
+        show_livevars: bool,
+        show_borrow: bool,
+        show_reach: bool,
+    ) {
+        if show_livevars {
+            self.register_annotation_formatter(Box::new(
+                livevar_analysis::format_livevar_annotation,
+            ));
+        }
+        if show_borrow {
+            self.register_annotation_formatter(Box::new(borrow_analysis::format_borrow_annotation));
+        }
+        if show_reach {
+            self.register_annotation_formatter(Box::new(
+                reaching_def_analysis::format_reaching_def_annotation,
+            ));
+        }
     }
 }
 
