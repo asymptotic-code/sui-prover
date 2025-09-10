@@ -53,6 +53,6 @@ public fun test::f($t0|a: u64): u64 {
      # conditional_merge_insertion: t6 := if_then_else(t4, t1, t2)
   9: $t6 := if_then_else($t4, $t1, $t2)
      # conditional_merge_insertion: merge assign t1 := t6
- 10: $t1 := $t6
+ 10: $t1 := copy($t6)
  11: return $t1
 }

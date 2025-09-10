@@ -51,10 +51,11 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
-        // Re-run reachability before memory instrumentation
-        ReachingDefProcessor::new(),
+        ReachingDefProcessor::new(), // Re-run analyses after borrow analysis for ConditionalMergeInsertion as it removes liveness
         LiveVarAnalysisProcessor::new(),
-        // Run memory instrumentation before conditional merge insertion
+        ConditionalMergeInsertionProcessor::new(),
+        ReachingDefProcessor::new(), // Re-run analyses after ConditionalMergeInsertion to mark liveness
+        LiveVarAnalysisProcessor::new(),
         MemoryInstrumentationProcessor::new(),
         // Now insert conditional merges; this keeps borrow analysis only before MI.
         // ConditionalMergeInsertionProcessor::new_with_debug(),

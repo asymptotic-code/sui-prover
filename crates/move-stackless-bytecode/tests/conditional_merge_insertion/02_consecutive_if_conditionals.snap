@@ -95,7 +95,7 @@ public fun test::f($t0|a: u64): u64 {
      # conditional_merge_insertion: t12 := if_then_else(t4, t1, t2)
   9: $t12 := if_then_else($t4, $t1, $t2)
      # conditional_merge_insertion: merge assign t1 := t12
- 10: $t1 := $t12
+ 10: $t1 := copy($t12)
  11: $t6 := 5
  12: $t7 := >($t0, $t6)
  13: if ($t7) goto 14 else goto 17
@@ -106,7 +106,7 @@ public fun test::f($t0|a: u64): u64 {
      # conditional_merge_insertion: t13 := if_then_else(t7, t1, t12)
  18: $t13 := if_then_else($t7, $t1, $t12)
      # conditional_merge_insertion: merge assign t1 := t13
- 19: $t1 := $t13
+ 19: $t1 := copy($t13)
  20: $t9 := 10
  21: $t10 := >($t0, $t9)
  22: if ($t10) goto 23 else goto 26
@@ -117,6 +117,6 @@ public fun test::f($t0|a: u64): u64 {
      # conditional_merge_insertion: t14 := if_then_else(t10, t1, t13)
  27: $t14 := if_then_else($t10, $t1, $t13)
      # conditional_merge_insertion: merge assign t1 := t14
- 28: $t1 := $t14
+ 28: $t1 := copy($t14)
  29: return $t1
 }
