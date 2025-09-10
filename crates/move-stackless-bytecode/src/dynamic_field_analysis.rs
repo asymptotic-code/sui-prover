@@ -7,6 +7,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     stackless_bytecode::{Bytecode, Operation},
+    verification_analysis::get_info,
 };
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
@@ -454,6 +455,12 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if fun_env.is_intrinsic() {
+            data.annotations.set(DynamicFieldInfo::new(), true);
+            return data;
+        }
+
+        let info = get_info(&FunctionTarget::new(&fun_env, &data));
+        if !info.verified && !info.inlined {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
