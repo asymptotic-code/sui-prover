@@ -235,6 +235,21 @@ impl MonoAnalysisProcessor {
                 .entry(env.option_qid().unwrap())
                 .or_default()
                 .extend(vec_set_tys);
+
+            // VecSet also uses vec<u64> internally for storing indices, so we need to add u64 to vec_inst
+            let has_vec_set = info
+                .structs
+                .get(&vec_set_qid)
+                .map_or(false, |set| !set.is_empty());
+
+            if has_vec_set {
+                info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+                
+                info.structs
+                    .entry(env.option_qid().unwrap())
+                    .or_default()
+                    .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::U64)]);
+            }
         }
         if let Some(vec_map_qid) = env.vec_map_qid() {
             let vec_map_tys = info
@@ -261,12 +276,10 @@ impl MonoAnalysisProcessor {
                 .structs
                 .get(&vec_map_qid)
                 .map_or(false, |set| !set.is_empty());
-            if has_vec_map {
-                info.vec_inst
-                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
-            }
 
             if has_vec_map {
+                info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+
                 info.structs
                     .entry(env.option_qid().unwrap())
                     .or_default()
