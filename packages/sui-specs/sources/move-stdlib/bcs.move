@@ -1,4 +1,4 @@
-module specs::bsc_spec;
+module specs::bcs_spec;
 
 use std::bcs::to_bytes;
 

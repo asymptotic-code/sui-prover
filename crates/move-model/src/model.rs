@@ -1475,7 +1475,7 @@ impl GlobalEnv {
         "object_spec",
         "kiosk_spec",
         "event_spec",
-        "bsc_spec",
+        "bcs_spec",
         "debug_spec",
         "hash_spec",
         "string_spec",
