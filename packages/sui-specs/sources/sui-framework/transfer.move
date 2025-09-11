@@ -4,7 +4,7 @@ module specs::transfer_spec;
 use prover::prover::ensures;
 #[spec_only]
 use prover::ghost;
-use sui::transfer::{freeze_object_impl, share_object_impl, transfer_impl, receive_impl};
+use sui::transfer::{freeze_object_impl, share_object_impl, party_transfer_impl, transfer_impl, receive_impl};
 use sui::object::ID;
 
 public struct SpecTransferAddress {}
@@ -36,4 +36,13 @@ fun receive_impl_spec<T: key>(parent: address, to_receive: ID, version: u64): T 
     receive_impl(parent, to_receive, version)
 }
 
+#[spec(target = sui::transfer::party_transfer_impl)]
+fun party_transfer_impl_spec<T: key>(
+    obj: T,
+    default_permissions: u64,
+    addresses: vector<address>,
+    permissions: vector<u64>,
+) {
+    party_transfer_impl(obj, default_permissions, addresses, permissions)
+}
 

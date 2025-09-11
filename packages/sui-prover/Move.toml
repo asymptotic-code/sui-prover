@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024.beta"
 
 [dependencies]
-SuiSpecs = { local = "../sui-framework-specs", override = true }
+SuiSpecs = { local = "../sui-specs", override = true }
