@@ -404,6 +404,18 @@ fn compute_uid_info(
                     (srcs[0], Type::Datatype(*mid, *sid, tys.clone()), *attr_id),
                 ))
             }
+            Bytecode::Call(attr_id, dests, Operation::Function(mid, fid, _), srcs, _)
+                if !dests.is_empty() && !srcs.is_empty() =>
+            {
+                let callee_id = mid.qualified(*fid);
+                let callee_env = fun_target.global_env().get_function(callee_id);
+
+                if let Some(uid_getter_info) = analyze_uid_getter_function(&callee_env, &srcs[0], fun_target) {
+                    Some((dests[0], (srcs[0], uid_getter_info, *attr_id)))
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
         .into_group_map()
@@ -430,6 +442,77 @@ fn compute_uid_info(
             }
         })
         .collect()
+}
+
+fn analyze_uid_getter_function(
+    callee_env: &FunctionEnv,
+    src_temp: &usize,
+    fun_target: &FunctionTarget,
+) -> Option<Type> {
+    let return_types = callee_env.get_return_types();
+    if return_types.len() != 1 {
+        return None;
+    }
+
+    if let Type::Reference(_, inner_type) = &return_types[0] {
+        if let Type::Datatype(mid, sid, _) = inner_type.as_ref() {
+            if Some(mid.qualified(*sid)) != fun_target.global_env().uid_qid() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+    
+    let param_types = callee_env.get_parameter_types();
+    if param_types.is_empty() {
+        return None;
+    }
+
+    let first_param_type = &param_types[0];
+    let expected_object_type = if let Type::Reference(_, inner_type) = first_param_type {
+        inner_type.as_ref().clone()
+    } else {
+        first_param_type.clone()
+    };
+
+    let actual_src_type = fun_target.get_local_type(*src_temp);
+    let actual_object_type = if let Type::Reference(_, inner_type) = &actual_src_type {
+        inner_type.as_ref().clone()
+    } else {
+        actual_src_type.clone()
+    };
+    
+    if actual_object_type != expected_object_type {
+        return None;
+    }
+
+    if let Type::Datatype(mid, sid, _) = &expected_object_type {
+        let struct_env = fun_target.global_env().get_struct(mid.qualified(*sid));
+
+        if struct_env.get_abilities().has_key() || single_uid_field_offset(&struct_env).is_some() {
+            if is_simple_uid_getter(&callee_env) {
+                return Some(expected_object_type);
+            }
+        }
+    }
+
+    None
+}
+
+fn is_simple_uid_getter(callee_env: &FunctionEnv) -> bool {
+    if callee_env.is_native() {
+        return false;
+    }
+    
+    let function_name = callee_env.get_name().display(callee_env.module_env.env.symbol_pool()).to_string();
+    if function_name.contains("uid") && callee_env.get_parameter_types().len() >= 1 && callee_env.get_return_types().len() == 1 {
+        return true;
+    }
+    
+    false
 }
 
 /// Checks if a field access at the given offset is accessing the single UID field.
