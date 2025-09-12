@@ -5,9 +5,6 @@ on: [pull_request]
 jobs:
   generate-external-specs-boogie:
     runs-on: macos-latest
-    permissions:
-      contents: read
-      repository-projects: read
 
     env: 
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -50,7 +47,7 @@ jobs:
         with:
           repository: asymptotic-code/scallop-lending
           ref: specs
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           path: scallop
 
       - name: Clone cetus repo
@@ -58,7 +55,7 @@ jobs:
         with:
           repository: asymptotic-code/cetus-clmm
           ref: clmm-specs
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           path: cetus
 
       - name: Run generation
