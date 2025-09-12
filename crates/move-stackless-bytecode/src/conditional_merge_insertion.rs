@@ -45,7 +45,7 @@ impl ConditionalMergeInsertionProcessor {
 
     #[allow(dead_code)]
     pub fn new_with_debug() -> Box<Self> {
-        Box::new(Self { debug: false })
+        Box::new(Self { debug: true })
     }
 
     // Dominator-based merge detection for a branch at pc.
