@@ -1612,6 +1612,9 @@ impl GlobalEnv {
     const TABLE_DROP_FUNCTION_NAME: &'static str = "drop";
     const OBJECT_TABLE_VALUE_ID_FUNCTION_NAME: &'static str = "value_id";
 
+    // uid struct name
+    const OBJECT_UID_STRUCT_NAME: &'static str = "UID";
+
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
     const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
@@ -2237,6 +2240,10 @@ impl GlobalEnv {
             Self::OBJECT_TABLE_MODULE_NAME,
             Self::OBJECT_TABLE_VALUE_ID_FUNCTION_NAME,
         )
+    }
+
+    pub fn uid_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_UID_STRUCT_NAME)
     }
 
     pub fn object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
