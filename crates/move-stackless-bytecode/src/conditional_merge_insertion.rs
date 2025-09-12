@@ -429,7 +429,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                             let new_temp = builder.new_temp(var_ty);
 
                             // Use the captured else_src (always available now)
-                            let else_src = ins.explicit_else_src.unwrap();
+                            let else_src = ins.explicit_else_src.expect("conditional_merge_insertion: explicit_else_src should always be Some here");
 
                             builder.set_next_debug_comment(format!(
                                 "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
