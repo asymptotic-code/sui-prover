@@ -547,6 +547,7 @@ function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
 // Not inlined.
 function $IsValid'{{S}}'(t: {{Self}}): bool {
     $IsValid'u64'(LenTable(t)) &&
+    (forall i: int:: (0 <= i && i < LenTable(t)) ==> ContainsTable(t, i)) &&
     (forall i: int:: ContainsTable(t, i) ==> $IsValid{{SV}}(GetTable(t, i)))
 }
 
@@ -590,6 +591,7 @@ function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
 function $IsValid'{{Type}}{{S}}'(t: {{Type}}{{S}}): bool {
     // TODO use $IsValid'{{Self}}'(t->$contents)
     $IsValid'u64'(LenTable(t->$contents)) &&
+    (forall i: int:: (0 <= i && i < LenTable(t->$contents)) ==> ContainsTable(t->$contents, i)) &&
     (forall i: int:: ContainsTable(t->$contents, i) ==> $IsValid{{SV}}(GetTable(t->$contents, i)))
 }
 
