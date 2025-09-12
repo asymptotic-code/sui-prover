@@ -399,16 +399,10 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
 
         // XXX(@rvantonder): For simplicity, rejects functions with early returns (no Ret at the end)
         let last_idx = orig_code.len().saturating_sub(1);
-        let mut has_early_ret = false;
-        for (i, bc) in orig_code.iter().enumerate() {
-            match bc {
-                Bytecode::Ret(..) if i < last_idx => {
-                    has_early_ret = true;
-                    break;
-                }
-                _ => {}
-            }
-        }
+        let has_early_ret = orig_code
+            .iter()
+            .enumerate()
+            .any(|(i, bc)| matches!(bc, Bytecode::Ret(..)) && i < last_idx);
         if has_early_ret {
             // Punt: do not transform this function
             return builder.data;
