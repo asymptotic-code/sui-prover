@@ -57,6 +57,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         // Run memory instrumentation before conditional merge insertion
         MemoryInstrumentationProcessor::new(),
         // Now insert conditional merges; this keeps borrow analysis only before MI.
+        // ConditionalMergeInsertionProcessor::new_with_debug(),
         ConditionalMergeInsertionProcessor::new(),
         ReachingDefProcessor::new(), // Re-run liveness / reachability before clean and optimize
         LiveVarAnalysisProcessor::new(),
