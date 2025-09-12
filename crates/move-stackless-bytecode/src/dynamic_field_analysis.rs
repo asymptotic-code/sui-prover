@@ -464,8 +464,8 @@ fn analyze_uid_getter_function(
         }
     } else {
         return None;
-    };
-    
+    }
+
     let param_types = callee_env.get_parameter_types();
     if param_types.is_empty() {
         return None;
@@ -508,7 +508,7 @@ fn is_simple_uid_getter(callee_env: &FunctionEnv) -> bool {
     }
     
     let function_name = callee_env.get_name().display(callee_env.module_env.env.symbol_pool()).to_string();
-    if function_name.contains("uid") && callee_env.get_parameter_types().len() >= 1 && callee_env.get_return_types().len() == 1 {
+    if function_name.contains("id") && callee_env.get_parameter_types().len() >= 1 && callee_env.get_return_types().len() == 1 {
         return true;
     }
     
