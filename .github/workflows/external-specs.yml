@@ -5,6 +5,10 @@ on: [pull_request]
 jobs:
   generate-external-specs-boogie:
     runs-on: macos-latest
+    permissions:
+      contents: read
+      repository-projects: read
+
     env: 
       BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
@@ -41,10 +45,21 @@ jobs:
       - name: Install sui-prover
         run: sh ./crates/sui-prover/tests/sui-prover.sh
 
-      - name: Clone smart contracts repo
-        run: |
-          git clone --depth 1 -b specs https://github.com/asymptotic-code/scallop-lending scallop
-          git clone --depth 1 -b clmm-specs https://github.com/asymptotic-code/cetus-clmm cetus
+      - name: Clone scallop repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/scallop-lending
+          ref: specs
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: scallop
+
+      - name: Clone cetus repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/cetus-clmm
+          ref: clmm-specs
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: cetus
 
       - name: Run generation
         run: |
