@@ -13,7 +13,7 @@ use crate::{
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use itertools::Itertools;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv},
+    model::{FunctionEnv, GlobalEnv, StructEnv},
     ty::Type,
 };
 use std::{
@@ -383,13 +383,10 @@ fn compute_uid_info(
                 Operation::BorrowField(mid, sid, tys, offset),
                 srcs,
                 _,
-            ) if fun_target
-                .global_env()
-                .get_struct(mid.qualified(*sid))
-                .get_abilities()
-                .has_key()
-                && *offset == 0
-                && !dests.is_empty() =>
+            ) if is_uid_field_access(
+                &fun_target.global_env().get_struct(mid.qualified(*sid)),
+                *offset,
+            ) && !dests.is_empty() =>
             {
                 Some((
                     dests[0],
@@ -397,13 +394,10 @@ fn compute_uid_info(
                 ))
             }
             Bytecode::Call(attr_id, dests, Operation::GetField(mid, sid, tys, offset), srcs, _)
-                if fun_target
-                    .global_env()
-                    .get_struct(mid.qualified(*sid))
-                    .get_abilities()
-                    .has_key()
-                    && *offset == 0
-                    && !dests.is_empty() =>
+                if is_uid_field_access(
+                    &fun_target.global_env().get_struct(mid.qualified(*sid)),
+                    *offset,
+                ) && !dests.is_empty() =>
             {
                 Some((
                     dests[0],
@@ -436,6 +430,38 @@ fn compute_uid_info(
             }
         })
         .collect()
+}
+
+/// Checks if a field access at the given offset is accessing the single UID field.
+/// Returns true if:
+/// - The struct has the `key` ability and the offset is 0, OR
+/// - The offset matches the single UID field offset
+fn is_uid_field_access(struct_env: &StructEnv<'_>, offset: usize) -> bool {
+    (struct_env.get_abilities().has_key() && offset == 0)
+        || Some(offset) == single_uid_field_offset(struct_env)
+}
+
+fn single_uid_field_offset(struct_env: &StructEnv<'_>) -> Option<usize> {
+    if struct_env.module_env.env.uid_qid().is_none() {
+        return None;
+    }
+    struct_env
+        .get_fields()
+        .enumerate()
+        .filter_map(|(offset, field)| {
+            if field
+                .get_type()
+                .get_datatype()
+                .map(|(field_type_qid, _)| field_type_qid)
+                == struct_env.module_env.env.uid_qid()
+            {
+                Some(offset)
+            } else {
+                None
+            }
+        })
+        .exactly_one()
+        .ok()
 }
 
 pub struct DynamicFieldAnalysisProcessor();
