@@ -174,6 +174,8 @@ pub struct BoogieOptions {
     pub spec_no_abort_check_only: bool,
     /// Func abort only
     pub func_abort_check_only: bool,
+    /// Do not verify, just validate Boogie files
+    pub no_verify: bool,
 }
 
 impl Default for BoogieOptions {
@@ -218,6 +220,7 @@ impl Default for BoogieOptions {
             boogie_file_mode: BoogieFileMode::Function,
             spec_no_abort_check_only: false,
             func_abort_check_only: false,
+            no_verify: false,
         }
     }
 }
@@ -327,6 +330,11 @@ impl BoogieOptions {
                 "-vcsFinalAssertTimeout:600",
             ]);
         }
+
+        if self.no_verify {
+            add(&["-noVerify"]);
+        }
+
         add(&[boogie_file]);
 
         let additional_options = self.string_options

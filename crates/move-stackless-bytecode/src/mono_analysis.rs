@@ -287,6 +287,13 @@ impl MonoAnalysisProcessor {
             }
         }
 
+        // Add bool instantiation by default for dynamic fields
+        info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::Bool));
+        info.structs
+            .entry(env.option_qid().unwrap())
+            .or_default()
+            .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::Bool)]);
+
         env.set_extension(info);
     }
 }

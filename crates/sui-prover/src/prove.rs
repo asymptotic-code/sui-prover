@@ -59,6 +59,10 @@ pub struct GeneralConfig {
     #[clap(name = "keep-temp", long, short = 'k', global = true)]
     pub keep_temp: bool,
 
+    /// Only generate Boogie code, without running the prover
+    #[clap(name = "generate-only", long, short = 'g', global = true)]
+    pub generate_only: bool,
+
     /// Display detailed verification progress
     #[clap(name = "verbose", long, short = 'v', global = true)]
     pub verbose: bool,
@@ -179,6 +183,7 @@ async fn execute_backend_boogie(
     options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
     options.backend.path_split = general_config.split_paths;
     options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
+    options.backend.no_verify = general_config.generate_only;
     options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
     options.backend.string_options = boogie_config;
