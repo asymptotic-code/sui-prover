@@ -1618,6 +1618,7 @@ impl GlobalEnv {
 
     // uid struct name
     const OBJECT_UID_STRUCT_NAME: &'static str = "UID";
+    const OBJECT_ID_STRUCT_NAME: &'static str = "ID";
 
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
@@ -2253,6 +2254,10 @@ impl GlobalEnv {
 
     pub fn uid_qid(&self) -> Option<QualifiedId<DatatypeId>> {
         self.get_struct_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_UID_STRUCT_NAME)
+    }
+
+    pub fn id_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_ID_STRUCT_NAME)
     }
 
     pub fn object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
