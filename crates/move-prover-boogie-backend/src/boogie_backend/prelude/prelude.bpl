@@ -1325,6 +1325,17 @@ procedure {:inline 1} $Not(src: bool) returns (dst: bool)
 
 // Pack and Unpack are auto-generated for each type T
 
+// ==================================================================================
+// Native Option
+
+{%- for instance in option_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native Option implementation for element type `{{instance.suffix}}`
+
+{{ native::option_module(instance=instance) -}}
+{%- endfor %}
+
 
 // ==================================================================================
 // Native Vector
@@ -1350,6 +1361,17 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 // Native VecSet implementation for element type `{{instance.suffix}}`
 
 {{ native::vec_set_module(instance=instance) -}}
+{%- endfor %}
+
+// ==================================================================================
+// Native TableVec
+
+{%- for instance in table_vec_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native TableVec implementation for element type `{{instance.suffix}}`
+
+{{ native::table_vec_module(instance=instance) -}}
 {%- endfor %}
 
 // ==================================================================================

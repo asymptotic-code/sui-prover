@@ -1505,6 +1505,7 @@ impl GlobalEnv {
     const VEC_MAP_MODULE_NAME: &'static str = "vec_map";
     const OPTION_MODULE_NAME: &'static str = "option";
     const TABLE_MODULE_NAME: &'static str = "table";
+    const TABLE_VEC_MODULE_NAME: &'static str = "table_vec";
     const OBJECT_MODULE_NAME: &'static str = "object";
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
@@ -1585,6 +1586,9 @@ impl GlobalEnv {
 
     // vec_map struct name
     const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
+
+    // table_vec struct name
+    const TABLE_VEC_STRUCT_NAME: &'static str = "TableVec";
 
     // vec_map function names
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
@@ -2106,6 +2110,11 @@ impl GlobalEnv {
 
     pub fn vec_map_keys_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
+    }
+
+    // table_vec struct name
+    pub fn table_vec_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::TABLE_VEC_MODULE_NAME, Self::TABLE_VEC_STRUCT_NAME)
     }
 
     // option struct name
