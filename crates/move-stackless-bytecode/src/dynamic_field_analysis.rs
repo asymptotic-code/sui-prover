@@ -2,24 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    exp_generator::ExpGenerator,
-    function_data_builder::FunctionDataBuilder,
-    function_target::{FunctionData, FunctionTarget},
-    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    stackless_bytecode::{Bytecode, Operation},
-    verification_analysis::get_info,
+    exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, stackless_bytecode::{AttrId, Bytecode, Operation}, verification_analysis::get_info
 };
 
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use itertools::Itertools;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, StructEnv},
+    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId, StructEnv},
     ty::Type,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
+
+/// Stores information about functinons that uses as UID getters
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UidGetterInfo {
+    info: BTreeMap<QualifiedId<FunId>, Option<Type>>,
+}
+
+impl UidGetterInfo {
+    pub fn store(env: &GlobalEnv, fun_id: QualifiedId<FunId>, struct_type: Option<Type>) {
+        let mut records = UidGetterInfo::get_all(env);
+        records.insert(fun_id, struct_type);
+        env.set_extension(Self { info: records });
+    }
+
+    pub fn get_all(env: &GlobalEnv) -> BTreeMap<QualifiedId<FunId>, Option<Type>> {
+        env.get_extension::<UidGetterInfo>().unwrap_or_default().info.clone()
+    }
+}
 
 /// Stores dynamic field type information for a specific function
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -374,8 +387,7 @@ fn compute_uid_info(
     fun_target: &FunctionTarget,
     code: &[Bytecode],
 ) -> BTreeMap<usize, (usize, Type)> {
-    code.iter()
-        // First collect all potential UID type mappings, grouped by temporary index
+    let potential_mappings: Vec<(usize, (usize, Type, AttrId))> = code.iter()
         .filter_map(|bc| match bc {
             Bytecode::Call(
                 attr_id,
@@ -408,40 +420,59 @@ fn compute_uid_info(
                 if !dests.is_empty() && !srcs.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
-                let callee_env = fun_target.global_env().get_function(callee_id);
+                let info = UidGetterInfo::get_all(fun_target.global_env());
 
-                if let Some(uid_getter_info) = analyze_uid_getter_function(&callee_env, &srcs[0], fun_target) {
-                    Some((dests[0], (srcs[0], uid_getter_info, *attr_id)))
+                let uid_getter_info = if let Some(record) = info.get(&callee_id) {
+                    record.clone()
+                } else {
+                    let callee_env = fun_target.global_env().get_function(callee_id);
+                    let res = analyze_uid_getter_function(&callee_env, &srcs[0], fun_target);
+                    UidGetterInfo::store(fun_target.global_env(), callee_id, res.clone());
+                    res
+                };
+
+                if let Some(uid_type) = uid_getter_info {
+                    Some((dests[0], (srcs[0], uid_type, *attr_id)))
                 } else {
                     None
                 }
             }
             _ => None,
         })
-        .into_group_map()
-        .into_iter()
-        .filter_map(|(temp_idx, types)| {
-            // Report errors if there are duplicates
-            if types.len() == 1 {
-                Some((temp_idx, (types[0].0.clone(), types[0].1.clone())))
-            } else {
-                let labels = types
-                    .iter()
-                    .map(|(_, _, attr_id)| {
-                        let loc = fun_target.get_bytecode_loc(*attr_id);
-                        Label::primary(loc.file_id(), loc.span())
-                    })
-                    .collect();
-                fun_target.global_env().add_diag(
-                    Diagnostic::new(Severity::Error)
-                        .with_code("E0021")
-                        .with_message(&format!("Multiple UID object types: {}", temp_idx))
-                        .with_labels(labels),
-                );
-                None
+        .collect();
+
+    let mut uid_mappings = BTreeMap::new();
+    for (temp_idx, mappings) in potential_mappings.into_iter().into_group_map() {
+        if mappings.len() == 1 {
+            let (src, obj_type, _) = &mappings[0];
+            uid_mappings.insert(temp_idx, (*src, obj_type.clone()));
+        } else {
+            // Report error for multiple UID object types
+            let labels = mappings
+                .iter()
+                .map(|(_, _, attr_id)| {
+                    let loc = fun_target.get_bytecode_loc(*attr_id);
+                    Label::primary(loc.file_id(), loc.span())
+                })
+                .collect();
+            fun_target.global_env().add_diag(
+                Diagnostic::new(Severity::Error)
+                    .with_code("E0021")
+                    .with_message(&format!("Multiple UID object types: {}", temp_idx))
+                    .with_labels(labels),
+            );
+        }
+    }
+
+    for bc in code.iter() {
+        if let Bytecode::Assign(_, dest, src, _) = bc {
+            if let Some(uid_info) = uid_mappings.get(src).cloned() {
+                uid_mappings.insert(*dest, uid_info);
             }
-        })
-        .collect()
+        }
+    }
+
+    uid_mappings
 }
 
 fn analyze_uid_getter_function(
