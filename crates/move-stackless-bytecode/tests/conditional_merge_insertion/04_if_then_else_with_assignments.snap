@@ -1,0 +1,126 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+---
+============ initial translation from Move ================
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::helper_function($t0|a: u128, $t1|b: u128, $t2|c: u8): u128 {
+     var $t3: u128
+     var $t4: u128
+     var $t5: u128
+     var $t6: u8
+     var $t7: u128
+  0: $t3 := move($t0)
+  1: $t4 := move($t1)
+  2: $t5 := *($t3, $t4)
+  3: $t6 := move($t2)
+  4: $t7 := >>($t5, $t6)
+  5: return $t7
+}
+
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool, $t1|abs_tick: u32): u128 {
+     var $t2|tmp#$2: u128
+     var $t3|ratio#1#0: u128
+     var $t4: u32
+     var $t5: u32
+     var $t6: u32
+     var $t7: u32
+     var $t8: bool
+     var $t9: u128
+     var $t10: u128
+     var $t11: u128
+     var $t12: bool
+     var $t13: u128
+     var $t14: u128
+     var $t15: u8
+     var $t16: u128
+     var $t17: u128
+  0: $t4 := move($t1)
+  1: $t5 := 1
+  2: $t6 := &($t4, $t5)
+  3: $t7 := 0
+  4: $t8 := !=($t6, $t7)
+  5: if ($t8) goto 6 else goto 10
+  6: label L1
+  7: $t9 := 79232123823359799118286999567
+  8: $t2 := $t9
+  9: goto 14
+ 10: label L0
+ 11: $t10 := 79228162514264337593543950336
+ 12: $t2 := $t10
+ 13: goto 14
+ 14: label L2
+ 15: $t11 := move($t2)
+ 16: $t3 := $t11
+ 17: $t12 := move($t0)
+ 18: if ($t12) goto 19 else goto 26
+ 19: label L4
+ 20: $t13 := move($t3)
+ 21: $t14 := 38992368544603139932233054999993551
+ 22: $t15 := 96
+ 23: $t16 := ConditionalMergeInsertionTest::helper_function($t13, $t14, $t15)
+ 24: $t3 := $t16
+ 25: goto 26
+ 26: label L3
+ 27: $t17 := move($t3)
+ 28: return $t17
+}
+
+============ after pipeline `conditional_merge_insertion` ================
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::helper_function($t0|a: u128, $t1|b: u128, $t2|c: u8): u128 {
+     var $t3: u128
+     var $t4: u128
+  0: $t3 := *($t0, $t1)
+  1: $t4 := >>($t3, $t2)
+  2: return $t4
+}
+
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool, $t1|abs_tick: u32): u128 {
+     var $t2|tmp#$2: u128
+     var $t3|ratio#1#0: u128
+     var $t4: u32
+     var $t5: u32
+     var $t6: u32
+     var $t7: bool
+     var $t8: u128
+     var $t9: u128
+     var $t10: u128
+     var $t11: u8
+     var $t12: u128
+     var $t13: u128
+  0: $t4 := 1
+  1: $t5 := &($t1, $t4)
+  2: $t6 := 0
+  3: $t7 := !=($t5, $t6)
+  4: if ($t7) goto 5 else goto 9
+  5: label L1
+  6: $t8 := 79232123823359799118286999567
+  7: $t2 := $t8
+  8: goto 12
+  9: label L0
+ 10: $t9 := 79228162514264337593543950336
+ 11: $t2 := $t9
+ 12: label L2
+     # conditional_merge_insertion: t12 := if_then_else(t7, t8, t9)
+ 13: $t12 := if_then_else($t7, $t8, $t9)
+     # conditional_merge_insertion: merge assign t2 := t12
+ 14: $t2 := $t12
+ 15: $t3 := $t2
+ 16: if ($t0) goto 17 else goto 21
+ 17: label L4
+ 18: $t10 := 38992368544603139932233054999993551
+ 19: $t11 := 96
+ 20: $t3 := ConditionalMergeInsertionTest::helper_function($t2, $t10, $t11)
+ 21: label L3
+     # conditional_merge_insertion: t13 := if_then_else(t0, t3, t2)
+ 22: $t13 := if_then_else($t0, $t3, $t2)
+     # conditional_merge_insertion: merge assign t3 := t13
+ 23: $t3 := $t13
+ 24: return $t3
+}
