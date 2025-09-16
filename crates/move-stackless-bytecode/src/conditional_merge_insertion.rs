@@ -25,9 +25,8 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    graph::{DomRelation, Graph},
     stackless_bytecode::{AssignKind, AttrId, Bytecode, Label, Operation},
-    stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
+    stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::FunctionEnv;
@@ -68,88 +67,15 @@ impl ConditionalMergeInsertionProcessor {
 
         let labels = Bytecode::label_offsets(code);
         let then_pc = *labels.get(then_label)?;
-        let branch_block = Self::pc_to_block(back_cfg, branch_pc as u16)?;
+        let branch_block = StacklessControlFlowGraph::pc_to_block(back_cfg, branch_pc as u16)?;
 
         // Compute merge block as immediate post-dominator of the branch block using
         // reversed-graph dominator analysis (postdominators of the original graph).
-        let merge_block = Self::find_immediate_post_dominator(back_cfg, branch_block)?;
-        let merge_pc = Self::block_start_pc(back_cfg, merge_block)?;
+        let merge_block =
+            StacklessControlFlowGraph::find_immediate_post_dominator(back_cfg, branch_block)?;
+        let merge_pc = StacklessControlFlowGraph::block_start_pc(back_cfg, merge_block)?;
 
         Some((cond, then_pc as usize, merge_pc as usize))
-    }
-
-    fn block_start_pc(cfg: &StacklessControlFlowGraph, block: BlockId) -> Option<u16> {
-        match cfg.content(block) {
-            BlockContent::Basic { lower, .. } => Some(*lower),
-            BlockContent::Dummy => None,
-        }
-    }
-
-    fn pc_to_block(cfg: &StacklessControlFlowGraph, pc: u16) -> Option<BlockId> {
-        for b in cfg.blocks() {
-            match cfg.content(b) {
-                BlockContent::Basic { lower, upper } => {
-                    if *lower <= pc && pc <= *upper {
-                        return Some(b);
-                    }
-                }
-                BlockContent::Dummy => {}
-            }
-        }
-        None
-    }
-
-    fn find_immediate_post_dominator(
-        back_cfg: &StacklessControlFlowGraph,
-        branch_block: BlockId,
-    ) -> Option<BlockId> {
-        // Build reversed graph and compute dominators (postdominators of original CFG)
-        let entry = back_cfg.entry_block();
-        let nodes = back_cfg.blocks();
-        let edges: Vec<(BlockId, BlockId)> = nodes
-            .iter()
-            .flat_map(|x| {
-                back_cfg
-                    .successors(*x)
-                    .iter()
-                    .map(|y| (*x, *y))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let graph = Graph::new(entry, nodes.clone(), edges);
-        let dom_rev = DomRelation::new(&graph);
-
-        // Candidates are postdominators of branch_block (including itself and exit)
-        let candidates: Vec<BlockId> = nodes
-            .into_iter()
-            .filter(|b| {
-                *b != branch_block
-                    && dom_rev.is_reachable(*b)
-                    && dom_rev.is_dominated_by(branch_block, *b)
-            })
-            .collect();
-
-        if candidates.is_empty() {
-            return None;
-        }
-
-        // Immediate postdominator is the next node required on any path to exit--
-        // i.e., deepest candidate: it should not dominate any other candidate.
-        for &c in &candidates {
-            let mut dominates_any = false;
-            for &o in &candidates {
-                if o != c && dom_rev.is_dominated_by(o, c) {
-                    // c dominates o in reversed graph => c is above; skip it
-                    dominates_any = true;
-                    break;
-                }
-            }
-            if !dominates_any {
-                return Some(c);
-            }
-        }
-        // Fallback
-        candidates.into_iter().next()
     }
 
     // Validate that the computed merge is the else_label (i.e., if-with-fallthrough),

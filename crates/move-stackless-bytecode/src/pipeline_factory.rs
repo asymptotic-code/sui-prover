@@ -8,6 +8,7 @@ use crate::{
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
     // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
+    deterministic_analysis::DeterministicAnalysisProcessor,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
@@ -21,6 +22,7 @@ use crate::{
     move_loop_invariants::MoveLoopInvariantsProcessor,
     mut_ref_instrumentation::MutRefInstrumenter,
     mutation_tester::MutationTester,
+    no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
     reaching_def_analysis::ReachingDefProcessor,
@@ -31,8 +33,6 @@ use crate::{
     type_invariant_analysis::TypeInvariantAnalysisProcessor,
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
-    no_abort_analysis::NoAbortAnalysisProcessor,
-    deterministic_analysis::DeterministicAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
 };
 
@@ -56,18 +56,23 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         LiveVarAnalysisProcessor::new(),
         // Run memory instrumentation before conditional merge insertion
         MemoryInstrumentationProcessor::new(),
-        // Now insert conditional merges; this keeps borrow analysis only before MI.
-        // ConditionalMergeInsertionProcessor::new_with_debug(),
-        ConditionalMergeInsertionProcessor::new(),
-        ReachingDefProcessor::new(), // Re-run liveness / reachability before clean and optimize
-        LiveVarAnalysisProcessor::new(),
+    ];
+
+    if options.enable_conditional_merge_insertion {
+        // TODO(rvantonder): uncomment when complete
+        processors.push(ConditionalMergeInsertionProcessor::new());
+        processors.push(ReachingDefProcessor::new());
+        processors.push(LiveVarAnalysisProcessor::new());
+    }
+
+    processors.append(&mut vec![
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
-    ];
+    ]);
 
     if !options.skip_loop_analysis {
         processors.push(LoopAnalysisProcessor::new());

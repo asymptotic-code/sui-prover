@@ -98,6 +98,10 @@ pub struct GeneralConfig {
     /// Dump bytecode to file
     #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
     pub dump_bytecode: bool,
+
+    /// Enable conditional merge insertion pass
+    #[clap(name = "enable-conditional-merge-insertion", long, global = true)]
+    pub enable_conditional_merge_insertion: bool,
 }
 
 #[derive(Args, Default)]
@@ -191,6 +195,7 @@ async fn execute_backend_boogie(
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
+    options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
@@ -221,6 +226,7 @@ async fn execute_backend_lean(
     } else {
         LevelFilter::Info
     };
+    options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
     let mut error_writer = Buffer::no_color();
     match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer) {
         Ok(_) => {
