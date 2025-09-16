@@ -84,6 +84,8 @@ pub struct ProverOptions {
     pub for_interpretation: bool,
     /// Whether to skip loop analysis.
     pub skip_loop_analysis: bool,
+    /// Whether to enable conditional merge insertion.
+    pub enable_conditional_merge_insertion: bool,
     /// Optional names of native methods (qualified with module name, e.g., m::foo) implementing
     /// mutable borrow semantics
     pub borrow_natives: Vec<String>,
@@ -123,6 +125,7 @@ impl Default for ProverOptions {
             unconditional_abort_as_inconsistency: false,
             for_interpretation: false,
             skip_loop_analysis: false,
+            enable_conditional_merge_insertion: false,
             borrow_natives: vec![],
             ban_int_2_bv: false,
             bv_int_encoding: true,
