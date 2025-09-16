@@ -81,14 +81,14 @@ impl ConditionalMergeInsertionProcessor {
     // Validate that the computed merge is the else_label (i.e., if-with-fallthrough),
     // scan the then-block for a simple single-assignment pattern, and if matched,
     // record a pending insertion at the merge label.
-    // Returns: (var, then_src, else_src, insertion_label) - None for else_src means use current_val
+    // Returns: (var, then_src, else_src, insertion_label, fresh_vars_map) - None for else_src means use current_val
     fn find_merge_for_fallthrough(
         &self,
         orig_code: &[Bytecode],
         else_label: Label,
         then_start: usize,
         merge_pc: usize,
-    ) -> Option<(usize, usize, Option<usize>, Label)> {
+    ) -> Option<(usize, usize, Option<usize>, Label, BTreeMap<usize, usize>)> {
         let labels = Bytecode::label_offsets(orig_code);
         let Some(else_pc) = labels.get(&else_label) else {
             return None;
@@ -160,21 +160,24 @@ impl ConditionalMergeInsertionProcessor {
         if pattern_ok {
             let var = last_assigned_var.unwrap();
             let then_src = *last_assign_per_var.get(&var).unwrap();
-            return Some((var, then_src, None, else_label));
+            // Create a map indicating which variables need fresh variables in the then block
+            let mut fresh_vars_map = BTreeMap::new();
+            fresh_vars_map.insert(var, var); // Placeholder, will be replaced with fresh variable ID
+            return Some((var, then_src, None, else_label, fresh_vars_map));
         }
         None
     }
 
     // Handle if-then-else pattern where both then and else blocks have assignments
     // and both jump to a common merge point (not fallthrough)
-    // Returns: (var, then_src, else_src, merge_label) for if-then-else patterns
+    // Returns: (var, then_src, else_src, merge_label, fresh_vars_map) for if-then-else patterns
     fn find_merge_for_if_then_else(
         &self,
         orig_code: &[Bytecode],
         else_label: Label,
         then_start: usize,
         _merge_pc: usize,
-    ) -> Option<(usize, usize, Option<usize>, Label)> {
+    ) -> Option<(usize, usize, Option<usize>, Label, BTreeMap<usize, usize>)> {
         let labels = Bytecode::label_offsets(orig_code);
         let Some(else_pc) = labels.get(&else_label) else {
             return None;
@@ -227,7 +230,9 @@ impl ConditionalMergeInsertionProcessor {
         }
 
         // Return if-then-else pattern with explicit else_src and merge_label
-        Some((then_var, then_src, Some(else_src), merge_label))
+        let mut fresh_vars_map = BTreeMap::new();
+        fresh_vars_map.insert(then_var, then_var); // Placeholder, will be replaced with fresh variable ID
+        Some((then_var, then_src, Some(else_src), merge_label, fresh_vars_map))
     }
 
     // Helper function to scan a block for simple assignments, similar to the logic in find_merge_for_fallthrough
@@ -296,6 +301,8 @@ struct Insertion {
     src_attr: AttrId,
     // For if-then-else patterns, store the explicit else_src instead of using current_val
     explicit_else_src: Option<usize>,
+    // Map of original variable -> fresh variable created for if-block assignments
+    fresh_vars_in_then: BTreeMap<usize, usize>,
 }
 
 impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
@@ -340,12 +347,28 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         let mut pending_inserts: BTreeMap<Label, Vec<Insertion>> = BTreeMap::new();
         let back_cfg = Some(StacklessControlFlowGraph::new_backward(&orig_code, false));
 
+        // Track fresh variables: when we're in a then-block that needs fresh vars,
+        // map original var -> fresh var for assignments
+        let mut active_fresh_vars: BTreeMap<usize, usize> = BTreeMap::new();
+
+        // Build mapping from then-block start labels to fresh variable maps
+        let mut label_to_fresh_vars: BTreeMap<Label, BTreeMap<usize, usize>> = BTreeMap::new();
+
         let mut pc = 0; // TODO(@rvantonder): can we do this pass without pc?
         for bc in mem::take(&mut builder.data.code) {
             match bc {
                 // Check labels for inserting if_then_else(...)
                 Bytecode::Label(attr_id, label) => {
                     builder.emit(Bytecode::Label(attr_id, label));
+
+                    // Check if this label starts a then-block that needs fresh variables
+                    if let Some(fresh_vars_map) = label_to_fresh_vars.get(&label) {
+                        active_fresh_vars = fresh_vars_map.clone();
+                    } else {
+                        // Clear active fresh vars when exiting a then-block
+                        active_fresh_vars.clear();
+                    }
+
                     if let Some(list) = pending_inserts.remove(&label) {
                         for ins in list {
                             // Set location/debug context from the originating branch instruction
@@ -357,16 +380,20 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                             // Use the captured else_src (always available now)
                             let else_src = ins.explicit_else_src.expect("conditional_merge_insertion: explicit_else_src should always be Some here");
 
+                            // Use the fresh variable for the then_src if available
+                            let actual_then_src = ins.fresh_vars_in_then.get(&ins.var)
+                                .unwrap_or(&ins.then_src);
+
                             builder.set_next_debug_comment(format!(
                                 "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
-                                new_temp, ins.cond, ins.then_src, else_src
+                                new_temp, ins.cond, actual_then_src, else_src
                             ));
                             builder.emit_with(|id| {
                                 Bytecode::Call(
                                     id,
                                     vec![new_temp],
                                     Operation::IfThenElse,
-                                    vec![ins.cond, ins.then_src, else_src],
+                                    vec![ins.cond, *actual_then_src, else_src],
                                     None,
                                 )
                             });
@@ -393,7 +420,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                             &orig_code, else_label, then_start, merge_pc,
                         );
 
-                        if let Some((var, then_src, explicit_else_src, insertion_label)) =
+                        if let Some((var, then_src, explicit_else_src, insertion_label, fresh_vars_map)) =
                             merge_point
                         {
                             // For fallthrough patterns, capture the current else_src value now
@@ -404,6 +431,17 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                                 Some(*current_val.get(&var).unwrap_or(&var))
                             };
 
+                            // Create fresh variables for the then-block now
+                            let mut actual_fresh_vars_map = BTreeMap::new();
+                            for &original_var in fresh_vars_map.keys() {
+                                let var_ty = builder.get_local_type(original_var);
+                                let fresh_var = builder.new_temp(var_ty);
+                                actual_fresh_vars_map.insert(original_var, fresh_var);
+                            }
+
+                            // Register the fresh variable mapping for the then-block label
+                            label_to_fresh_vars.insert(_then_label, actual_fresh_vars_map.clone());
+
                             pending_inserts
                                 .entry(insertion_label)
                                 .or_default()
@@ -413,21 +451,41 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                                     then_src,
                                     src_attr: attr,
                                     explicit_else_src: final_else_src,
+                                    fresh_vars_in_then: actual_fresh_vars_map,
                                 });
                         }
                     }
                     builder.emit(Bytecode::Branch(attr, _then_label, else_label, _cond))
                 }
                 Bytecode::Assign(attr, dst, src, kind) => {
-                    // Track latest value of destination
+                    // Check if we should use a fresh variable for this assignment
+                    let actual_dst = if let Some(&fresh_dst) = active_fresh_vars.get(&dst) {
+                        // Use fresh variable instead of original
+                        fresh_dst
+                    } else {
+                        dst
+                    };
+
+                    // Track latest value of destination (using the actual destination variable)
                     current_val.insert(dst, src);
-                    builder.emit(Bytecode::Assign(attr, dst, src, kind))
+                    builder.emit(Bytecode::Assign(attr, actual_dst, src, kind))
                 }
                 Bytecode::Call(attr, dests, op, srcs, abort) if !dests.is_empty() => {
-                    // Dest now holds the produced value
-                    current_val.insert(dests[0], dests[0]);
-                    // Emit original instruction without moving fields (borrowed above)
-                    builder.emit(Bytecode::Call(attr, dests.clone(), op, srcs, abort))
+                    let original_dest = dests[0];
+
+                    // Check if we should use a fresh variable for the destination
+                    let actual_dests = if let Some(&fresh_dest) = active_fresh_vars.get(&original_dest) {
+                        let mut new_dests = dests.clone();
+                        new_dests[0] = fresh_dest;
+                        new_dests
+                    } else {
+                        dests.clone()
+                    };
+
+                    // Dest now holds the produced value (track with original dest)
+                    current_val.insert(original_dest, original_dest);
+                    // Emit original instruction with potentially modified destination
+                    builder.emit(Bytecode::Call(attr, actual_dests, op, srcs, abort))
                 }
                 bytecode => builder.emit(bytecode),
             }
