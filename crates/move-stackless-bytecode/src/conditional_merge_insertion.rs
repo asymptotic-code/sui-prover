@@ -31,7 +31,7 @@ use crate::{
 };
 use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::FunctionEnv;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
 
 pub struct ConditionalMergeInsertionProcessor {
@@ -173,42 +173,62 @@ impl ConditionalMergeInsertionProcessor {
             None
         };
 
-        // Create insertions only for variables that are assigned in then-block AND live at merge
-        for (&then_var, &then_src) in &then_assignments {
+        // Collect all variables assigned in either then-block or else-block
+        let mut all_assigned_vars: BTreeSet<usize> = BTreeSet::new();
+        all_assigned_vars.extend(then_assignments.keys());
+        if let Some(else_map) = &else_assignments {
+            all_assigned_vars.extend(else_map.keys());
+        }
+
+        // Create insertions for all live assigned variables
+        for &var in &all_assigned_vars {
             // Skip if we have liveness info and this variable is not live at merge
             if let Some(live_vars) = live_vars_at_merge {
-                if !live_vars.contains(&then_var) {
+                if !live_vars.contains(&var) {
                     continue;
                 }
             }
-            let var_ty = builder.get_local_type(then_var);
-            let fresh_then_var = builder.new_temp(var_ty.clone());
-            let mut fresh_vars_in_then = BTreeMap::new();
-            fresh_vars_in_then.insert(then_var, fresh_then_var);
 
+            let var_ty = builder.get_local_type(var);
+            let then_src_opt = then_assignments.get(&var);
+            let else_src_opt = else_assignments.as_ref().and_then(|m| m.get(&var));
+
+            let mut fresh_vars_in_then = BTreeMap::new();
             let mut fresh_vars_in_else = BTreeMap::new();
-            let else_var = match &else_assignments {
-                Some(else_map) => {
-                    if let Some(&else_src) = else_map.get(&then_var) {
-                        // If-then-else pattern: both blocks assign to same variable
-                        let fresh_else_var = builder.new_temp(var_ty);
-                        fresh_vars_in_else.insert(then_var, fresh_else_var);
-                        else_src
-                    } else {
-                        // Then block assigns but else block doesn't: use fallthrough value
-                        *current_val.get(&then_var).unwrap_or(&then_var)
-                    }
+
+            let (then_var, else_var) = match (then_src_opt, else_src_opt) {
+                (Some(&then_src), Some(&else_src)) => {
+                    // Both blocks assign: create fresh variables for both
+                    let fresh_then_var = builder.new_temp(var_ty.clone());
+                    let fresh_else_var = builder.new_temp(var_ty);
+                    fresh_vars_in_then.insert(var, fresh_then_var);
+                    fresh_vars_in_else.insert(var, fresh_else_var);
+                    (then_src, else_src)
                 }
-                None => {
-                    // If-then (no else block): use fallthrough value
-                    *current_val.get(&then_var).unwrap_or(&then_var)
+                (Some(&then_src), None) => {
+                    // Only then block assigns: fresh then var, fallthrough else var
+                    let fresh_then_var = builder.new_temp(var_ty);
+                    fresh_vars_in_then.insert(var, fresh_then_var);
+                    let fallthrough = *current_val.get(&var).unwrap_or(&var);
+                    (then_src, fallthrough)
+                }
+                (None, Some(&else_src)) => {
+                    // Only else block assigns: fallthrough then var, fresh else var
+                    let fresh_else_var = builder.new_temp(var_ty);
+                    fresh_vars_in_else.insert(var, fresh_else_var);
+                    let fallthrough = *current_val.get(&var).unwrap_or(&var);
+                    (fallthrough, else_src)
+                }
+                (None, None) => {
+                    // Neither block assigns (shouldn't happen due to collection logic)
+                    continue;
                 }
             };
 
             let insertion = Insertion {
-                dest_var: then_var,
+                dest_var: var,
                 cond: cond_idx,
-                then_var: then_src,
+                then_var,
                 src_attr,
                 else_var,
                 fresh_vars_in_then,
