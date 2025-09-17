@@ -77,7 +77,8 @@ impl ConditionalMergeInsertionProcessor {
             .map(|(label, _)| *label)
     }
 
-    // Helper function to scan a block for simple assignments
+    // Helper function to scan a block for assignments before any nested control flow
+    // For nested conditionals, only considers assignments that happen directly in this block
     // Returns all assigned variables and their sources
     fn block_permitted(
         &self,
@@ -87,28 +88,31 @@ impl ConditionalMergeInsertionProcessor {
     ) -> Option<BTreeMap<usize, usize>> {
         let mut scan_pc = start_pc;
         let mut last_assign_per_var: BTreeMap<usize, usize> = BTreeMap::new();
-        let mut last_assigned_var: Option<usize> = None;
-        let mut simple_block = true;
+        let mut found_nested_control = false;
 
         while scan_pc < orig_code.len() && scan_pc < end_pc {
             match &orig_code[scan_pc] {
                 Bytecode::Assign(_, dst, src, _) => {
-                    last_assign_per_var.insert(*dst, *src);
-                    last_assigned_var = Some(*dst);
+                    if !found_nested_control {
+                        // Only record assignments before nested control flow
+                        last_assign_per_var.insert(*dst, *src);
+                    }
                 }
                 Bytecode::Call(_, dests, _op, _srcs, _aa) if !dests.is_empty() => {
-                    let var = dests[0];
-                    last_assign_per_var.insert(var, var);
-                    last_assigned_var = Some(var);
+                    if !found_nested_control {
+                        // Only record calls before nested control flow
+                        let var = dests[0];
+                        last_assign_per_var.insert(var, var);
+                    }
                 }
                 Bytecode::Branch(..) => {
-                    simple_block = false;
-                    break;
+                    // Mark that we found nested control flow - stop considering new assignments
+                    found_nested_control = true;
                 }
                 Bytecode::Label(..) => {
                     if scan_pc != start_pc {
-                        simple_block = false;
-                        break;
+                        // We've entered a nested block, stop considering assignments
+                        found_nested_control = true;
                     }
                 }
                 Bytecode::Jump(..) => {
@@ -116,20 +120,17 @@ impl ConditionalMergeInsertionProcessor {
                 }
                 Bytecode::Load(..) => {}
                 _ => {
-                    // Ultra conservative: reject any other bytecode ops in the block so we don't break things
-                    simple_block = false;
-                    break;
+                    // Other instructions don't affect our analysis
                 }
             }
             scan_pc += 1;
         }
 
-        let pattern_ok = simple_block && !last_assign_per_var.is_empty();
-        if pattern_ok {
-            return Some(last_assign_per_var);
+        if !last_assign_per_var.is_empty() {
+            Some(last_assign_per_var)
+        } else {
+            None
         }
-
-        None
     }
 
     // Build conditional insert using postdominator analysis results
@@ -305,7 +306,54 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         let mut active_fresh_vars: BTreeMap<usize, usize> = BTreeMap::new();
         let mut label_to_fresh_vars: BTreeMap<Label, BTreeMap<usize, usize>> = BTreeMap::new();
 
-        let mut pc = 0; // TODO(@rvantonder): can we do this pass without pc?
+        // Find all conditionals first
+        let conditionals = self.find_all_conditionals(&orig_code, back_cfg.as_ref().unwrap());
+
+
+        // Process all conditionals to collect insertions
+        for conditional in conditionals {
+            if let Some((insertion_label, insertions)) = self.build_conditional_insert(
+                &orig_code,
+                conditional.then_label,
+                conditional.else_label,
+                conditional.merge_label,
+                conditional.cond_idx,
+                conditional.attr,
+                &current_val,
+                &mut builder,
+                liveness.as_ref(),
+            ) {
+                // Collect fresh variables for then/else blocks from all insertions
+                let mut fresh_vars_for_then_block = BTreeMap::new();
+                let mut fresh_vars_for_else_block = BTreeMap::new();
+
+                for insertion in &insertions {
+                    // Collect then-block fresh vars
+                    for (&var, &fresh_var) in &insertion.fresh_vars_in_then {
+                        fresh_vars_for_then_block.insert(var, fresh_var);
+                    }
+                    // Collect else-block fresh vars
+                    for (&var, &fresh_var) in &insertion.fresh_vars_in_else {
+                        fresh_vars_for_else_block.insert(var, fresh_var);
+                    }
+                }
+
+                if !fresh_vars_for_then_block.is_empty() {
+                    label_to_fresh_vars.insert(conditional.then_label, fresh_vars_for_then_block);
+                }
+                if !fresh_vars_for_else_block.is_empty() {
+                    label_to_fresh_vars.insert(conditional.else_label, fresh_vars_for_else_block);
+                }
+
+                pending_inserts
+                    .entry(insertion_label)
+                    .or_default()
+                    .extend(insertions);
+            }
+        }
+
+        // Now emit the transformed code
+        let mut pc = 0;
         for bc in mem::take(&mut builder.data.code) {
             match bc {
                 // Check labels for inserting if_then_else(...)
@@ -362,53 +410,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                     }
                 }
                 Bytecode::Branch(attr, then_label, else_label, cond_idx) => {
-                    let merge_label =
-                        self.find_merge_by_dominators(&orig_code, back_cfg.as_ref().unwrap(), pc);
-
-                    if let None = merge_label {
-                        builder.emit(Bytecode::Branch(attr, then_label, else_label, cond_idx));
-                        continue;
-                    }
-                    // Invariant: merge_label is Some
-                    let merge_label = merge_label.unwrap();
-                    if let Some((insertion_label, insertions)) = self.build_conditional_insert(
-                        &orig_code,
-                        then_label,
-                        else_label,
-                        merge_label,
-                        cond_idx,
-                        attr,
-                        &current_val,
-                        &mut builder,
-                        liveness.as_ref(),
-                    ) {
-                        // Collect fresh variables for then-block from all insertions
-                        let mut fresh_vars_for_then_block = BTreeMap::new();
-                        let mut fresh_vars_for_else_block = BTreeMap::new();
-
-                        for insertion in &insertions {
-                            // Collect then-block fresh vars
-                            for (&var, &fresh_var) in &insertion.fresh_vars_in_then {
-                                fresh_vars_for_then_block.insert(var, fresh_var);
-                            }
-                            // Collect else-block fresh vars
-                            for (&var, &fresh_var) in &insertion.fresh_vars_in_else {
-                                fresh_vars_for_else_block.insert(var, fresh_var);
-                            }
-                        }
-
-                        if !fresh_vars_for_then_block.is_empty() {
-                            label_to_fresh_vars.insert(then_label, fresh_vars_for_then_block);
-                        }
-                        if !fresh_vars_for_else_block.is_empty() {
-                            label_to_fresh_vars.insert(else_label, fresh_vars_for_else_block);
-                        }
-
-                        pending_inserts
-                            .entry(insertion_label)
-                            .or_default()
-                            .extend(insertions);
-                    }
+                    // Just emit the branch - insertions are handled above
                     builder.emit(Bytecode::Branch(attr, then_label, else_label, cond_idx))
                 }
                 Bytecode::Assign(attr, original_dst, src, kind) => {
@@ -439,4 +441,46 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
     fn name(&self) -> String {
         "conditional_merge_insertion".to_string()
     }
+}
+
+impl ConditionalMergeInsertionProcessor {
+    // Find all conditional structures in the function
+    fn find_all_conditionals(
+        &self,
+        code: &[Bytecode],
+        back_cfg: &StacklessControlFlowGraph,
+    ) -> Vec<ConditionalInfo> {
+        let mut conditionals = Vec::new();
+
+        for (pc, bytecode) in code.iter().enumerate() {
+            if let Bytecode::Branch(attr, then_label, else_label, cond_idx) = bytecode {
+                if let Some(merge_label) = self.find_merge_by_dominators(code, back_cfg, pc) {
+                    conditionals.push(ConditionalInfo {
+                        pc,
+                        attr: *attr,
+                        then_label: *then_label,
+                        else_label: *else_label,
+                        merge_label,
+                        cond_idx: *cond_idx,
+                    });
+                }
+            }
+        }
+
+        // Sort by merge label position (process inner-most first)
+        let labels = Bytecode::label_offsets(code);
+        conditionals.sort_by_key(|c| labels.get(&c.merge_label).unwrap_or(&0));
+
+        conditionals
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ConditionalInfo {
+    pc: usize,
+    attr: AttrId,
+    then_label: Label,
+    else_label: Label,
+    merge_label: Label,
+    cond_idx: usize,
 }
