@@ -178,9 +178,15 @@ impl ConditionalMergeInsertionProcessor {
         };
 
         let var_ty = builder.get_local_type(then_var);
-        let fresh_var = builder.new_temp(var_ty);
+        let fresh_then_var = builder.new_temp(var_ty.clone());
         let mut fresh_vars_in_then = BTreeMap::new();
-        fresh_vars_in_then.insert(then_var, fresh_var);
+        fresh_vars_in_then.insert(then_var, fresh_then_var);
+
+        let mut fresh_vars_in_else = BTreeMap::new();
+        if let Some((else_var_from_block, _)) = else_assignment {
+            let fresh_else_var = builder.new_temp(var_ty);
+            fresh_vars_in_else.insert(else_var_from_block, fresh_else_var);
+        }
 
         let insertion = Insertion {
             dest_var: then_var,
@@ -189,6 +195,7 @@ impl ConditionalMergeInsertionProcessor {
             src_attr,
             else_var,
             fresh_vars_in_then,
+            fresh_vars_in_else,
         };
 
         Some((merge_label, insertion))
@@ -203,6 +210,7 @@ struct Insertion {
     then_var: usize,
     else_var: usize,
     fresh_vars_in_then: BTreeMap<usize, usize>,
+    fresh_vars_in_else: BTreeMap<usize, usize>,
 }
 
 impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
@@ -276,16 +284,21 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                                 .get(&ins.dest_var)
                                 .unwrap_or(&ins.then_var);
 
+                            let fresh_else_var = ins
+                                .fresh_vars_in_else
+                                .get(&ins.dest_var)
+                                .unwrap_or(&ins.else_var);
+
                             builder.set_next_debug_comment(format!(
                                 "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
-                                new_temp, ins.cond, fresh_then_var, ins.else_var
+                                new_temp, ins.cond, fresh_then_var, fresh_else_var
                             ));
                             builder.emit_with(|id| {
                                 Bytecode::Call(
                                     id,
                                     vec![new_temp],
                                     Operation::IfThenElse,
-                                    vec![ins.cond, *fresh_then_var, ins.else_var],
+                                    vec![ins.cond, *fresh_then_var, *fresh_else_var],
                                     None,
                                 )
                             });
@@ -327,6 +340,15 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                             insertion.fresh_vars_in_then[&insertion.dest_var],
                         );
                         label_to_fresh_vars.insert(then_label, fresh_vars_for_then_block);
+
+                        // Add fresh variables for else-branch if it exists
+                        if !insertion.fresh_vars_in_else.is_empty() {
+                            let mut fresh_vars_for_else_block = BTreeMap::new();
+                            for (&var, &fresh_var) in &insertion.fresh_vars_in_else {
+                                fresh_vars_for_else_block.insert(var, fresh_var);
+                            }
+                            label_to_fresh_vars.insert(else_label, fresh_vars_for_else_block);
+                        }
 
                         pending_inserts
                             .entry(insertion_label)
