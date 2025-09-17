@@ -441,8 +441,6 @@ fn compute_uid_info(
                 let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline).unwrap();
                 let callee_mapping = &get_fun_info(callee_data).uid_info;
 
-                println!("F: {}. Callee: {} {:?} dest[{:?}]", fun_target.func_env.get_full_name_str(), callee_env.get_full_name_str(), callee_mapping, dests);
-
                 for key in callee_mapping.keys() {
                     if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
                         let (_, obj_type) = callee_mapping.get(key).unwrap();
