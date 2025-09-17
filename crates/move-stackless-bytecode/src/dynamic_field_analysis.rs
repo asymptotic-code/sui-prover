@@ -433,18 +433,17 @@ fn compute_uid_info(
                     (srcs[0], Type::Datatype(*mid, *sid, tys.clone()), *attr_id),
                 ))
             }
-            Bytecode::Call(attr_id, dests, Operation::Function(mid, fid, _), srcs, _)
+            Bytecode::Call(attr_id, dests, Operation::Function(mid, fid, tys), srcs, _)
                 if !dests.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
-                let callee_env = fun_target.global_env().get_function(callee_id);
                 let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline).unwrap();
                 let callee_mapping = &get_fun_info(callee_data).uid_info;
 
                 for key in callee_mapping.keys() {
                     if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
                         let (_, obj_type) = callee_mapping.get(key).unwrap();
-                        return Some((dests[ret_pos], (srcs[0], obj_type.clone(), *attr_id)));
+                        return Some((dests[ret_pos], (srcs[0], obj_type.instantiate(tys), *attr_id)));
                     }
                 }
 
