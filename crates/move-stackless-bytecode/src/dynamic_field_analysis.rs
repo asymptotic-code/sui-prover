@@ -25,6 +25,7 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DynamicFieldInfo {
     dynamic_field_mappings: BTreeMap<Type, BTreeSet<NameValueInfo>>,
+    uid_info: BTreeMap<usize, (usize, Type)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,6 +55,7 @@ impl DynamicFieldInfo {
     pub fn new() -> Self {
         Self {
             dynamic_field_mappings: BTreeMap::new(),
+            uid_info: BTreeMap::new(),
         }
     }
 
@@ -62,6 +64,7 @@ impl DynamicFieldInfo {
     pub fn singleton(ty: Type, name_value_info: NameValueInfo) -> Self {
         Self {
             dynamic_field_mappings: BTreeMap::from([(ty, BTreeSet::from([name_value_info]))]),
+            uid_info: BTreeMap::new(),
         }
     }
 
@@ -97,6 +100,7 @@ impl DynamicFieldInfo {
     /// Create a new DynamicFieldTypeInfo with types instantiated using the given type arguments
     pub fn instantiate(&self, type_inst: &[Type]) -> Self {
         Self {
+            uid_info: BTreeMap::new(),
             dynamic_field_mappings: self
                 .dynamic_field_mappings
                 .iter()
@@ -139,6 +143,28 @@ pub fn get_env_info(env: &GlobalEnv) -> Rc<DynamicFieldInfo> {
 /// Get the information computed by this analysis for a function
 pub fn get_fun_info(data: &FunctionData) -> &DynamicFieldInfo {
     data.annotations.get::<DynamicFieldInfo>().unwrap()
+}
+
+pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Option<usize> {
+    let mut return_pos = None;
+    for bc in code.into_iter() {
+        if return_pos.is_some() { // if function have few return statments
+            return None;
+        }
+
+        match bc {
+            Bytecode::Ret(_, rets) => {
+                for (i, ret) in rets.iter().enumerate() {
+                    if *ret == local_idx {
+                        return_pos = Some(i);
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+
+    return_pos
 }
 
 /// Collect dynamic field type information from a function's bytecode
@@ -233,9 +259,9 @@ pub fn collect_dynamic_field_info(
     .collect_vec();
 
     // compute map of temp index that load object ids to type of object
-    let uid_info = compute_uid_info(&builder.get_target(), &code);
+    let uid_info = compute_uid_info(&builder.get_target(), targets, &code);
 
-    let info = DynamicFieldInfo::iter_union(code.iter().filter_map(|bc| match bc {
+    let mut info = DynamicFieldInfo::iter_union(code.iter().filter_map(|bc| match bc {
         Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), srcs, _) => {
             let callee_id = module_id.qualified(*fun_id);
 
@@ -338,6 +364,8 @@ pub fn collect_dynamic_field_info(
         _ => None,
     }));
 
+    info.uid_info = uid_info;
+
     for bc in code {
         match bc {
             Bytecode::Call(
@@ -348,7 +376,7 @@ pub fn collect_dynamic_field_info(
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
                 // srcs[0] = uid_info.get(&srcs[0]).unwrap().0;
-                srcs[0] = uid_info.get(&srcs[0]).map(|x| x.0).unwrap_or(srcs[0]);
+                srcs[0] = info.uid_info.get(&srcs[0]).map(|x| x.0).unwrap_or(srcs[0]);
                 if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
                     && builder.get_local_type(srcs[0]).is_mutable_reference()
                 {
@@ -372,6 +400,7 @@ pub fn collect_dynamic_field_info(
 /// Computes a mapping from temporary indices to the objects and types of objects they reference
 fn compute_uid_info(
     fun_target: &FunctionTarget,
+    targets: &FunctionTargetsHolder,
     code: &[Bytecode],
 ) -> BTreeMap<usize, (usize, Type)> {
     code.iter()
@@ -403,6 +432,22 @@ fn compute_uid_info(
                     dests[0],
                     (srcs[0], Type::Datatype(*mid, *sid, tys.clone()), *attr_id),
                 ))
+            }
+            Bytecode::Call(attr_id, dests, Operation::Function(mid, fid, tys), srcs, _)
+                if !dests.is_empty() =>
+            {
+                let callee_id = mid.qualified(*fid);
+                let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline).unwrap();
+                let callee_mapping = &get_fun_info(callee_data).uid_info;
+
+                for key in callee_mapping.keys() {
+                    if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
+                        let (_, obj_type) = callee_mapping.get(key).unwrap();
+                        return Some((dests[ret_pos], (srcs[0], obj_type.instantiate(tys), *attr_id)));
+                    }
+                }
+
+                None
             }
             _ => None,
         })
