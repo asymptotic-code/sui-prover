@@ -143,6 +143,7 @@ impl ConditionalMergeInsertionProcessor {
         cond_idx: usize,
         src_attr: AttrId,
         current_val: &BTreeMap<usize, usize>,
+        builder: &mut FunctionDataBuilder,
     ) -> Option<(Label, Insertion)> {
         let labels = Bytecode::label_offsets(code);
         let then_pc = *labels.get(&then_label)? as usize;
@@ -176,12 +177,25 @@ impl ConditionalMergeInsertionProcessor {
             }
         };
 
+        let var_ty = builder.get_local_type(then_var);
+        let fresh_then_var = builder.new_temp(var_ty.clone());
+        let mut fresh_vars_in_then = BTreeMap::new();
+        fresh_vars_in_then.insert(then_var, fresh_then_var);
+
+        let mut fresh_vars_in_else = BTreeMap::new();
+        if let Some((else_var_from_block, _)) = else_assignment {
+            let fresh_else_var = builder.new_temp(var_ty);
+            fresh_vars_in_else.insert(else_var_from_block, fresh_else_var);
+        }
+
         let insertion = Insertion {
             dest_var: then_var,
             cond: cond_idx,
             then_var: then_src,
             src_attr,
             else_var,
+            fresh_vars_in_then,
+            fresh_vars_in_else,
         };
 
         Some((merge_label, insertion))
@@ -195,6 +209,8 @@ struct Insertion {
     cond: usize,
     then_var: usize,
     else_var: usize,
+    fresh_vars_in_then: BTreeMap<usize, usize>,
+    fresh_vars_in_else: BTreeMap<usize, usize>,
 }
 
 impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
@@ -239,12 +255,22 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         let mut pending_inserts: BTreeMap<Label, Vec<Insertion>> = BTreeMap::new();
         let back_cfg = Some(StacklessControlFlowGraph::new_backward(&orig_code, false));
 
+        let mut active_fresh_vars: BTreeMap<usize, usize> = BTreeMap::new();
+        let mut label_to_fresh_vars: BTreeMap<Label, BTreeMap<usize, usize>> = BTreeMap::new();
+
         let mut pc = 0; // TODO(@rvantonder): can we do this pass without pc?
         for bc in mem::take(&mut builder.data.code) {
             match bc {
                 // Check labels for inserting if_then_else(...)
                 Bytecode::Label(attr_id, label) => {
                     builder.emit(Bytecode::Label(attr_id, label));
+
+                    if let Some(fresh_vars_map) = label_to_fresh_vars.get(&label) {
+                        active_fresh_vars = fresh_vars_map.clone();
+                    } else {
+                        active_fresh_vars.clear();
+                    }
+
                     if let Some(list) = pending_inserts.remove(&label) {
                         for ins in list {
                             // Set location/debug context from the originating branch instruction
@@ -252,16 +278,27 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                             // Allocate a fresh temp of same type as `var`
                             let var_ty = builder.get_local_type(ins.dest_var);
                             let new_temp = builder.new_temp(var_ty);
+
+                            let fresh_then_var = ins
+                                .fresh_vars_in_then
+                                .get(&ins.dest_var)
+                                .unwrap_or(&ins.then_var);
+
+                            let fresh_else_var = ins
+                                .fresh_vars_in_else
+                                .get(&ins.dest_var)
+                                .unwrap_or(&ins.else_var);
+
                             builder.set_next_debug_comment(format!(
                                 "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
-                                new_temp, ins.cond, ins.then_var, ins.else_var
+                                new_temp, ins.cond, fresh_then_var, fresh_else_var
                             ));
                             builder.emit_with(|id| {
                                 Bytecode::Call(
                                     id,
                                     vec![new_temp],
                                     Operation::IfThenElse,
-                                    vec![ins.cond, ins.then_var, ins.else_var],
+                                    vec![ins.cond, *fresh_then_var, *fresh_else_var],
                                     None,
                                 )
                             });
@@ -295,7 +332,24 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         cond_idx,
                         attr,
                         &current_val,
+                        &mut builder,
                     ) {
+                        let mut fresh_vars_for_then_block = BTreeMap::new();
+                        fresh_vars_for_then_block.insert(
+                            insertion.dest_var,
+                            insertion.fresh_vars_in_then[&insertion.dest_var],
+                        );
+                        label_to_fresh_vars.insert(then_label, fresh_vars_for_then_block);
+
+                        // Add fresh variables for else-branch if it exists
+                        if !insertion.fresh_vars_in_else.is_empty() {
+                            let mut fresh_vars_for_else_block = BTreeMap::new();
+                            for (&var, &fresh_var) in &insertion.fresh_vars_in_else {
+                                fresh_vars_for_else_block.insert(var, fresh_var);
+                            }
+                            label_to_fresh_vars.insert(else_label, fresh_vars_for_else_block);
+                        }
+
                         pending_inserts
                             .entry(insertion_label)
                             .or_default()
@@ -303,16 +357,22 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                     }
                     builder.emit(Bytecode::Branch(attr, then_label, else_label, cond_idx))
                 }
-                Bytecode::Assign(attr, dst, src, kind) => {
-                    // Track latest value of destination
-                    current_val.insert(dst, src);
-                    builder.emit(Bytecode::Assign(attr, dst, src, kind))
+                Bytecode::Assign(attr, original_dst, src, kind) => {
+                    let fresh_dst = active_fresh_vars
+                        .get(&original_dst)
+                        .copied()
+                        .unwrap_or(original_dst);
+                    current_val.insert(original_dst, src); // Track latest rhs value of original dst
+                    builder.emit(Bytecode::Assign(attr, fresh_dst, src, kind))
                 }
-                Bytecode::Call(attr, dests, op, srcs, abort) if !dests.is_empty() => {
-                    // Dest now holds the produced value
-                    current_val.insert(dests[0], dests[0]);
-                    // Emit original instruction without moving fields (borrowed above)
-                    builder.emit(Bytecode::Call(attr, dests.clone(), op, srcs, abort))
+                Bytecode::Call(attr, dests, op, srcs, abort) if dests.len() == 1 => {
+                    let original_dest = dests[0];
+                    let actual_dest = active_fresh_vars
+                        .get(&original_dest)
+                        .copied()
+                        .unwrap_or(original_dest);
+                    current_val.insert(original_dest, original_dest);
+                    builder.emit(Bytecode::Call(attr, vec![actual_dest], op, srcs, abort))
                 }
                 bytecode => builder.emit(bytecode),
             }
