@@ -15,6 +15,7 @@ pub mod ast;
 pub mod borrow_analysis;
 pub mod clean_and_optimize;
 pub mod compositional_analysis;
+pub mod conditional_merge_insertion;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
@@ -48,17 +49,17 @@ pub mod pipeline_factory;
 pub mod reaching_def_analysis;
 pub mod spec_global_variable_analysis;
 pub mod spec_instrumentation;
+pub mod spec_purity_analysis;
 pub mod spec_translator;
+pub mod spec_well_formed_analysis;
 pub mod stackless_bytecode;
 pub mod stackless_bytecode_generator;
 pub mod stackless_control_flow_graph;
+pub mod target_filter;
 pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod spec_purity_analysis;
-pub mod spec_well_formed_analysis;
-pub mod target_filter;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(
@@ -73,6 +74,36 @@ pub fn print_targets_for_test(
             for (variant, target) in targets.get_targets(&func_env) {
                 if !target.data.code.is_empty() || target.func_env.is_native() {
                     target.register_annotation_formatters_for_test();
+                    writeln!(&mut text, "\n[variant {}]\n{}", variant, target).unwrap();
+                }
+            }
+        }
+    }
+    text
+}
+
+/// Variant of `print_targets_for_test` with toggles to select which annotations
+/// are rendered in-line with the printed bytecode (e.g., hide live vars by default
+/// for cleaner snapshot diffs).
+pub fn print_targets_for_test_with_flags(
+    env: &GlobalEnv,
+    header: &str,
+    targets: &FunctionTargetsHolder,
+    show_livevars: bool,
+    show_borrow: bool,
+    show_reach: bool,
+) -> String {
+    let mut text = String::new();
+    writeln!(&mut text, "============ {} ================", header).unwrap();
+    for module_env in env.get_modules() {
+        for func_env in module_env.get_functions() {
+            for (variant, target) in targets.get_targets(&func_env) {
+                if !target.data.code.is_empty() || target.func_env.is_native() {
+                    target.register_annotation_formatters_for_test_with_flags(
+                        show_livevars,
+                        show_borrow,
+                        show_reach,
+                    );
                     writeln!(&mut text, "\n[variant {}]\n{}", variant, target).unwrap();
                 }
             }

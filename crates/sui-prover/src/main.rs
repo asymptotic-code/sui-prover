@@ -51,8 +51,13 @@ async fn main() {
     let bin_name = env!("CARGO_BIN_NAME");
     let args = Args::parse();
 
+    let log_file_base = match crate::build_model::reroot_path(args.package_path.as_deref()) {
+        Ok(pkg_root) => pkg_root.join(format!("{bin_name}.log")).to_string_lossy().to_string(),
+        Err(_) => format!("{bin_name}.log"),
+    };
+
     let _guard = telemetry_subscribers::TelemetryConfig::new("sui-prover")
-        .with_log_file(&format!("{bin_name}.log"))
+        .with_log_file(&log_file_base)
         .with_log_level("debug")
         .with_env()
         .init();
