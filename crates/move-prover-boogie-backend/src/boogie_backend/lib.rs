@@ -242,6 +242,23 @@ pub fn add_prelude(
     }
     context.insert("vec_instances", &vec_instances);
 
+    if let Some(option_module_env) = env.find_module_by_name(env.symbol_pool().make("option")) {
+        let option_env = option_module_env
+            .find_struct(env.symbol_pool().make("Option"))
+            .unwrap();
+        let option_instances = mono_info
+            .all_types
+            .iter()
+            .filter_map(|ty| match ty.get_datatype() {
+                Some((did, tys)) 
+                    if did == option_env.get_qualified_id() => Some(&tys[0]),
+                _ => None,
+            })
+            .map(|ty| TypeInfo::new(env, options, ty, false))
+            .collect_vec();
+        context.insert("option_instances", &option_instances);
+    }
+
     if let Some(vec_set_module_env) = env.find_module_by_name(env.symbol_pool().make("vec_set")) {
         let vec_set_struct_env = vec_set_module_env
             .find_struct(env.symbol_pool().make("VecSet"))
@@ -279,6 +296,23 @@ pub fn add_prelude(
             })
             .collect_vec();
         context.insert("vec_map_instances", &vec_map_instances);
+    }
+
+    if let Some(table_vec_module_env) = env.find_module_by_name(env.symbol_pool().make("table_vec")) {
+        let table_vec_env = table_vec_module_env
+            .find_struct(env.symbol_pool().make("TableVec"))
+            .unwrap();
+        let table_vec_instances = mono_info
+            .all_types
+            .iter()
+            .filter_map(|ty| match ty.get_datatype() {
+                Some((did, tys)) 
+                    if did == table_vec_env.get_qualified_id() => Some(&tys[0]),
+                _ => None,
+            })
+            .map(|ty| TypeInfo::new(env, options, ty, false))
+            .collect_vec();
+        context.insert("table_vec_instances", &table_vec_instances);
     }
 
     context.insert("table_instances", &table_instances);

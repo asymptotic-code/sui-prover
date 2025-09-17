@@ -2,6 +2,21 @@
    SPDX-License-Identifier: Apache-2.0
 #}
 
+{# Option
+   =======
+#}
+
+{% macro option_module(instance) %}
+{%- set T = instance.name -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+function $IsValid'$1_option_Option{{S}}'(opt: $1_option_Option{{S}}): bool {
+    $IsValid'vec{{S}}'(opt->$vec) &&
+    (LenVec(opt->$vec) == 0 || LenVec(opt->$vec) == 1)
+}
+
+{% endmacro option_module %}
+
 {# Vectors
    =======
 #}
@@ -425,6 +440,22 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
 }
 
 {% endmacro vec_set_module %}
+
+{# TableVec
+   =======
+#}
+
+{% macro table_vec_module(instance) %}
+{%- set T = instance.name -%}
+{%- set T_S = instance.suffix -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bool {
+    $IsValid'$2_table_Table'u64_{{T_S}}''(s->$contents) &&
+    (forall i: int :: (0 <= i && i < LenTable(s->$contents->$contents)) <==> ContainsTable(s->$contents->$contents, $EncodeKey'u64'(i)))
+}
+
+{% endmacro table_vec_module %}
 
 {# VecMap
    =======

@@ -65,6 +65,16 @@ fn get_tested_transformation_pipeline(
             pipeline.add_processor(ReachingDefProcessor::new());
             Ok(Some(pipeline))
         }
+        "conditional_merge_insertion" => {
+            use move_stackless_bytecode::conditional_merge_insertion::ConditionalMergeInsertionProcessor;
+            let mut pipeline = FunctionTargetPipeline::default();
+            pipeline.add_processor(EliminateImmRefsProcessor::new());
+            pipeline.add_processor(MutRefInstrumenter::new());
+            pipeline.add_processor(ReachingDefProcessor::new());
+            pipeline.add_processor(LiveVarAnalysisProcessor::new());
+            pipeline.add_processor(ConditionalMergeInsertionProcessor::new_with_debug());
+            Ok(Some(pipeline))
+        }
         "livevar" => {
             let mut pipeline = FunctionTargetPipeline::default();
             pipeline.add_processor(EliminateImmRefsProcessor::new());
@@ -125,8 +135,18 @@ fn get_tested_transformation_pipeline(
 }
 
 fn test_runner(path: &Path) -> datatest_stable::Result<()> {
-    let mut sources = extract_test_directives(path, "// dep:")?;
-    sources.push(path.to_string_lossy().to_string());
+    // Allow opting out of external deps (e.g., move-stdlib) so isolated tests can run
+    // without requiring a local stdlib checkout. Set env var `STACKLESS_TEST_IGNORE_DEPS=1`.
+    let ignore_deps = std::env::var("STACKLESS_TEST_IGNORE_DEPS").is_ok();
+    let mut sources = if ignore_deps {
+        vec![path.to_string_lossy().to_string()]
+    } else {
+        let mut deps = extract_test_directives(path, "// dep:")?;
+        // Keep only deps that exist on disk to avoid hard failures on missing stdlib
+        deps.retain(|p| std::path::Path::new(p).exists());
+        deps.push(path.to_string_lossy().to_string());
+        deps
+    };
     let env: GlobalEnv = run_model_builder_with_options(
         vec![PackagePaths {
             name: None,
@@ -162,17 +182,30 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
                 targets.add_target(&func_env);
             }
         }
-        text += &print_targets_for_test(&env, "initial translation from Move", &targets);
+        let show_livevars = std::env::var("STACKLESS_TEST_SHOW_LIVENESS").is_ok();
+        let show_borrow = true;
+        let show_reach = std::env::var("STACKLESS_TEST_SHOW_REACHING_DEFS").is_ok();
+        text += &move_stackless_bytecode::print_targets_for_test_with_flags(
+            &env,
+            "initial translation from Move",
+            &targets,
+            show_livevars,
+            show_borrow,
+            show_reach,
+        );
 
         // Run pipeline if any
         if let Some(pipeline) = pipeline_opt {
             let _ = pipeline.run(&env, &mut targets);
             let processor = pipeline.last_processor();
             if !processor.is_single_run() {
-                text += &print_targets_for_test(
+                text += &move_stackless_bytecode::print_targets_for_test_with_flags(
                     &env,
                     &format!("after pipeline `{}`", dir_name),
                     &targets,
+                    show_livevars,
+                    show_borrow,
+                    show_reach,
                 );
             }
             text += &ProcessorResultDisplay {

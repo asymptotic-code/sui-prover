@@ -46,15 +46,15 @@ use crate::boogie_backend::{
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
         boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
         boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type,
-        boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name,
-        boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name,
-        boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
-        boogie_reflection_type_info, boogie_reflection_type_name, boogie_resource_memory_name,
-        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
-        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
-        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
-        FunctionTranslationStyle, TypeIdentToken,
+        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
+        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
+        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
+        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
+        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
+        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
+        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
+        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
+        TypeIdentToken,
     },
     options::{BoogieFileMode, BoogieOptions},
     spec_translator::SpecTranslator,
@@ -429,21 +429,10 @@ impl<'env> BoogieTranslator<'env> {
                     fun_env,
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
                 );
-                FunctionTranslator::new(
-                    self,
-                    &fun_target,
-                    &[],
-                    FunctionTranslationStyle::Default,
-                )
-                .translate();
-                self.translate_function_style(
-                    fun_env,
-                    FunctionTranslationStyle::Asserts,
-                );
-                self.translate_function_style(
-                    fun_env,
-                    FunctionTranslationStyle::Aborts,
-                );
+                FunctionTranslator::new(self, &fun_target, &[], FunctionTranslationStyle::Default)
+                    .translate();
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
             }
             return;
         }
@@ -452,7 +441,9 @@ impl<'env> BoogieTranslator<'env> {
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
-        if self.options.boogie_file_mode == BoogieFileMode::All || self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
+        if self.options.boogie_file_mode == BoogieFileMode::All
+            || self.targets.is_verified_spec(&fun_env.get_qualified_id())
+        {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
@@ -785,8 +776,9 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_env = self.env.get_function(self.env.global_qid());
         let ghost_global_fun_target = self
             .targets
-            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline).unwrap();
-       
+            .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
+            .unwrap();
+
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets
@@ -1041,50 +1033,56 @@ impl<'env> StructTranslator<'env> {
             );
         }
 
+        // Skip for table_vec and option as it's handled by native templates
+        let skip_is_valid = self.parent.env.table_vec_qid().unwrap() == struct_env.get_qualified_id() ||
+            self.parent.env.option_qid().unwrap() == struct_env.get_qualified_id();
+
         // Emit $IsValid function.
-        self.emit_function_with_attr(
-            "", // not inlined!
-            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
-            || {
-                if struct_env.is_native() {
-                    emitln!(writer, "true")
-                } else {
-                    let mut sep = "";
-                    for field in struct_env.get_fields() {
-                        let sel = format!("s->{}", boogie_field_sel(&field, self.type_inst));
-                        let ty = &field.get_type().instantiate(self.type_inst);
-                        let bv_flag = self.field_bv_flag(&field.get_id());
-                        emitln!(
-                            writer,
-                            "{}{}",
-                            sep,
-                            boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
-                        );
-                        sep = "  && ";
-                    }
-                    if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
-                        if struct_env.get_qualified_id() == vec_set_qid {
+        if !skip_is_valid {
+            self.emit_function_with_attr(
+                "", // not inlined!
+                &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+                || {
+                    if struct_env.is_native() {
+                        emitln!(writer, "true")
+                    } else {
+                        let mut sep = "";
+                        for field in struct_env.get_fields() {
+                            let sel = format!("s->{}", boogie_field_sel(&field, self.type_inst));
+                            let ty = &field.get_type().instantiate(self.type_inst);
+                            let bv_flag = self.field_bv_flag(&field.get_id());
                             emitln!(
                                 writer,
-                                "{}$DisjointVecSet{}(s->$contents)",
+                                "{}{}",
                                 sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
+                                boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
                             );
+                            sep = "  && ";
+                        }
+                        if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
+                            if struct_env.get_qualified_id() == vec_set_qid {
+                                emitln!(
+                                    writer,
+                                    "{}$DisjointVecSet{}(s->$contents)",
+                                    sep,
+                                    boogie_inst_suffix(self.parent.env, self.type_inst)
+                                );
+                            }
+                        }
+                        if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
+                            if struct_env.get_qualified_id() == vec_map_qid {
+                                emitln!(
+                                    writer,
+                                    "{}$DisjointVecMap{}(s->$contents)",
+                                    sep,
+                                    boogie_inst_suffix(self.parent.env, self.type_inst)
+                                );
+                            }
                         }
                     }
-                    if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
-                        if struct_env.get_qualified_id() == vec_map_qid {
-                            emitln!(
-                                writer,
-                                "{}$DisjointVecMap{}(s->$contents)",
-                                sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
-                            );
-                        }
-                    }
-                }
-            },
-        );
+                },
+            );
+        }
 
         // Emit equality
         self.emit_function(
@@ -1181,14 +1179,6 @@ impl<'env> StructTranslator<'env> {
         emitln!(writer, "return;");
         writer.unindent();
         emitln!(writer, "}");
-
-        // Add Option-specific axioms if this is an Option type
-        if let Some(option_qid) = env.option_qid() {
-            if self.struct_env.get_qualified_id() == option_qid {
-                self.emit_option_axioms_after_procedure(&suffix);
-            }
-        }
-
         emitln!(writer);
     }
 
@@ -1203,16 +1193,6 @@ impl<'env> StructTranslator<'env> {
         body_fn();
         writer.unindent();
         emitln!(writer, "}");
-    }
-    
-    fn emit_option_axioms_after_procedure(&self, suffix: &str) {
-        let writer = self.parent.writer;
-        // Axiom: Option constraint - internal vector length is always 0 or 1
-        emitln!(writer, "// Axiom: Option internal vector must have length 0 or 1");
-        emitln!(writer, "axiom (forall opt: {} :: {{LenVec(opt->$vec)}}", suffix);
-        emitln!(writer, "    LenVec(opt->$vec) == 0 || LenVec(opt->$vec) == 1");
-        emitln!(writer, ");");
-        emitln!(writer);
     }
 }
 
@@ -3872,6 +3852,20 @@ impl<'env> FunctionTranslator<'env> {
                         let mem = &mem.to_owned().instantiate(self.type_inst);
                         let node_id = env.new_node(env.unknown_loc(), mem.to_type());
                         self.track_global_mem(mem, node_id);
+                    }
+                    IfThenElse => {
+                        let cond_str = str_local(srcs[0]);
+                        let true_expr_str = str_local(srcs[1]);
+                        let false_expr_str = str_local(srcs[2]);
+                        let dest_str = str_local(dests[0]);
+                        emitln!(
+                            self.writer(),
+                            "{} := (if {} then {} else {});",
+                            dest_str,
+                            cond_str,
+                            true_expr_str,
+                            false_expr_str
+                        );
                     }
                 }
                 match aa {

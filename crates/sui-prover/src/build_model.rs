@@ -44,7 +44,7 @@ fn resolve_lock_file_path(
     Ok(build_config)
 }
 
-fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
+pub fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
     let path = path
         .map(Path::canonicalize)
         .unwrap_or_else(|| PathBuf::from(".").canonicalize())?;
