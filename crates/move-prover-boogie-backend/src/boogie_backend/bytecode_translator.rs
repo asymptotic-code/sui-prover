@@ -1033,50 +1033,56 @@ impl<'env> StructTranslator<'env> {
             );
         }
 
+        // Skip for table_vec and option as it's handled by native templates
+        let skip_is_valid = self.parent.env.table_vec_qid().unwrap() == struct_env.get_qualified_id() ||
+            self.parent.env.option_qid().unwrap() == struct_env.get_qualified_id();
+
         // Emit $IsValid function.
-        self.emit_function_with_attr(
-            "", // not inlined!
-            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
-            || {
-                if struct_env.is_native() {
-                    emitln!(writer, "true")
-                } else {
-                    let mut sep = "";
-                    for field in struct_env.get_fields() {
-                        let sel = format!("s->{}", boogie_field_sel(&field, self.type_inst));
-                        let ty = &field.get_type().instantiate(self.type_inst);
-                        let bv_flag = self.field_bv_flag(&field.get_id());
-                        emitln!(
-                            writer,
-                            "{}{}",
-                            sep,
-                            boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
-                        );
-                        sep = "  && ";
-                    }
-                    if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
-                        if struct_env.get_qualified_id() == vec_set_qid {
+        if !skip_is_valid {
+            self.emit_function_with_attr(
+                "", // not inlined!
+                &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+                || {
+                    if struct_env.is_native() {
+                        emitln!(writer, "true")
+                    } else {
+                        let mut sep = "";
+                        for field in struct_env.get_fields() {
+                            let sel = format!("s->{}", boogie_field_sel(&field, self.type_inst));
+                            let ty = &field.get_type().instantiate(self.type_inst);
+                            let bv_flag = self.field_bv_flag(&field.get_id());
                             emitln!(
                                 writer,
-                                "{}$DisjointVecSet{}(s->$contents)",
+                                "{}{}",
                                 sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
+                                boogie_well_formed_expr_bv(env, &sel, ty, bv_flag)
                             );
+                            sep = "  && ";
+                        }
+                        if let Some(vec_set_qid) = self.parent.env.vec_set_qid() {
+                            if struct_env.get_qualified_id() == vec_set_qid {
+                                emitln!(
+                                    writer,
+                                    "{}$DisjointVecSet{}(s->$contents)",
+                                    sep,
+                                    boogie_inst_suffix(self.parent.env, self.type_inst)
+                                );
+                            }
+                        }
+                        if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
+                            if struct_env.get_qualified_id() == vec_map_qid {
+                                emitln!(
+                                    writer,
+                                    "{}$DisjointVecMap{}(s->$contents)",
+                                    sep,
+                                    boogie_inst_suffix(self.parent.env, self.type_inst)
+                                );
+                            }
                         }
                     }
-                    if let Some(vec_map_qid) = self.parent.env.vec_map_qid() {
-                        if struct_env.get_qualified_id() == vec_map_qid {
-                            emitln!(
-                                writer,
-                                "{}$DisjointVecMap{}(s->$contents)",
-                                sep,
-                                boogie_inst_suffix(self.parent.env, self.type_inst)
-                            );
-                        }
-                    }
-                }
-            },
-        );
+                },
+            );
+        }
 
         // Emit equality
         self.emit_function(
@@ -1173,14 +1179,6 @@ impl<'env> StructTranslator<'env> {
         emitln!(writer, "return;");
         writer.unindent();
         emitln!(writer, "}");
-
-        // Add Option-specific axioms if this is an Option type
-        if let Some(option_qid) = env.option_qid() {
-            if self.struct_env.get_qualified_id() == option_qid {
-                self.emit_option_axioms_after_procedure(&suffix);
-            }
-        }
-
         emitln!(writer);
     }
 
@@ -1195,16 +1193,6 @@ impl<'env> StructTranslator<'env> {
         body_fn();
         writer.unindent();
         emitln!(writer, "}");
-    }
-    
-    fn emit_option_axioms_after_procedure(&self, suffix: &str) {
-        let writer = self.parent.writer;
-        // Axiom: Option constraint - internal vector length is always 0 or 1
-        emitln!(writer, "// Axiom: Option internal vector must have length 0 or 1");
-        emitln!(writer, "axiom (forall opt: {} :: {{LenVec(opt->$vec)}}", suffix);
-        emitln!(writer, "    LenVec(opt->$vec) == 0 || LenVec(opt->$vec) == 1");
-        emitln!(writer, ");");
-        emitln!(writer);
     }
 }
 

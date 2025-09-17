@@ -294,6 +294,21 @@ impl MonoAnalysisProcessor {
             .or_default()
             .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::Bool)]);
 
+        // Add ID generation by default
+        if let Some(id_qid) = env.id_qid() {
+            info.structs
+                .entry(id_qid)
+                .or_default()
+                .insert(vec![]);
+        }
+
+        if let Some(uid_qid) = env.uid_qid() {
+            info.structs
+                .entry(uid_qid)
+                .or_default()
+                .insert(vec![]);
+        }
+
         env.set_extension(info);
     }
 }
