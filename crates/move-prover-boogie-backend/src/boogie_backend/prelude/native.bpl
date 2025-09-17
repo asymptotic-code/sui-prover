@@ -447,12 +447,12 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
 
 {% macro table_vec_module(instance) %}
 {%- set T = instance.name -%}
+{%- set T_S = instance.suffix -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 
 function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bool {
-    $IsValid'u64'(LenTable(s->$contents->$contents)) &&
-    (forall i: int:: (0 <= i && i < LenTable(s->$contents->$contents)) ==> ContainsTable(s->$contents->$contents, i)) &&
-    (forall i: int:: ContainsTable(s->$contents->$contents, i) ==> $IsValid{{S}}(GetTable(s->$contents->$contents, i)))
+    $IsValid'$2_table_Table'u64_{{T_S}}''(s->$contents) &&
+    (forall i: int :: (0 <= i && i < LenTable(s->$contents->$contents)) <==> ContainsTable(s->$contents->$contents, $EncodeKey'u64'(i)))
 }
 
 {% endmacro table_vec_module %}
@@ -578,7 +578,6 @@ function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
 // Not inlined.
 function $IsValid'{{S}}'(t: {{Self}}): bool {
     $IsValid'u64'(LenTable(t)) &&
-    (forall i: int:: (0 <= i && i < LenTable(t)) ==> ContainsTable(t, i)) &&
     (forall i: int:: ContainsTable(t, i) ==> $IsValid{{SV}}(GetTable(t, i)))
 }
 
@@ -622,7 +621,6 @@ function $IsEqual'{{Type}}{{S}}'(t1: {{Type}}{{S}}, t2: {{Type}}{{S}}): bool {
 function $IsValid'{{Type}}{{S}}'(t: {{Type}}{{S}}): bool {
     // TODO use $IsValid'{{Self}}'(t->$contents)
     $IsValid'u64'(LenTable(t->$contents)) &&
-    (forall i: int:: (0 <= i && i < LenTable(t->$contents)) ==> ContainsTable(t->$contents, i)) &&
     (forall i: int:: ContainsTable(t->$contents, i) ==> $IsValid{{SV}}(GetTable(t->$contents, i)))
 }
 
