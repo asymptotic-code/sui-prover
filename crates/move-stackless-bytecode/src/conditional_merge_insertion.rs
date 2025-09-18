@@ -9,9 +9,8 @@
 //! - Bytecode::Branch(then_label, else_label, cond)
 //! - then_label block ends with Jump to else_label
 //! - else_label is the merge label (fallthrough path)
-//! - Simplifying assumption: pick the last Assign in the then block as
-//!   the then-value producer for the merged variable, and the last assignment
-//!   to the same variable before the Branch as the else-value.
+//! - Tracks variables to assigns and calls with a single destination var
+//!   (call return value assigned).
 //!
 //! The pass inserts at the merge label (right after the Label):
 //!   t_new := if_then_else(cond, then_src, else_src)
@@ -25,12 +24,13 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
+    livevar_analysis::LiveVarAnnotation,
     stackless_bytecode::{AssignKind, AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::FunctionEnv;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
 
 pub struct ConditionalMergeInsertionProcessor {
@@ -77,27 +77,25 @@ impl ConditionalMergeInsertionProcessor {
     }
 
     // Helper function to scan a block for simple assignments
+    // Returns all assigned variables and their sources
     fn block_permitted(
         &self,
         orig_code: &[Bytecode],
         start_pc: usize,
         end_pc: usize,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<BTreeMap<usize, usize>> {
         let mut scan_pc = start_pc;
         let mut last_assign_per_var: BTreeMap<usize, usize> = BTreeMap::new();
-        let mut last_assigned_var: Option<usize> = None;
         let mut simple_block = true;
 
         while scan_pc < orig_code.len() && scan_pc < end_pc {
             match &orig_code[scan_pc] {
                 Bytecode::Assign(_, dst, src, _) => {
                     last_assign_per_var.insert(*dst, *src);
-                    last_assigned_var = Some(*dst);
                 }
-                Bytecode::Call(_, dests, _op, _srcs, _aa) if !dests.is_empty() => {
+                Bytecode::Call(_, dests, _op, _srcs, _aa) if dests.len() == 1 => {
                     let var = dests[0];
                     last_assign_per_var.insert(var, var);
-                    last_assigned_var = Some(var);
                 }
                 Bytecode::Branch(..) => {
                     simple_block = false;
@@ -122,11 +120,9 @@ impl ConditionalMergeInsertionProcessor {
             scan_pc += 1;
         }
 
-        let pattern_ok = simple_block && last_assigned_var.is_some();
+        let pattern_ok = simple_block && !last_assign_per_var.is_empty();
         if pattern_ok {
-            let var = last_assigned_var.unwrap();
-            let src = *last_assign_per_var.get(&var).unwrap();
-            return Some((var, src));
+            return Some(last_assign_per_var);
         }
 
         None
@@ -144,61 +140,103 @@ impl ConditionalMergeInsertionProcessor {
         src_attr: AttrId,
         current_val: &BTreeMap<usize, usize>,
         builder: &mut FunctionDataBuilder,
-    ) -> Option<(Label, Insertion)> {
+        liveness: Option<&LiveVarAnnotation>,
+    ) -> Option<(Label, Vec<Insertion>)> {
         let labels = Bytecode::label_offsets(code);
         let then_pc = *labels.get(&then_label)? as usize;
         let else_pc = *labels.get(&else_label)? as usize;
         let merge_pc = *labels.get(&merge_label)? as usize;
 
         // Scan the then-block: from then_pc to else_pc
-        let then_assignment = self.block_permitted(code, then_pc, else_pc)?;
-        let (then_var, then_src) = then_assignment;
+        let then_assignments = self.block_permitted(code, then_pc, else_pc)?;
 
         // Scan the else-block: from else_pc to merge_pc
         // If else_pc == merge_pc, there's no else block (pure fallthrough)
-        let else_assignment = if else_pc < merge_pc {
+        let else_assignments = if else_pc < merge_pc {
             self.block_permitted(code, else_pc, merge_pc)
         } else {
             None
         };
 
-        let else_var = match else_assignment {
-            Some((else_var_from_block, else_src)) => {
-                // TODO(rvantonder): restriction: both blocks assign and must be same var
-                if then_var != else_var_from_block {
-                    return None;
-                }
-                // If-then-else pattern with explicit else source (same var)
-                else_src
-            }
-            None => {
-                // If-then (fallthrough): current_val is fallthrough source var
-                *current_val.get(&then_var).unwrap_or(&then_var)
-            }
+        let mut insertions = Vec::new();
+
+        // Get live variables at the merge point to filter unnecessary insertions
+        let live_vars_at_merge = if let Some(liveness) = liveness {
+            liveness
+                .get_live_var_info_at(merge_pc as u16)
+                .map(|info| &info.after)
+        } else {
+            None
         };
 
-        let var_ty = builder.get_local_type(then_var);
-        let fresh_then_var = builder.new_temp(var_ty.clone());
-        let mut fresh_vars_in_then = BTreeMap::new();
-        fresh_vars_in_then.insert(then_var, fresh_then_var);
-
-        let mut fresh_vars_in_else = BTreeMap::new();
-        if let Some((else_var_from_block, _)) = else_assignment {
-            let fresh_else_var = builder.new_temp(var_ty);
-            fresh_vars_in_else.insert(else_var_from_block, fresh_else_var);
+        // Collect all variables assigned in either then-block or else-block
+        let mut all_assigned_vars: BTreeSet<usize> = BTreeSet::new();
+        all_assigned_vars.extend(then_assignments.keys());
+        if let Some(else_map) = &else_assignments {
+            all_assigned_vars.extend(else_map.keys());
         }
 
-        let insertion = Insertion {
-            dest_var: then_var,
-            cond: cond_idx,
-            then_var: then_src,
-            src_attr,
-            else_var,
-            fresh_vars_in_then,
-            fresh_vars_in_else,
-        };
+        // Create insertions for all live assigned variables
+        for &var in &all_assigned_vars {
+            // Skip if we have liveness info and this variable is not live at merge
+            if live_vars_at_merge.map_or(false, |live_vars| !live_vars.contains(&var)) {
+                continue;
+            }
 
-        Some((merge_label, insertion))
+            let var_ty = builder.get_local_type(var);
+            let then_src_opt = then_assignments.get(&var);
+            let else_src_opt = else_assignments.as_ref().and_then(|m| m.get(&var));
+
+            let mut fresh_vars_in_then = BTreeMap::new();
+            let mut fresh_vars_in_else = BTreeMap::new();
+
+            let (then_var, else_var) = match (then_src_opt, else_src_opt) {
+                (Some(&then_src), Some(&else_src)) => {
+                    // Both blocks assign: create fresh variables for both
+                    let fresh_then_var = builder.new_temp(var_ty.clone());
+                    let fresh_else_var = builder.new_temp(var_ty);
+                    fresh_vars_in_then.insert(var, fresh_then_var);
+                    fresh_vars_in_else.insert(var, fresh_else_var);
+                    (then_src, else_src)
+                }
+                (Some(&then_src), None) => {
+                    // Only then block assigns: fresh then var, fallthrough else var
+                    let fresh_then_var = builder.new_temp(var_ty);
+                    fresh_vars_in_then.insert(var, fresh_then_var);
+                    let fallthrough = *current_val.get(&var).unwrap_or(&var);
+                    (then_src, fallthrough)
+                }
+                (None, Some(&else_src)) => {
+                    // Only else block assigns: fallthrough then var, fresh else var
+                    let fresh_else_var = builder.new_temp(var_ty);
+                    fresh_vars_in_else.insert(var, fresh_else_var);
+                    let fallthrough = *current_val.get(&var).unwrap_or(&var);
+                    (fallthrough, else_src)
+                }
+                (None, None) => {
+                    // Neither block assigns (shouldn't happen due to collection logic)
+                    continue;
+                }
+            };
+
+            let insertion = Insertion {
+                dest_var: var,
+                cond: cond_idx,
+                then_var,
+                src_attr,
+                else_var,
+                fresh_vars_in_then,
+                fresh_vars_in_else,
+            };
+
+            insertions.push(insertion);
+        }
+
+        if insertions.is_empty() {
+            None
+        } else {
+            Some((merge_label, insertions))
+        }
     }
 }
 
@@ -237,6 +275,8 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         if orig_code.is_empty() {
             return builder.data;
         }
+
+        let liveness = builder.data.annotations.get::<LiveVarAnnotation>().cloned();
 
         // XXX(@rvantonder): For simplicity, rejects functions with early returns (no Ret at the end)
         let last_idx = orig_code.len().saturating_sub(1);
@@ -324,7 +364,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                     }
                     // Invariant: merge_label is Some
                     let merge_label = merge_label.unwrap();
-                    if let Some((insertion_label, insertion)) = self.build_conditional_insert(
+                    if let Some((insertion_label, insertions)) = self.build_conditional_insert(
                         &orig_code,
                         then_label,
                         else_label,
@@ -333,27 +373,34 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         attr,
                         &current_val,
                         &mut builder,
+                        liveness.as_ref(),
                     ) {
+                        // Collect fresh variables for then-block from all insertions
                         let mut fresh_vars_for_then_block = BTreeMap::new();
-                        fresh_vars_for_then_block.insert(
-                            insertion.dest_var,
-                            insertion.fresh_vars_in_then[&insertion.dest_var],
-                        );
-                        label_to_fresh_vars.insert(then_label, fresh_vars_for_then_block);
+                        let mut fresh_vars_for_else_block = BTreeMap::new();
 
-                        // Add fresh variables for else-branch if it exists
-                        if !insertion.fresh_vars_in_else.is_empty() {
-                            let mut fresh_vars_for_else_block = BTreeMap::new();
+                        for insertion in &insertions {
+                            // Collect then-block fresh vars
+                            for (&var, &fresh_var) in &insertion.fresh_vars_in_then {
+                                fresh_vars_for_then_block.insert(var, fresh_var);
+                            }
+                            // Collect else-block fresh vars
                             for (&var, &fresh_var) in &insertion.fresh_vars_in_else {
                                 fresh_vars_for_else_block.insert(var, fresh_var);
                             }
+                        }
+
+                        if !fresh_vars_for_then_block.is_empty() {
+                            label_to_fresh_vars.insert(then_label, fresh_vars_for_then_block);
+                        }
+                        if !fresh_vars_for_else_block.is_empty() {
                             label_to_fresh_vars.insert(else_label, fresh_vars_for_else_block);
                         }
 
                         pending_inserts
                             .entry(insertion_label)
                             .or_default()
-                            .push(insertion);
+                            .extend(insertions);
                     }
                     builder.emit(Bytecode::Branch(attr, then_label, else_label, cond_idx))
                 }
