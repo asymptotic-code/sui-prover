@@ -76,6 +76,10 @@ pub struct Options {
     pub backend: BoogieOptions,
     /// Filtering options
     pub filter: TargetFilterOptions,
+    /// Whether to run in remote mode
+    pub remote_mode: bool,
+    /// The URL of the remote server
+    pub remote_url: String,
 }
 
 impl Default for Options {
@@ -95,11 +99,13 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             filter: TargetFilterOptions::default(),
+            remote_mode: false,
+            remote_url: "".to_string(),
         }
     }
 }
 
-pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(Options::default);
+pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(|| Options::default());
 
 impl Options {
     /// Creates options from toml configuration source.

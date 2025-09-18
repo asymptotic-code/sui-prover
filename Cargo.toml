@@ -6,6 +6,7 @@ members = [
   "crates/move-stackless-bytecode",
   "crates/move-prover-boogie-backend",
   "crates/move-prover-lean-backend",
+  "crates/lambda-boogie-handler",
 ]
 
 [profile.release]

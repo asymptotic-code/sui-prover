@@ -196,10 +196,12 @@ async fn execute_backend_boogie(
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
+    options.remote_mode = true;
+    options.remote_url = "https://hdhs3sbtlk22w5ceivvbuege4i0devap.lambda-url.us-west-2.on.aws/".to_owned();
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
-        match move_prover_boogie_backend::generator::run_move_prover_with_model(&model, &mut error_writer, options, None) {
+        match move_prover_boogie_backend::generator::run_move_prover_with_model(&model, &mut error_writer, options, None).await {
             Ok(_) => {
                 let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
                 println!("Output: {}", output);
@@ -210,7 +212,7 @@ async fn execute_backend_boogie(
             }
         }
     } else {
-       let result_str = run_boogie_gen(&model, options)?;
+       let result_str = run_boogie_gen(&model, options).await?;
        println!("{}", result_str)
     }
 
