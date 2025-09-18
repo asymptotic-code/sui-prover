@@ -44,15 +44,15 @@ fn resolve_lock_file_path(
     Ok(build_config)
 }
 
-pub fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
+fn reroot_path(path: Option<&Path>) -> anyhow::Result<PathBuf> {
     let path = path
         .map(Path::canonicalize)
         .unwrap_or_else(|| PathBuf::from(".").canonicalize())?;
-    // Find the package root without changing the current directory
+    // Always root ourselves to the package root, and then compile relative to that.
     let rooted_path = SourcePackageLayout::try_find_root(&path)?;
-    
-    // Return the absolute path to the package root instead of changing cwd
-    Ok(rooted_path)
+    std::env::set_current_dir(rooted_path)?;
+
+    Ok(PathBuf::from("."))
 }
 
 #[allow(dead_code)] // This function is used in external cli

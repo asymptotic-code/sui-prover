@@ -178,24 +178,13 @@ pub fn create_and_process_bytecode(
         Path::new(s).file_name().unwrap().to_str().unwrap()
     });
 
-    let dump_dir = options
-        .move_sources
-        .first()
-        .map(|s| Path::new(s))
-        .map(|p| if p.is_file() { p.parent().unwrap_or(Path::new(".")) } else { p })
-        .unwrap_or(Path::new("."));
-
-    if options.prover.dump_bytecode {
-        fs::create_dir_all(dump_dir).expect("create dump directory");
-    }
-
     // Add function targets for all functions in the environment.
     for module_env in env.get_modules() {
         if module_env.is_target() {
             info!("preparing module {}", module_env.get_full_name_str());
         }
         if options.prover.dump_bytecode {
-            let dump_file = dump_dir.join(format!("{}.mv.disas", output_prefix));
+            let dump_file = output_dir.join(format!("{}.mv.disas", output_prefix));
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
@@ -211,7 +200,7 @@ pub fn create_and_process_bytecode(
     };
 
     let res = if options.prover.dump_bytecode {
-        let dump_file_base = dump_dir
+        let dump_file_base = output_dir
             .join(output_prefix)
             .into_os_string()
             .into_string()
