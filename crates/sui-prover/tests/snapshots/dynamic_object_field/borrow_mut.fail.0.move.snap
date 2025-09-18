@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/dynamic_object_field/borrow_mut.fail.0.move:24:5
+   │
+24 │     ensures(!dynamic_object_field::exists_with_type<u64, Bar>(&x.id, 10));
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/dynamic_object_field/borrow_mut.fail.0.move:21: foo_spec
