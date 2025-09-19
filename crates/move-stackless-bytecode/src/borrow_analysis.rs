@@ -546,7 +546,7 @@ fn get_custom_annotation_or_none(
                 // TODO: use table for dynamic fields--is that what we wabt
                 Some(summarize_custom_borrow(IndexEdgeKind::Table, &[0], &[0]))
             } else if fun_env.is_well_known("dynamic_field::borrow_mut")
-                || fun_env.is_well_known("dynamic_field_object::borrow_mut")
+                || fun_env.is_well_known("dynamic_object_field::borrow_mut")
             {
                 let mut an = BorrowAnnotation::default();
                 let param_node = BorrowNode::Reference(0);
