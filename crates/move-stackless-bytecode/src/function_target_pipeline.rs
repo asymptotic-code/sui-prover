@@ -50,6 +50,7 @@ pub struct FunctionTargetsHolder {
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
+    valid_specs: BTreeSet<QualifiedId<FunId>>,
     filter: TargetFilterOptions,
 }
 
@@ -195,6 +196,7 @@ impl FunctionTargetsHolder {
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
+            valid_specs: BTreeSet::new(),
             filter: filter.unwrap_or_default(),
         }
     }
@@ -242,6 +244,7 @@ impl FunctionTargetsHolder {
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
+            valid_specs: instance.valid_specs,
             filter: instance.filter,
         }
     }
@@ -284,6 +287,7 @@ impl FunctionTargetsHolder {
             target_modules: instance.target_modules,
             omit_opaque_specs: instance.omit_opaque_specs,
             skip_specs: instance.skip_specs,
+            valid_specs: instance.valid_specs,
             filter: instance.filter,
         }
     }
@@ -350,18 +354,8 @@ impl FunctionTargetsHolder {
         self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
     }
 
-    pub fn is_valid_spec(&self, id: &QualifiedId<FunId>, env: &GlobalEnv) -> bool {
-        if self.scenario_specs.contains(id) {
-            return true;
-        }
-        
-        if let Some(target_id) = self.get_fun_by_spec(id) {
-            // Check if the target function still exists
-            let target_env = env.get_function(*target_id);
-            return self.has_target(&target_env, &FunctionVariant::Baseline);
-        }
-        
-        false
+    pub fn is_valid_spec(&self, id: &QualifiedId<FunId>) -> bool {
+        self.valid_specs.contains(id)
     }
 
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
@@ -395,15 +389,7 @@ impl FunctionTargetsHolder {
     }
 
     pub fn valid_specs<'a>(&'a self, env: &'a GlobalEnv) -> impl Iterator<Item = &'a QualifiedId<FunId>> {
-        self.function_specs
-            .iter()
-            .filter(|(_spec_id, target_id)| {
-                // Only include spec functions whose target functions still exist
-                let target_env = env.get_function(**target_id);
-                self.has_target(&target_env, &FunctionVariant::Baseline)
-            })
-            .map(|(spec_id, _)| spec_id)
-            .chain(self.scenario_specs.iter())
+        self.valid_specs.iter()
     }
 
     pub fn specs_count(&self, env: &GlobalEnv) -> usize {
@@ -818,6 +804,10 @@ impl FunctionTargetsHolder {
                 id
             ))
             .insert(variant, data);
+    }
+
+    pub fn insert_valid_spec(&mut self, id: QualifiedId<FunId>) {
+        self.valid_specs.insert(id);
     }
 
     /// Processes the function target data for given function.

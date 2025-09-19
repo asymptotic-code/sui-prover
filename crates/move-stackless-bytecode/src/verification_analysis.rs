@@ -242,6 +242,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             println!("DEBUG: Removing function: {}", fun_name);
             targets.remove_target(&fun_id);
         }
+        
+        let mut to_add = BTreeSet::new();
+        to_add.extend(targets.scenario_specs());
+        to_add.extend(
+            targets
+                .function_specs()
+                .iter()
+                .filter_map(|(spec_id, target_id)| {
+                    let target_env = env.get_function(*target_id);
+                    targets
+                        .has_target(&target_env, &FunctionVariant::Baseline)
+                        .then_some(*spec_id)
+                }),
+        );
+        for spec_id in to_add {
+            targets.insert_valid_spec(spec_id);
+        }
     }
 
     fn dump_result(
@@ -504,7 +521,7 @@ impl VerificationAnalysisProcessor {
             info.verified = true;
             info.inlined = true;
             Self::mark_callees_inlined(fun_env, targets);
-            
+
             // If this is a spec function, also mark its target function as inlined
             if targets.is_spec(&fun_env.get_qualified_id()) {
                 if let Some(target_id) = targets.get_fun_by_spec(&fun_env.get_qualified_id()) {

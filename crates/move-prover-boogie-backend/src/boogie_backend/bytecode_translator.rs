@@ -319,7 +319,7 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                if self.targets.is_valid_spec(&fun_env.get_qualified_id(), self.env) {
+                if self.targets.is_valid_spec(&fun_env.get_qualified_id()) {
                     verified_functions_count += 1;
 
                     if self
