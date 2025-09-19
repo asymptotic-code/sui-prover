@@ -167,20 +167,20 @@ pub async fn execute(
     let model = build_model(path, Some(build_config))?;
 
     if matches!(general_config.backend, BackendOptions::Boogie) {
-        execute_backend_boogie(path, model, &general_config, boogie_config, filter).await
+        execute_backend_boogie(model, &general_config, boogie_config, filter).await
     } else {
-        execute_backend_lean(path, model, &general_config).await
+        execute_backend_lean(model, &general_config).await
     }
 }
 
 async fn execute_backend_boogie(
-    path: Option<&Path>,
     model: GlobalEnv,
     general_config: &GeneralConfig,
     boogie_config: Option<String>,
     filter: TargetFilterOptions
 ) -> anyhow::Result<()> {
     let mut options = move_prover_boogie_backend::generator_options::Options::default();
+    // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
@@ -196,11 +196,6 @@ async fn execute_backend_boogie(
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
-
-    if let Ok(pkg_root) = crate::build_model::reroot_path(path) {
-        options.move_sources = vec![pkg_root.to_string_lossy().to_string()];
-        options.output_path = pkg_root.join("output").to_string_lossy().to_string();
-    }
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
@@ -223,7 +218,6 @@ async fn execute_backend_boogie(
 }
 
 async fn execute_backend_lean(
-    path: Option<&Path>,
     model: GlobalEnv,
     general_config: &GeneralConfig) -> anyhow::Result<()> {
     let mut options = move_prover_lean_backend::generator_options::Options::default();
@@ -233,10 +227,6 @@ async fn execute_backend_lean(
         LevelFilter::Info
     };
     options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
-    if let Ok(pkg_root) = crate::build_model::reroot_path(path) {
-        options.move_sources = vec![pkg_root.to_string_lossy().to_string()];
-        options.output_path = pkg_root.join("output").to_string_lossy().to_string();
-    }
     let mut error_writer = Buffer::no_color();
     match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer) {
         Ok(_) => {
