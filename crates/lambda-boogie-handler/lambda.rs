@@ -1,8 +1,10 @@
 
 use anyhow::Result;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
+use rustls::crypto::CryptoProvider;
 use crate::handler::ProverHandler;
 use serde_json::{from_str, json, Value};
+use dotenv;
 
 pub mod handler;
 
@@ -28,8 +30,59 @@ fn make_success_response(body: String) -> Value {
     })
 }
 
+fn security_check(event: Value) -> Option<Value> {
+    if event.get("headers").is_none() || event.get("headers").unwrap().as_object().is_none() {
+        return Some(make_error_response(400, "Headers are missing or invalid."));
+    }
+
+    let auth_header: Option<&Value> = event.get("headers").unwrap().as_object().unwrap()
+        .get("Authorization")
+        .or_else(|| event.get("headers").unwrap().as_object().unwrap().get("authorization"));
+
+    if auth_header.is_none() || auth_header.unwrap().as_str().is_none() {
+        return Some(make_error_response(401, "Authorization header is missing or invalid."));
+    }
+
+    let auth_header: Option<&Value> = event.get("headers").unwrap().as_object().unwrap()
+        .get("Authorization")
+        .or_else(|| event.get("headers").unwrap().as_object().unwrap().get("authorization"));
+
+    if auth_header.is_none() || auth_header.unwrap().as_str().is_none() {
+        return Some(make_error_response(401, "Authorization header is missing or invalid."));
+    }
+
+    let auth_value = auth_header.unwrap().as_str().unwrap();
+    let allowed = std::env::var("ALLOWED_KEY_HASHES_CSV")
+        .unwrap_or_else(|_| "".to_string())
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect::<Vec<String>>();
+
+    if allowed.is_empty() {
+        return None;
+    }
+
+    if !allowed.contains(&ProverHandler::generate_hash(auth_value)) {
+        Some(make_error_response(403, "Forbidden"))
+    } else {
+        None
+    }
+}
+
 async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    dotenv::dotenv().ok();
+
+    match CryptoProvider::install_default(rustls::crypto::ring::default_provider()) {
+        Ok(_) => {}
+        Err(_) => { /* Provider is already installed, we can ignore the error */ }
+    }
+
     let (event, _context) = event.into_parts();
+
+    let security_response = security_check(event.clone());
+    if security_response.is_some() {
+        return Ok(security_response.unwrap());
+    }
 
     if event.get("body").is_none() || event.get("body").unwrap().as_str().is_none() {
         return Ok(make_error_response(400, "Body is missing or invalid."));
@@ -44,7 +97,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();
 
-    let prover = ProverHandler::new(true)?;
+    let prover = ProverHandler::new(false)?;
 
     let response = match prover.process(file_text).await {
         Ok(resp) => resp,

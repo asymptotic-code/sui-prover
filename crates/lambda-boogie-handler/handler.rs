@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use redis::AsyncCommands;
+use redis::{AsyncCommands, RedisError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::process::Command;
@@ -28,23 +28,50 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
 
 pub struct ProverHandler {
     redis_client: Option<redis::Client>,
+    cache_lifetime_seconds: u64,
 }
 
 impl ProverHandler {
-    pub fn new(skip_redis: bool) -> Result<Self> {
+    pub fn new(skip_redis: bool) -> Result<Self> {        
+        let cache_lifetime_seconds = std::env::var("CACHE_LIFETIME_SECONDS")
+            .unwrap_or_else(|_| "172800".to_string())
+            .parse::<u64>()
+            .context("Invalid CACHE_LIFETIME_SECONDS value")?;
+
         if skip_redis {
-            return Ok(Self { redis_client: None });
+            return Ok(Self { 
+                redis_client: None,
+                cache_lifetime_seconds,
+            });
         }
 
-        let redis_url = std::env::var("REDIS_URL")
-            .context("REDIS_URL environment variable not set");
-        let redis_client = Some(redis::Client::open(redis_url.unwrap())
+        let redis_host = std::env::var("REDIS_HOST")
+            .context("REDIS_HOST environment variable not set")?;
+        let redis_port = std::env::var("REDIS_PORT")
+            .unwrap_or_else(|_| "6379".to_string())
+            .parse::<u16>()
+            .context("Invalid REDIS_PORT value")?;
+
+        let info = redis::ConnectionInfo {
+            addr: redis::ConnectionAddr::TcpTls {
+                host: redis_host,
+                port: redis_port,
+                insecure: true,
+                tls_params: None,
+            },
+            redis: redis::RedisConnectionInfo::default(),
+        };
+
+        let redis_client = Some(redis::Client::open(info)
             .context("Failed to create Redis client")?);
 
-        Ok(Self { redis_client })
+        Ok(Self { 
+            redis_client,
+            cache_lifetime_seconds,
+        })
     }
 
-    fn generate_hash(&self, file_text: &str) -> String {
+    pub fn generate_hash(file_text: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(file_text.as_bytes());
         format!("{:x}", hasher.finalize())
@@ -55,10 +82,13 @@ impl ProverHandler {
             let mut conn = redis_client.get_multiplexed_async_connection().await
                 .context("Failed to get Redis connection")?;
 
-            let result: Option<(String, String, i32)> = conn.get(hash).await
-                .context("Failed to query Redis cache")?;
-
-            Ok(result)
+            let result: Option<String> = conn.get(hash).await?;
+            let deserialized: Option<(String, String, i32)> = match result {
+                Some(data) => serde_json::from_str(&data).ok(),
+                None => None,
+            };
+            
+            Ok(deserialized)
         } else {
             Ok(None)
         }
@@ -69,9 +99,9 @@ impl ProverHandler {
             let mut conn = redis_client.get_multiplexed_async_connection().await
                 .context("Failed to get Redis connection")?;
 
-            // Cache for 48 hours (172800 seconds)
-            let _: () = conn.set_ex(hash, (out, err, status), 172800).await
-                .context("Failed to store result in Redis cache")?;
+            let serialized = serde_json::to_string(&(out, err, status))?;
+            let result: Result<(), RedisError> = conn.set_ex(hash, serialized, self.cache_lifetime_seconds).await;
+            result?;
         }
 
         Ok(())
@@ -110,7 +140,7 @@ impl ProverHandler {
     }
 
     pub async fn process(&self, file_text: String) -> Result<ProverResponse> {
-        let hash = self.generate_hash(&file_text);
+        let hash = Self::generate_hash(&file_text);
 
         if let Some((out, err, status)) = self.check_cache(&hash).await? {
             return Ok(ProverResponse {

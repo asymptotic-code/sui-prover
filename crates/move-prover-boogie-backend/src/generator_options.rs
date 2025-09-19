@@ -27,7 +27,7 @@ use move_docgen::DocgenOptions;
 use move_model::{
     model::VerificationScope, options::ModelBuilderOptions,
 };
-use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
+use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
@@ -77,9 +77,7 @@ pub struct Options {
     /// Filtering options
     pub filter: TargetFilterOptions,
     /// Whether to run in remote mode
-    pub remote_mode: bool,
-    /// The URL of the remote server
-    pub remote_url: String,
+    pub remote: Option<RemoteOptions>
 }
 
 impl Default for Options {
@@ -99,8 +97,7 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             filter: TargetFilterOptions::default(),
-            remote_mode: false,
-            remote_url: "".to_string(),
+            remote: None,
         }
     }
 }

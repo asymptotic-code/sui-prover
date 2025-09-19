@@ -45,7 +45,7 @@ use crate::boogie_backend::{
         boogie_enum_name, boogie_enum_name_prefix, boogie_inst_suffix, boogie_struct_name,
         boogie_struct_name_prefix,
     },
-    options::{BoogieOptions, VectorTheory},
+    options::{BoogieOptions, RemoteOptions, VectorTheory},
     prover_task_runner::{ProverTaskRunner, RunBoogieWithSeeds},
 };
 
@@ -133,7 +133,7 @@ pub struct RemoteProverResponse {
 }
 
 impl<'env> BoogieWrapper<'env> {
-    async fn call_remote(&self, boogie_file: &str, remote_url: &str) -> anyhow::Result<RemoteProverResponse> {
+    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file)
             .map_err(|e| 
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
@@ -145,12 +145,13 @@ impl<'env> BoogieWrapper<'env> {
         });
 
         let response = client
-            .post(remote_url)
+            .post(remote_opt.url.as_str())
+            .header("Authorization", remote_opt.api_key.as_str())
             .json(&request_body)
             .send()
             .await
             .map_err(|e| 
-                anyhow!(format!("Failed to send HTTP request to '{}': {}", remote_url, e))
+                anyhow!(format!("Failed to send HTTP request to '{}': {}", remote_opt.url, e))
             )?;
 
         if !response.status().is_success() {
@@ -171,8 +172,8 @@ impl<'env> BoogieWrapper<'env> {
         Ok(response_json)
     }
 
-    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_url: &str) -> anyhow::Result<BoogieOutput> {
-        let res = self.call_remote(boogie_file, remote_url).await?;
+    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {
+        let res = self.call_remote(boogie_file, remote_opt).await?;
         self.analyze_output(&res.out, &res.err, res.status)
     }
 
@@ -297,8 +298,8 @@ impl<'env> BoogieWrapper<'env> {
         self.verify_boogie_output(&output, boogie_file)
     }
 
-    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_url: &str) -> anyhow::Result<()> {
-        let output = self.call_remote_boogie(boogie_file, remote_url).await?;
+    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<()> {
+        let output = self.call_remote_boogie(boogie_file, remote_opt).await?;
         self.verify_boogie_output(&output, boogie_file)
     }
 

@@ -258,7 +258,7 @@ async fn process_fn<W: WriteColor>(env: &GlobalEnv, error_writer: &mut W, option
         if is_error {
             println!("❌ {file_name}");
         } else {
-            if !options.remote_mode {
+            if options.remote.is_none() {
                 print!("\x1B[1A\x1B[2K");
             }
             println!("✅ {file_name}");
@@ -291,8 +291,8 @@ pub async fn run_prover_function_mode(
         targets.is_verified_spec(target)
     ).collect::<Vec<_>>();
 
-    if options.remote_mode {
-        for batch in fun_targets.chunks(10) {
+    if options.remote.is_some() {
+        for batch in fun_targets.chunks(options.remote.as_ref().unwrap().concurrency) {
             let results = futures::future::join_all(
                 batch.iter().map(|func| async {
                     let mut local_error_writer = Buffer::no_color();
@@ -399,7 +399,7 @@ async fn process_mod<W: WriteColor>(env: &GlobalEnv, error_writer: &mut W, optio
     if is_error {
         println!("❌ {file_name}");
     } else {
-        if !options.remote_mode {
+        if options.remote.is_none() {
             print!("\x1B[1A\x1B[2K");
         }
         println!("✅ {file_name}");
@@ -444,8 +444,8 @@ pub async fn run_prover_module_mode(
         .filter(|target|env.get_module(**target).is_target())
         .collect::<Vec<_>>();
 
-    if options.remote_mode {
-        for batch in module_targets.chunks(5) {
+    if options.remote.is_some() {
+        for batch in module_targets.chunks(options.remote.as_ref().unwrap().concurrency) {
                 let results = futures::future::join_all(
                batch.iter().map(|func| async {
                     let mut local_error_writer = Buffer::no_color();
@@ -523,8 +523,8 @@ pub async fn verify_boogie(
             options: &options.backend,
             types: &types,
         };
-        if options.remote_mode {
-            boogie.call_remote_boogie_and_verify_output(&file_name, &options.remote_url).await?;
+        if options.remote.is_some() {
+            boogie.call_remote_boogie_and_verify_output(&file_name, &options.remote.as_ref().unwrap()).await?;
         } else {
             boogie.call_boogie_and_verify_output(&file_name)?;
         }
