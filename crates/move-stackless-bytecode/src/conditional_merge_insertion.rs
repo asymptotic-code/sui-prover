@@ -59,18 +59,13 @@ impl ConditionalMergeInsertionProcessor {
 
         let edges: Vec<(BlockId, BlockId)> = nodes
             .iter()
-            .flat_map(|x| {
-                forward_cfg
-                    .successors(*x)
-                    .iter()
-                    .map(|y| (*x, *y))
-                    .collect::<Vec<(BlockId, BlockId)>>()
-            })
+            .flat_map(|x| forward_cfg.successors(*x).iter().map(|y| (*x, *y)))
             .collect();
 
         let graph = Graph::new(entry, nodes, edges);
         match graph.compute_reducible() {
             Some(natural_loops) => !natural_loops.is_empty(),
+            // None implies irreducible or malformed -> reject
             None => true,
         }
     }
@@ -354,7 +349,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         let mut pending_inserts: BTreeMap<Label, Vec<Insertion>> = BTreeMap::new();
         let back_cfg = Some(StacklessControlFlowGraph::new_backward(&orig_code, false));
 
-        // Skip functions with loops - they are not supported by this pass
+        // Skip functions with loops
         if self.has_loops(&orig_code) {
             return builder.data;
         }
