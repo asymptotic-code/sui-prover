@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/conditionals/simple_max.fail.move:19:5
+   │
+19 │     ensures(result >= a);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/conditionals/simple_max.fail.move:16: simple_max_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/conditionals/simple_max.fail.move:20:5
+   │
+20 │     ensures(result >= b);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/conditionals/simple_max.fail.move:16: simple_max_spec
