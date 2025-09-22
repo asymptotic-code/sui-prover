@@ -1537,7 +1537,20 @@ impl FunctionTranslator<'_> {
                     BorrowLoc => wip!("BorrowLoc"),
                     ReadRef => wip!("ReadRef"),
                     WriteRef => wip!("WriteRef"),
-                    IfThenElse => wip!("IfThenElse"),
+                    IfThenElse => {
+                        let cond_str = str_local(srcs[0]);
+                        let true_expr_str = str_local(srcs[1]);
+                        let false_expr_str = str_local(srcs[2]);
+                        let dest_str = str_local(dests[0]);
+                        emitln!(
+                            self.writer(),
+                            "let {} := if {} then {} else {};",
+                            dest_str,
+                            cond_str,
+                            true_expr_str,
+                            false_expr_str
+                        )
+                    },
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let module_env = env.get_module(*mid);
@@ -1802,8 +1815,31 @@ impl FunctionTranslator<'_> {
                         // location tracks before it returns.
                         *last_tracked_loc = None;
                     }
-                    Pack(mid, sid, inst) => wip!("Pack"),
-                    Unpack(mid, sid, inst) => wip!("Unpack"),
+                    Pack(mid, sid, inst) => {
+                        let inst = &self.inst_slice(inst);
+                        let dest_str = str_local(dests[0]);
+                        let srcs_str = srcs.iter().cloned().map(str_local).join(" ");
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        let struct_name = lean_struct_name(&struct_env, inst);
+                        emitln!(
+                            self.writer(),
+                            "let {} := {}.mk {};",
+                            dest_str,
+                            struct_name,
+                            srcs_str
+                        );
+                    }
+                    Unpack(mid, sid, inst) => {
+                        let inst = &self.inst_slice(inst);
+                        let src = srcs[0];
+                        let src_str = str_local(src);
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        for (i, field_env) in struct_env.get_fields().enumerate() {
+                            let dest_str = str_local(dests[i]);
+                            let sel_fun = lean_field_sel(&field_env, inst);
+                            emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
+                        }
+                    }
                     PackVariant(mid, eid, vid, inst) => wip!("PackVariant"),
                     UnpackVariant(mid, eid, vid, _inst, ref_type) => wip!("UnpackVariant"),
                     BorrowField(mid, sid, inst, field_offset) => {
@@ -2069,7 +2105,7 @@ impl FunctionTranslator<'_> {
             }
             Assign(_, dest, src, _) => {
                 // Simple assignment - in functional style this would be a let binding
-                emitln!(self.writer(), "-- let {} := {} (assignment)", str_local(*dest), str_local(*src));
+                emitln!(self.writer(), "let {} := {} -- (assignment)", str_local(*dest), str_local(*src));
             }
             Load(_, dest, c) => {
                 // Load constant
