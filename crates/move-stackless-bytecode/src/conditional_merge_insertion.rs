@@ -76,6 +76,24 @@ impl ConditionalMergeInsertionProcessor {
             .map(|(label, _)| *label)
     }
 
+    fn is_side_effecting_op(op: &Operation) -> bool {
+        use Operation::*;
+        matches!(
+            op,
+            MoveTo(..)
+                | MoveFrom(..)
+                | BorrowGlobal(..)
+                | GetGlobal(..)
+                | WriteRef
+                | Havoc(..)
+                | Stop
+                | Uninit
+                | Destroy
+                | EmitEvent
+                | EventStoreDiverge
+        )
+    }
+
     // Helper function to scan a block for simple assignments
     // Returns all assigned variables and their sources
     fn block_permitted(
@@ -93,26 +111,49 @@ impl ConditionalMergeInsertionProcessor {
                 Bytecode::Assign(_, dst, src, _) => {
                     last_assign_per_var.insert(*dst, *src);
                 }
-                Bytecode::Call(_, dests, _op, _srcs, _aa) if dests.len() == 1 => {
+                Bytecode::Call(_, dests, op, _, _) => {
+                    if Self::is_side_effecting_op(op) || dests.len() != 1 {
+                        simple_block = false;
+                        break;
+                    }
                     let var = dests[0];
                     last_assign_per_var.insert(var, var);
                 }
-                Bytecode::Branch(..) => {
-                    simple_block = false;
-                    break;
-                }
-                Bytecode::Label(..) => {
-                    if scan_pc != start_pc {
+                Bytecode::Jump(..) => {
+                    // Expected: blocks should jump to merge point at end of block
+                    if scan_pc + 1 < end_pc && scan_pc + 1 < orig_code.len() {
+                        // Jump not at the end of block (?) -> reject
                         simple_block = false;
                         break;
                     }
                 }
-                Bytecode::Jump(..) => {
-                    // Expected: blocks should jump to merge point
+
+                // Accepted insns
+                Bytecode::Nop(..)
+                | Bytecode::Load(..)
+                | Bytecode::SaveMem(..)
+                | Bytecode::Prop(..) => {}
+
+                // Rejected insns
+                Bytecode::Label(..) => {
+                    if scan_pc != start_pc {
+                        // Labels in the middle of blocks not supported
+                        simple_block = false;
+                        break;
+                    }
                 }
-                Bytecode::Load(..) => {}
-                _ => {
-                    // Ultra conservative: reject any other bytecode ops in the block so we don't break things
+                Bytecode::Branch(..) => {
+                    // Nested branches not supported yet
+                    simple_block = false;
+                    break;
+                }
+                Bytecode::Ret(..) | Bytecode::Abort(..) => {
+                    // Early returns/aborts change control flow
+                    simple_block = false;
+                    break;
+                }
+                Bytecode::VariantSwitch(..) => {
+                    // Complex control flow rejected
                     simple_block = false;
                     break;
                 }
@@ -278,16 +319,6 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
 
         let liveness = builder.data.annotations.get::<LiveVarAnnotation>().cloned();
 
-        // XXX(@rvantonder): For simplicity, rejects functions with early returns (no Ret at the end)
-        let last_idx = orig_code.len().saturating_sub(1);
-        let has_early_ret = orig_code
-            .iter()
-            .enumerate()
-            .any(|(i, bc)| matches!(bc, Bytecode::Ret(..)) && i < last_idx);
-        if has_early_ret {
-            // Punt: do not transform this function
-            return builder.data;
-        }
         let mut current_val: BTreeMap<usize, usize> = (0..builder.data.local_types.len())
             .map(|i| (i, i))
             .collect();
@@ -359,6 +390,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         self.find_merge_by_dominators(&orig_code, back_cfg.as_ref().unwrap(), pc);
 
                     if merge_label.is_none() {
+                        // Note: early returns in conditional branches have no merge label
                         builder.emit(Bytecode::Branch(attr, then_label, else_label, cond_idx));
                         continue;
                     }
