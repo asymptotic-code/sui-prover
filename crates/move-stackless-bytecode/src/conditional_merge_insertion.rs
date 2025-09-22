@@ -24,9 +24,10 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
+    graph::Graph,
     livevar_analysis::LiveVarAnnotation,
     stackless_bytecode::{AssignKind, AttrId, Bytecode, Label, Operation},
-    stackless_control_flow_graph::StacklessControlFlowGraph,
+    stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph},
 };
 use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::FunctionEnv;
@@ -45,6 +46,33 @@ impl ConditionalMergeInsertionProcessor {
     #[allow(dead_code)]
     pub fn new_with_debug() -> Box<Self> {
         Box::new(Self { debug: true })
+    }
+
+    fn has_loops(&self, code: &[Bytecode]) -> bool {
+        if code.is_empty() {
+            return false;
+        }
+
+        let forward_cfg = StacklessControlFlowGraph::new_forward(code);
+        let entry = forward_cfg.entry_block();
+        let nodes = forward_cfg.blocks();
+
+        let edges: Vec<(BlockId, BlockId)> = nodes
+            .iter()
+            .flat_map(|x| {
+                forward_cfg
+                    .successors(*x)
+                    .iter()
+                    .map(|y| (*x, *y))
+                    .collect::<Vec<(BlockId, BlockId)>>()
+            })
+            .collect();
+
+        let graph = Graph::new(entry, nodes, edges);
+        match graph.compute_reducible() {
+            Some(natural_loops) => !natural_loops.is_empty(),
+            None => true,
+        }
     }
 
     // Dominator-based merge detection for a branch at pc.
@@ -325,6 +353,11 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         // pending inserts track where to insert a if_then_else(...)'s after a Label
         let mut pending_inserts: BTreeMap<Label, Vec<Insertion>> = BTreeMap::new();
         let back_cfg = Some(StacklessControlFlowGraph::new_backward(&orig_code, false));
+
+        // Skip functions with loops - they are not supported by this pass
+        if self.has_loops(&orig_code) {
+            return builder.data;
+        }
 
         let mut active_fresh_vars: BTreeMap<usize, usize> = BTreeMap::new();
         let mut label_to_fresh_vars: BTreeMap<Label, BTreeMap<usize, usize>> = BTreeMap::new();
