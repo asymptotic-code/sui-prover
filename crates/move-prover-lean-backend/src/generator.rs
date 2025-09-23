@@ -2,7 +2,6 @@
 use std::cell::RefCell;
 use crate::generator_options::Options;
 use anyhow::anyhow;
-use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::model::GlobalEnv;
@@ -41,14 +40,14 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     env.set_extension(options.prover.clone());
     create_init_num_operation_state(env);
 
-    let (targets, _err_processor) = create_and_process_bytecode(&options, env);
-
+    let mut targets = FunctionTargetsHolder::new(None);
+    let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
+    let error_text = format!("exiting with bytecode transformation errors: {}", _err_processor.unwrap_or("unknown".to_string()));
     check_errors(
         env,
         &options,
         error_writer,
-        // TODO: add _err_processor to this message
-        "exiting with bytecode transformation errors",
+        error_text,
     )?;
 
     let output_path = Path::new(&options.output_path);
@@ -91,14 +90,15 @@ pub fn run_prover_function_mode<W: WriteColor>(
             println!("🔄 {file_name}");
         }
 
-        let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
+        let mut new_targets = FunctionTargetsHolder::new_with_qid(None, fun_env.get_qualified_id());
+        create_and_process_bytecode(&options, env, &mut new_targets).unwrap(); // unwrap should be safe here as we checked for errors before 
         let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
 
         check_errors(
             env,
             &options,
             error_writer,
-            "exiting with condition generation errors",
+            "exiting with condition generation errors".to_string(),
         )?;
 
         verify_lean(env, &options, &new_targets, code_writer, types, file_name.clone())?;
@@ -169,8 +169,8 @@ pub fn verify_lean(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
-) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new(None);
+    targets: &mut FunctionTargetsHolder,
+) -> Option<String> {
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -205,9 +205,9 @@ pub fn create_and_process_bytecode(
             .into_os_string()
             .into_string()
             .unwrap();
-        pipeline.run_with_dump(env, &mut targets, &dump_file_base, options.prover.dump_cfg)
+        pipeline.run_with_dump(env, targets, &dump_file_base, options.prover.dump_cfg)
     } else {
-        pipeline.run(env, &mut targets)
+        pipeline.run(env, targets)
     };
 
     // println!(
@@ -218,14 +218,14 @@ pub fn create_and_process_bytecode(
     //     }
     // );
 
-    (targets, res.err().map(|p| p.name()))
+    res.err().map(|p| p.name())
 }
 
 pub fn check_errors<W: WriteColor>(
     env: &GlobalEnv,
     options: &Options,
     error_writer: &mut W,
-    msg: &'static str,
+    msg: String,
 ) -> anyhow::Result<()> {
     let errors = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);

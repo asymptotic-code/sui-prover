@@ -461,7 +461,7 @@ pub struct GlobalEnv {
     /// A counter for issuing global ids.
     global_id_counter: RefCell<usize>,
     /// A type-indexed container for storing extension data in the environment.
-    extensions: RefCell<BTreeMap<TypeId, Box<dyn Any>>>,
+    extensions: RefCell<BTreeMap<TypeId, Rc<dyn Any>>>,
     /// The address of the standard and extension libaries.
     stdlib_address: Option<BigUint>,
     extlib_address: Option<BigUint>,
@@ -531,7 +531,7 @@ impl GlobalEnv {
         let id = TypeId::of::<T>();
         self.extensions
             .borrow_mut()
-            .insert(id, Box::new(Rc::new(x)));
+            .insert(id, Rc::new(x));
     }
 
     /// Retrieves extension data from the environment. Use as in `env.get_extension::<T>()`.
@@ -542,7 +542,7 @@ impl GlobalEnv {
         self.extensions
             .borrow()
             .get(&id)
-            .and_then(|d| d.downcast_ref::<Rc<T>>().cloned())
+            .and_then(|rc| rc.clone().downcast::<T>().ok())
     }
 
     /// Retrieves a clone of the extension data from the environment. Use as in `env.get_cloned_extension::<T>()`.
@@ -553,10 +553,9 @@ impl GlobalEnv {
             .borrow_mut()
             .remove(&id)
             .expect("extension defined")
-            .downcast_ref::<Rc<T>>()
-            .cloned()
+            .downcast::<T>()
             .unwrap();
-        Rc::try_unwrap(d).unwrap_or_else(|d| d.as_ref().clone())
+        Rc::try_unwrap(d).unwrap_or_else(|d| (*d).clone())
     }
 
     /// Updates extension data. If they are no outstanding references to this extension it
@@ -568,10 +567,9 @@ impl GlobalEnv {
             .borrow_mut()
             .remove(&id)
             .expect("extension defined")
-            .downcast_ref::<Rc<T>>()
-            .cloned()
+            .downcast::<T>()
             .unwrap();
-        let mut curr = Rc::try_unwrap(d).unwrap_or_else(|d| d.as_ref().clone());
+        let mut curr = Rc::try_unwrap(d).unwrap_or_else(|d| (*d).clone());
         f(&mut curr);
         self.set_extension(curr);
     }
@@ -590,8 +588,7 @@ impl GlobalEnv {
         self.extensions
             .borrow_mut()
             .remove(&id)
-            .and_then(|d| d.downcast::<Rc<T>>().ok())
-            .map(|boxed| *boxed)
+            .and_then(|d| d.downcast::<T>().ok())
     }
 
     /// Create a new global id unique to this environment.
@@ -3263,11 +3260,43 @@ impl Default for GlobalEnv {
     }
 }
 
+impl Clone for GlobalEnv {
+    fn clone(&self) -> Self {
+        GlobalEnv {
+            source_files: self.source_files.clone(),
+            file_hash_map: self.file_hash_map.clone(),
+            file_alias_map: self.file_alias_map.clone(),
+            file_id_to_idx: self.file_id_to_idx.clone(),
+            file_idx_to_id: self.file_idx_to_id.clone(),
+            file_id_is_dep: self.file_id_is_dep.clone(),
+            unknown_loc: self.unknown_loc.clone(),
+            unknown_move_ir_loc: self.unknown_move_ir_loc.clone(),
+            internal_loc: self.internal_loc.clone(),
+            diags: Default::default(),
+            symbol_pool: self.symbol_pool.clone(),
+            next_free_node_id: self.next_free_node_id.clone(),
+            exp_info: self.exp_info.clone(),
+            module_data: self.module_data.clone(),
+            global_id_counter: self.global_id_counter.clone(),
+            // Clone extensions by cloning the Rc pointers
+            extensions: RefCell::new(
+                self.extensions
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| (*k, v.clone()))
+                    .collect()
+            ),
+            stdlib_address: self.stdlib_address.clone(),
+            extlib_address: self.extlib_address.clone(),
+        }
+    }
+}
+
 // =================================================================================================
 // # Module Environment
 
 /// Represents data for a module.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModuleData {
     /// Module name.
     pub name: ModuleName,
@@ -3978,7 +4007,7 @@ pub enum StructOrEnumEnv<'env> {
 // =================================================================================================
 /// # Enum Environment
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EnumData {
     /// The name of this enum.
     name: Symbol,
@@ -4225,7 +4254,7 @@ impl<'env> EnumEnv<'env> {
 // =================================================================================================
 /// # Variant Environment
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariantData {
     /// The name of this variant.
     name: Symbol,
@@ -4367,7 +4396,7 @@ impl<'env> VariantEnv<'env> {
 // =================================================================================================
 /// # Struct Environment
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructData {
     /// The name of this struct.
     name: Symbol,
@@ -4386,7 +4415,7 @@ pub struct StructData {
     field_data: BTreeMap<FieldId, FieldData>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum StructInfo {
     /// Struct is declared in Move and info found in VM format.
     Declared {
@@ -4632,7 +4661,7 @@ impl<'env> StructEnv<'env> {
 // =================================================================================================
 /// # Field Environment
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldData {
     /// The name of this field.
     name: Symbol,
@@ -4644,7 +4673,7 @@ pub struct FieldData {
     info: FieldInfo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum FieldInfo {
     /// The field is declared in Move.
     DeclaredStruct {
@@ -4757,7 +4786,7 @@ impl<'env> FieldEnv<'env> {
 // =================================================================================================
 /// # Named Constant Environment
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NamedConstantData {
     /// The name of this constant
     name: Symbol,
@@ -4829,7 +4858,7 @@ pub struct AbilityConstraint(pub AbilitySet);
 #[derive(Debug, Clone)]
 pub struct Parameter(pub Symbol, pub Type);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionData {
     /// Name of this function.
     name: Symbol,
