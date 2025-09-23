@@ -164,7 +164,7 @@ impl ProverHandler {
 
         let (out, err, status) = match self.execute_boogie(&temp_file_path).await {
             Ok(output) => output,
-            Err(e) => (String::new(), format!("Error remote executing boogie: {}", e), -1),
+            Err(e) => (String::new(), format!("Error executing boogie remotely: {}", e), -1),
         };
 
         if let Err(e) = self.cache_result(&hash, &out, &err, status).await {

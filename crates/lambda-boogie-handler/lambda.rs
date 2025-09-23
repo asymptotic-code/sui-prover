@@ -43,14 +43,6 @@ fn security_check(event: Value) -> Option<Value> {
         return Some(make_error_response(401, "Authorization header is missing or invalid."));
     }
 
-    let auth_header: Option<&Value> = event.get("headers").unwrap().as_object().unwrap()
-        .get("Authorization")
-        .or_else(|| event.get("headers").unwrap().as_object().unwrap().get("authorization"));
-
-    if auth_header.is_none() || auth_header.unwrap().as_str().is_none() {
-        return Some(make_error_response(401, "Authorization header is missing or invalid."));
-    }
-
     let auth_value = auth_header.unwrap().as_str().unwrap();
     let allowed = std::env::var("ALLOWED_KEY_HASHES_CSV")
         .unwrap_or_else(|_| "".to_string())

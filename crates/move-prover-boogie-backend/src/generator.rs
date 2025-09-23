@@ -287,7 +287,7 @@ pub async fn run_prover_function_mode(
     let mut has_errors = false;
 
     let fun_targets = targets.specs().filter(|target| 
-        env.get_function(**target).module_env.is_target() || 
+        env.get_function(**target).module_env.is_target() && 
         targets.is_verified_spec(target)
     ).collect::<Vec<_>>();
 
@@ -441,7 +441,7 @@ pub async fn run_prover_module_mode(
     let module_targets = targets
         .target_modules()
         .into_iter()
-        .filter(|target|env.get_module(**target).is_target())
+        .filter(|target| env.get_module(**target).is_target())
         .collect::<Vec<_>>();
 
     if options.remote.is_some() {

@@ -141,7 +141,7 @@ pub struct BuildConfig {
 }
 
 #[derive(Args, Default)]
-#[clap(next_help_heading = "Remove Options (concurrent remote boogie execution)")]
+#[clap(next_help_heading = "Remote Options (concurrent remote boogie execution)")]
 pub struct RemoteConfig {
     /// Remote URL for the server
     #[clap(long = "remote-url", global = true)]
