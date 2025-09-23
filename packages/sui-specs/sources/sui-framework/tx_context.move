@@ -18,6 +18,7 @@ use sui::tx_context::{
     native_gas_price,
     last_created_id,
     native_sponsor,
+    get_sender_address,
 };
 #[spec_only]
 use prover::prover::{ensures, old};
@@ -86,4 +87,11 @@ fun last_created_id_spec(): address {
 #[spec(target = sui::tx_context::native_sponsor)]
 fun native_sponsor_spec(): vector<address> {
     native_sponsor()
+}
+
+#[spec(target = sui::tx_context::sender)]
+fun sender_spec(_self: &TxContext): address {
+    let r = sender(_self);
+    ensures(r == get_sender_address(_self));
+    r
 }
