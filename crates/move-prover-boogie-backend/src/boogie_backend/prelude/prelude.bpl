@@ -1422,6 +1422,14 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 
 {{ native::dynamic_field_module(impl=impl, instance=instance) -}}
 {%- endfor %}
+
+{%- for instance in impl.key_insts %}
+
+// ----------------------------------------------------------------------------------
+// Native dynamic fields implementation for key type `({{instance.suffix}})`
+
+{{ native::dynamic_field_key_module(impl=impl, instance=instance) -}}
+{%- endfor %}
 {%- endfor %}
 
 // ==================================================================================

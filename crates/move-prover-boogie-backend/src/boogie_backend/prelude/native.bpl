@@ -730,6 +730,7 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 {%- set Type = impl.struct_name -%}
 {%- set Self = "Table int (" ~ V ~ ")" -%}
 {%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
+{%- set SK = "'" ~ instance.0.suffix ~ "'" -%}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
 
@@ -795,8 +796,27 @@ procedure {:inline 2} {{impl.fun_exists_with_type}}{{S}}(t: ({{Type}}), k: {{K}}
 }
 {%- endif %}
 
+{%- if impl.fun_exists != "" %}
+axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
+   ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k)) ==> {{impl.fun_exists_inner}}{{SK}}(t, k));
+{%- endif %}
+
 {% endmacro dynamic_field_module %}
 
+{% macro dynamic_field_key_module(impl, instance) %}
+{%- set Type = impl.struct_name -%}
+{%- set T = instance.name -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+{%- if impl.fun_exists != "" %}
+function {{impl.fun_exists_inner}}{{S}}(t: ({{Type}}), k: {{T}}): bool;
+
+procedure {:inline 2} {{impl.fun_exists}}{{S}}(t: {{Type}}, k: {{T}}) returns (r: bool) {
+    r := {{impl.fun_exists_inner}}{{S}}(t, k);
+}
+{%- endif %}
+
+{% endmacro dynamic_field_key_module %}
 
 {# BCS
    ====

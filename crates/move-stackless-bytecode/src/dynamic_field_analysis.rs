@@ -49,6 +49,13 @@ impl NameValueInfo {
             NameValueInfo::NameOnly(..) => None,
         }
     }
+
+    pub fn name(&self) -> &Type {
+        match self {
+            NameValueInfo::NameValue { name, .. } => name,
+            NameValueInfo::NameOnly(name) => name,
+        }
+    }
 }
 
 impl DynamicFieldInfo {
