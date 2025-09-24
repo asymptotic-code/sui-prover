@@ -78,6 +78,7 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         println!("Model has errors:\n{}", diagnostic_output);
         return Err(anyhow::anyhow!("Move Model compiled with errors."));
     }
+    println!("Model has no errors.");
 
     let mut targets = FunctionTargetsHolder::new(None);
 
