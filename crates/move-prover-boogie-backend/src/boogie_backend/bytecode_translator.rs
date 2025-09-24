@@ -22,7 +22,7 @@ use move_model::{
     emit, emitln,
     model::{
         DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
-        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
+        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -2402,9 +2402,21 @@ impl<'env> FunctionTranslator<'env> {
                                 .into_iter()
                                 .filter_map(|e| match e {
                                     BorrowEdge::Field(_, offset) => Some(format!("{}", offset)),
+                                    BorrowEdge::EnumField(dt_id, offset, vid) => Some(format!(
+                                        "{}",
+                                        variant_field_offset(
+                                            &self
+                                                .parent
+                                                .env
+                                                .get_enum_qid(dt_id.to_qualified_id())
+                                                .get_variant(*vid),
+                                            *offset,
+                                        )
+                                    )),
                                     BorrowEdge::Index(_) => Some("-1".to_owned()),
+                                    BorrowEdge::DynamicField(..) => Some("-1".to_owned()),
                                     BorrowEdge::Direct => None,
-                                    _ => unreachable!(),
+                                    BorrowEdge::Hyper(_) => unreachable!(),
                                 })
                                 .collect_vec();
                             if edge_pattern.is_empty() {
@@ -3007,7 +3019,7 @@ impl<'env> FunctionTranslator<'env> {
                                     "{} := $ChildMutation({}, {}, $Dereference({})->{});",
                                     dest_str,
                                     src_str,
-                                    i,
+                                    variant_field_offset(&variant_env, field_env.get_offset()),
                                     src_str,
                                     field_name
                                 );
@@ -4483,4 +4495,9 @@ pub fn has_native_equality(env: &GlobalEnv, options: &BoogieOptions, ty: &Type) 
         | Type::Error
         | Type::Var(_) => true,
     }
+}
+
+// Create a unique offset for the variant and field offset combination
+fn variant_field_offset(variant_env: &VariantEnv<'_>, offset: usize) -> usize {
+    (variant_env.get_tag() << 32) | offset
 }
