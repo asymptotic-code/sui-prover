@@ -1,0 +1,115 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+---
+============ initial translation from Move ================
+
+[variant baseline]
+public fun test::f($t0|cond: bool): u64 {
+     var $t1|i#1#0: u64
+     var $t2|x#1#0: u64
+     var $t3|y#1#0: u64
+     var $t4: u64
+     var $t5: u64
+     var $t6: u64
+     var $t7: u64
+     var $t8: u64
+     var $t9: bool
+     var $t10: bool
+     var $t11: u64
+     var $t12: u64
+     var $t13: u64
+     var $t14: u64
+     var $t15: u64
+     var $t16: u64
+     var $t17: u64
+     var $t18: u64
+     var $t19: u64
+     var $t20: u64
+     var $t21: u64
+     var $t22: u64
+  0: $t4 := 1
+  1: $t2 := $t4
+  2: $t5 := 2
+  3: $t3 := $t5
+  4: $t6 := 0
+  5: $t1 := $t6
+  6: goto 7
+  7: label L6
+  8: $t7 := copy($t1)
+  9: $t8 := 3
+ 10: $t9 := <($t7, $t8)
+ 11: if ($t9) goto 12 else goto 35
+ 12: label L1
+ 13: goto 14
+ 14: label L2
+ 15: $t10 := copy($t0)
+ 16: if ($t10) goto 17 else goto 23
+ 17: label L4
+ 18: $t11 := move($t2)
+ 19: $t12 := 10
+ 20: $t13 := +($t11, $t12)
+ 21: $t2 := $t13
+ 22: goto 29
+ 23: label L3
+ 24: $t14 := move($t3)
+ 25: $t15 := 20
+ 26: $t16 := +($t14, $t15)
+ 27: $t3 := $t16
+ 28: goto 29
+ 29: label L5
+ 30: $t17 := move($t1)
+ 31: $t18 := 1
+ 32: $t19 := +($t17, $t18)
+ 33: $t1 := $t19
+ 34: goto 7
+ 35: label L0
+ 36: $t20 := move($t2)
+ 37: $t21 := move($t3)
+ 38: $t22 := *($t20, $t21)
+ 39: return $t22
+}
+
+============ after pipeline `conditional_merge_insertion` ================
+
+[variant baseline]
+public fun test::f($t0|cond: bool): u64 {
+     var $t1|i#1#0: u64
+     var $t2|x#1#0: u64
+     var $t3|y#1#0: u64
+     var $t4: u64
+     var $t5: u64
+     var $t6: u64
+     var $t7: u64
+     var $t8: bool
+     var $t9: u64
+     var $t10: u64
+     var $t11: u64
+     var $t12: u64
+  0: $t4 := 1
+  1: $t2 := $t4
+  2: $t5 := 2
+  3: $t3 := $t5
+  4: $t6 := 0
+  5: $t1 := $t6
+  6: label L6
+  7: $t7 := 3
+  8: $t8 := <($t1, $t7)
+  9: if ($t8) goto 10 else goto 24
+ 10: label L1
+ 11: label L2
+ 12: if ($t0) goto 13 else goto 17
+ 13: label L4
+ 14: $t9 := 10
+ 15: $t2 := +($t2, $t9)
+ 16: goto 20
+ 17: label L3
+ 18: $t10 := 20
+ 19: $t3 := +($t3, $t10)
+ 20: label L5
+ 21: $t11 := 1
+ 22: $t1 := +($t1, $t11)
+ 23: goto 6
+ 24: label L0
+ 25: $t12 := *($t2, $t3)
+ 26: return $t12
+}

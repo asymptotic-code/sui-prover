@@ -1,0 +1,18 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 149
+expression: output
+---
+exiting with verification errors
+error: prover::asserts conditions are not complete
+   ┌─ tests/inputs/issue-222.move:29:1
+   │  
+29 │ ╭ public fun foo_spec(self: &mut ValidatorSet, pool_id: &ID): address {
+30 │ │     requires(
+31 │ │         self.staking_pool_mappings.contains(*pool_id) || self.inactive_validators.contains(*pool_id),
+32 │ │     );
+33 │ │     foo(self, pool_id)
+34 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/issue-222.move:29: foo_spec
