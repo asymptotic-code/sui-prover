@@ -331,8 +331,8 @@ impl Analyzer<'_> {
             for fun in module.get_functions() {
                 for (variant, target) in self.targets.get_targets(&fun) {
                     if !(variant.is_verified()
-                        || self.targets.is_spec(&fun.get_qualified_id())
-                            && verification_analysis::get_info(&target).inlined)
+                        || (self.targets.is_spec_or_inv(&fun.get_qualified_id())
+                            && verification_analysis::get_info(&target).inlined))
                     {
                         continue;
                     }
@@ -356,6 +356,9 @@ impl Analyzer<'_> {
                 }
             }
         }
+        
+        // After analyzing all functions, ensure type invariant functions are properly handled
+        self.analyze_type_invariant_functions();
 
         // Next do todo-list for regular functions, while self.inst_opt contains the
         // specific instantiation.
@@ -372,6 +375,76 @@ impl Analyzer<'_> {
                 .entry((fun, variant))
                 .or_default()
                 .insert(inst);
+        }
+    }
+
+    fn analyze_type_invariant_functions(&mut self) {
+        let struct_instantiations: Vec<_> = self.info.structs.clone().into_iter().collect();
+
+        for (struct_qid, type_instantiations) in struct_instantiations {
+            if let Some(inv_fun_qid) = self.targets.get_inv_by_datatype(&struct_qid) {
+                for type_inst in type_instantiations {
+                    self.info
+                        .funs
+                        .entry((*inv_fun_qid, FunctionVariant::Baseline))
+                        .or_default()
+                        .insert(type_inst.clone());
+                    
+                    let inv_fun_env = self.env.get_function(*inv_fun_qid);
+                    if let Some(inv_target) = self.targets.get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
+                        let old_inst = std::mem::replace(&mut self.inst_opt, Some(type_inst.clone()));
+                        
+                        self.analyze_fun_types(&inv_target, self.inst_opt.clone());
+                        
+                        if !inv_fun_env.is_native() && !inv_fun_env.is_intrinsic() {
+                            for bc in inv_target.get_bytecode() {
+                                self.analyze_bytecode(&inv_target, bc);
+                            }
+                        }
+                        
+                        self.inst_opt = old_inst;
+                    }
+                }
+            }
+        }
+
+        let all_inv_functions: Vec<_> = self.targets.specs_with_invariants().cloned().collect();
+        for inv_fun_qid in all_inv_functions {
+            if let Some(struct_qid) = self.targets.get_datatype_by_inv(&inv_fun_qid) {
+                let inv_fun_env = self.env.get_function(inv_fun_qid);
+                if let Some(inv_target) = self.targets.get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
+                    // For type invariant functions, we might need to add common instantiations
+                    // like bool, u64, etc. that could be used in expressions within the invariant
+                    let common_types = vec![
+                        Type::Primitive(move_model::ty::PrimitiveType::Bool),
+                        Type::Primitive(move_model::ty::PrimitiveType::U64),
+                        Type::Primitive(move_model::ty::PrimitiveType::U8),
+                        Type::Primitive(move_model::ty::PrimitiveType::U128),
+                    ];
+                    
+                    for common_type in common_types {
+                        let type_inst = vec![common_type.clone()];
+                        
+                        self.info
+                            .funs
+                            .entry((inv_fun_qid, FunctionVariant::Baseline))
+                            .or_default()
+                            .insert(type_inst.clone());
+                        
+                        let old_inst = std::mem::replace(&mut self.inst_opt, Some(type_inst));
+                        
+                        self.analyze_fun_types(&inv_target, self.inst_opt.clone());
+                        
+                        if !inv_fun_env.is_native() && !inv_fun_env.is_intrinsic() {
+                            for bc in inv_target.get_bytecode() {
+                                self.analyze_bytecode(&inv_target, bc);
+                            }
+                        }
+
+                        self.inst_opt = old_inst;
+                    }
+                }
+            }
         }
     }
 
@@ -523,6 +596,17 @@ impl Analyzer<'_> {
                         if let Some((dt_qid, tys)) = actuals[0].get_datatype() {
                             if let Some(inv_qid) = self.targets.get_inv_by_datatype(&dt_qid) {
                                 self.push_todo_fun(*inv_qid, tys.to_vec());
+                                self.info
+                                    .funs
+                                    .entry((*inv_qid, FunctionVariant::Baseline))
+                                    .or_default()
+                                    .insert(tys.to_vec());
+                                self.analyze_fun_types(
+                                    &self
+                                        .targets
+                                        .get_target(&self.env.get_function(*inv_qid), &FunctionVariant::Baseline),
+                                    Some(tys.to_vec()),
+                                );
                             }
                         }
                     }
