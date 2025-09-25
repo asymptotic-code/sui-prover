@@ -41,7 +41,6 @@ use move_stackless_bytecode::stackless_bytecode::{
 use move_stackless_bytecode::{
     mono_analysis, spec_global_variable_analysis, verification_analysis,
 };
-use move_stackless_bytecode::stackless_control_flow_graph::{StacklessControlFlowGraph, BlockContent, BlockId};
 use move_binary_format::file_format::CodeOffset;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -78,38 +77,7 @@ pub struct EnumTranslator<'env> {
     type_inst: &'env [Type],
 }
 
-/// Control flow translation state
-#[derive(Debug, Clone)]
-pub struct ControlFlowState {
-    /// Available variables at this program point with their types
-    pub available_vars: BTreeMap<TempIndex, Type>,
-    /// Values that need to be returned (if any)
-    pub pending_returns: Option<Vec<TempIndex>>,
-    /// Abort code if aborted
-    pub abort_code: Option<TempIndex>,
-}
 
-/// Represents a basic block in the control flow translation
-#[derive(Debug, Clone)]
-pub struct BasicBlockInfo {
-    /// Block ID from the CFG
-    pub block_id: BlockId,
-    /// Range of bytecode instructions in this block
-    pub instruction_range: Option<(CodeOffset, CodeOffset)>,
-    /// Variables that are live at the entry of this block
-    pub entry_vars: BTreeMap<TempIndex, Type>,
-    /// Variables that are available at the exit of this block
-    pub exit_vars: BTreeMap<TempIndex, Type>,
-    /// Whether this block ends with a return
-    pub has_return: bool,
-    /// Whether this block ends with an abort
-    pub has_abort: bool,
-    /// Successors of this block
-    pub successors: Vec<BlockId>,
-    /// If this block is a loop invariant checker block ending in `stop`,
-    /// this records the loop header we should jump back to when translating `stop`.
-    pub stop_back_target: Option<BlockId>,
-}
 
 impl<'env> LeanTranslator<'env> {
     pub fn new(
@@ -1537,7 +1505,20 @@ impl FunctionTranslator<'_> {
                     BorrowLoc => wip!("BorrowLoc"),
                     ReadRef => wip!("ReadRef"),
                     WriteRef => wip!("WriteRef"),
-                    IfThenElse => wip!("IfThenElse"),
+                    IfThenElse => {
+                        let cond_str = str_local(srcs[0]);
+                        let true_expr_str = str_local(srcs[1]);
+                        let false_expr_str = str_local(srcs[2]);
+                        let dest_str = str_local(dests[0]);
+                        emitln!(
+                            self.writer(),
+                            "let {} := if {} then {} else {};",
+                            dest_str,
+                            cond_str,
+                            true_expr_str,
+                            false_expr_str
+                        )
+                    },
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let module_env = env.get_module(*mid);
@@ -1802,8 +1783,31 @@ impl FunctionTranslator<'_> {
                         // location tracks before it returns.
                         *last_tracked_loc = None;
                     }
-                    Pack(mid, sid, inst) => wip!("Pack"),
-                    Unpack(mid, sid, inst) => wip!("Unpack"),
+                    Pack(mid, sid, inst) => {
+                        let inst = &self.inst_slice(inst);
+                        let dest_str = str_local(dests[0]);
+                        let srcs_str = srcs.iter().cloned().map(str_local).join(" ");
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        let struct_name = lean_struct_name(&struct_env, inst);
+                        emitln!(
+                            self.writer(),
+                            "let {} := {}.mk {};",
+                            dest_str,
+                            struct_name,
+                            srcs_str
+                        );
+                    }
+                    Unpack(mid, sid, inst) => {
+                        let inst = &self.inst_slice(inst);
+                        let src = srcs[0];
+                        let src_str = str_local(src);
+                        let struct_env = env.get_module(*mid).into_struct(*sid);
+                        for (i, field_env) in struct_env.get_fields().enumerate() {
+                            let dest_str = str_local(dests[i]);
+                            let sel_fun = lean_field_sel(&field_env, inst);
+                            emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
+                        }
+                    }
                     PackVariant(mid, eid, vid, inst) => wip!("PackVariant"),
                     UnpackVariant(mid, eid, vid, _inst, ref_type) => wip!("UnpackVariant"),
                     BorrowField(mid, sid, inst, field_offset) => {
@@ -2069,7 +2073,7 @@ impl FunctionTranslator<'_> {
             }
             Assign(_, dest, src, _) => {
                 // Simple assignment - in functional style this would be a let binding
-                emitln!(self.writer(), "-- let {} := {} (assignment)", str_local(*dest), str_local(*src));
+                emitln!(self.writer(), "let {} := {} -- (assignment)", str_local(*dest), str_local(*src));
             }
             Load(_, dest, c) => {
                 // Load constant
@@ -2261,7 +2265,15 @@ fn generate_function_body(&mut self) {
         emitln!(writer, "");
     }
 
-    self.generate_function_body_with_cfg();
+    // Generate function body using direct bytecode translation with ternary operators
+    let fun_target = self.fun_target;
+    let code = fun_target.get_bytecode();
+    let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
+    
+    // Translate each bytecode instruction directly
+    for bytecode in code {
+        self.translate_bytecode(&mut last_tracked_loc, bytecode);
+    }
 
     writer.unindent();
 }
@@ -2547,118 +2559,7 @@ fn generate_ensures_impl_function(&self, ensures_idx: usize) {
     writer.unindent();
 }
 
-/// Generates function body using control flow graph pattern matching
-fn generate_function_body_with_cfg(&mut self) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let variant = &fun_target.data.variant;
-    let code = fun_target.get_bytecode();
-    
-    // Build control flow graph
-    let cfg = StacklessControlFlowGraph::new_forward(code);
-    
-    // Analyze basic blocks
-    let block_info = self.analyze_basic_blocks(&cfg, code);
-    
-    emitln!(writer, "-- Control flow translation with {} blocks", block_info.len());
-    
-    // Program state is now defined in integer.lean
-    
-    // Generate local variable declarations
-    self.generate_local_declarations();
-    
-    // Initial assumptions for verification
-    if variant.is_verified() {
-        self.translate_verify_entry_assumptions(fun_target);
-    }
-    
-    // Generate the main control flow function
-    self.generate_control_flow_function(&cfg, &block_info, code);
-}
 
-/// Analyzes basic blocks to gather variable and control flow information
-fn analyze_basic_blocks(&self, cfg: &StacklessControlFlowGraph, code: &[Bytecode]) -> BTreeMap<BlockId, BasicBlockInfo> {
-    let mut block_info = BTreeMap::new();
-    // Pre-compute loop headers (by block id) using natural loops
-    let nodes = cfg.blocks();
-    let edges: Vec<(BlockId, BlockId)> = nodes
-        .iter()
-        .flat_map(|x| cfg.successors(*x).iter().map(|y| (*x, *y)).collect::<Vec<_>>())
-        .collect();
-    let graph = Graph::new(cfg.entry_block(), nodes.clone(), edges);
-    let natural_loops = graph.compute_reducible().unwrap_or_default();
-    let loop_headers: BTreeSet<BlockId> = natural_loops.iter().map(|l| l.loop_header).collect();
-    let latch_to_header: BTreeMap<BlockId, BlockId> = natural_loops
-        .iter()
-        .map(|l| (l.loop_latch, l.loop_header))
-        .collect();
-
-    // Precompute label offsets and a mapping from code offsets to block ids
-    let label_offsets = Bytecode::label_offsets(code);
-    let mut offset_to_block: BTreeMap<CodeOffset, BlockId> = BTreeMap::new();
-    for b in cfg.blocks() {
-        if let Some(instr_range) = cfg.instr_indexes(b) {
-            for offs in instr_range {
-                offset_to_block.insert(offs, b);
-            }
-        }
-    }
-    
-    for block_id in cfg.blocks() {
-        if cfg.is_dummmy(block_id) {
-            continue;
-        }
-        
-        let mut info = BasicBlockInfo {
-            block_id,
-            instruction_range: None,
-            entry_vars: BTreeMap::new(),
-            exit_vars: BTreeMap::new(),
-            has_return: false,
-            has_abort: false,
-            successors: cfg.successors(block_id).clone(),
-            stop_back_target: latch_to_header.get(&block_id).copied(),
-        };
-        
-        // Get instruction range for this block
-        if let Some(instr_range) = cfg.instr_indexes(block_id) {
-            let instrs: Vec<_> = instr_range.collect();
-            if !instrs.is_empty() {
-                info.instruction_range = Some((instrs[0], instrs[instrs.len() - 1]));
-                
-                // Analyze last instruction to determine block exit type
-                let last_instr = &code[instrs[instrs.len() - 1] as usize];
-                match last_instr {
-                    Bytecode::Ret(_, _) => info.has_return = true,
-                    Bytecode::Abort(_, _) => info.has_abort = true,
-                    Bytecode::Jump(_, label) => {
-                        // Use the label to determine the jump target block id
-                        if let Some(&offs) = label_offsets.get(label) {
-                            if let Some(&b) = offset_to_block.get(&offs) {
-                                info.successors = vec![b];
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        
-        // If this block is a loop latch (has successor that is a loop header and appears after), prefer back-edge first
-        if info
-            .successors
-            .iter()
-            .any(|&s| loop_headers.contains(&s) && s <= block_id)
-        {
-            info.successors.sort_by_key(|&s| {
-                if loop_headers.contains(&s) && s <= block_id { 0 } else { 1 }
-            });
-        }
-        block_info.insert(block_id, info);
-    }
-    
-    block_info
-}
 
 /// Generates local variable declarations for the control flow function
 fn generate_local_declarations(&self) {
@@ -2689,284 +2590,7 @@ fn generate_local_declarations(&self) {
     emitln!(writer, "");
 }
 
-/// Generates a function using control flow pattern matching
-fn generate_control_flow_function(&mut self, cfg: &StacklessControlFlowGraph, block_info: &BTreeMap<BlockId, BasicBlockInfo>, code: &[Bytecode]) {
-    // Get writer reference once and use it throughout
-    emitln!(self.parent.writer, "-- Control flow function with pattern matching");
-    // Determine the ProgramState inner type based on translation style
-    let default_return_type = self.get_return_type_string();
-    let default_inner_type = default_return_type.trim_start_matches("ProgramState ").to_string();
-    let (cf_inner_type, cf_return_type) = match self.style {
-        FunctionTranslationStyle::Aborts => ("Nat".to_string(), "ProgramState Nat".to_string()),
-        _ => (default_inner_type.clone(), format!("ProgramState {}", default_inner_type)),
-    };
-    let fun_name = self.function_variant_name(self.style);
-    let locals_name = format!("{}_Locals", fun_name);
-    emitln!(
-        self.parent.writer,
-        "let rec control_flow_exec (frame : {}) (state : ProgramState {}) : {} :=",
-        locals_name,
-        cf_inner_type,
-        cf_return_type
-    );
-    self.parent.writer.indent();
-    emitln!(self.parent.writer, "match state with");
-    
-    // Generate pattern matching cases for each block
-    for (block_id, info) in block_info {
-        if cfg.is_dummmy(*block_id) {
-            continue;
-        }
-        self.generate_block_case_inline(*block_id, info, code);
-    }
 
-    // Fallback for unmatched AtBlock values to make match exhaustive
-    emitln!(self.parent.writer, "| ProgramState.AtBlock n => ProgramState.Aborted 0");
-    // Terminal cases
-    emitln!(self.parent.writer, "| ProgramState.Returned x => ProgramState.Returned x");
-    emitln!(self.parent.writer, "| ProgramState.Aborted code => ProgramState.Aborted code");
-    
-    self.parent.writer.unindent();
-    
-    // Call the control flow function with initial state, adapting to top-level return type
-    let entry_block = cfg.entry_block();
-    // Prefer the first non-dummy successor of the CFG entry that has instructions; otherwise pick the
-    // smallest non-dummy block with instructions; finally fall back to the raw entry block.
-    let mut actual_entry = entry_block;
-    if let Some(first_succ) = cfg.successors(entry_block).iter().find(|&&b| {
-        !cfg.is_dummmy(b) && cfg.instr_indexes(b).is_some()
-    }) {
-        actual_entry = *first_succ;
-    } else if let Some((best_block, _)) = block_info
-        .iter()
-        .filter(|(b, info)| !cfg.is_dummmy(**b) && info.instruction_range.is_some())
-        .min_by_key(|(b, _)| **b)
-    {
-        actual_entry = *best_block;
-    }
-    match self.style {
-        FunctionTranslationStyle::Aborts => {
-            // Top-level rets is ProgramState Nat; return directly
-            emitln!(self.parent.writer, "control_flow_exec frame0 (ProgramState.AtBlock {})", actual_entry);
-        }
-        FunctionTranslationStyle::Asserts | FunctionTranslationStyle::SpecNoAbortCheck => {
-            // Top-level rets is Unit; ignore the control-flow result
-            emitln!(self.parent.writer, "match control_flow_exec frame0 (ProgramState.AtBlock {}) with", actual_entry);
-            self.parent.writer.indent();
-            emitln!(self.parent.writer, "| ProgramState.Returned _ => ()");
-            emitln!(self.parent.writer, "| ProgramState.Aborted _ => ()");
-            emitln!(self.parent.writer, "| ProgramState.AtBlock _ => ()");
-            self.parent.writer.unindent();
-        }
-        _ => {
-            // Default/Verify: extract the returned value or leave placeholders
-            emitln!(self.parent.writer, "match control_flow_exec frame0 (ProgramState.AtBlock {}) with", actual_entry);
-            self.parent.writer.indent();
-            emitln!(self.parent.writer, "| ProgramState.Returned r => r");
-            emitln!(self.parent.writer, "| ProgramState.Aborted _ => sorry");
-            emitln!(self.parent.writer, "| ProgramState.AtBlock _ => sorry");
-            self.parent.writer.unindent();
-        }
-    }
-}
-
-/// Generates a pattern matching case for a specific basic block (inline version to avoid borrowing issues)
-fn generate_block_case_inline(&mut self, block_id: BlockId, info: &BasicBlockInfo, code: &[Bytecode]) {
-    emitln!(self.parent.writer, "| ProgramState.AtBlock {} =>", block_id);
-    self.parent.writer.indent();
-    
-    // Generate comment about the block with source location
-    if let Some((start, end)) = info.instruction_range {
-        // Derive source locations from the AttrId’s of the first/last instructions in this block
-        let start_attr = code[start as usize].get_attr_id();
-        let end_attr = code[end as usize].get_attr_id();
-        let start_loc = self.fun_target.get_bytecode_loc(start_attr);
-        let end_loc = self.fun_target.get_bytecode_loc(end_attr);
-        emitln!(
-            self.parent.writer,
-            "-- Block {} (instructions {} to {}) [{}..{}]",
-            block_id,
-            start,
-            end,
-            start_loc.display(self.parent.env),
-            end_loc.display(self.parent.env)
-        );
-    } else {
-        emitln!(self.parent.writer, "-- Block {} (empty)", block_id);
-    }
-    
-    // Translate instructions in this block
-    // Prepare helpers to read locals either from parameters or from the frame
-    let num_args = self.fun_target.get_parameter_count();
-    let read_local = |idx: usize| if idx < num_args { format!("t{}", idx) } else { format!("frame.t{}", idx) };
-    if let Some((start, end)) = info.instruction_range {
-        let mut last_tracked_loc: Option<&move_model::model::Loc> = None;
-        // Prepare label offsets for pretty-printing bytecode
-        let label_offsets = Bytecode::label_offsets(code);
-        for pc in start..=end {
-            let bytecode = &code[pc as usize];
-            let attr = bytecode.get_attr_id();
-            let loc = self.fun_target.get_bytecode_loc(attr);
-            let pretty = format!("{}", bytecode.display(&self.fun_target, &label_offsets));
-            emitln!(
-                self.parent.writer,
-                "-- [pc {}] {} [{}]",
-                pc,
-                pretty,
-                loc.display(self.parent.env)
-            );
-            
-            // Handle control flow instructions specially
-            match bytecode {
-                Bytecode::Label(_, _) => {
-                    // Already logged above
-                    continue;
-                },
-                Bytecode::Jump(_, label) => {
-                    // Already logged above
-                    // Find the target block ID
-                    let target_block = self.find_block_for_label(code, *label, pc);
-                    let back = if target_block < block_id { " (back)" } else { "" };
-                    emitln!(
-                        self.parent.writer,
-                        "-- jump {} -> {}{}",
-                        block_id,
-                        target_block,
-                        back
-                    );
-                    eprintln!("[LeanCFG] jump {} -> {}{} (pc {} )", block_id, target_block, back, pc);
-                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", target_block);
-                    self.parent.writer.unindent();
-                    return;
-                },
-                Bytecode::Branch(_, then_label, else_label, cond_temp) => {
-                    // Already logged above
-                    let then_block = self.find_block_for_label(code, *then_label, pc);
-                    let else_block = self.find_block_for_label(code, *else_label, pc);
-                    let cond_str = read_local(*cond_temp as usize);
-                    emitln!(self.parent.writer, "if {} then", cond_str);
-                    self.parent.writer.indent();
-                    let back_then = if then_block < block_id { " (back)" } else { "" };
-                    emitln!(self.parent.writer, "-- branch then: {} -> {}{}", block_id, then_block, back_then);
-                    eprintln!("[LeanCFG] branch-then {} -> {}{} (pc {} )", block_id, then_block, back_then, pc);
-                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", then_block);
-                    self.parent.writer.unindent();
-                    emitln!(self.parent.writer, "else");
-                    self.parent.writer.indent();
-                    let back_else = if else_block < block_id { " (back)" } else { "" };
-                    emitln!(self.parent.writer, "-- branch else: {} -> {}{}", block_id, else_block, back_else);
-                    eprintln!("[LeanCFG] branch-else {} -> {}{} (pc {} )", block_id, else_block, back_else, pc);
-                    emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", else_block);
-                    self.parent.writer.unindent();
-                    self.parent.writer.unindent();
-                    return;
-                },
-                Bytecode::VariantSwitch(_, switch_temp, labels) => {
-                    // Already logged above
-                    let switch_str = read_local(*switch_temp as usize);
-                                        emitln!(self.parent.writer, "match {} with", switch_str);
-                    self.parent.writer.indent();
-                    for (variant_idx, label) in labels.iter().enumerate() {
-                        let target_block = self.find_block_for_label(code, *label, pc);
-                        let back = if target_block < block_id { " (back)" } else { "" };
-                        emitln!(self.parent.writer, "| {} =>", variant_idx);
-                        self.parent.writer.indent();
-                        emitln!(self.parent.writer, "-- variant {}: {} -> {}{}", variant_idx, block_id, target_block, back);
-                        eprintln!("[LeanCFG] variant {}: {} -> {}{} (pc {} )", variant_idx, block_id, target_block, back, pc);
-                        emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", target_block);
-                        self.parent.writer.unindent();
-                    }
-                    self.parent.writer.unindent();
-                    self.parent.writer.unindent();
-                    return;
-                },
-                Bytecode::Call(_, _dests, oper, _srcs, _on_abort) => {
-                    use Operation::*;
-                    match oper {
-                        Stop => {
-                            // If this is a loop latch, jump back to its header; otherwise go to exit
-                            if let Some(header) = info.stop_back_target {
-                                let back = if header < block_id { " (back)" } else { "" };
-                                emitln!(self.parent.writer, "-- stop (latch): {} -> {}{}", block_id, header, back);
-                                eprintln!("[LeanCFG] stop (latch) {} -> {}{} (pc {} )", block_id, header, back, pc);
-                                emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", header);
-                            } else {
-                                emitln!(self.parent.writer, "-- stop: {} -> 1 (exit)", block_id);
-                                eprintln!("[LeanCFG] stop {} -> 1 (exit) (pc {} )", block_id, pc);
-                                emitln!(self.parent.writer, "ProgramState.AtBlock 1");
-                            }
-                            self.parent.writer.unindent();
-                            return;
-                        }
-                        _ => {
-                            // Defer to core translator for non-terminal calls
-                            self.translate_bytecode_core(bytecode, &self.parent.writer);
-                        }
-                    }
-                },
-                Bytecode::Ret(_, srcs) => {
-                    if srcs.is_empty() {
-                        emitln!(self.parent.writer, "ProgramState.Returned ()");
-                    } else if srcs.len() == 1 {
-                        let v = read_local(srcs[0] as usize);
-                        emitln!(self.parent.writer, "ProgramState.Returned {}", v);
-                    } else {
-                        let values = srcs.iter().map(|&idx| read_local(idx as usize)).join(", ");
-                        emitln!(self.parent.writer, "ProgramState.Returned ({})", values);
-                    }
-                    self.parent.writer.unindent();
-                    return;
-                },
-                Bytecode::Abort(_, code_temp) => {
-                    let codev = read_local(*code_temp as usize);
-                                        emitln!(self.parent.writer, "ProgramState.Aborted (Int.natAbs {})", codev);
-                    self.parent.writer.unindent();
-                    return;
-                },
-                _ => {
-                    // Translate normal instructions - use the core translation logic
-                    self.translate_bytecode_core(bytecode, &self.parent.writer);
-                }
-            }
-        }
-    }
-    
-    // Handle fall-through to next block: prefer forward successor over back-edge to avoid biasing to abort handlers
-    let cfg2 = StacklessControlFlowGraph::new_forward(code);
-    // If this block is a loop invariant checker/latch transformed to stop, prefer jumping back to its header
-    let next_block_opt = if let Some(header) = info.stop_back_target {
-        Some(header)
-    } else {
-        // Prefer first forward successor (> current block id), otherwise any real successor
-        let mut iter = cfg2
-            .successors(block_id)
-            .iter()
-            .copied();
-        // 1) forward successor
-        iter.clone()
-            .find(|&b| b > block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some())
-            // 2) any real successor (could be back-edge)
-            .or_else(|| iter.find(|&b| b != block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some()))
-            // 3) finally, try info.successors as a fallback in the same preference order
-            .or_else(|| {
-                let mut iter2 = info.successors.iter().copied();
-                iter2.clone()
-                    .find(|&b| b > block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some())
-                    .or_else(|| iter2.find(|&b| b != block_id && !cfg2.is_dummmy(b) && cfg2.instr_indexes(b).is_some()))
-            })
-    };
-    if let Some(next_block) = next_block_opt {
-        let back = if next_block < block_id { " (back)" } else { "" };
-        emitln!(self.parent.writer, "-- fallthrough: {} -> {}{}", block_id, next_block, back);
-        eprintln!("[LeanCFG] fallthrough {} -> {}{}", block_id, next_block, back);
-        emitln!(self.parent.writer, "control_flow_exec frame (ProgramState.AtBlock {})", next_block);
-    } else {
-        // No successors - keep current state to preserve totality and aid debugging
-        emitln!(self.parent.writer, "ProgramState.AtBlock {} -- no real successors", block_id);
-    }
-    
-    self.parent.writer.unindent();
-}
 
 /// Core bytecode translation logic shared between different contexts
 fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
@@ -3128,33 +2752,6 @@ fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
 }
 
 
-/// Finds the block ID that contains a given label
-fn find_block_for_label(&self, code: &[Bytecode], target_label: Label, _current_pc: CodeOffset) -> BlockId {
-    // Build a mapping from labels to their code offsets
-    let label_offsets = Bytecode::label_offsets(code);
-    
-    if let Some(&offset) = label_offsets.get(&target_label) {
-        // Build CFG to get proper block mapping
-        let cfg = StacklessControlFlowGraph::new_forward(code);
-        
-        // Find the block that contains this offset
-        for block_id in cfg.blocks() {
-            if let Some(instr_range) = cfg.instr_indexes(block_id) {
-                for instr_offset in instr_range {
-                    if instr_offset == offset {
-                        return block_id;
-                    }
-                }
-            }
-        }
-        
-        // Fallback: use the offset as the block ID
-        offset as BlockId
-    } else {
-        // If label not found, this is an error - use a placeholder
-        9999 // Placeholder for error case
-    }
-}
 
 /// Gets the return type string for the current function
 fn get_return_type_string(&self) -> String {
