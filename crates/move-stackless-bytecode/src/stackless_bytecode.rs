@@ -19,7 +19,7 @@ use move_model::{
     ty::{Type, TypeDisplayContext},
 };
 use num::BigUint;
-use std::{collections::BTreeMap, fmt, fmt::Formatter};
+use std::{collections::BTreeMap, fmt::{self, Formatter}};
 
 /// A label for a branch destination.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -108,6 +108,51 @@ pub enum Constant {
 impl From<&u256::U256> for Constant {
     fn from(n: &u256::U256) -> Constant {
         Constant::U256(U256::from(n))
+    }
+}
+
+// Quantifier for macros
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum QuantifierType {
+    Forall,
+    Exists,
+    Map,
+    Filter,
+    Find,
+    FindIndex,
+    FindIndices,
+    Count,
+    Any,
+    All,
+    Sum,
+    SumMap,
+    Slice
+}
+
+impl QuantifierType {
+    pub fn display(&self) -> &str {
+        match self {
+            QuantifierType::Forall => "forall",
+            QuantifierType::Exists => "exists",
+            QuantifierType::Map => "map",
+            QuantifierType::Filter => "filter",
+            QuantifierType::Find => "find",
+            QuantifierType::FindIndex => "find_index",
+            QuantifierType::FindIndices => "find_indices",
+            QuantifierType::Count => "count",
+            QuantifierType::Any => "any",
+            QuantifierType::All => "all",
+            QuantifierType::Sum => "sum",
+            QuantifierType::SumMap => "sum_map",
+            QuantifierType::Slice => "slice",
+        }
+    }
+
+    pub fn can_abort(&self) -> bool {
+        match self {
+            QuantifierType::Sum | QuantifierType::SumMap => true,
+            _ => false,
+        }
     }
 }
 
@@ -208,6 +253,9 @@ pub enum Operation {
     // Event
     EmitEvent,
     EventStoreDiverge,
+
+    // Quantifiers
+    Quantifier(QuantifierType)
 }
 
 impl Operation {
@@ -277,6 +325,7 @@ impl Operation {
             Operation::TraceGlobalMem(..) => false,
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
+            Operation::Quantifier(qt) => qt.can_abort(),
         }
     }
 
@@ -1256,6 +1305,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
+            Quantifier(qt) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
     }
