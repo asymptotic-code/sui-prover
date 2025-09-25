@@ -7,7 +7,7 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet}, f64::consts::E, fmt::Formatter, fs
+    collections::{BTreeMap, BTreeSet}, fmt::Formatter, fs
 };
 
 use itertools::{Either, Itertools};
@@ -358,6 +358,10 @@ impl FunctionTargetsHolder {
         self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
     }
 
+    pub fn is_spec_or_inv(&self, id: &QualifiedId<FunId>) -> bool {
+        self.is_spec(id) || self.get_datatype_by_inv(id).is_some()
+    }
+
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some()
     }
@@ -386,6 +390,13 @@ impl FunctionTargetsHolder {
         self.function_specs
             .left_values()
             .chain(self.scenario_specs.iter())
+    }
+
+    pub fn specs_with_invariants(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
+        self.function_specs
+            .left_values()
+            .chain(self.scenario_specs.iter())
+            .chain(self.datatype_invs.right_values())
     }
 
     pub fn specs_count(&self, env: &GlobalEnv) -> usize {
