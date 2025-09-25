@@ -385,7 +385,7 @@ async fn process_mod<W: WriteColor>(global_env: &GlobalEnv, error_writer: &mut W
     let module_env = env.get_module(*mid);
     let file_name = module_env.get_full_name_str();
     let mut targets: FunctionTargetsHolder = FunctionTargetsHolder::new_with_mid(Some(options.filter.clone()), *mid);
-    create_and_process_bytecode(&options, &env, &mut targets).unwrap(); // unwrap should be safe here as we checked for errors before
+    create_and_process_bytecode(&options, &env, &mut targets).unwrap(); // Unwrap should be safe here as we checked for errors before.
 
     println!("🔄 {file_name}");
 
