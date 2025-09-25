@@ -107,7 +107,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         fs::create_dir_all(output_path)?;
     }
 
-    // create first time to check for errors and get general metrics
+    // Create first time to check for errors and get general metrics
     let mut targets: FunctionTargetsHolder = FunctionTargetsHolder::new(Some(options.filter.clone()));
     let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
     let error_text = format!("exiting with bytecode transformation errors in {}", _err_processor.unwrap_or("unknown".to_string()));
