@@ -231,7 +231,7 @@ async fn process_fn<W: WriteColor>(global_env: &GlobalEnv, error_writer: &mut W,
     let fun_env = env.get_function(*qid);
 
     let mut targets = FunctionTargetsHolder::new_with_qid(Some(options.filter.clone()), *qid);
-    create_and_process_bytecode(&options, &env, &mut targets); // unwrap should be safe here as we checked for errors before
+    create_and_process_bytecode(&options, &env, &mut targets); // Unwrap should be safe here as we checked for errors before.
 
     let has_target = targets.has_target(
         &fun_env,
