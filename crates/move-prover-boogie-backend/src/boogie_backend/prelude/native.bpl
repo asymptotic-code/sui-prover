@@ -730,12 +730,13 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 {%- set Type = impl.struct_name -%}
 {%- set Self = "Table int (" ~ V ~ ")" -%}
 {%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
-{%- set SK = "'" ~ instance.0.suffix ~ "'" -%}
+{%- set SK = "'" ~ instance.0.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
+{%- set DF_S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
 
 {%- if impl.fun_add != "" %}
-procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
+procedure {:inline 2} {{impl.fun_add}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -749,7 +750,7 @@ procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}, v
 {%- endif %}
 
 {%- if impl.fun_borrow != "" %}
-procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
+procedure {:inline 2} {{impl.fun_borrow}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
     var enc_k: int;
     enc_k := {{ENC}}(k);
     if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
@@ -761,7 +762,7 @@ procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}, k: {{K}}) returns (v
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
-procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
+procedure {:inline 2} {{impl.fun_borrow_mut}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -776,7 +777,7 @@ procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}), k: {
 {%- endif %}
 
 {%- if impl.fun_remove != "" %}
-procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: {{V}}, m': $Mutation({{Type}})) {
+procedure {:inline 2} {{impl.fun_remove}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: {{V}}, m': $Mutation({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -791,7 +792,7 @@ procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}
 {%- endif %}
 
 {%- if impl.fun_exists_with_type != "" %}
-procedure {:inline 2} {{impl.fun_exists_with_type}}{{S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
+procedure {:inline 2} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
     r := ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
 }
 {%- endif %}
@@ -807,12 +808,13 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set Type = impl.struct_name -%}
 {%- set T = instance.name -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
+{%- set DF_S = "'" ~ instance.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 
 {%- if impl.fun_exists != "" %}
-function {{impl.fun_exists_inner}}{{S}}(t: ({{Type}}), k: {{T}}): bool;
+function {{impl.fun_exists_inner}}{{DF_S}}(t: ({{Type}}), k: {{T}}): bool;
 
-procedure {:inline 2} {{impl.fun_exists}}{{S}}(t: {{Type}}, k: {{T}}) returns (r: bool) {
-    r := {{impl.fun_exists_inner}}{{S}}(t, k);
+procedure {:inline 2} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}) returns (r: bool) {
+    r := {{impl.fun_exists_inner}}{{DF_S}}(t, k);
 }
 {%- endif %}
 

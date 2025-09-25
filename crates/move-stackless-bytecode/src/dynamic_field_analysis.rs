@@ -378,16 +378,18 @@ pub fn collect_dynamic_field_info(
             Bytecode::Call(
                 attr_id,
                 dests,
-                Operation::Function(module_id, fun_id, type_inst),
+                Operation::Function(module_id, fun_id, mut type_inst),
                 mut srcs,
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
-                // srcs[0] = uid_info.get(&srcs[0]).unwrap().0;
-                srcs[0] = info.uid_info.get(&srcs[0]).map(|x| x.0).unwrap_or(srcs[0]);
-                if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
-                    && builder.get_local_type(srcs[0]).is_mutable_reference()
-                {
-                    srcs[0] = builder.emit_let_read_ref(srcs[0]);
+                if let Some((obj_local, obj_type)) = info.uid_info.get(&srcs[0]) {
+                    srcs[0] = *obj_local;
+                    if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
+                        && builder.get_local_type(srcs[0]).is_mutable_reference()
+                    {
+                        srcs[0] = builder.emit_let_read_ref(srcs[0]);
+                    }
+                    type_inst.push(obj_type.clone());
                 }
                 builder.emit(Bytecode::Call(
                     attr_id,
