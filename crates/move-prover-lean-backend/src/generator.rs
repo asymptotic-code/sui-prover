@@ -42,7 +42,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 
     let mut targets = FunctionTargetsHolder::new(None);
     let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
-    let error_text = format!("exiting with bytecode transformation errors: {}", _err_processor.unwrap_or("unknown".to_string()));
+    let error_text = format!("exiting with bytecode transformation errors in {}", _err_processor.unwrap_or("unknown".to_string()));
     check_errors(
         env,
         &options,

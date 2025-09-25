@@ -93,7 +93,7 @@ integration-test = "0x9"
             }
             Err(err) => {
                 // For model-building errors, we need to reformat the error to match the expected format
-                format!("We hit an error: \n{}", err)
+               format!("We hit an error: \n{:?}", err.source())
             }
         };
 

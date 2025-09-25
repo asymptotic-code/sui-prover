@@ -450,6 +450,8 @@ pub struct GlobalEnv {
     /// Accumulated diagnosis. In a RefCell so we can add to it without needing a mutable GlobalEnv.
     /// The boolean indicates whether the diag was reported.
     diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
+    /// Old accumulated diagnosis kept for avoiding duplications after clones.
+    old_diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
     /// Pool of symbols -- internalized strings.
     symbol_pool: SymbolPool,
     /// A counter for allocating node ids.
@@ -506,6 +508,7 @@ impl GlobalEnv {
             file_idx_to_id,
             file_id_is_dep: BTreeSet::new(),
             diags: RefCell::new(vec![]),
+            old_diags: RefCell::new(vec![]),
             symbol_pool: SymbolPool::new(),
             next_free_node_id: Default::default(),
             exp_info: Default::default(),
@@ -671,9 +674,29 @@ impl GlobalEnv {
         target_modules
     }
 
+    fn diag_exists(&self, new_diag: &Diagnostic<FileId>) -> bool {
+        let new_diag_str = format!("{:?}", new_diag); // brutal check
+
+        for (diag, _) in self.diags.borrow().iter() {
+            if format!("{:?}", diag) == new_diag_str {
+                return true;
+            }
+        }
+
+        for (diag, _) in self.old_diags.borrow().iter() {
+            if format!("{:?}", diag) == new_diag_str {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Adds diagnostic to the environment.
     pub fn add_diag(&self, diag: Diagnostic<FileId>) {
-        self.diags.borrow_mut().push((diag, false));
+        if !self.diag_exists(&diag) {
+            self.diags.borrow_mut().push((diag, false));
+        }
     }
 
     /// Adds an error to this environment, without notes.
@@ -3272,7 +3295,12 @@ impl Clone for GlobalEnv {
             unknown_loc: self.unknown_loc.clone(),
             unknown_move_ir_loc: self.unknown_move_ir_loc.clone(),
             internal_loc: self.internal_loc.clone(),
-            diags: Default::default(),
+            diags: RefCell::new(vec![]),
+            old_diags: RefCell::new({
+                let mut merged_diags = self.old_diags.borrow().clone();
+                merged_diags.extend(self.diags.borrow().clone());
+                merged_diags
+            }),
             symbol_pool: self.symbol_pool.clone(),
             next_free_node_id: self.next_free_node_id.clone(),
             exp_info: self.exp_info.clone(),

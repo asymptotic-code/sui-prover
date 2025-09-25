@@ -110,7 +110,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     // create first time to check for errors and get general metrics
     let mut targets: FunctionTargetsHolder = FunctionTargetsHolder::new(Some(options.filter.clone()));
     let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
-    let error_text = format!("exiting with bytecode transformation errors: {}", _err_processor.unwrap_or("unknown".to_string()));
+    let error_text = format!("exiting with bytecode transformation errors in {}", _err_processor.unwrap_or("unknown".to_string()));
     check_errors(
         env,
         &options,
@@ -246,17 +246,18 @@ async fn process_fn<W: WriteColor>(global_env: &GlobalEnv, error_writer: &mut W,
 
     let (code_writer, types) = generate_boogie(&env, &options, &targets)?;
 
-    check_errors(
-        &env,
-        &options,
-        error_writer,
-        "exiting with condition generation errors".to_string(),
-    )?;
+    let is_error = env.has_errors();
+    if is_error {
+        env.report_diag(error_writer, options.prover.report_severity);
+        return Ok(true);
+    }
 
     verify_boogie(&env, &options, &targets, code_writer, types, file_name.clone()).await?;
 
     let is_error = env.has_errors();
-    env.report_diag(error_writer, options.prover.report_severity);
+    if is_error {
+        env.report_diag(error_writer, options.prover.report_severity);
+    }
 
     if has_target {
         if is_error {
@@ -390,17 +391,18 @@ async fn process_mod<W: WriteColor>(global_env: &GlobalEnv, error_writer: &mut W
 
     let (code_writer, types) = generate_boogie(&env, &options, &targets)?;
 
-    check_errors(
-        &env,
-        &options,
-        error_writer,
-        "exiting with condition generation errors".to_string(),
-    )?;
+    let is_error = env.has_errors();
+    if is_error {
+        env.report_diag(error_writer, options.prover.report_severity);
+        return Ok(true);
+    }
 
     verify_boogie(&env, &options, &targets, code_writer, types, file_name.clone()).await?;
 
     let is_error = env.has_errors();
-    env.report_diag(error_writer, options.prover.report_severity);
+    if is_error {
+        env.report_diag(error_writer, options.prover.report_severity);
+    }
 
     if is_error {
         println!("❌ {file_name}");
