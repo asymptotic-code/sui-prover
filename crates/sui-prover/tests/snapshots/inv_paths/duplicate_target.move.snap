@@ -1,8 +1,9 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 151
 expression: output
 ---
-exiting with bytecode transformation errors
+exiting with bytecode transformation errors in verification_analysis
 error: Duplicate invariant declaration for struct: Bar
    ┌─ tests/inputs/inv_paths/duplicate_target.move:29:5
    │  
