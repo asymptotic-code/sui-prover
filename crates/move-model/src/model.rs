@@ -2933,6 +2933,17 @@ impl GlobalEnv {
             self.sui_dynamic_field_has_child_object_qid(),
             self.sui_dynamic_field_has_child_object_with_ty_qid(),
 
+            // sui::tx_context native functions
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
+            self.sui_tx_context_gas_budget_qid(),
+            self.sui_tx_context_sponsor_qid(),
+            self.sui_tx_context_replace_qid(),
+            self.sui_tx_context_derive_id_qid(),
+
             // sui::crypto::hash native functions
             self.sui_crypto_hash_blake2b256_qid(),
             self.sui_crypto_hash_keccak256_qid(),
