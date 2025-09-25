@@ -73,12 +73,11 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
 
     if model.has_errors() {
         let mut error_writer = Buffer::no_color();
-        model.report_diag(&mut error_writer, Severity::Warning);
+        model.report_diag(&mut error_writer, Severity::Error);
         let diagnostic_output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
         println!("Model has errors:\n{}", diagnostic_output);
         return Err(anyhow::anyhow!("Move Model compiled with errors."));
     }
-    println!("Model has no errors.");
 
     let mut targets = FunctionTargetsHolder::new(None);
 
