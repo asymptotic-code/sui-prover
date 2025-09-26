@@ -74,20 +74,22 @@ integration-test = "0x9"
                 // Use a buffer to capture output instead of stderr
                 let mut error_buffer = Buffer::no_color();
 
-                // Run the prover with the buffer to capture all output
-                match run_move_prover_with_model(&model, &mut error_buffer, options, None) {
-                    Ok(output) => {
-                        let error_output =
-                            String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
-                        format!("{output}\n{error_output}")
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    // Run the prover with the buffer to capture all output
+                    match run_move_prover_with_model(&model, &mut error_buffer, options, None).await {
+                        Ok(output) => {
+                            let error_output =
+                                String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
+                            format!("{output}\n{error_output}")
+                        }
+                        Err(err) => {
+                            // Get the captured error output as string
+                            let error_output =
+                                String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
+                            format!("{}\n{}", err, error_output)
+                        }
                     }
-                    Err(err) => {
-                        // Get the captured error output as string
-                        let error_output =
-                            String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
-                        format!("{}\n{}", err, error_output)
-                    }
-                }
+                })
             }
             Err(err) => {
                 // For model-building errors, we need to reformat the error to match the expected format
