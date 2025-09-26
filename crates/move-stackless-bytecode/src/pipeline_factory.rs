@@ -34,6 +34,7 @@ use crate::{
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
+    macro_quantifiers_analysis::MacroQuantifiersAnalysisProcessor,
 };
 
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {
@@ -66,6 +67,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecWellFormedAnalysisProcessor::new(),
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
+        MacroQuantifiersAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
