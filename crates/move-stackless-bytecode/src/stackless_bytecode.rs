@@ -112,7 +112,7 @@ impl From<&u256::U256> for Constant {
 }
 
 // Quantifier for macros
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum QuantifierType {
     Forall,
     Exists,
@@ -124,9 +124,7 @@ pub enum QuantifierType {
     Count,
     Any,
     All,
-    Sum,
     SumMap,
-    Slice
 }
 
 impl QuantifierType {
@@ -142,15 +140,13 @@ impl QuantifierType {
             QuantifierType::Count => "count",
             QuantifierType::Any => "any",
             QuantifierType::All => "all",
-            QuantifierType::Sum => "sum",
             QuantifierType::SumMap => "sum_map",
-            QuantifierType::Slice => "slice",
         }
     }
 
     pub fn can_abort(&self) -> bool {
         match self {
-            QuantifierType::Sum | QuantifierType::SumMap => true,
+            QuantifierType::SumMap => true,
             _ => false,
         }
     }
@@ -255,7 +251,7 @@ pub enum Operation {
     EventStoreDiverge,
 
     // Quantifiers
-    Quantifier(QuantifierType)
+    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>),
 }
 
 impl Operation {
@@ -325,7 +321,7 @@ impl Operation {
             Operation::TraceGlobalMem(..) => false,
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
-            Operation::Quantifier(qt) => qt.can_abort(),
+            Operation::Quantifier(qt, _, _) => qt.can_abort(),
         }
     }
 
@@ -1305,7 +1301,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
-            Quantifier(qt) => write!(f, "quantifier({})", qt.display())?,
+            Quantifier(qt, _, _) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
     }

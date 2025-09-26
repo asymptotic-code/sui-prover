@@ -52,6 +52,13 @@ public native fun begin_sum_map_lambda<T>(v: &vector<T>): T;
 public native fun end_sum_map_lambda<T>(): Integer;
 
 #[spec_only]
+public native fun sum<T>(v: &vector<T>): Integer;
+
+#[spec_only]
+public native fun slice<T>(v: &vector<T>, start: u64, end: u64): &vector<T>;
+
+// simple macro patterns
+#[spec_only]
 public macro fun forall<$T>($f: |&$T| -> bool): bool {
     let x: $T = begin_forall_lambda<$T>();
     let _ = $f(&x);
@@ -65,6 +72,7 @@ public macro fun exists<$T>($f: |&$T| -> bool): bool {
     end_exists_lambda()
 }
 
+// advanced macros patterns over vectors
 #[spec_only]
 public macro fun map<$T, $U>($v: &vector<$T>, $f: |&$T| -> $U): &vector<$U> {
     let v = $v;
@@ -130,15 +138,9 @@ public macro fun all<$T>($v: &vector<$T>, $f: |&$T| -> bool): bool {
 }
 
 #[spec_only]
-public native fun sum<T>(v: &vector<T>): Integer;
-
-#[spec_only]
 public macro fun sum_map<$T, $U>($v: &vector<$T>, $f: |&$T| -> $U): Integer {
     let v = $v;
     let x: $T = begin_sum_map_lambda<$T>(v);
     let _ = $f(&x);
     end_sum_map_lambda<$U>()
 }
-
-#[spec_only]
-public native fun slice<T>(v: &vector<T>, start: u64, end: u64): &vector<T>;

@@ -2029,7 +2029,8 @@ impl FunctionTranslator<'_> {
                     TraceGhost(ghost_type, value_type) => wip!("TraceGhost"),
                     EmitEvent => wip!("EmitEvent"),
                     EventStoreDiverge => wip!("EventStoreDiverge"),
-                    TraceGlobalMem(mem) => {}
+                    TraceGlobalMem(mem) => {},
+                    Quantifier(_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}

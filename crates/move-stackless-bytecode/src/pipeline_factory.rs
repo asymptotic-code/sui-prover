@@ -53,7 +53,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
         MemoryInstrumentationProcessor::new(),
-        MacroQuantifiersAnalysisProcessor::new(),
     ];
 
     if options.enable_conditional_merge_insertion {
@@ -68,6 +67,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecWellFormedAnalysisProcessor::new(),
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
+        MacroQuantifiersAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {

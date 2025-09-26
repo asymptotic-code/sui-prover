@@ -6,6 +6,7 @@ use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
 };
 use regex::Regex;
+use std::error::Error;
 use std::fs::{copy, create_dir_all};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
@@ -104,7 +105,7 @@ integration-test = "0x9"
     match result {
         Ok(output) => output,
         Err(err) => 
-            format!("Verification failed, panic during verification: {:?}", err.downcast_ref::<String>().unwrap_or(&String::new())),
+            format!("Verification failed, panic during verification: {:?}", err.downcast::<Box<dyn Error>>().unwrap().source()),
     }
 }
 

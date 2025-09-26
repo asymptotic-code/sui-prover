@@ -36,7 +36,7 @@ use move_stackless_bytecode::{
         NumOperation::{self, Bitwise, Bottom},
     }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
-        Operation, PropKind,
+        Operation, PropKind, QuantifierType,
     }, verification_analysis
 };
 
@@ -3878,7 +3878,23 @@ impl<'env> FunctionTranslator<'env> {
                             true_expr_str,
                             false_expr_str
                         );
-                    }
+                    },
+                    Quantifier(qt, qid, inst) => {
+                        let fun_env = self.parent.env.get_function(*qid);
+                        let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
+
+                        match qt {
+                            QuantifierType::Forall => {
+                                let var_type = boogie_type(env, &self.get_local_type(srcs[0]));
+                                emitln!(self.writer(), "$t{} := (forall x: {} :: {}(x));", dests[0], var_type, fun_name);
+                            },
+                            QuantifierType::Exists => {
+                                let var_type = boogie_type(env, &self.get_local_type(srcs[0]));
+                                emitln!(self.writer(), "$t{} := (exists x: {} :: {}(x));", dests[0], var_type, fun_name);
+                            },
+                            _ => { emitln!(self.writer(), "// replaced to quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests); }
+                        }
+                    },
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {
