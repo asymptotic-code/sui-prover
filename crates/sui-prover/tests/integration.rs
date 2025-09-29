@@ -42,6 +42,11 @@ integration-test = "0x9"
         .strip_prefix(Path::new("tests/inputs"))
         .unwrap_or_else(|_| Path::new(file_path.file_name().unwrap()));
 
+    let extra_bpl_path = file_path
+        .strip_prefix(Path::new("tests/inputs"))
+        .map(|p| Path::new("tests/extra_prelude").join(p).with_extension("bpl"))
+        .unwrap_or(PathBuf::from("prelude_extra.bpl"));
+
     // Join it to the sources directory
     let new_file_path = sources_dir.join(relative_path);
 
@@ -69,7 +74,7 @@ integration-test = "0x9"
                 options.backend.sequential_task = true;
                 options.backend.use_array_theory = true;
                 options.backend.vc_timeout = 3000;
-
+                options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
 
                 // Use a buffer to capture output instead of stderr

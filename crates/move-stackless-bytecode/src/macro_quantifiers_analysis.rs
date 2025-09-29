@@ -109,7 +109,8 @@ impl MacroQuantifiersAnalysisProcessor {
                 self.is_destroy(&bc[i + 3]) &&
                 self.is_searched_fn(&bc[i + 4], end_qid) 
             {
-                let (attr_id, _, srcs, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
+                let (attr_id, _, srcs_base, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
+                let (_, _, srcs_vec, _, _) = self.extract_fn_call_data(&bc[i]);
                 let (_, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 4]);
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
@@ -121,7 +122,7 @@ impl MacroQuantifiersAnalysisProcessor {
                     attr_id,
                     dsts,
                     Operation::Quantifier(quantifier, callee_id, type_params),
-                    srcs,
+                    if srcs_vec.len() > 0 { srcs_vec } else { srcs_base },
                     None
                 );
 
@@ -129,6 +130,25 @@ impl MacroQuantifiersAnalysisProcessor {
 
                 // recursively search for more macro of this type
                 return self.find_macro_patterns(env, targets, start_qid, end_qid, quantifier, &new_bc);
+            } else if self.is_searched_fn(&bc[i], start_qid) {
+                let calle_env = env.get_function(start_qid);
+                env.diag(
+                    Severity::Error,
+                    &calle_env.get_loc(),
+                    "Invalid quantifier macro pattern: Invalid standalone usage of start function",
+                );
+
+                return bc.to_vec();
+            } else if self.is_searched_fn(&bc[i], end_qid) {
+                let calle_env = env.get_function(end_qid);
+
+                env.diag(
+                    Severity::Error,
+                    &calle_env.get_loc(),
+                    "Invalid quantifier macro pattern: Invalid standalone usage of end function",
+                );
+
+                return bc.to_vec();
             }
         }
 
