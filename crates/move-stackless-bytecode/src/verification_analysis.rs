@@ -532,9 +532,10 @@ impl VerificationAnalysisProcessor {
             let callee_env = fun_env.module_env.env.get_function(callee);
             if let Some(spec_id) = targets.get_spec_by_fun(&callee) {
                 let is_verified = targets.is_verified_spec(spec_id);
+                let no_opaque = targets.omits_opaque(spec_id);
                 let spec_env = fun_env.module_env.env.get_function(*spec_id);
                 Self::mark_inlined(&spec_env, targets);
-                if !is_verified {
+                if !is_verified && !no_opaque {
                     continue;
                 }
             }
