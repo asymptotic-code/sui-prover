@@ -61,7 +61,7 @@ function {:inline} $1_integer_from_u64(x: int): int {
 function {:inline} $1_integer_from_u128(x: int): int {
     x
 }
-function {:inline} $1_integer_from_u256(x: int): int{
+function {:inline} $1_integer_from_u256(x: int): int {
     x
 }
 function {:inline} $1_integer_to_u8(x: int): int {
