@@ -67,7 +67,7 @@ function {:inline} $1_integer_from_u256(x: int): int {
 function {:inline} $1_integer_to_u8(x: int): int {
     x mod 256
 }
-function {:inline} $1_integer_to_u16(x: int): int{
+function {:inline} $1_integer_to_u16(x: int): int {
     x mod 65536
 }
 function {:inline} $1_integer_to_u32(x: int): int {
