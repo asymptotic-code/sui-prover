@@ -1,9 +1,11 @@
-use std::collections::BTreeSet;
 use codespan_reporting::diagnostic::Severity;
-use move_model::{model::{FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId}, symbol::Symbol, ty::Type};
+use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::Type};
 
 use crate::{
-    deterministic_analysis, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, no_abort_analysis, stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierType}, stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph}
+    deterministic_analysis, no_abort_analysis,
+    function_target::{FunctionData, FunctionTarget},
+    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
+    stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierType},
 };
 
 pub struct MacroQuantifiersAnalysisProcessor();
@@ -75,7 +77,7 @@ impl MacroQuantifiersAnalysisProcessor {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
-                "Quantififier function should not abort",
+                "Quantifier function should not abort",
             );
 
             return true;
@@ -85,13 +87,12 @@ impl MacroQuantifiersAnalysisProcessor {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
-                "Quantififier function should be deterministic",
+                "Quantifier function should be deterministic",
             );
 
             return true;
         }
 
-        // probably other check in future
         return false;
     }
 
@@ -153,79 +154,6 @@ impl MacroQuantifiersAnalysisProcessor {
         }
 
         bc.to_vec()
-    }
-
-    pub fn find_node_operation(&self, block_id: BlockId, cfg: &StacklessControlFlowGraph, code: &[Bytecode], targets: &[Operation], builder: &FunctionDataBuilder) -> Option<Loc> {
-        match cfg.content(block_id) {
-            BlockContent::Dummy => {},
-            BlockContent::Basic { lower, upper } => {
-                for position in *lower..*upper {
-                    match &code[position as usize] {
-                        Bytecode::Call(attr, _, opr, _, _) => {
-                            if targets.contains(opr) {
-                                return Some(builder.get_loc(*attr));
-                            }
-                        },
-                        _ => {},
-                    }
-                }
-            }
-        }
-    
-        return None;
-    }
-
-    pub fn find_operations_before_after_operation_in_node(&self, block_id: &BlockId, operation: &Operation, cfg: &StacklessControlFlowGraph, code: &[Bytecode], builder: &FunctionDataBuilder, preconditions: &[Operation], postconditions: &[Operation]) -> (BTreeSet<Loc>, BTreeSet<Loc>) {
-        let mut befores = BTreeSet::new();
-        let mut afters = BTreeSet::new();
-        let mut matched = false;
-
-        match cfg.content(*block_id) {
-            BlockContent::Dummy => {},
-            BlockContent::Basic { lower, upper } => {
-                for position in *lower..*upper {
-                    match &code[position as usize] {
-                        Bytecode::Call(attr, _, opr, _, _) => {
-                            if opr == operation {
-                                matched = true;
-                            }
-
-                            if !matched && postconditions.contains(opr) {
-                                befores.insert(builder.get_loc(*attr));
-                            }
-
-                            if matched && preconditions.contains(opr) {
-                                afters.insert(builder.get_loc(*attr));
-                            }
-                        },
-                        _ => {},
-                    }
-                }
-            }
-        }
-    
-        return (afters, befores);
-    }
-
-    pub fn get_return_variables(&self, func_env: &FunctionEnv, code: &[Bytecode]) -> Vec<Vec<Symbol>> {
-        // using matrix to cover all possible returns with params
-        let mut results = vec!();
-        for cp in code.iter() {
-            match cp {
-                Bytecode::Ret(_, srcs) => {
-                    let mut result: Vec<Symbol> = vec!();
-                    for idx in srcs.clone() {
-                        let lc = func_env.get_local_name(idx);
-                        result.push(lc);
-                    }
-                    
-                    results.push(result);
-                } 
-                _ => {}
-            }
-        }
-
-        results
     }
 }
 
