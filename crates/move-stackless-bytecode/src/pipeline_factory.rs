@@ -51,18 +51,12 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
-        // Re-run reachability before memory instrumentation
-        ReachingDefProcessor::new(),
-        LiveVarAnalysisProcessor::new(),
-        // Run memory instrumentation before conditional merge insertion
         MemoryInstrumentationProcessor::new(),
     ];
 
     if options.enable_conditional_merge_insertion {
         // TODO(rvantonder): uncomment when complete
         processors.push(ConditionalMergeInsertionProcessor::new());
-        processors.push(ReachingDefProcessor::new());
-        processors.push(LiveVarAnalysisProcessor::new());
     }
 
     processors.append(&mut vec![

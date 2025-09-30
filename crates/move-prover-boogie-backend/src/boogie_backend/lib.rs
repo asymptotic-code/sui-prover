@@ -79,12 +79,14 @@ struct TableImpl {
 struct DynamicFieldInfo {
     struct_name: String,
     insts: Vec<(TypeInfo, TypeInfo)>,
+    key_insts: Vec<TypeInfo>,
     fun_add: String,
     fun_borrow: String,
     fun_borrow_mut: String,
     fun_remove: String,
-    // fun_exists: String,
     fun_exists_with_type: String,
+    fun_exists: String,
+    fun_exists_inner: String,
 }
 
 /// Help generating vector functions for bv types
@@ -589,10 +591,17 @@ impl DynamicFieldInfo {
                 )
             })
             .collect();
+        let key_insts = name_value_infos
+            .iter()
+            .map(|name_value_info| name_value_info.name())
+            .unique()
+            .map(|name| TypeInfo::new(env, options, name, false))
+            .collect_vec();
 
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
+            key_insts,
             fun_add: Self::triple_opt_to_name(env, env.dynamic_field_add_qid()),
             fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
             fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
@@ -601,6 +610,18 @@ impl DynamicFieldInfo {
                 env,
                 env.dynamic_field_exists_with_type_qid(),
             ),
+            fun_exists: Self::triple_opt_to_name(env, env.dynamic_field_exists_qid()),
+            fun_exists_inner: env
+                .dynamic_field_exists_qid()
+                .map(|fun_qid| {
+                    let fun = env.get_function(fun_qid);
+                    format!(
+                        "{}_{}",
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    )
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -622,10 +643,17 @@ impl DynamicFieldInfo {
                 )
             })
             .collect();
+        let key_insts = name_value_infos
+            .iter()
+            .map(|name_value_info| name_value_info.name())
+            .unique()
+            .map(|name| TypeInfo::new(env, options, name, false))
+            .collect_vec();
 
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
+            key_insts,
             fun_add: Self::triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
             fun_borrow: Self::triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
             fun_borrow_mut: Self::triple_opt_to_name(
@@ -637,6 +665,18 @@ impl DynamicFieldInfo {
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
             ),
+            fun_exists: Self::triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
+            fun_exists_inner: env
+                .dynamic_object_field_exists_qid()
+                .map(|fun_qid| {
+                    let fun = env.get_function(fun_qid);
+                    format!(
+                        "{}_{}",
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    )
+                })
+                .unwrap_or_default(),
         }
     }
 
