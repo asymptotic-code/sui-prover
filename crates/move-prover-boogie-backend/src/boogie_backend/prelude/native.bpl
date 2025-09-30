@@ -835,8 +835,6 @@ axiom (forall v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
                             LenVec(r) <= {{options.serialize_bound}} ));
 {% endif %}
 
-ensures res == $1_bcs_serialize{{S}}(v);
-
 function {:inline} $1_bcs_to_bytes{{S}}(v: {{T}}): Vec int {
     $1_bcs_serialize{{S}}(v)
 }
