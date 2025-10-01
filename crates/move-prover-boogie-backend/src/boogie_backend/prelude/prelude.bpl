@@ -40,8 +40,8 @@ function {:inline} $IsValid'$1_integer_Integer'(x: int): bool {
 function {:inline} $IsEqual'$1_integer_Integer'(x: int, y: int): bool {
     x == y
 }
-function {:inline} $0_prover_type_inv'$1_integer_Integer'(x: int): bool {
-    true
+procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y: bool) {
+    y := true;
 }
 
 {%- if options.bv_int_encoding -%}

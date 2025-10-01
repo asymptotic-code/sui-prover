@@ -3212,9 +3212,8 @@ impl GlobalEnv {
             .collect()
     }
 
-    pub fn should_be_used_as_func(&self, qid: QualifiedId<FunId>) -> bool {
-        let function_env = self.get_function(qid);
-        self.native_fn_ids().contains(&function_env.get_qualified_id())
+    pub fn should_be_used_as_func(&self, qid: &QualifiedId<FunId>) -> bool {
+        self.native_fn_ids().contains(qid)
     }
 
     pub fn native_fn_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
