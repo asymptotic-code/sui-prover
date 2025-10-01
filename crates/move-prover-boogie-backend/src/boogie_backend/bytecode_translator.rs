@@ -2504,6 +2504,10 @@ impl<'env> FunctionTranslator<'env> {
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
 
+                        if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
+                            use_func = true;
+                        }
+
                         let dest_str = if use_func_datatypes {
                             "$temp_opaque_res_var".to_string()
                         } else {
