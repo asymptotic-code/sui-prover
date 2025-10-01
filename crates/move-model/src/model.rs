@@ -3212,6 +3212,78 @@ impl GlobalEnv {
             .collect()
     }
 
+    pub fn should_be_used_as_func(&self, qid: &QualifiedId<FunId>) -> bool {
+        self.native_fn_ids().contains(qid)
+    }
+
+    pub fn native_fn_ids(&self) -> BTreeSet<QualifiedId<FunId>> {
+        vec![
+            // std::integer native functions
+            self.std_integer_from_u8_qid(),
+            self.std_integer_from_u16_qid(),
+            self.std_integer_from_u32_qid(),
+            self.std_integer_from_u64_qid(),
+            self.std_integer_from_u128_qid(),
+            self.std_integer_from_u256_qid(),
+            self.std_integer_to_u8_qid(),
+            self.std_integer_to_u16_qid(),
+            self.std_integer_to_u32_qid(),
+            self.std_integer_to_u64_qid(),
+            self.std_integer_to_u128_qid(),
+            self.std_integer_to_u256_qid(),
+            self.std_integer_add_qid(),
+            self.std_integer_sub_qid(),
+            self.std_integer_neg_qid(),
+            self.std_integer_mul_qid(),
+            self.std_integer_div_qid(),
+            self.std_integer_mod_qid(),
+            self.std_integer_sqrt_qid(),
+            self.std_integer_pow_qid(),
+            self.std_integer_bit_or_qid(),
+            self.std_integer_bit_and_qid(),
+            self.std_integer_bit_xor_qid(),
+            self.std_integer_bit_not_qid(),
+            self.std_integer_lt_qid(),
+            self.std_integer_gt_qid(),
+            self.std_integer_lte_qid(),
+            self.std_integer_gte_qid(),
+
+            // std::real native functions
+            self.std_real_from_integer_qid(),
+            self.std_real_to_integer_qid(),
+            self.std_real_add_qid(),
+            self.std_real_sub_qid(),
+            self.std_real_neg_qid(),
+            self.std_real_mul_qid(),
+            self.std_real_div_qid(),
+            self.std_real_sqrt_qid(),
+            self.std_real_exp_qid(),
+            self.std_real_lt_qid(),
+            self.std_real_gt_qid(),
+            self.std_real_lte_qid(),
+            self.std_real_gte_qid(),
+
+            // std::bcs native functions
+            self.std_bcs_to_bytes_qid(),
+
+            // std::vector native functions
+            self.std_vector_empty_qid(),
+            self.vector_is_empty_qid(),
+            self.std_vector_length_qid(),
+            self.std_vector_push_back_qid(),
+            self.vector_append_qid(),
+            self.vector_reverse_qid(),
+
+            // vec_set and vec_map native functions
+            self.vec_set_contains_qid(),
+            self.vec_map_get_idx_opt_qid(),
+            self.vec_map_keys_qid(),
+        ]
+        .into_iter()
+        .filter_map(|x| x)
+        .collect()
+    }
+
     fn add_stub_module(&mut self, module_symbol: Symbol) {
         if self.find_module_by_name(module_symbol).is_none() {
             let mut compiled_module: CompiledModule = CompiledModule::default();
