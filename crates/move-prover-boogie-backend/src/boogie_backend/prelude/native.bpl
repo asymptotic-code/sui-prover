@@ -94,20 +94,16 @@ function {:inline} $EmptyVec{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
 
-procedure {:inline 1} $1_vector_empty{{S}}() returns (v: Vec ({{T}})) {
-    v := EmptyVec();
-}
-
-function {:inline} $1_vector_$empty{{S}}(): Vec ({{T}}) {
+function {:inline} $1_vector_empty{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
 
-procedure {:inline 1} $1_vector_is_empty{{S}}(v: Vec ({{T}})) returns (b: bool) {
-    b := IsEmptyVec(v);
+function {:inline} $1_vector_is_empty{{S}}(v: Vec ({{T}})): bool {
+    IsEmptyVec(v)
 }
 
-procedure {:inline 1} $1_vector_push_back{{S}}(m: $Mutation (Vec ({{T}})), val: {{T}}) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ExtendVec($Dereference(m), val));
+function {:inline} $1_vector_push_back{{S}}(m: $Mutation (Vec ({{T}})), val: {{T}}): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ExtendVec($Dereference(m), val))
 }
 
 function {:inline} $1_vector_$push_back{{S}}(v: Vec ({{T}}), val: {{T}}): Vec ({{T}}) {
@@ -127,16 +123,16 @@ procedure {:inline 1} $1_vector_pop_back{{S}}(m: $Mutation (Vec ({{T}}))) return
     m' := $UpdateMutation(m, RemoveVec(v));
 }
 
-procedure {:inline 1} $1_vector_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ConcatVec($Dereference(m), other));
+function {:inline} $1_vector_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ConcatVec($Dereference(m), other))
 }
 
-procedure {:inline 1} $1_vector_reverse{{S}}(m: $Mutation (Vec ({{T}}))) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ReverseVec($Dereference(m)));
+function {:inline} $1_vector_reverse{{S}}(m: $Mutation (Vec ({{T}}))): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ReverseVec($Dereference(m)))
 }
 
-procedure {:inline 1} $1_vector_reverse_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ConcatVec($Dereference(m), ReverseVec(other)));
+function {:inline} $1_vector_reverse_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ConcatVec($Dereference(m), ReverseVec(other)))
 }
 
 procedure {:inline 1} $1_vector_trim_reverse{{S}}(m: $Mutation (Vec ({{T}})), new_len: int) returns (v: (Vec ({{T}})), m': $Mutation (Vec ({{T}}))) {
@@ -246,11 +242,7 @@ procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), i: int, 
     }
 }
 
-procedure {:inline 1} $1_vector_length{{S}}(v: Vec ({{T}})) returns (l: int) {
-    l := LenVec(v);
-}
-
-function {:inline} $1_vector_$length{{S}}(v: Vec ({{T}})): int {
+function {:inline} $1_vector_length{{S}}(v: Vec ({{T}})): int {
     LenVec(v)
 }
 
@@ -443,11 +435,11 @@ procedure {:inline 1} $2_vec_set_from_keys{{S}}(v: Vec ({{T}})) returns (res: $2
     res := $2_vec_set_VecSet{{S}}(v);
 }
 
-procedure {:inline 1} $2_vec_set_contains{{S}}(
+function {:inline} $2_vec_set_contains{{S}}(
     s: $2_vec_set_VecSet{{S}},
     e: {{T}}
-) returns (res: bool) {
-    res := $ContainsVec{{S}}(s->$contents, e);
+): bool {
+    $ContainsVec{{S}}(s->$contents, e)
 }
 
 procedure {:inline 1} $2_vec_set_remove{{S}}(
@@ -507,17 +499,15 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
         (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
 
-procedure {:inline 1} $2_vec_map_get_idx_opt{{S}}(
+function {:inline} $2_vec_map_get_idx_opt{{S}}(
     m: $2_vec_map_VecMap{{S}},
     k: {{K}}
-) returns (res: $1_option_Option'u64') {
-    var res0: int;
-    res0 := $IndexOfVecMap{{S}}(m->$contents, k);
-    if (res0 >= 0) {
-        res := $1_option_Option'u64'(MakeVec1(res0));
-    } else {
-        res := $1_option_Option'u64'(EmptyVec());
-    }
+): $1_option_Option'u64' {
+    (var idx := $IndexOfVecMap{{S}}(m->$contents, k);
+     if idx >= 0 then 
+         $1_option_Option'u64'(MakeVec1(idx))
+     else 
+         $1_option_Option'u64'(EmptyVec()))
 }
 
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
@@ -532,8 +522,8 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapValues{{S}}(v)}
      LenVec(values) == LenVec(v) &&
      (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{V_S}}(ReadVec(values, i), ReadVec(v, i)->$value))));
 
-procedure {:inline 1} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res: Vec ({{K}})) {
-    res := $VecMapKeys{{S}}(m->$contents);
+function {:inline} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}): Vec ({{K}}) {
+    $VecMapKeys{{S}}(m->$contents)
 }
 
 procedure {:inline 1} $2_vec_map_into_keys_values{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res0: Vec ({{K}}), res1: Vec ({{V}})) {
@@ -873,10 +863,7 @@ axiom (forall v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
                             LenVec(r) <= {{options.serialize_bound}} ));
 {% endif %}
 
-procedure $1_bcs_to_bytes{{S}}(v: {{T}}) returns (res: Vec int);
-ensures res == $1_bcs_serialize{{S}}(v);
-
-function {:inline} $1_bcs_$to_bytes{{S}}(v: {{T}}): Vec int {
+function {:inline} $1_bcs_to_bytes{{S}}(v: {{T}}): Vec int {
     $1_bcs_serialize{{S}}(v)
 }
 
