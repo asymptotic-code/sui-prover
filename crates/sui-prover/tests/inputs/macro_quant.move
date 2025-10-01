@@ -2,10 +2,10 @@
 module 0x42::macro_quant;
 
 #[spec_only]
-use prover::prover::ensures;
+use prover::prover::{forall, exists, ensures};
 
 #[spec_only]
-use prover::macro::{forall, exists, map, filter, find, find_index, find_indices, count, any, all, sum, sum_map};
+use prover::vec::{map, filter, find, find_index, find_indices, count, any, all, sum, sum_map};
 
 #[spec_only]
 fun x_is_10(x: &u64): bool {

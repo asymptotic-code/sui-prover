@@ -145,10 +145,7 @@ impl QuantifierType {
     }
 
     pub fn can_abort(&self) -> bool {
-        match self {
-            QuantifierType::SumMap => true,
-            _ => false,
-        }
+        false
     }
 }
 

@@ -8,9 +8,42 @@ use crate::{
     stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierType},
 };
 
-pub struct MacroQuantifiersAnalysisProcessor();
+#[derive(Debug, Clone)]
+pub struct QuantifierPattern {
+    pub start_qid: QualifiedId<FunId>,
+    pub end_qid: QualifiedId<FunId>,
+    pub quantifier_type: QuantifierType,
+}
 
-impl MacroQuantifiersAnalysisProcessor {
+impl QuantifierPattern {
+    pub fn new(start_qid: QualifiedId<FunId>, end_qid: QualifiedId<FunId>, quantifier_type: QuantifierType) -> Self {
+        Self {
+            start_qid,
+            end_qid,
+            quantifier_type,
+        }
+    }
+
+    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 11] {
+        [
+            QuantifierPattern::new(env.prover_begin_forall_lambda_qid(), env.prover_end_forall_lambda_qid(), QuantifierType::Forall),
+            QuantifierPattern::new(env.prover_begin_exists_lambda_qid(), env.prover_end_exists_lambda_qid(), QuantifierType::Exists),
+            QuantifierPattern::new(env.prover_begin_map_lambda_qid(), env.prover_end_map_lambda_qid(), QuantifierType::Map),
+            QuantifierPattern::new(env.prover_begin_filter_lambda_qid(), env.prover_end_filter_lambda_qid(), QuantifierType::Filter),
+            QuantifierPattern::new(env.prover_begin_find_lambda_qid(), env.prover_end_find_lambda_qid(), QuantifierType::Find),
+            QuantifierPattern::new(env.prover_begin_find_index_lambda_qid(), env.prover_end_find_index_lambda_qid(), QuantifierType::FindIndex),
+            QuantifierPattern::new(env.prover_begin_find_indices_lambda_qid(), env.prover_end_find_indices_lambda_qid(), QuantifierType::FindIndices),
+            QuantifierPattern::new(env.prover_begin_sum_map_lambda_qid(), env.prover_end_sum_map_lambda_qid(), QuantifierType::SumMap),
+            QuantifierPattern::new(env.prover_begin_count_lambda_qid(), env.prover_end_count_lambda_qid(), QuantifierType::Count),
+            QuantifierPattern::new(env.prover_begin_any_lambda_qid(), env.prover_end_any_lambda_qid(), QuantifierType::Any),
+            QuantifierPattern::new(env.prover_begin_all_lambda_qid(), env.prover_end_all_lambda_qid(), QuantifierType::All),
+        ]
+    }
+}
+
+pub struct QuantifierIteratorAnalysisProcessor();
+
+impl QuantifierIteratorAnalysisProcessor {
     pub fn new() -> Box<Self> {
         Box::new(Self())
     }
@@ -96,7 +129,7 @@ impl MacroQuantifiersAnalysisProcessor {
         return false;
     }
 
-    pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, start_qid: QualifiedId<FunId>, end_qid: QualifiedId<FunId>, quantifier: QuantifierType, bc: &Vec<Bytecode>) -> Vec<Bytecode> {
+    pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, pattern: &QuantifierPattern, bc: &Vec<Bytecode>) -> Vec<Bytecode> {
         let chain_len = 5;
         if bc.len() < chain_len {
             return bc.to_vec();
@@ -104,11 +137,11 @@ impl MacroQuantifiersAnalysisProcessor {
 
         for i in 0..bc.len() - (chain_len - 1) {
             if 
-                self.is_searched_fn(&bc[i], start_qid) &&
+                self.is_searched_fn(&bc[i], pattern.start_qid) &&
                 self.is_trace_local(&bc[i + 1]) &&
                 self.is_fn_call(&bc[i + 2]) && 
                 self.is_destroy(&bc[i + 3]) &&
-                self.is_searched_fn(&bc[i + 4], end_qid) 
+                self.is_searched_fn(&bc[i + 4], pattern.end_qid) 
             {
                 let (attr_id, _, srcs_base, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
                 let (_, _, srcs_vec, _, _) = self.extract_fn_call_data(&bc[i]);
@@ -122,7 +155,7 @@ impl MacroQuantifiersAnalysisProcessor {
                 let new_bc_el = Bytecode::Call(
                     attr_id,
                     dsts,
-                    Operation::Quantifier(quantifier, callee_id, type_params),
+                    Operation::Quantifier(pattern.quantifier_type, callee_id, type_params),
                     if srcs_vec.len() > 0 { srcs_vec } else { srcs_base },
                     None
                 );
@@ -130,9 +163,9 @@ impl MacroQuantifiersAnalysisProcessor {
                 new_bc.splice(i..=i + (chain_len - 1), [new_bc_el]);
 
                 // recursively search for more macro of this type
-                return self.find_macro_patterns(env, targets, start_qid, end_qid, quantifier, &new_bc);
-            } else if self.is_searched_fn(&bc[i], start_qid) {
-                let calle_env = env.get_function(start_qid);
+                return self.find_macro_patterns(env, targets, pattern, &new_bc);
+            } else if self.is_searched_fn(&bc[i], pattern.start_qid) {
+                let calle_env = env.get_function(pattern.start_qid);
                 env.diag(
                     Severity::Error,
                     &calle_env.get_loc(),
@@ -140,8 +173,8 @@ impl MacroQuantifiersAnalysisProcessor {
                 );
 
                 return bc.to_vec();
-            } else if self.is_searched_fn(&bc[i], end_qid) {
-                let calle_env = env.get_function(end_qid);
+            } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
+                let calle_env = env.get_function(pattern.end_qid);
 
                 env.diag(
                     Severity::Error,
@@ -157,7 +190,7 @@ impl MacroQuantifiersAnalysisProcessor {
     }
 }
 
-impl FunctionTargetProcessor for MacroQuantifiersAnalysisProcessor {
+impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
     fn process(
         &self,
         targets: &mut FunctionTargetsHolder,
@@ -173,26 +206,12 @@ impl FunctionTargetProcessor for MacroQuantifiersAnalysisProcessor {
         let func_target = FunctionTarget::new(func_env, &data);
         let code = func_target.get_bytecode();
 
-        // start, end, replace
-        let conditions = [
-            (env.prover_begin_forall_lambda_qid(), env.prover_end_forall_lambda_qid(), QuantifierType::Forall),
-            (env.prover_begin_exists_lambda_qid(), env.prover_end_exists_lambda_qid(), QuantifierType::Exists),
-
-            (env.prover_begin_map_lambda_qid(), env.prover_end_map_lambda_qid(), QuantifierType::Map),
-            (env.prover_begin_filter_lambda_qid(), env.prover_end_filter_lambda_qid(), QuantifierType::Filter),
-            (env.prover_begin_find_lambda_qid(), env.prover_end_find_lambda_qid(), QuantifierType::Find),
-            (env.prover_begin_find_index_lambda_qid(), env.prover_end_find_index_lambda_qid(), QuantifierType::FindIndex),
-            (env.prover_begin_find_indices_lambda_qid(), env.prover_end_find_indices_lambda_qid(), QuantifierType::FindIndices),
-            (env.prover_begin_sum_map_lambda_qid(), env.prover_end_sum_map_lambda_qid(), QuantifierType::SumMap),
-            (env.prover_begin_count_lambda_qid(), env.prover_end_count_lambda_qid(), QuantifierType::Count),
-            (env.prover_begin_any_lambda_qid(), env.prover_end_any_lambda_qid(), QuantifierType::Any),
-            (env.prover_begin_all_lambda_qid(), env.prover_end_all_lambda_qid(), QuantifierType::All),
-        ];
+        let patterns = QuantifierPattern::all_patterns(env);
 
         let mut bc = code.to_vec();
 
-        for ac in conditions {
-            bc = self.find_macro_patterns(env, &targets, ac.0, ac.1, ac.2, &bc);
+        for pattern in &patterns {
+            bc = self.find_macro_patterns(env, &targets, pattern, &bc);
         }
 
         let mut data = data.clone();
@@ -202,6 +221,6 @@ impl FunctionTargetProcessor for MacroQuantifiersAnalysisProcessor {
     }
 
     fn name(&self) -> String {
-        "macro_quantifiers_analysis".to_string()
+        "quantifier_iterator_analysis".to_string()
     }
 }
