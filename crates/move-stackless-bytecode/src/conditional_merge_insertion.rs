@@ -134,13 +134,17 @@ impl ConditionalMergeInsertionProcessor {
                 Bytecode::Assign(_, dst, src, _) => {
                     last_assign_per_var.insert(*dst, *src);
                 }
-                Bytecode::Call(_, dests, op, _, _) => {
-                    if Self::is_side_effecting_op(op) || dests.len() != 1 {
+                Bytecode::Call(_, dests, op, _srcs, _aa) => {
+                    // Allow single-destination calls (assignments) and TraceLocal (debug instrumentation)
+                    if dests.len() == 1 && !Self::is_side_effecting_op(op) {
+                        let var = dests[0];
+                        last_assign_per_var.insert(var, var);
+                    } else if matches!(op, Operation::TraceLocal(_)) {
+                        // TraceLocal, safe to ignore
+                    } else {
                         simple_block = false;
                         break;
                     }
-                    let var = dests[0];
-                    last_assign_per_var.insert(var, var);
                 }
                 Bytecode::Jump(..) => {
                     // Expected: blocks should jump to merge point at end of block
