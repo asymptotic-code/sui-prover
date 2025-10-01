@@ -38,12 +38,12 @@ impl fmt::Display for SymbolDisplay<'_> {
 /// A pool of symbols. Allows to lookup a symbol by a string representation, and discover
 /// the string representation of an existing symbol. This struct does not need be mutable
 /// for operations on it, which is important so references to it can be freely passed around.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolPool {
     inner: RefCell<InnerPool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InnerPool {
     strings: Vec<Rc<String>>,
     lookup: HashMap<Rc<String>, usize>,
