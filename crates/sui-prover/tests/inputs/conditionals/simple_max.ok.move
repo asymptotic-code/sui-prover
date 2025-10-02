@@ -3,6 +3,7 @@ module 0x42::simple_max_succeeds_test;
 #[spec_only]
 use prover::prover::{ensures};
 
+#[ext(pure)]
 public fun simple_max(a: u64, b: u64): u64 {
     if (a >= b) {
         a
