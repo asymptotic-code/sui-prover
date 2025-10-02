@@ -6,6 +6,7 @@ use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
 };
 use regex::Regex;
+use std::error::Error;
 use std::fs::{copy, create_dir_all};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
@@ -41,6 +42,11 @@ integration-test = "0x9"
         .strip_prefix(Path::new("tests/inputs"))
         .unwrap_or_else(|_| Path::new(file_path.file_name().unwrap()));
 
+    let extra_bpl_path = file_path
+        .strip_prefix(Path::new("tests/inputs"))
+        .map(|p| Path::new("tests/extra_prelude").join(p).with_extension("bpl"))
+        .unwrap_or(PathBuf::from("prelude_extra.bpl"));
+
     // Join it to the sources directory
     let new_file_path = sources_dir.join(relative_path);
 
@@ -68,7 +74,7 @@ integration-test = "0x9"
                 options.backend.sequential_task = true;
                 options.backend.use_array_theory = true;
                 options.backend.vc_timeout = 3000;
-
+                options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
 
                 // Use a buffer to capture output instead of stderr
@@ -104,7 +110,7 @@ integration-test = "0x9"
     match result {
         Ok(output) => output,
         Err(err) => 
-            format!("Verification failed, panic during verification: {:?}", err.downcast_ref::<String>().unwrap_or(&String::new())),
+            format!("Verification failed, panic during verification: {:?}", err.downcast::<Box<dyn Error>>().unwrap().source()),
     }
 }
 
