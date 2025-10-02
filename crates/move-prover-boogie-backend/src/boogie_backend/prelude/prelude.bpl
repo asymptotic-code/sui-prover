@@ -1710,3 +1710,8 @@ datatype $TypeParamInfo {
     $TypeParamVector(e: $TypeParamInfo),
     $TypeParamStruct(a: int, m: Vec int, s: Vec int)
 }
+
+function {:inline} $0_vec_sum_range(v: Vec int, start: int, end: int): int {
+    if (start >= end) then 0
+    else ReadVec(v, start) + $0_vec_sum_range(v, start + 1, end)
+}

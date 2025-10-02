@@ -1,7 +1,7 @@
 module 0x42::foo;
 
 use prover::prover::ensures;
-use prover::vector::{slice, sum};
+use prover::vec::{slice, sum};
 
 #[spec(prove)]
 fun test_slice_and_sum() {
