@@ -165,20 +165,20 @@ impl QuantifierIteratorAnalysisProcessor {
                 // recursively search for more macro of this type
                 return self.find_macro_patterns(env, targets, pattern, &new_bc);
             } else if self.is_searched_fn(&bc[i], pattern.start_qid) {
-                let calle_env = env.get_function(pattern.start_qid);
+                let callee_env = env.get_function(pattern.start_qid);
                 env.diag(
                     Severity::Error,
-                    &calle_env.get_loc(),
+                    &callee_env.get_loc(),
                     "Invalid quantifier macro pattern: Invalid standalone usage of start function",
                 );
 
                 return bc.to_vec();
             } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
-                let calle_env = env.get_function(pattern.end_qid);
+                let callee_env = env.get_function(pattern.end_qid);
 
                 env.diag(
                     Severity::Error,
-                    &calle_env.get_loc(),
+                    &callee_env.get_loc(),
                     "Invalid quantifier macro pattern: Invalid standalone usage of end function",
                 );
 
