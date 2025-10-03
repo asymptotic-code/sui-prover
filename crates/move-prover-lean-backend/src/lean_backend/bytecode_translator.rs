@@ -2259,24 +2259,59 @@ fn generate_function_body(&mut self) {
     let blocks = reconstruct_control_flow(&code);
     let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
 
-    let mut returned_emitted = false;
+    // Recursive translator for structured blocks
+    fn translate_structured_block(
+        this: &mut FunctionTranslator<'_>,
+        block: &StructuredBlock,
+        code: &[Bytecode],
+        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
+    ) {
+        match block {
+            StructuredBlock::Basic { .. } => {
+                for offset in block.instr_indexes() {
+                    let bytecode = &code[offset as usize];
+                    // Skip branches and explicit merge jumps: the structured builder accounted for them
+                    match bytecode {
+                        Bytecode::Branch(..) => continue,
+                        _ => {}
+                    }
+                    this.translate_bytecode(last_tracked_loc, bytecode, Some(offset as usize));
+                }
+            }
+            StructuredBlock::Seq(blocks) => {
+                for b in blocks {
+                    translate_structured_block(this, b, code, last_tracked_loc);
+                }
+            }
+            StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } => {
+                // Extract condition temp from the Branch at cond_at
+                if let Bytecode::Branch(_, _tlabel, _elabel, cond_tmp) = &code[*cond_at as usize] {
+                    let cond_str = format!("t{}", *cond_tmp as usize);
+                    emitln!(this.writer(), "if {} then", cond_str);
+                    this.writer().indent();
+                    translate_structured_block(this, then_branch, code, last_tracked_loc);
+                    this.writer().unindent();
+                    if let Some(eb) = else_branch.as_ref() {
+                        emitln!(this.writer(), "else");
+                        this.writer().indent();
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                        this.writer().unindent();
+                    }
+                    emitln!(this.writer(), "end");
+                } else {
+                    // Fallback: no recognizable branch at cond_at, just translate bodies
+                    translate_structured_block(this, then_branch, code, last_tracked_loc);
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                }
+            }
+        }
+    }
+
     if !blocks.is_empty() {
-        for block in blocks {
-            match block {
-                StructuredBlock::Basic { lower, upper } => {
-
-                }
-                StructuredBlock::Seq(_) => {
-
-                }
-            }
-            for offset in block.instr_indexes() {
-                let bytecode = &code[offset as usize];
-                self.translate_bytecode(&mut last_tracked_loc, bytecode, Some(offset as usize));
-                if matches!(bytecode, Bytecode::Ret(_, _)) {
-                    returned_emitted = true;
-                }
-            }
+        for block in &blocks {
+            translate_structured_block(self, block, &code, &mut last_tracked_loc);
         }
     }
 
