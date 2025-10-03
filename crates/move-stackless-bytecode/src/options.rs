@@ -93,6 +93,8 @@ pub struct ProverOptions {
     pub ban_int_2_bv: bool,
     /// Whether to encode u8/u16/u32/u64/u128/u256 as integer or bitvector
     pub bv_int_encoding: bool,
+    /// Skip checking spec functions that do not abort
+    pub skip_spec_no_abort: bool,
 }
 
 // add custom struct for mutation options
@@ -129,6 +131,7 @@ impl Default for ProverOptions {
             borrow_natives: vec![],
             ban_int_2_bv: false,
             bv_int_encoding: true,
+            skip_spec_no_abort: false,
         }
     }
 }

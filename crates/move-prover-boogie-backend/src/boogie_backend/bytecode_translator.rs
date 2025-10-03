@@ -22,7 +22,7 @@ use move_model::{
     emit, emitln,
     model::{
         DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
-        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv,
+        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
     },
     pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
@@ -334,8 +334,8 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()){
-                    if !self.targets.no_verify_specs().contains(spec_qid) || self.options.func_abort_check_only {
+                match self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
+                    Some(spec_qid) if !self.targets.omits_opaque(spec_qid) => {
                         FunctionTranslator::new(
                             self,
                             &fun_target,
@@ -344,23 +344,24 @@ impl<'env> BoogieTranslator<'env> {
                         )
                         .translate();
                     }
-                } else {
-                    // This variant is inlined, so translate for all type instantiations.
-                    for type_inst in mono_info
-                        .funs
-                        .get(&(
-                            fun_target.func_env.get_qualified_id(),
-                            FunctionVariant::Baseline,
-                        ))
-                        .unwrap_or(&BTreeSet::new())
-                    {
-                        FunctionTranslator::new(
-                            self,
-                            &fun_target,
-                            type_inst,
-                            FunctionTranslationStyle::Default,
-                        )
-                        .translate();
+                    _ => {
+                        // This variant is inlined, so translate for all type instantiations.
+                        for type_inst in mono_info
+                            .funs
+                            .get(&(
+                                fun_target.func_env.get_qualified_id(),
+                                FunctionVariant::Baseline,
+                            ))
+                            .unwrap_or(&BTreeSet::new())
+                        {
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                type_inst,
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
+                        }
                     }
                 }
             }
@@ -2402,9 +2403,21 @@ impl<'env> FunctionTranslator<'env> {
                                 .into_iter()
                                 .filter_map(|e| match e {
                                     BorrowEdge::Field(_, offset) => Some(format!("{}", offset)),
+                                    BorrowEdge::EnumField(dt_id, offset, vid) => Some(format!(
+                                        "{}",
+                                        variant_field_offset(
+                                            &self
+                                                .parent
+                                                .env
+                                                .get_enum_qid(dt_id.to_qualified_id())
+                                                .get_variant(*vid),
+                                            *offset,
+                                        )
+                                    )),
                                     BorrowEdge::Index(_) => Some("-1".to_owned()),
+                                    BorrowEdge::DynamicField(..) => Some("-1".to_owned()),
                                     BorrowEdge::Direct => None,
-                                    _ => unreachable!(),
+                                    BorrowEdge::Hyper(_) => unreachable!(),
                                 })
                                 .collect_vec();
                             if edge_pattern.is_empty() {
@@ -2489,6 +2502,10 @@ impl<'env> FunctionTranslator<'env> {
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
                             use_func_datatypes = self.should_use_temp_datatypes();
+                        }
+
+                        if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
+                            use_func = true;
                         }
 
                         let dest_str = if use_func_datatypes {
@@ -2754,16 +2771,7 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
-                                    let verified = self.parent.targets.is_verified_spec(id);
-                                    let suffix = if use_impl {
-                                        if verified {
-                                            "$impl"
-                                        } else {
-                                            ""
-                                        }
-                                    } else {
-                                        "$opaque"
-                                    };
+                                    let suffix = if use_impl { "$impl" } else { "$opaque" };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
@@ -3007,7 +3015,7 @@ impl<'env> FunctionTranslator<'env> {
                                     "{} := $ChildMutation({}, {}, $Dereference({})->{});",
                                     dest_str,
                                     src_str,
-                                    i,
+                                    variant_field_offset(&variant_env, field_env.get_offset()),
                                     src_str,
                                     field_name
                                 );
@@ -4483,4 +4491,9 @@ pub fn has_native_equality(env: &GlobalEnv, options: &BoogieOptions, ty: &Type) 
         | Type::Error
         | Type::Var(_) => true,
     }
+}
+
+// Create a unique offset for the variant and field offset combination
+fn variant_field_offset(variant_env: &VariantEnv<'_>, offset: usize) -> usize {
+    (variant_env.get_tag() << 32) | offset
 }
