@@ -366,7 +366,11 @@ impl<'env> BoogieTranslator<'env> {
                         )
                         .translate();
                         // Attempt to emit Pure variant if eligible
-                        self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+                        if !self.options.spec_no_abort_check_only
+                            && self.options.boogie_file_mode != BoogieFileMode::All {
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                        }
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -387,7 +391,11 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+                        if !self.options.spec_no_abort_check_only
+                            && self.options.boogie_file_mode != BoogieFileMode::All {
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                        }
                     }
                 }
             }
@@ -475,7 +483,11 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
-        self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+        if !self.options.spec_no_abort_check_only
+            && self.options.boogie_file_mode != BoogieFileMode::All {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+        }
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
@@ -2304,6 +2316,10 @@ impl<'env> FunctionTranslator<'env> {
             Call(_, _, op, _, _) => {
                 match op {
                     Operation::IfThenElse => true,
+                    Operation::Function(mid, fid, _) => {
+                        // Allow function calls if they're marked as pure
+                        self.can_callee_be_function(*mid, *fid)
+                    }
                     _ => !op.can_abort(), // Allow non-aborting operations
                 }
             }
@@ -2323,17 +2339,30 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
+    /// Check if a callee function can be used as a Boogie function (not procedure)
+    fn can_callee_be_function(&self, mid: move_model::model::ModuleId, fid: move_model::model::FunId) -> bool {
+        let env = self.fun_target.global_env();
+        let module_env = env.get_module(mid);
+        let callee_env = module_env.get_function(fid);
+
+        // Check if callee is marked with #[ext(pure)]
+        self.check_ext_attribute(&callee_env, PURE_PRAGMA)
+    }
+
     /// Panic if we encounter bytecode operations that should have been filtered out
     /// but could compromise translation fidelity if silently ignored.
     fn check_disallowed_for_function(&self, bytecode: &Bytecode) {
         use Bytecode::*;
         match bytecode {
             Call(_, _, op, _, _) => {
-                if let Operation::Function(_, _, _) = op {
-                    panic!(
-                        "Function calls should be filtered out before function emission: {}",
-                        bytecode.display(self.fun_target, &std::collections::BTreeMap::default())
-                    );
+                if let Operation::Function(mid, fid, _) = op {
+                    // Allow function calls if the callee can be emitted as a Boogie function
+                    if !self.can_callee_be_function(*mid, *fid) {
+                        panic!(
+                            "Function calls should be filtered out before function emission: {}",
+                            bytecode.display(self.fun_target, &std::collections::BTreeMap::default())
+                        );
+                    }
                 }
             }
             Abort(_, _) => {
@@ -2402,6 +2431,10 @@ impl<'env> FunctionTranslator<'env> {
                 And => Some(("&&", 2)),
                 Or => Some(("||", 2)),
                 Not => Some(("!", 1)),
+                BitAnd => Some(("$And", 2)),
+                BitOr => Some(("$Or", 2)),
+                Shl => Some(("$shl", 2)),
+                Shr => Some(("$shr", 2)),
                 _ => None,
             }
         };
@@ -2427,9 +2460,60 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 continue;
                             }
+                        } else if let Function(mid, fid, inst) = op {
+                            // Handle function calls for functions that can be emitted as Boogie functions
+                            if self.can_callee_be_function(*mid, *fid) {
+                                let env = fun_target.global_env();
+                                let module_env = env.get_module(*mid);
+                                let callee_env = module_env.get_function(*fid);
+                                let inst = &self.inst_slice(inst);
+                                let fun_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                format!("{}({})", fun_name, args)
+                            } else {
+                                continue;
+                            }
+                        } else if let Operation::GetField(mid, sid, inst, field_offset) = op {
+                            // Handle field access
+                            if let [src] = srcs.as_slice() {
+                                let inst = &self.inst_slice(inst);
+                                let mut src_str = fmt_temp(*src);
+                                let struct_env = fun_target.global_env().get_module(*mid).into_struct(*sid);
+                                let field_env = &struct_env.get_field_by_offset(*field_offset);
+                                let sel_fun = boogie_field_sel(field_env, inst);
+                                if fun_target.get_local_type(*src).is_reference() {
+                                    src_str = format!("$Dereference({})", src_str);
+                                }
+                                format!("{}->{}", src_str, sel_fun)
+                            } else {
+                                continue;
+                            }
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
-                                if arity == 1 {
+                                // Bitwise operations and shifts are functions, not operators
+                                let is_func_op = matches!(op, Operation::BitAnd | Operation::BitOr | Operation::Shl | Operation::Shr);
+                                if is_func_op {
+                                    let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                    // For bitwise operations, we need to add type suffix
+                                    if matches!(op, Operation::BitAnd | Operation::BitOr) {
+                                        let type_suffix = match &fun_target.get_local_type(*dest) {
+                                            Type::Primitive(PrimitiveType::U8) => "'Bv8'",
+                                            Type::Primitive(PrimitiveType::U16) => "'Bv16'",
+                                            Type::Primitive(PrimitiveType::U32) => "'Bv32'",
+                                            Type::Primitive(PrimitiveType::U64) => "'Bv64'",
+                                            Type::Primitive(PrimitiveType::U128) => "'Bv128'",
+                                            Type::Primitive(PrimitiveType::U256) => "'Bv256'",
+                                            _ => "",
+                                        };
+                                        format!("{}{}({})", sym, type_suffix, args)
+                                    } else {
+                                        format!("{}({})", sym, args)
+                                    }
+                                } else if arity == 1 {
                                     format!("({}{})", sym, fmt_temp(srcs[0]))
                                 } else {
                                     format!("({} {} {})", fmt_temp(srcs[0]), sym, fmt_temp(srcs[1]))
@@ -2831,9 +2915,18 @@ impl<'env> FunctionTranslator<'env> {
 
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
+                        // Check if callee is marked as pure
+                        let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
+
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
-                            use_func = true;
-                            use_func_datatypes = self.should_use_temp_datatypes();
+                            // For SpecNoAbortCheck style, don't use function syntax for pure functions
+                            // They should be emitted as procedures in spec_no_abort_check.bpl
+                            if self.style == FunctionTranslationStyle::SpecNoAbortCheck && callee_is_pure {
+                                // Keep use_func = false for pure functions in SpecNoAbortCheck
+                            } else {
+                                use_func = true;
+                                use_func_datatypes = self.should_use_temp_datatypes();
+                            }
                         }
 
                         if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
@@ -2841,9 +2934,11 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        let is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
-                        if is_pure {
-                            use_func = true;
+                        // But only when we're in Pure translation style
+                        if self.style == FunctionTranslationStyle::Pure {
+                            if callee_is_pure {
+                                use_func = true;
+                            }
                         }
 
                         let dest_str = if use_func_datatypes {
