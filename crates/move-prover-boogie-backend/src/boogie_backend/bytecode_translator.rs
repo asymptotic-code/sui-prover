@@ -2919,14 +2919,9 @@ impl<'env> FunctionTranslator<'env> {
                         let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
-                            // For SpecNoAbortCheck style, don't use function syntax for pure functions
-                            // They should be emitted as procedures in spec_no_abort_check.bpl
-                            if self.style == FunctionTranslationStyle::SpecNoAbortCheck && callee_is_pure {
-                                // Keep use_func = false for pure functions in SpecNoAbortCheck
-                            } else {
-                                use_func = true;
-                                use_func_datatypes = self.should_use_temp_datatypes();
-                            }
+                            // Opaque variants ($opaque suffix) ALWAYS use function syntax
+                            use_func = true;
+                            use_func_datatypes = self.should_use_temp_datatypes();
                         }
 
                         if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
@@ -2934,11 +2929,11 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        // But only when we're in Pure translation style
-                        if self.style == FunctionTranslationStyle::Pure {
-                            if callee_is_pure {
-                                use_func = true;
-                            }
+                        // ONLY in Default and Pure styles (as requested by user)
+                        // In other styles (SpecNoAbortCheck, Aborts, Opaque, Asserts), use procedures
+                        // Only applies to non-opaque calls (if use_func is not already set by opaque logic above)
+                        if callee_is_pure && !use_func && (self.style == FunctionTranslationStyle::Default || self.style == FunctionTranslationStyle::Pure) {
+                            use_func = true;
                         }
 
                         let dest_str = if use_func_datatypes {
@@ -3236,6 +3231,10 @@ impl<'env> FunctionTranslator<'env> {
                                     let suffix = if use_impl { "$impl" } else { "$opaque" };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
+                            } else if !is_spec_call && use_func && callee_is_pure {
+                                // For non-spec calls using function syntax to pure functions,
+                                // add $pure suffix (regardless of current style)
+                                fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
                             // Helper function to check whether the idx corresponds to a bitwise operation

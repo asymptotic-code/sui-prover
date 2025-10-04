@@ -147,8 +147,6 @@ integration-test = "0x9"
         post_process_output(result, sources_dir)
     });
 
-    tmp.close().unwrap();
-
     // Now handle the result of our operation
     match result {
         Ok(output) => output,
