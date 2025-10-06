@@ -232,7 +232,7 @@ async fn run_prover_abort_check<W: WriteColor>(
 }
 
 async fn process_fn<W: WriteColor>(global_env: &GlobalEnv, error_writer: &mut W, options: &Options, qid: &QualifiedId<FunId>) -> anyhow::Result<bool> {
-    let env = global_env.clone();
+    let env: GlobalEnv = global_env.clone();
     let fun_env = env.get_function(*qid);
 
     let mut targets = FunctionTargetsHolder::new_with_qid(Some(options.filter.clone()), *qid);
