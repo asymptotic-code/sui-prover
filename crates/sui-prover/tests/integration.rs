@@ -7,7 +7,7 @@ use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
 };
 use regex::Regex;
-use std::fs::{copy, create_dir_all};
+use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
 
@@ -185,8 +185,7 @@ fn extract_boogie_function(output_dir: &str) -> String {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "bpl") {
-                if let Ok(content) = 
-              (&path) {
+                if let Ok(content) = read_to_string(&path) {
                     // Look for the $impl function which contains the actual implementation
                     if let Some(impl_function) = extract_impl_function(&content) {
                         return impl_function;

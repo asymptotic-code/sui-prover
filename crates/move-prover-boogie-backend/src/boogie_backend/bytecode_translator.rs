@@ -3878,10 +3878,13 @@ impl<'env> FunctionTranslator<'env> {
                     Quantifier(qt, qid, inst) => {
                         let fun_env = self.parent.env.get_function(*qid);
                         let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
-                        let loc_type = self.get_local_type(srcs[0]);
+
+                        let param_types = fun_env.get_parameter_types();
+                        let loc_type = param_types[0].skip_reference().instantiate(self.type_inst);
+
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
-                        
+
                         match qt {
                             QuantifierType::Forall => {
                                 emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}(x));", dests[0], b_type, suffix, fun_name);
