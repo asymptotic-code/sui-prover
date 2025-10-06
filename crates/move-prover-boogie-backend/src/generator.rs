@@ -162,6 +162,11 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
     targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
     let file_name = "spec_no_abort_check";
+    if opt.prover.skip_spec_no_abort {
+        println!("⏭️  {file_name}");
+        return Ok(false);
+    }
+
     println!("🔄 {file_name}");
 
     let mut options = opt.clone();

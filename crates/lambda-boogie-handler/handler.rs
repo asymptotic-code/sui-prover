@@ -19,9 +19,9 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-enhancedErrorMessages:1",
     "-useArrayAxioms",
     "-proverOpt:O:model_validate=true",
-    "-vcsCores:2",
+    "-vcsCores:4",
     "-verifySeparately",
-    "-vcsMaxKeepGoingSplits:2",
+    "-vcsMaxKeepGoingSplits:4",
     "-vcsSplitOnEveryAssert",
     "-vcsFinalAssertTimeout:600",
 ];
@@ -172,6 +172,8 @@ impl ProverHandler {
         } else {
             println!("Result cached successfully for hash: {}", hash);
         }
+
+        temp_file.close()?;
 
         Ok(ProverResponse {
             out,

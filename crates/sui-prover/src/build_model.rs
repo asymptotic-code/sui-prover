@@ -3,6 +3,7 @@ use termcolor::Buffer;
 use std::path::{Path,PathBuf};
 use move_package::{package_lock::PackageLock, source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig};
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
+use codespan_reporting::diagnostic::Severity;
 
 use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps};
 
@@ -69,6 +70,13 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         move_build_config,
         &rerooted_path,
     )?;
+
+    if model.has_errors() {
+        let mut error_writer = Buffer::no_color();
+        model.report_diag(&mut error_writer, Severity::Error);
+        let diagnostic_output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
+        return Err(anyhow::anyhow!("Move Model compiled with errors.\n{}", diagnostic_output));
+    }
 
     let mut targets = FunctionTargetsHolder::new(None);
 

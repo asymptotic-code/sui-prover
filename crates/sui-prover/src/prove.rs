@@ -101,6 +101,10 @@ pub struct GeneralConfig {
     /// Enable conditional merge insertion pass
     #[clap(name = "enable-conditional-merge-insertion", long, global = true)]
     pub enable_conditional_merge_insertion: bool,
+
+    /// Skip checking spec functions that do not abort
+    #[clap(name = "skip-spec-no-abort", long, global = true)]
+    pub skip_spec_no_abort: bool,
 }
 
 #[derive(Args, Default)]
@@ -238,6 +242,7 @@ async fn execute_backend_boogie(
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
+    options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
