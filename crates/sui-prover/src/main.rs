@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::*;
 use colored::Colorize;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use prove::{GeneralConfig, BuildConfig, execute};
+use prove::{GeneralConfig, BuildConfig, RemoteConfig, execute};
 use tracing::debug;
 
 mod prove;
@@ -41,6 +41,10 @@ pub struct Args {
     /// Filtering options
     #[clap(flatten)]
     pub filter_config: TargetFilterOptions,
+
+    /// Remote prover options
+    #[clap(flatten)]
+    pub remote_config: RemoteConfig,
 }
 
 #[tokio::main]
@@ -62,6 +66,7 @@ async fn main() {
     let result = execute(
         args.package_path.as_deref(),
         args.general_config,
+        args.remote_config,
         args.build_config,
         args.boogie_config,
         args.filter_config,
