@@ -12,6 +12,9 @@ use std::{
 };
 
 use anyhow::anyhow;
+use reqwest;
+use serde::Deserialize;
+use serde_json::json;
 use bimap::btree::BiBTreeMap;
 use codespan::{ByteIndex, ColumnIndex, LineIndex, Location, Span};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -42,7 +45,7 @@ use crate::boogie_backend::{
         boogie_enum_name, boogie_enum_name_prefix, boogie_inst_suffix, boogie_struct_name,
         boogie_struct_name_prefix,
     },
-    options::{BoogieOptions, VectorTheory},
+    options::{BoogieOptions, RemoteOptions, VectorTheory},
     prover_task_runner::{ProverTaskRunner, RunBoogieWithSeeds},
 };
 
@@ -121,10 +124,62 @@ static INCONCLUSIVE_DIAG_STARTS: Lazy<Regex> = Lazy::new(|| {
 static INCONSISTENCY_DIAG_STARTS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^inconsistency_detected\((?P<args>[^)]*)\)").unwrap());
 
+#[derive(Deserialize, Debug)]
+pub struct RemoteProverResponse {
+    pub out: String,
+    pub err: String,
+    pub status: i32,
+    pub cached: bool,
+}
+
 impl<'env> BoogieWrapper<'env> {
+    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
+        let file_text = fs::read_to_string(boogie_file)
+            .map_err(|e| 
+                anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
+            )?;
+
+        let client = reqwest::Client::new();        
+        let request_body = json!({
+            "file_text": file_text
+        });
+
+        let response = client
+            .post(remote_opt.url.as_str())
+            .header("Authorization", remote_opt.api_key.as_str())
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| 
+                anyhow!(format!("Failed to send HTTP request to '{}': {}", remote_opt.url, e))
+            )?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await
+                .unwrap_or_else(|_| "Unable to read response body".to_string());
+            return Err(
+                anyhow!(format!("HTTP request failed: {}", error_text))
+            );
+        }
+
+        let response_json: RemoteProverResponse = response
+            .json()
+            .await
+            .map_err(|e| 
+                anyhow!(format!("Failed to read response body: {}", e))
+            )?;
+
+        Ok(response_json)
+    }
+
+    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {
+        let res = self.call_remote(boogie_file, remote_opt).await?;
+        self.analyze_output(&res.out, &res.err, res.status)
+    }
+
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
     /// output of boogie.
-    pub fn call_boogie(&self, boogie_file: &str) -> anyhow::Result<BoogieOutput> {
+    fn call_boogie(&self, boogie_file: &str) -> anyhow::Result<BoogieOutput> {
         let args = self.options.get_boogie_command(boogie_file)?;
         info!("running solver");
         debug!("command line: {}", args.iter().join(" "));
@@ -178,8 +233,11 @@ impl<'env> BoogieWrapper<'env> {
         debug!("analyzing boogie output");
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
-        // Boogie prints a few ad-hoc error messages (with exit code 0!), so we have
-        // no chance to catch an error until we recognize one of those patterns.
+        
+        self.analyze_output(&out, &err, output.status.code().unwrap())
+    }
+
+    fn analyze_output(&self, out: &str, err: &str, status: i32) -> anyhow::Result<BoogieOutput> {
         if out
             .trim()
             .starts_with("Fatal Error: ProverException: Cannot find specified prover")
@@ -198,11 +256,11 @@ impl<'env> BoogieWrapper<'env> {
                 }
             ));
         }
-        if !output.status.success() {
+        if status != 0 {
             // Exit here with raw output.
             return Err(anyhow!(
                 "Boogie error ({}): {}\n\nstderr:\n{}",
-                output.status,
+                status,
                 out,
                 err
             ));
@@ -227,21 +285,31 @@ impl<'env> BoogieWrapper<'env> {
         let mut errors = self.extract_verification_errors(&out);
         errors.extend(self.extract_inconclusive_errors(&out));
         errors.extend(self.extract_inconsistency_errors(&out));
+
         Ok(BoogieOutput {
             errors,
-            all_output: out,
+            all_output: out.to_owned(),
         })
     }
 
     /// Calls boogie and analyzes output.
     pub fn call_boogie_and_verify_output(&self, boogie_file: &str) -> anyhow::Result<()> {
-        let BoogieOutput { errors, all_output } = self.call_boogie(boogie_file)?;
+        let output = self.call_boogie(boogie_file)?;
+        self.verify_boogie_output(&output, boogie_file)
+    }
+
+    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<()> {
+        let output = self.call_remote_boogie(boogie_file, remote_opt).await?;
+        self.verify_boogie_output(&output, boogie_file)
+    }
+
+    pub fn verify_boogie_output(&self, boogie_output: &BoogieOutput, boogie_file: &str) -> anyhow::Result<()> {
         let boogie_log_file = self.options.get_boogie_log_file(boogie_file);
         let log_file_existed = std::path::Path::new(&boogie_log_file).exists();
         debug!("writing boogie log to {}", boogie_log_file);
-        fs::write(&boogie_log_file, &all_output)?;
+        fs::write(&boogie_log_file, &boogie_output.all_output)?;
 
-        for error in &errors {
+        for error in &boogie_output.errors {
             self.add_error(error);
         }
 

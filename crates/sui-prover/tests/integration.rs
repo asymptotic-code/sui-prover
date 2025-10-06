@@ -95,40 +95,42 @@ integration-test = "0x9"
                 // Use a buffer to capture output instead of stderr
                 let mut error_buffer = Buffer::no_color();
 
-                // Run the prover with the buffer to capture all output
-                let prover_result = match run_move_prover_with_model(
-                    &model,
-                    &mut error_buffer,
-                    options.clone(),
-                    None,
-                ) {
-                    Ok(output) => {
-                        let error_output =
-                            String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
-                        format!("{output}\n{error_output}")
-                    }
-                    Err(err) => {
-                        // Get the captured error output as string
-                        let error_output =
-                            String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
-                        format!("{}\n{}", err, error_output)
-                    }
-                };
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    // Run the prover with the buffer to capture all output
+                    let prover_result = match run_move_prover_with_model(
+                        &model,
+                        &mut error_buffer,
+                        options.clone(),
+                        None,
+                    ).await {
+                        Ok(output) => {
+                            let error_output =
+                                String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
+                            format!("{output}\n{error_output}")
+                        }
+                        Err(err) => {
+                            // Get the captured error output as string
+                            let error_output =
+                                String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
+                            format!("{}\n{}", err, error_output)
+                        }
+                    };
 
-                if is_conditionals_test {
-                    // Extract and append Boogie code for conditional tests.
-                    let boogie_code = extract_boogie_function(&options.output_path);
-                    if !boogie_code.is_empty() {
-                        format!(
-                            "{}\n\n== Generated Boogie Code ==\n{}",
-                            prover_result, boogie_code
-                        )
+                    if is_conditionals_test {
+                        // Extract and append Boogie code for conditional tests.
+                        let boogie_code = extract_boogie_function(&options.output_path);
+                        if !boogie_code.is_empty() {
+                            format!(
+                                "{}\n\n== Generated Boogie Code ==\n{}",
+                                prover_result, boogie_code
+                            )
+                        } else {
+                            prover_result
+                        }
                     } else {
                         prover_result
                     }
-                } else {
-                    prover_result
-                }
+                })
             }
             Err(err) => {
                 // For model-building errors, we need to reformat the error to match the expected format

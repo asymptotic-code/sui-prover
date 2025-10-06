@@ -27,7 +27,7 @@ use move_docgen::DocgenOptions;
 use move_model::{
     model::VerificationScope, options::ModelBuilderOptions,
 };
-use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
+use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
@@ -76,6 +76,8 @@ pub struct Options {
     pub backend: BoogieOptions,
     /// Filtering options
     pub filter: TargetFilterOptions,
+    /// Whether to run in remote mode
+    pub remote: Option<RemoteOptions>
 }
 
 impl Default for Options {
@@ -95,11 +97,12 @@ impl Default for Options {
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
             filter: TargetFilterOptions::default(),
+            remote: None,
         }
     }
 }
 
-pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(Options::default);
+pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(|| Options::default());
 
 impl Options {
     /// Creates options from toml configuration source.
