@@ -178,9 +178,10 @@ fn extract_boogie_function(output_dir: &str) -> String {
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "bpl") {
                 if let Ok(content) = read_to_string(&path) {
-                    // Look for the $impl function which contains the actual implementation
-                    if let Some(impl_function) = extract_impl_function(&content) {
-                        return impl_function;
+                    // Look for both $impl and $pure functions
+                    let functions = extract_impl_and_pure_functions(&content);
+                    if !functions.is_empty() {
+                        return functions.join("\n");
                     }
                 }
             }
@@ -190,18 +191,19 @@ fn extract_boogie_function(output_dir: &str) -> String {
     String::new()
 }
 
-/// Helper for extracting boogie .bpl source: get function body
-fn extract_impl_function(bpl_content: &str) -> Option<String> {
+/// Helper for extracting boogie .bpl source: get $impl and $pure function bodies
+fn extract_impl_and_pure_functions(bpl_content: &str) -> Vec<String> {
     let lines: Vec<&str> = bpl_content.lines().collect();
-    let mut in_impl_function = false;
+    let mut results = Vec::new();
+    let mut in_target_function = false;
     let mut brace_count = 0;
     let mut function_lines = Vec::new();
 
     for line in lines {
-        if line.contains("$impl") && (line.contains("procedure") || line.contains("function")) {
-            in_impl_function = true;
+        if (line.contains("$impl") || line.contains("$pure")) && (line.contains("procedure") || line.contains("function")) {
+            in_target_function = true;
             function_lines.push(line);
-        } else if in_impl_function {
+        } else if in_target_function {
             function_lines.push(line);
 
             // Count braces :3
@@ -211,7 +213,9 @@ fn extract_impl_function(bpl_content: &str) -> Option<String> {
                     '}' => {
                         brace_count -= 1;
                         if brace_count == 0 && !function_lines.is_empty() {
-                            return Some(function_lines.join("\n"));
+                            results.push(function_lines.join("\n"));
+                            function_lines.clear();
+                            in_target_function = false;
                         }
                     }
                     _ => {}
@@ -220,7 +224,7 @@ fn extract_impl_function(bpl_content: &str) -> Option<String> {
         }
     }
 
-    None
+    results
 }
 
 #[dir_test(
