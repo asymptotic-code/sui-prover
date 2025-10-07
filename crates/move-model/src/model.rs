@@ -1466,6 +1466,7 @@ impl GlobalEnv {
 
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
+    pub const PROVER_VECTOR_MODULE_NAME: &'static str = "vector_iter";
     pub const SPECS_MODULES_NAMES: &'static [&'static str] = &[
         Self::PROVER_MODULE_NAME,
         Self::SPEC_MODULE_NAME,
@@ -1554,6 +1555,31 @@ impl GlobalEnv {
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
     const PROVER_VAL_FUNCTION_NAME: &'static str = "val";
     const PROVER_REF_FUNCTION_NAME: &'static str = "ref";
+
+    // macro function names
+
+    const PROVER_BEGIN_FORALL_LAMBDA: &'static str = "begin_forall_lambda";
+    const PROVER_END_FORALL_LAMBDA: &'static str = "end_forall_lambda";
+    const PROVER_BEGIN_EXISTS_LAMBDA: &'static str = "begin_exists_lambda";
+    const PROVER_END_EXISTS_LAMBDA: &'static str = "end_exists_lambda";
+    const PROVER_BEGIN_MAP_LAMBDA: &'static str = "begin_map_lambda";
+    const PROVER_END_MAP_LAMBDA: &'static str = "end_map_lambda";
+    const PROVER_BEGIN_FILTER_LAMBDA: &'static str = "begin_filter_lambda";
+    const PROVER_END_FILTER_LAMBDA: &'static str = "end_filter_lambda";
+    const PROVER_BEGIN_FIND_LAMBDA: &'static str = "begin_find_lambda";
+    const PROVER_END_FIND_LAMBDA: &'static str = "end_find_lambda";
+    const PROVER_BEGIN_FIND_INDEX_LAMBDA: &'static str = "begin_find_index_lambda";
+    const PROVER_END_FIND_INDEX_LAMBDA: &'static str = "end_find_index_lambda";
+    const PROVER_BEGIN_FIND_INDICES_LAMBDA: &'static str = "begin_find_indices_lambda";
+    const PROVER_END_FIND_INDICES_LAMBDA: &'static str = "end_find_indices_lambda";
+    const PROVER_BEGIN_COUNT_LAMBDA: &'static str = "begin_count_lambda";
+    const PROVER_END_COUNT_LAMBDA: &'static str = "end_count_lambda";
+    const PROVER_BEGIN_ANY_LAMBDA: &'static str = "begin_any_lambda";
+    const PROVER_END_ANY_LAMBDA: &'static str = "end_any_lambda";
+    const PROVER_BEGIN_ALL_LAMBDA: &'static str = "begin_all_lambda";
+    const PROVER_END_ALL_LAMBDA: &'static str = "end_all_lambda";
+    const PROVER_BEGIN_SUM_MAP_LAMBDA: &'static str = "begin_sum_map_lambda";
+    const PROVER_END_SUM_MAP_LAMBDA: &'static str = "end_sum_map_lambda";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1802,6 +1828,98 @@ impl GlobalEnv {
 
     pub fn log_module_id(&self) -> ModuleId {
         self.find_module_id(Self::LOG_MODULE_NAME)
+    }
+
+    pub fn prover_vector_module_id(&self) -> ModuleId {
+        self.find_module_id(Self::PROVER_VECTOR_MODULE_NAME)
+    }
+
+    pub fn prover_begin_forall_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_BEGIN_FORALL_LAMBDA)
+    }
+
+    pub fn prover_end_forall_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_END_FORALL_LAMBDA)
+    }
+
+    pub fn prover_begin_exists_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_BEGIN_EXISTS_LAMBDA)
+    }
+
+    pub fn prover_end_exists_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_END_EXISTS_LAMBDA)
+    }
+
+    pub fn prover_begin_map_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_MAP_LAMBDA)
+    }
+
+    pub fn prover_end_map_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_MAP_LAMBDA)
+    }
+
+    pub fn prover_begin_filter_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_FILTER_LAMBDA)
+    }
+
+    pub fn prover_end_filter_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_FILTER_LAMBDA)
+    }
+
+    pub fn prover_begin_find_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_FIND_LAMBDA)
+    }
+
+    pub fn prover_end_find_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_FIND_LAMBDA)
+    }
+
+    pub fn prover_begin_find_index_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_FIND_INDEX_LAMBDA)
+    }
+
+    pub fn prover_end_find_index_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_FIND_INDEX_LAMBDA)
+    }
+
+    pub fn prover_begin_find_indices_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_FIND_INDICES_LAMBDA)
+    }
+
+    pub fn prover_end_find_indices_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_FIND_INDICES_LAMBDA)
+    }
+
+    pub fn prover_begin_count_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_COUNT_LAMBDA)
+    }
+
+    pub fn prover_end_count_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_COUNT_LAMBDA)
+    }
+
+    pub fn prover_begin_any_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_ANY_LAMBDA)
+    }
+
+    pub fn prover_end_any_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_ANY_LAMBDA)
+    }
+
+    pub fn prover_begin_all_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_ALL_LAMBDA)
+    }
+
+    pub fn prover_end_all_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_ALL_LAMBDA)
+    }
+
+    pub fn prover_begin_sum_map_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_BEGIN_SUM_MAP_LAMBDA)
+    }
+
+    pub fn prover_end_sum_map_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_SUM_MAP_LAMBDA)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
