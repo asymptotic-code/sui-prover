@@ -69,3 +69,26 @@ fun fresh_spec<T>(): T {
 #[spec_only]
 #[allow(unused)]
 native fun type_inv<T>(x: &T): bool;
+
+#[spec_only]
+public native fun begin_forall_lambda<T>(): T;
+#[spec_only]
+public native fun end_forall_lambda(): bool;
+#[spec_only]
+public native fun begin_exists_lambda<T>(): T;
+#[spec_only]
+public native fun end_exists_lambda(): bool;
+
+#[spec_only]
+public macro fun forall<$T>($f: |&$T| -> bool): bool {
+    let x: $T = begin_forall_lambda<$T>();
+    let _ = $f(&x);
+    end_forall_lambda()
+}
+
+#[spec_only]
+public macro fun exists<$T>($f: |&$T| -> bool): bool {
+    let x: $T = begin_exists_lambda<$T>();
+    let _ = $f(&x);
+    end_exists_lambda()
+}
