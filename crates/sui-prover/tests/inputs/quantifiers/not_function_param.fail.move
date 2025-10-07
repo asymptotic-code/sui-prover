@@ -5,7 +5,7 @@ module 0x42::quantifiers_not_function_param_fail;
 use prover::prover::ensures;
 
 #[spec_only]
-use prover::vec::map;
+use prover::vector_iter::map;
 
 
 #[spec(prove)]

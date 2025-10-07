@@ -5,7 +5,7 @@ module 0x42::quantifiers_map_ok;
 use prover::prover::ensures;
 
 #[spec_only]
-use prover::vec::{map, filter, find, find_index, find_indices, count, any, all, sum, sum_map};
+use prover::vector_iter::{map, filter, find, find_index, find_indices, count, any, all, sum, sum_map};
 
 #[ext(no_abort)]
 fun x_plus_10(x: &u64): u64 {

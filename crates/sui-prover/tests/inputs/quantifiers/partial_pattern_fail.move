@@ -4,7 +4,7 @@ module 0x42::quantifiers_partial_pattern_fail;
 #[spec_only]
 use prover::prover::{begin_forall_lambda, end_exists_lambda, ensures};
 #[spec_only]
-use prover::vec::{begin_map_lambda};
+use prover::vector_iter::{begin_map_lambda};
 
 #[spec(prove)]
 fun test_1_spec() {

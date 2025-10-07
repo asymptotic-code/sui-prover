@@ -143,8 +143,8 @@ impl QuantifierIteratorAnalysisProcessor {
                 self.is_destroy(&bc[i + 3]) &&
                 self.is_searched_fn(&bc[i + 4], pattern.end_qid) 
             {
-                let (attr_id, _, srcs_base, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
-                let (_, _, srcs_vec, _, _) = self.extract_fn_call_data(&bc[i]);
+                let (attr_id, _, _, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
+                let (_, _, srcs, _, _) = self.extract_fn_call_data(&bc[i]);
                 let (_, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 4]);
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
@@ -156,7 +156,7 @@ impl QuantifierIteratorAnalysisProcessor {
                     attr_id,
                     dsts,
                     Operation::Quantifier(pattern.quantifier_type, callee_id, type_params),
-                    if srcs_vec.len() > 0 { srcs_vec } else { srcs_base },
+                    srcs,
                     None
                 );
 
