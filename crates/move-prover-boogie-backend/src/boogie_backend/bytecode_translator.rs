@@ -36,7 +36,7 @@ use move_stackless_bytecode::{
         NumOperation::{self, Bitwise, Bottom},
     }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
-        Operation, PropKind,
+        Operation, PropKind, QuantifierType,
     }, verification_analysis
 };
 
@@ -334,8 +334,8 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()){
-                    if !self.targets.no_verify_specs().contains(spec_qid) || self.options.func_abort_check_only {
+                match self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
+                    Some(spec_qid) if !self.targets.omits_opaque(spec_qid) => {
                         FunctionTranslator::new(
                             self,
                             &fun_target,
@@ -344,23 +344,24 @@ impl<'env> BoogieTranslator<'env> {
                         )
                         .translate();
                     }
-                } else {
-                    // This variant is inlined, so translate for all type instantiations.
-                    for type_inst in mono_info
-                        .funs
-                        .get(&(
-                            fun_target.func_env.get_qualified_id(),
-                            FunctionVariant::Baseline,
-                        ))
-                        .unwrap_or(&BTreeSet::new())
-                    {
-                        FunctionTranslator::new(
-                            self,
-                            &fun_target,
-                            type_inst,
-                            FunctionTranslationStyle::Default,
-                        )
-                        .translate();
+                    _ => {
+                        // This variant is inlined, so translate for all type instantiations.
+                        for type_inst in mono_info
+                            .funs
+                            .get(&(
+                                fun_target.func_env.get_qualified_id(),
+                                FunctionVariant::Baseline,
+                            ))
+                            .unwrap_or(&BTreeSet::new())
+                        {
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                type_inst,
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
+                        }
                     }
                 }
             }
@@ -2503,6 +2504,10 @@ impl<'env> FunctionTranslator<'env> {
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
 
+                        if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
+                            use_func = true;
+                        }
+
                         let dest_str = if use_func_datatypes {
                             "$temp_opaque_res_var".to_string()
                         } else {
@@ -2766,16 +2771,7 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
-                                    let verified = self.parent.targets.is_verified_spec(id);
-                                    let suffix = if use_impl {
-                                        if verified {
-                                            "$impl"
-                                        } else {
-                                            ""
-                                        }
-                                    } else {
-                                        "$opaque"
-                                    };
+                                    let suffix = if use_impl { "$impl" } else { "$opaque" };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             };
@@ -3878,7 +3874,32 @@ impl<'env> FunctionTranslator<'env> {
                             true_expr_str,
                             false_expr_str
                         );
-                    }
+                    },
+                    Quantifier(qt, qid, inst) => {
+                        let fun_env = self.parent.env.get_function(*qid);
+                        let inst = &self.inst_slice(inst);
+                        let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
+
+                        let param_types = fun_env.get_parameter_types();
+                        let loc_type = param_types[0].skip_reference().instantiate(inst);
+
+                        let suffix = boogie_type_suffix(env, &loc_type);
+                        let b_type = boogie_type(env, &loc_type);
+
+                        match qt {
+                            QuantifierType::Forall => {
+                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}(x));", dests[0], b_type, suffix, fun_name);
+                            },
+                            QuantifierType::Exists => {
+                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}(x));", dests[0], b_type, suffix, fun_name);
+                            },
+                            QuantifierType::Map => {
+                                emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}(ReadVec($t{}, i)));", srcs[0], dests[0], fun_name, srcs[0]);
+                            }
+                            _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
+                        }
+                    },
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {

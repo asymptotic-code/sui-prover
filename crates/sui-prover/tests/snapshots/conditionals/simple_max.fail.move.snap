@@ -1,0 +1,95 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 260
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/conditionals/simple_max.fail.move:19:5
+   │
+19 │     ensures(result >= a);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/conditionals/simple_max.fail.move:16: simple_max_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/conditionals/simple_max.fail.move:20:5
+   │
+20 │     ensures(result >= b);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/conditionals/simple_max.fail.move:16: simple_max_spec
+
+
+
+== Generated Boogie Code ==
+procedure {:inline 1} $42_simple_max_failure_test_simple_max$impl(_$t0: int, _$t1: int) returns ($ret0: int)
+{
+    // declare local variables
+    var $t2: int;
+    var $t3: bool;
+    var $t4: int;
+    var $t5: int;
+    var $t6: int;
+    var $t0: int;
+    var $t1: int;
+    var $temp_0'u64': int;
+    var $abort_if_cond: bool;
+    $t0 := _$t0;
+    $t1 := _$t1;
+
+    // bytecode translation starts here
+    // trace_local[a]($t0) at tests/inputs/conditionals/simple_max.fail.move:7:1+1
+    assume {:print "$at(115,169,170)"} true;
+    assume {:print "$track_local(113,0,0,u64):", $t0} $t0 == $t0;
+
+    // trace_local[b]($t1) at tests/inputs/conditionals/simple_max.fail.move:7:1+1
+    assume {:print "$track_local(113,0,1,u64):", $t1} $t1 == $t1;
+
+    // $t3 := >=($t0, $t1) at tests/inputs/conditionals/simple_max.fail.move:8:11+2
+    assume {:print "$at(115,224,226)"} true;
+    call $t3 := $Ge($t0, $t1);
+
+    // if ($t3) goto L1 else goto L0 at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    if ($t3) { goto L1; } else { goto L0; }
+
+    // label L1 at tests/inputs/conditionals/simple_max.fail.move:9:9+1
+    assume {:print "$at(115,240,241)"} true;
+L1:
+
+    // $t4 := $t1 at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    assume {:print "$at(115,218,362)"} true;
+    $t4 := $t1;
+
+    // goto L2 at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    goto L2;
+
+    // label L0 at tests/inputs/conditionals/simple_max.fail.move:11:9+1
+    assume {:print "$at(115,309,310)"} true;
+L0:
+
+    // $t5 := $t0 at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    assume {:print "$at(115,218,362)"} true;
+    $t5 := $t0;
+
+    // label L2 at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+L2:
+
+    // $t6 := if_then_else($t3, $t4, $t5) at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    // conditional_merge_insertion: t6 := if_then_else(t3, t4, t5)
+    assume {:print "$at(115,218,362)"} true;
+    $t6 := (if $t3 then $t4 else $t5);
+
+    // trace_return[0]($t6) at tests/inputs/conditionals/simple_max.fail.move:8:5+144
+    assume {:print "$track_return(113,0,0,u64):", $t6} $t6 == $t6;
+
+    // label L3 at tests/inputs/conditionals/simple_max.fail.move:13:1+1
+    assume {:print "$at(115,363,364)"} true;
+L3:
+
+    // return $t6 at tests/inputs/conditionals/simple_max.fail.move:13:1+1
+    assume {:print "$at(115,363,364)"} true;
+    $ret0 := $t6;
+    return;
+
+}

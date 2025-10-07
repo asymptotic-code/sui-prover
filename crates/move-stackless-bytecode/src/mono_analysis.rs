@@ -561,7 +561,8 @@ impl Analyzer<'_> {
                 {
                     self.push_todo_fun(spec_qid.clone(), actuals.clone());
                     if spec_qid == &target.func_env.get_qualified_id()
-                        && !self.targets.no_verify_specs().contains(spec_qid)
+                        && (self.targets.is_verified_spec(spec_qid)
+                            || self.targets.omits_opaque(spec_qid))
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
