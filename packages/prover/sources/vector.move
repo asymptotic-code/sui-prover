@@ -1,4 +1,4 @@
-module prover::vec;
+module prover::vector_iter;
 
 #[spec_only]
 use std::integer::Integer;

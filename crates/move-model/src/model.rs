@@ -1466,7 +1466,7 @@ impl GlobalEnv {
 
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
-    pub const PROVER_VECTOR_MODULE_NAME: &'static str = "vec";
+    pub const PROVER_VECTOR_MODULE_NAME: &'static str = "vector_iter";
     pub const SPECS_MODULES_NAMES: &'static [&'static str] = &[
         Self::PROVER_MODULE_NAME,
         Self::SPEC_MODULE_NAME,
