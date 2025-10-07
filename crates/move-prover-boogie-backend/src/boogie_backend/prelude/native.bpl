@@ -380,7 +380,7 @@ procedure {:inline 1} $0_vec_slice{{S}}(v: Vec int, start: int, end: int) return
     var len: int;
     len := LenVec(v);
     if (start > len || end < start) {
-        call $ExecFailureAbort();
+        res := EmptyVec();
         return;
     }
     res := SliceVec(v, start, end - start + 1);
