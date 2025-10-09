@@ -175,10 +175,11 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
 }
 
 /// Collect dynamic field type information from a function's bytecode
-pub fn collect_dynamic_field_info(
+fn collect_dynamic_field_info(
     targets: &FunctionTargetsHolder,
     builder: &mut FunctionDataBuilder,
     code: Vec<Bytecode>,
+    verified_or_inlined: bool,
 ) -> DynamicFieldInfo {
     let dynamic_field_name_value_fun_qids = vec![
         // dynamic field operations
@@ -273,12 +274,21 @@ pub fn collect_dynamic_field_info(
             let callee_id = module_id.qualified(*fun_id);
 
             let uid_object_type_not_found_error = || {
+                if !verified_or_inlined
+                    && !builder
+                        .fun_env
+                        .get_return_types()
+                        .iter()
+                        .any(|x| x.is_mutable_reference())
+                {
+                    return;
+                }
+
                 // TODO: remove this once we don't include modules/functions not included in verification
                 let excluded_modules = vec![
                     "0x2::dynamic_field",
                     "0x2::dynamic_object_field",
                     "0x2::kiosk_extension",
-                    "0x2::versioned",
                 ];
                 if excluded_modules
                     .contains(&builder.fun_env.module_env.get_full_name_str().as_str())
@@ -540,7 +550,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
-        if !info.verified && !info.inlined {
+        if !info.verified && !info.inlined && !info.reachable {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
@@ -549,7 +559,12 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         let code = std::mem::take(&mut builder.data.code);
 
         // Collect the dynamic field info
-        let info = collect_dynamic_field_info(targets, &mut builder, code);
+        let info = collect_dynamic_field_info(
+            targets,
+            &mut builder,
+            code,
+            info.verified || info.inlined,
+        );
 
         builder
             .data
