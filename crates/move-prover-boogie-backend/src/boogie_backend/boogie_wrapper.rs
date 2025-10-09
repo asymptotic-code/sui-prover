@@ -8,7 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     num::ParseIntError,
-    option::Option::None,
+    option::Option::None, time::Duration,
 };
 
 use anyhow::anyhow;
@@ -139,7 +139,10 @@ impl<'env> BoogieWrapper<'env> {
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
             )?;
 
-        let client = reqwest::Client::new();        
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(900)) // 15 minutes timeout
+            .build()?;
+
         let request_body = json!({
             "file_text": file_text
         });

@@ -1,8 +1,8 @@
-FROM public.ecr.aws/amazonlinux/amazonlinux:latest AS builder
+FROM --platform=linux/arm64 public.ecr.aws/amazonlinux/amazonlinux:latest AS builder
 
 ENV DOTNET_INSTALL_DIR="/opt/dotnet/"
 ENV INSTALL_DIR="/opt/bin/"
-ENV Z3_VERSION="4.11.2"
+ENV Z3_VERSION="4.15.3"
 ENV DOTNET_VERSION="8.0"
 ENV PATH="/opt/bin:/opt/dotnet:$PATH"
 
@@ -28,7 +28,9 @@ ENV PATH="/root/.cargo/bin:$PATH"
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | \
     TERM=linux /bin/bash -s -- --channel ${DOTNET_VERSION} --install-dir "${DOTNET_INSTALL_DIR}" --version latest
 
-RUN Z3_PKG="z3-${Z3_VERSION}-x64-glibc-2.31" && \
+RUN curl -L https://github.com/krallin/tini/releases/download/v0.19.0/tini-arm64 -o /opt/tini
+
+RUN Z3_PKG="z3-${Z3_VERSION}-arm64-glibc-2.34" && \
     curl -LOs "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_PKG}.zip" && \
     unzip -q "${Z3_PKG}.zip" && \
     cp "${Z3_PKG}/bin/z3" "${INSTALL_DIR}" && \
@@ -43,7 +45,7 @@ WORKDIR /app
 
 RUN cargo build --release --bin lambda-handler
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:latest
+FROM --platform=linux/arm64 public.ecr.aws/amazonlinux/amazonlinux:latest
 
 RUN yum update -y && \
     yum install -y \
@@ -51,22 +53,36 @@ RUN yum update -y && \
         zlib \
         openssl \
         ca-certificates \
-        shadow-utils && \
+        shadow-utils \
+        procps-ng && \
     yum clean all
+
+# Create init script to set max pipe size at runtime
+RUN echo '#!/bin/sh' > /opt/init.sh && \
+    echo 'echo 1048576 > /proc/sys/fs/pipe-max-size 2>/dev/null || true' >> /opt/init.sh && \
+    echo 'exec "$@"' >> /opt/init.sh && \
+    chmod +x /opt/init.sh
 
 ENV DOTNET_ROOT="/opt/dotnet"
 ENV PATH="/opt/bin:/opt/dotnet:/opt/dotnet/tools:$PATH"
 ENV BOOGIE_EXE="/opt/dotnet/tools/boogie"
 ENV Z3_EXE="/opt/bin/z3"
 
+# .NET GC settings to prevent memory bloat, 6GB
+ENV DOTNET_GCHeapHardLimit=6442450944
+ENV DOTNET_GCServer=0
+ENV DOTNET_GCRetainVM=0
+ENV DOTNET_GCConserveMemory=9
+
 RUN mkdir -p /opt/bin /opt/dotnet/tools
 
+COPY --from=builder /opt/tini /opt/tini
 COPY --from=builder /opt/dotnet /opt/dotnet
 COPY --from=builder /opt/bin/z3 /opt/bin/z3
 COPY --from=builder /app/target/release/lambda-handler /opt/bin/lambda-handler
 
-RUN chmod +x /opt/bin/lambda-handler /opt/bin/z3
+RUN chmod +x /opt/bin/lambda-handler /opt/bin/z3 /opt/tini
 
 WORKDIR /var/task
 
-ENTRYPOINT ["/opt/bin/lambda-handler"]
+ENTRYPOINT ["/opt/tini", "--", "/opt/init.sh", "/opt/bin/lambda-handler"]

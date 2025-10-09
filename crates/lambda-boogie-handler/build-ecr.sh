@@ -23,7 +23,7 @@ echo "Tag: $IMAGE_TAG"
 
 echo "Building Docker image for AWS Lambda compatibility..."
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
-docker build --platform linux/amd64 -t "$LOCAL_IMAGE_NAME:$IMAGE_TAG" .
+docker build --platform linux/arm64 -t "$LOCAL_IMAGE_NAME:$IMAGE_TAG" .
 
 echo "Tagging image for ECR..."
 docker tag "$LOCAL_IMAGE_NAME:$IMAGE_TAG" "$ECR_REPOSITORY_URI:$IMAGE_TAG"

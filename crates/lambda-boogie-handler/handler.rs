@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use libc::{killpg, SIGKILL};
 use redis::{AsyncCommands, RedisError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::process::Command;
+use std::io::{BufReader, Read};
+use std::process::{Command, Stdio};
+use std::os::unix::process::CommandExt;
 
 #[derive(Serialize, Debug)]
 pub struct ProverResponse {
@@ -19,11 +22,11 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-enhancedErrorMessages:1",
     "-useArrayAxioms",
     "-proverOpt:O:model_validate=true",
-    "-vcsCores:4",
+    "-vcsCores:2",
     "-verifySeparately",
-    "-vcsMaxKeepGoingSplits:4",
+    "-vcsMaxKeepGoingSplits:2",
     "-vcsSplitOnEveryAssert",
-    "-vcsFinalAssertTimeout:600",
+    "-vcsFinalAssertTimeout:1400",
 ];
 
 pub struct ProverHandler {
@@ -124,18 +127,56 @@ impl ProverHandler {
     async fn execute_boogie(&self, temp_file_path: &str) -> Result<(String, String, i32)> {
         let args = self.get_boogie_command(temp_file_path)?;
 
-        let output = Command::new(&args[0])
-            .args(&args[1..])
-            .output()
-            .context("Failed to execute boogie command")?;
+        let mut child = unsafe {
+            Command::new(&args[0]) // Replace with your command
+                .args(&args[1..])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .pre_exec(|| {
+                    libc::setsid();
+                    Ok(())
+                })
+                .spawn()
+                .context("Failed to spawn command")
+        }?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let pid = child.id() as i32;
+        println!("Spawned process with PID {}", pid);
+
+        // Capture stdout/stderr in separate threads
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+
+        let mut stdout_reader = BufReader::new(stdout);
+        let mut stderr_reader = BufReader::new(stderr);
+
+        let mut stdout_buf = String::new();
+        let mut stderr_buf = String::new();
+
+        // Read stdout and stderr
+        let status = child.wait().context("Failed to wait for child")?;
+
+        stdout_reader.read_to_string(&mut stdout_buf).ok();
+        stderr_reader.read_to_string(&mut stderr_buf).ok();
+
+        println!("Captured stdout:\n{}", stdout_buf);
+        println!("Captured stderr:\n{}", stderr_buf);
+        println!("Process exited with: {}", status);
+
+        // Kill the whole process group
+        println!("Killing process group...");
+        unsafe {
+            let result = killpg(pid, SIGKILL);
+            if result != 0 {
+                println!("Failed to kill process group {}", result);
+            }
+        }
 
         Ok((
-            stdout.to_string(),
-            stderr.to_string(),
-            output.status.code().unwrap_or(-1),
+            stdout_buf,
+            stderr_buf,
+            status.code().unwrap_or(-1),
         ))
     }
 
