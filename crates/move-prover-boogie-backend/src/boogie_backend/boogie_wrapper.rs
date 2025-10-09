@@ -150,9 +150,9 @@ impl<'env> BoogieWrapper<'env> {
             .timeout(Duration::from_secs(900)) // 15 minutes timeout
             .build()?;
 
-        let is_local = remote_opt.url.as_str().contains("https://");
+        let is_remote = remote_opt.url.as_str().contains("https://");
 
-        let request_body = if !is_local {
+        let request_body = if is_remote {
             json!({ "file_text": file_text })
         } else {
             json!({
@@ -183,21 +183,22 @@ impl<'env> BoogieWrapper<'env> {
                 anyhow!(format!("HTTP request failed: {}", error_text))
             );
         }
+
         let response_body = response.text().await?;
 
-        let result = if is_local {
+        let result = if is_remote {
+            let response: RemoteProverResponse = serde_json::from_str(&response_body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to parse response body JSON: {}", e))
+                )?;
+            response
+        } else {
             let response_json: RemoteProverResponseWrapper = serde_json::from_str(&response_body)
                 .map_err(|e| 
                     anyhow!(format!("Failed to read response body: {}", e))
                 )?;
 
             let response: RemoteProverResponse = serde_json::from_str(&response_json.body)
-                .map_err(|e| 
-                    anyhow!(format!("Failed to parse response body JSON: {}", e))
-                )?;
-            response
-        } else {
-            let response: RemoteProverResponse = serde_json::from_str(&response_body)
                 .map_err(|e| 
                     anyhow!(format!("Failed to parse response body JSON: {}", e))
                 )?;
