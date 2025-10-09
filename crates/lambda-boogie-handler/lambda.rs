@@ -118,7 +118,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();
 
-    let prover = ProverHandler::new(false)?;
+    let prover = ProverHandler::new()?;
 
     let response = match prover.process(file_text).await {
         Ok(resp) => resp,
@@ -154,7 +154,7 @@ async fn local_handler() -> Result<()> {
         }
     };
 
-    let prover = ProverHandler::new(true).unwrap();
+    let prover = ProverHandler::new().unwrap();
     prover.process(file_text).await.unwrap();
 
     Ok(())

@@ -35,13 +35,13 @@ pub struct ProverHandler {
 }
 
 impl ProverHandler {
-    pub fn new(skip_redis: bool) -> Result<Self> {        
+    pub fn new() -> Result<Self> {        
         let cache_lifetime_seconds = std::env::var("CACHE_LIFETIME_SECONDS")
             .unwrap_or_else(|_| "172800".to_string())
             .parse::<u64>()
             .context("Invalid CACHE_LIFETIME_SECONDS value")?;
 
-        if skip_redis {
+        if std::env::var("REDIS_HOST").is_err() {
             return Ok(Self { 
                 redis_client: None,
                 cache_lifetime_seconds,
