@@ -111,7 +111,7 @@ impl ReachingDefProcessor {
 
     /// Compute the set of locals which are borrowed from or which are otherwise used to refer to.
     /// We can't alias such locals to other locals because of reference semantics.
-    fn borrowed_locals(&self, code: &[Bytecode]) -> BTreeSet<TempIndex> {
+    fn borrowed_locals(code: &[Bytecode]) -> BTreeSet<TempIndex> {
         use Bytecode::*;
         code.iter()
             .filter_map(|bc| match bc {
@@ -124,6 +124,55 @@ impl ReachingDefProcessor {
             })
             .collect()
     }
+
+    /// Performs reaching definition analysis and returns the state per instruction.
+    pub fn analyze_reaching_definitions(
+        func_env: &FunctionEnv,
+        data: &FunctionData,
+    ) -> BTreeMap<CodeOffset, ReachingDefState> {
+        let cfg = StacklessControlFlowGraph::new_forward(&data.code);
+        let analyzer = ReachingDefAnalysis {
+            _target: FunctionTarget::new(func_env, &data),
+            borrowed_locals: Self::borrowed_locals(&data.code),
+        };
+        let block_state_map = analyzer.analyze_function(
+            ReachingDefState {
+                map: BTreeMap::new(),
+                havoced: BTreeSet::new(),
+            },
+            &data.code,
+            &cfg,
+        );
+        analyzer.state_per_instruction(block_state_map, &data.code, &cfg, |before, _| {
+            before.clone()
+        })
+    }
+
+    pub fn all_aliases(state: &ReachingDefState, temp_idx: &TempIndex) -> BTreeSet<TempIndex> {
+        let mut visited = BTreeSet::new();
+        let mut to_visit = state
+            .map
+            .get(temp_idx)
+            .unwrap_or(&BTreeSet::new())
+            .iter()
+            .map(|Def::Alias(alias)| *alias)
+            .collect_vec();
+
+        while let Some(current_idx) = to_visit.pop() {
+            if visited.insert(current_idx) {
+                to_visit.extend(
+                    state
+                        .map
+                        .get(&current_idx)
+                        .unwrap_or(&BTreeSet::new())
+                        .iter()
+                        .map(|Def::Alias(alias)| *alias),
+                );
+            }
+        }
+
+        visited
+    }
 }
 
 impl FunctionTargetProcessor for ReachingDefProcessor {
@@ -135,23 +184,7 @@ impl FunctionTargetProcessor for ReachingDefProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if !func_env.is_native() {
-            let cfg = StacklessControlFlowGraph::new_forward(&data.code);
-            let analyzer = ReachingDefAnalysis {
-                _target: FunctionTarget::new(func_env, &data),
-                borrowed_locals: self.borrowed_locals(&data.code),
-            };
-            let block_state_map = analyzer.analyze_function(
-                ReachingDefState {
-                    map: BTreeMap::new(),
-                    havoced: BTreeSet::new(),
-                },
-                &data.code,
-                &cfg,
-            );
-            let per_bytecode_state =
-                analyzer.state_per_instruction(block_state_map, &data.code, &cfg, |before, _| {
-                    before.clone()
-                });
+            let per_bytecode_state = Self::analyze_reaching_definitions(func_env, &data);
 
             // Run copy propagation transformation.
             let annotations = ReachingDefAnnotation(per_bytecode_state);

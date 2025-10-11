@@ -6,6 +6,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
+    reaching_def_analysis::{Def, ReachingDefProcessor, ReachingDefState},
     stackless_bytecode::{Bytecode, Operation},
     verification_analysis::get_info,
 };
@@ -178,7 +179,6 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
 fn collect_dynamic_field_info(
     targets: &FunctionTargetsHolder,
     builder: &mut FunctionDataBuilder,
-    code: Vec<Bytecode>,
     verified_or_inlined: bool,
 ) -> DynamicFieldInfo {
     let dynamic_field_name_value_fun_qids = vec![
@@ -267,123 +267,135 @@ fn collect_dynamic_field_info(
     .collect_vec();
 
     // compute map of temp index that load object ids to type of object
-    let uid_info = compute_uid_info(&builder.get_target(), targets, &code);
+    let uid_info = compute_uid_info(&builder.get_target(), targets, &builder.data.code);
 
-    let mut info = DynamicFieldInfo::iter_union(code.iter().filter_map(|bc| match bc {
-        Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), srcs, _) => {
-            let callee_id = module_id.qualified(*fun_id);
+    let alias_info =
+        ReachingDefProcessor::analyze_reaching_definitions(&builder.fun_env, &builder.data);
 
-            let uid_object_type_not_found_error = || {
-                if !verified_or_inlined
-                    && !builder
-                        .fun_env
-                        .get_return_types()
-                        .iter()
-                        .any(|x| x.is_mutable_reference())
-                {
-                    return;
-                }
+    let mut info = DynamicFieldInfo::iter_union(builder.data.code.iter().enumerate().filter_map(
+        |(offset, bc)| match bc {
+            Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), srcs, _) => {
+                let callee_id = module_id.qualified(*fun_id);
 
-                // TODO: remove this once we don't include modules/functions not included in verification
-                let excluded_modules = vec![
-                    "0x2::dynamic_field",
-                    "0x2::dynamic_object_field",
-                    "0x2::kiosk_extension",
-                ];
-                if excluded_modules
-                    .contains(&builder.fun_env.module_env.get_full_name_str().as_str())
-                {
-                    return;
-                }
+                let uid_object_type_not_found_error = || {
+                    if !verified_or_inlined
+                        && !builder
+                            .fun_env
+                            .get_return_types()
+                            .iter()
+                            .any(|x| x.is_mutable_reference())
+                    {
+                        return;
+                    }
 
-                let loc = builder.get_loc(bc.get_attr_id());
-                builder.fun_env.module_env.env.add_diag(
-                    Diagnostic::new(Severity::Error)
-                        .with_code("E0022")
-                        .with_message(&format!("UID object type not found: {}", srcs[0]))
-                        .with_labels(vec![Label::primary(loc.file_id(), loc.span())]),
-                );
-            };
+                    // TODO: remove this once we don't include modules/functions not included in verification
+                    let excluded_modules = vec![
+                        "0x2::dynamic_field",
+                        "0x2::dynamic_object_field",
+                        "0x2::kiosk_extension",
+                    ];
+                    if excluded_modules
+                        .contains(&builder.fun_env.module_env.get_full_name_str().as_str())
+                    {
+                        return;
+                    }
 
-            if callee_id == builder.fun_env.get_qualified_id() {
-                return None;
-            }
+                    let loc = builder.get_loc(bc.get_attr_id());
+                    builder.fun_env.module_env.env.add_diag(
+                        Diagnostic::new(Severity::Error)
+                            .with_code("E0022")
+                            .with_message(&format!("UID object type not found: {}", srcs[0]))
+                            .with_labels(vec![Label::primary(loc.file_id(), loc.span())]),
+                    );
+                };
 
-            if dynamic_field_name_value_fun_qids.contains(&callee_id) {
-                if let Some((_, obj_type)) = uid_info.get(&srcs[0]) {
-                    return Some(DynamicFieldInfo::singleton(
-                        obj_type.clone(),
-                        NameValueInfo::NameValue {
-                            name: type_inst[0].clone(),
-                            value: type_inst[1].clone(),
-                            is_mut: false,
-                        },
-                    ));
-                } else {
-                    uid_object_type_not_found_error();
-                }
-            }
-
-            if dynamic_field_name_value_fun_mut_qids.contains(&callee_id) {
-                if let Some((_, obj_type)) = uid_info.get(&srcs[0]) {
-                    return Some(DynamicFieldInfo::singleton(
-                        obj_type.clone(),
-                        NameValueInfo::NameValue {
-                            name: type_inst[0].clone(),
-                            value: type_inst[1].clone(),
-                            is_mut: true,
-                        },
-                    ));
-                } else {
-                    uid_object_type_not_found_error();
-                }
-            }
-
-            if dynamic_field_name_only_fun_qids.contains(&callee_id) {
-                if let Some((_, obj_type)) = uid_info.get(&srcs[0]) {
-                    return Some(DynamicFieldInfo::singleton(
-                        obj_type.clone(),
-                        NameValueInfo::NameOnly(type_inst[0].clone()),
-                    ));
-                } else {
-                    uid_object_type_not_found_error();
-                }
-            }
-
-            let fun_id_with_info = targets
-                .get_callee_spec_qid(&builder.fun_env.get_qualified_id(), &callee_id)
-                .unwrap_or(&callee_id);
-
-            // native or intrinsic functions do not access dynamic fields
-            if builder
-                .fun_env
-                .module_env
-                .env
-                .get_function(*fun_id_with_info)
-                .is_native()
-            {
-                return None;
-            }
-
-            let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
-                Some(data) => get_fun_info(data),
-                None => {
-                    // dbg!(&format!(
-                    //     "callee `{}` was filtered out",
-                    //     builder.fun_env.get_full_name_str()
-                    // ));
+                if callee_id == builder.fun_env.get_qualified_id() {
                     return None;
                 }
-            };
 
-            Some(info.instantiate(type_inst))
-        }
-        _ => None,
-    }));
+                if dynamic_field_name_value_fun_qids.contains(&callee_id) {
+                    if let Some((_, obj_type)) =
+                        get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
+                    {
+                        return Some(DynamicFieldInfo::singleton(
+                            obj_type.clone(),
+                            NameValueInfo::NameValue {
+                                name: type_inst[0].clone(),
+                                value: type_inst[1].clone(),
+                                is_mut: false,
+                            },
+                        ));
+                    } else {
+                        uid_object_type_not_found_error();
+                    }
+                }
+
+                if dynamic_field_name_value_fun_mut_qids.contains(&callee_id) {
+                    if let Some((_, obj_type)) =
+                        get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
+                    {
+                        return Some(DynamicFieldInfo::singleton(
+                            obj_type.clone(),
+                            NameValueInfo::NameValue {
+                                name: type_inst[0].clone(),
+                                value: type_inst[1].clone(),
+                                is_mut: true,
+                            },
+                        ));
+                    } else {
+                        uid_object_type_not_found_error();
+                    }
+                }
+
+                if dynamic_field_name_only_fun_qids.contains(&callee_id) {
+                    if let Some((_, obj_type)) =
+                        get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
+                    {
+                        return Some(DynamicFieldInfo::singleton(
+                            obj_type.clone(),
+                            NameValueInfo::NameOnly(type_inst[0].clone()),
+                        ));
+                    } else {
+                        uid_object_type_not_found_error();
+                    }
+                }
+
+                let fun_id_with_info = targets
+                    .get_callee_spec_qid(&builder.fun_env.get_qualified_id(), &callee_id)
+                    .unwrap_or(&callee_id);
+
+                // native or intrinsic functions do not access dynamic fields
+                if builder
+                    .fun_env
+                    .module_env
+                    .env
+                    .get_function(*fun_id_with_info)
+                    .is_native()
+                {
+                    return None;
+                }
+
+                let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
+                    Some(data) => get_fun_info(data),
+                    None => {
+                        // dbg!(&format!(
+                        //     "callee `{}` was filtered out",
+                        //     builder.fun_env.get_full_name_str()
+                        // ));
+                        return None;
+                    }
+                };
+
+                Some(info.instantiate(type_inst))
+            }
+            _ => None,
+        },
+    ));
 
     info.uid_info = uid_info;
 
-    for bc in code {
+    let code = std::mem::take(&mut builder.data.code);
+    for (offset, bc) in code.into_iter().enumerate() {
         match bc {
             Bytecode::Call(
                 attr_id,
@@ -392,7 +404,9 @@ fn collect_dynamic_field_info(
                 mut srcs,
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
-                if let Some((obj_local, obj_type)) = info.uid_info.get(&srcs[0]) {
+                if let Some((obj_local, obj_type)) =
+                    get_uid_object_type(&info.uid_info, &alias_info, srcs[0], offset)
+                {
                     srcs[0] = *obj_local;
                     if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
                         && builder.get_local_type(srcs[0]).is_mutable_reference()
@@ -528,6 +542,25 @@ fn single_uid_field_offset(struct_env: &StructEnv<'_>) -> Option<usize> {
         .ok()
 }
 
+fn get_uid_object_type<'a>(
+    uid_info: &'a BTreeMap<usize, (usize, Type)>,
+    alias_info: &'a BTreeMap<u16, ReachingDefState>,
+    temp_idx: usize,
+    off: usize,
+) -> Option<&'a (usize, Type)> {
+    // First check if temp_idx is directly in uid_info
+    uid_info.get(&temp_idx).or_else(|| {
+        // Otherwise, check if we can find it through alias information
+        alias_info.get(&(off as u16)).and_then(|state| {
+            ReachingDefProcessor::all_aliases(state, &temp_idx)
+                .iter()
+                .filter_map(|alias| uid_info.get(alias))
+                .exactly_one()
+                .ok()
+        })
+    })
+}
+
 pub struct DynamicFieldAnalysisProcessor();
 
 impl DynamicFieldAnalysisProcessor {
@@ -544,7 +577,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         mut data: FunctionData,
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if fun_env.is_intrinsic() {
+        if fun_env.is_native() || fun_env.is_intrinsic() {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
@@ -556,15 +589,9 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
-        let code = std::mem::take(&mut builder.data.code);
 
         // Collect the dynamic field info
-        let info = collect_dynamic_field_info(
-            targets,
-            &mut builder,
-            code,
-            info.verified || info.inlined,
-        );
+        let info = collect_dynamic_field_info(targets, &mut builder, info.verified || info.inlined);
 
         builder
             .data
