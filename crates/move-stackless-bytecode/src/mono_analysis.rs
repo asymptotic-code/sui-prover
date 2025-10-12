@@ -509,17 +509,19 @@ impl Analyzer<'_> {
                 if let Some(spec_qid) = self.targets.get_spec_by_fun(&callee_env.get_qualified_id())
                 {
                     self.push_todo_fun(spec_qid.clone(), actuals.clone());
-                    if spec_qid == &target.func_env.get_qualified_id()
-                        && (self.targets.is_verified_spec(spec_qid)
-                            || self.targets.omits_opaque(spec_qid))
+                    if (spec_qid == &target.func_env.get_qualified_id()
+                        && self.targets.is_verified_spec(spec_qid))
+                        || self.targets.omits_opaque(spec_qid)
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        self.info
-                            .funs
-                            .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                            .or_default()
-                            .insert(actuals.clone());
+                        if spec_qid != &target.func_env.get_qualified_id() {
+                            self.info
+                                .funs
+                                .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
+                                .or_default()
+                                .insert(actuals.clone());
+                        }
                         self.analyze_fun_types(
                             &self
                                 .targets
