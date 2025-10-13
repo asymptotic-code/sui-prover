@@ -3,14 +3,15 @@ name: Sui-Prover Test Action
 on: [pull_request]
 
 jobs:
-  build-run-kit:
+  build-prover:
     runs-on: macos-latest
-    env: 
-      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
     concurrency:
-      group: build-run-kit-${{ github.head_ref || github.ref_name }}
+      group: build-prover-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
+
+    outputs:
+      artifact-name: ${{ steps.set-artifact.outputs.name }}
 
     steps:
       - name: Checkout repository
@@ -38,9 +39,78 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Install dependencies from formula & build prover & Run Kit
+      - name: Install dependencies and build prover
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
+
+      - name: Set artifact name
+        id: set-artifact
+        run: echo "name=sui-prover-${{ github.run_id }}" >> $GITHUB_OUTPUT
+
+      - name: Prepare artifact bundle
+        run: |
+          mkdir -p ~/artifact-bundle/bin
+          mkdir -p ~/artifact-bundle/dotnet
+          mkdir -p ~/artifact-bundle/z3
+          
+          # Copy prover binary
+          cp target/release/sui-prover ~/artifact-bundle/bin/ || cp target/debug/sui-prover ~/artifact-bundle/bin/
+          
+          # Copy boogie
+          cp ~/.local/bin/boogie ~/artifact-bundle/bin/
+          
+          # Copy dotnet runtime
+          cp -r "$(brew --prefix dotnet@8)/libexec" ~/artifact-bundle/dotnet/
+          
+          # Copy z3
+          cp -r "$(brew --prefix z3)"/* ~/artifact-bundle/z3/
+
+      - name: Upload prover binary and dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.set-artifact.outputs.name }}
+          path: ~/artifact-bundle
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 6
+
+  test-kit:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: test-kit-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download prover bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup prover and dependencies
+        run: |
+          mkdir -p ~/.local/bin
+          
+          # Setup binaries
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/.local/bin/boogie
+          
+          # Add to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+      - name: Setup environment variables
+        run: |
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Run Kit tests
+        run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
           
           cd sui-kit/examples/amm
@@ -51,96 +121,91 @@ jobs:
           
           cd ../guide
           sui-prover -s 2
-          
-  build-run-internal-tests:
+
+  test-internal:
+    needs: build-prover
     runs-on: macos-latest
-    env: 
-      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
     concurrency:
-      group:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
+      group: test-internal-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Homebrew
-        uses: actions/cache@v4
+      - name: Download prover bundle
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /usr/local/Homebrew
-            /opt/homebrew
-          key: brew-${{ runner.os }}-dotnet8-z3-rust
-          restore-keys: |
-            brew-${{ runner.os }}-
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      - name: Install dependencies from formula & build prover & Run Kit
+      - name: Setup prover and dependencies
         run: |
-          sh ./crates/sui-prover/tests/sui-prover.sh
+          mkdir -p ~/.local/bin
+          
+          # Setup binaries
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/.local/bin/boogie
+          
+          # Add to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+      - name: Setup environment variables
+        run: |
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Run internal tests
+        run: |
           cd ./crates/sui-prover
-
-          export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
-          export BOOGIE_EXE="$HOME/.local/bin/boogie"
-          export Z3_EXE="$(brew --prefix z3)/bin/z3"
-
           cargo test
 
-  build-run-integer-mate-tests:
+  test-integer-mate:
+    needs: build-prover
     runs-on: macos-latest
-    env: 
-      BRANCH_NAME:  build-run-internal-tests-${{ github.head_ref || github.ref_name }}
 
     concurrency:
-      group: ${{ github.head_ref || github.ref_name }}
+      group: test-integer-mate-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Cache Homebrew
-        uses: actions/cache@v4
+      - name: Download prover bundle
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /usr/local/Homebrew
-            /opt/homebrew
-          key: brew-${{ runner.os }}-dotnet8-z3-rust
-          restore-keys: |
-            brew-${{ runner.os }}
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      - name: Install dependencies from formula & build prover & Run Kit
+      - name: Setup prover and dependencies
         run: |
-          sh ./crates/sui-prover/tests/sui-prover.sh
+          mkdir -p ~/.local/bin
+          
+          # Setup binaries
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/.local/bin/boogie
+          
+          # Add to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+      - name: Setup environment variables
+        run: |
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Run Integer Mate tests
+        run: |
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
           sui-prover -s 2
-          cd ..
-      
-          cd specs-bv
+          
+          cd ../specs-bv
           sui-prover -s 2 --no-bv-int-encoding
