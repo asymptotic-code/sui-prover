@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/Library/Caches/Homebrew
+            /opt/homebrew
           key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
             brew-${{ runner.os }}-
@@ -45,8 +45,9 @@ jobs:
           restore-keys: |
             boogie-${{ runner.os }}
 
-      - name: Run sui-prover tests
-        run: sh ./crates/sui-prover/tests/sui-prover.sh
+      - name: Install dependencies and build prover
+        run: |
+          sh ./crates/sui-prover/tests/sui-prover.sh
 
       - name: Set artifact name
         id: set-artifact
