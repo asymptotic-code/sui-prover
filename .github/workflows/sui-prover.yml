@@ -110,6 +110,7 @@ jobs:
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
           chmod -R +x ~/.local/bin/
 
           # Add to PATH
