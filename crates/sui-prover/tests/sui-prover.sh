@@ -26,7 +26,8 @@ git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
 cd boogie-src
 dotnet build Source/Boogie.sln -c Release
 cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
-ln -s "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+cp -r "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+chmod -R +x "$BIN_DIR/boogie"
 cd ..
 rm -rf boogie-src
 

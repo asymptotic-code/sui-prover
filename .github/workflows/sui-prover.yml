@@ -52,17 +52,10 @@ jobs:
           mkdir -p ~/artifact-bundle/bin
           mkdir -p ~/artifact-bundle/dotnet
           mkdir -p ~/artifact-bundle/z3
-          
-          # Copy prover binary
-          cp target/release/sui-prover ~/artifact-bundle/bin/ || cp target/debug/sui-prover ~/artifact-bundle/bin/
-          
-          # Copy boogie
+
+          cp target/release/sui-prover ~/artifact-bundle/bin/
           cp ~/.local/bin/boogie ~/artifact-bundle/bin/
-          
-          # Copy dotnet runtime
           cp -r "$(brew --prefix dotnet@8)/libexec" ~/artifact-bundle/dotnet/
-          
-          # Copy z3
           cp -r "$(brew --prefix z3)"/* ~/artifact-bundle/z3/
 
       - name: Upload prover binary and dependencies
@@ -74,138 +67,225 @@ jobs:
           if-no-files-found: error
           compression-level: 6
 
-  test-kit:
+  kit-specs:
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: test-kit-${{ github.head_ref || github.ref_name }}
+      group: kit-specs-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
-      - name: Download prover bundle
+      - name: Download
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
-      - name: Setup prover and dependencies
+      - name: Setup
         run: |
           mkdir -p ~/.local/bin
-          
+
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           cp ~/prover-bundle/bin/boogie ~/.local/bin/
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/.local/bin/boogie
-          
+
           # Add to PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-      - name: Setup environment variables
-        run: |
           echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
-      - name: Run Kit tests
+      - name: Run
         run: |
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
-          
+
           cd sui-kit/examples/amm
           sui-prover -s 2
-          
+
           cd ../showcase
           sui-prover -s 2
-          
+
           cd ../guide
           sui-prover -s 2
 
-  test-internal:
+  internal-tests:
+    # check if prover needed
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: test-internal-${{ github.head_ref || github.ref_name }}
+      group: internal-tests-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download prover bundle
+      - name: Download
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
-      - name: Setup prover and dependencies
+      - name: Setup
         run: |
           mkdir -p ~/.local/bin
-          
-          # Setup binaries
+
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           cp ~/prover-bundle/bin/boogie ~/.local/bin/
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/.local/bin/boogie
-          
-          # Add to PATH
+
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-      - name: Setup environment variables
-        run: |
           echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
-      - name: Run internal tests
+      - name: Run
         run: |
           cd ./crates/sui-prover
           cargo test
 
-  test-integer-mate:
+  integer-mate-specs:
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: test-integer-mate-${{ github.head_ref || github.ref_name }}
+      group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
-      - name: Download prover bundle
+      - name: Download
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
-      - name: Setup prover and dependencies
+      - name: Setup
         run: |
           mkdir -p ~/.local/bin
-          
-          # Setup binaries
+
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           cp ~/prover-bundle/bin/boogie ~/.local/bin/
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/.local/bin/boogie
-          
-          # Add to PATH
+
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-      - name: Setup environment variables
-        run: |
           echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
-      - name: Run Integer Mate tests
+      - name: Run
         run: |
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
           sui-prover -s 2
-          
+
           cd ../specs-bv
           sui-prover -s 2 --no-bv-int-encoding
+
+  token-distribution-specs:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: token-distribution-specs-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/.local/bin/boogie
+
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Run
+        run: |
+          git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
+          cd sui-smart-contracts/token-distribution-specs 
+          sui-prover -s 2
+
+  external-bpl-generation:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: external-bpl-generation-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cp ~/prover-bundle/bin/boogie ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/.local/bin/boogie
+
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Clone scallop repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/scallop-lending
+          ref: specs
+          token: ${{ secrets.PAT_TOKEN }}
+          path: scallop
+
+      - name: Clone cetus repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/cetus-clmm
+          ref: clmm-specs
+          token: ${{ secrets.PAT_TOKEN }}
+          path: cetus    
+
+      - name: Run
+        run: |
+          cd scallop/contracts/specs
+          sui-prover -g
+
+          echo "Generated specs for scallop"
+
+          cd ../../../cetus/cetus_clmm_specs
+          sui-prover -g
+
+          echo "Generated specs for cetus"
