@@ -39,6 +39,14 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
+      - name: Cache Boogie
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/libexec/sui-prover
+          key: boogie-${{ runner.os }}-
+          restore-keys: |
+            boogie-${{ runner.os }}
+
       - name: Install dependencies and build prover
         run: |
           sh ./crates/sui-prover/tests/sui-prover.sh
@@ -109,7 +117,6 @@ jobs:
 
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          cp ~/prover-bundle/bin/boogie ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
           chmod -R +x ~/.local/bin/
 
