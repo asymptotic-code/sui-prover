@@ -23,7 +23,7 @@ jobs:
           path: |
             ~/Library/Caches/Homebrew
             /opt/homebrew
-          key: brew-${{ runner.os }}-dotnet8-z3-rust
+          key: brew-${{ runner.os }}-dotnet8-z3-rust-${{ hashFiles('**/Brewfile') }}
           restore-keys: |
             brew-${{ runner.os }}-
 
