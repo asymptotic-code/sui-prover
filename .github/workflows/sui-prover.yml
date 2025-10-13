@@ -89,8 +89,7 @@ jobs:
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           cp ~/prover-bundle/bin/boogie ~/.local/bin/
-          chmod +x ~/.local/bin/sui-prover
-          chmod +x ~/.local/bin/boogie
+          chmod -R +x ~/.local/bin/
 
           # Add to PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
