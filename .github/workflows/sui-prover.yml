@@ -74,6 +74,8 @@ jobs:
           chmod +x ~/artifact-bundle/z3
           chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
 
+          ls ~/artifact-bundle/bin
+
           ~/artifact-bundle/bin/sui-prover --version
           ~/artifact-bundle/bin/boogie /version
           ~/artifact-bundle/z3 --version
