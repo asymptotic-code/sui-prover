@@ -52,11 +52,20 @@ jobs:
           mkdir -p ~/artifact-bundle/bin
           mkdir -p ~/artifact-bundle/dotnet
           mkdir -p ~/artifact-bundle/z3
+          mkdir -p ~/artifact-bundle/boogie
 
+          # Copy sui-prover binary
           cp target/release/sui-prover ~/artifact-bundle/bin/
-          cp ~/.local/bin/boogie ~/artifact-bundle/bin/
+          
+          # Copy boogie executable and all its dependencies
+          cp -r ~/.local/libexec/sui-prover/* ~/artifact-bundle/boogie/
+          ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
+
+          # Copy .NET runtime
           cp -r "$(brew --prefix dotnet@8)/libexec" ~/artifact-bundle/dotnet/
-          cp -r "$(brew --prefix z3)"/* ~/artifact-bundle/z3/
+
+          # Copy Z3 (just the bin directory is needed)
+          cp -r "$(brew --prefix z3)/bin" ~/artifact-bundle/z3/
 
       - name: Upload prover binary and dependencies
         uses: actions/upload-artifact@v4
