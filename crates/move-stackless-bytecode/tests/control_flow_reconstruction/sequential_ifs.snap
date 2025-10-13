@@ -1,0 +1,402 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+assertion_line: 260
+---
+============ initial translation from Move ================
+
+[variant baseline]
+fun test::sequential_if_else($t0|x: u64): u64 {
+     var $t1|result#1#0: u64
+     var $t2: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: bool
+     var $t6: u64
+     var $t7: u64
+     var $t8: u64
+     var $t9: bool
+     var $t10: u64
+     var $t11: u64
+     var $t12: u64
+     var $t13: bool
+     var $t14: u64
+     var $t15: u64
+  0: $t2 := 0
+  1: $t1 := $t2
+  2: $t3 := copy($t0)
+  3: $t4 := 1
+  4: $t5 := ==($t3, $t4)
+  5: if ($t5) goto 6 else goto 10
+  6: label L1
+  7: $t6 := 10
+  8: $t1 := $t6
+  9: goto 10
+ 10: label L0
+ 11: $t7 := copy($t0)
+ 12: $t8 := 2
+ 13: $t9 := ==($t7, $t8)
+ 14: if ($t9) goto 15 else goto 19
+ 15: label L3
+ 16: $t10 := 20
+ 17: $t1 := $t10
+ 18: goto 19
+ 19: label L2
+ 20: $t11 := move($t0)
+ 21: $t12 := 3
+ 22: $t13 := ==($t11, $t12)
+ 23: if ($t13) goto 24 else goto 28
+ 24: label L5
+ 25: $t14 := 30
+ 26: $t1 := $t14
+ 27: goto 28
+ 28: label L4
+ 29: $t15 := move($t1)
+ 30: return $t15
+}
+
+
+[variant baseline]
+fun test::sequential_if_statements($t0|value: u64, $t1|flags: u64): u64 {
+     var $t2: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: u64
+     var $t6: bool
+     var $t7: u64
+     var $t8: u64
+     var $t9: u64
+     var $t10: u64
+     var $t11: u64
+     var $t12: u64
+     var $t13: u64
+     var $t14: bool
+     var $t15: u64
+     var $t16: u64
+     var $t17: u64
+     var $t18: u64
+     var $t19: u64
+     var $t20: u64
+     var $t21: u64
+     var $t22: bool
+     var $t23: u64
+     var $t24: u64
+     var $t25: u64
+     var $t26: u64
+     var $t27: u64
+     var $t28: u64
+     var $t29: u64
+     var $t30: bool
+     var $t31: u64
+     var $t32: u64
+     var $t33: u64
+     var $t34: u64
+     var $t35: u64
+     var $t36: u64
+     var $t37: u64
+     var $t38: bool
+     var $t39: u64
+     var $t40: u64
+     var $t41: u64
+     var $t42: u64
+  0: $t2 := copy($t1)
+  1: $t3 := 1
+  2: $t4 := &($t2, $t3)
+  3: $t5 := 0
+  4: $t6 := !=($t4, $t5)
+  5: if ($t6) goto 6 else goto 12
+  6: label L1
+  7: $t7 := move($t0)
+  8: $t8 := 2
+  9: $t9 := *($t7, $t8)
+ 10: $t0 := $t9
+ 11: goto 12
+ 12: label L0
+ 13: $t10 := copy($t1)
+ 14: $t11 := 2
+ 15: $t12 := &($t10, $t11)
+ 16: $t13 := 0
+ 17: $t14 := !=($t12, $t13)
+ 18: if ($t14) goto 19 else goto 25
+ 19: label L3
+ 20: $t15 := move($t0)
+ 21: $t16 := 3
+ 22: $t17 := *($t15, $t16)
+ 23: $t0 := $t17
+ 24: goto 25
+ 25: label L2
+ 26: $t18 := copy($t1)
+ 27: $t19 := 4
+ 28: $t20 := &($t18, $t19)
+ 29: $t21 := 0
+ 30: $t22 := !=($t20, $t21)
+ 31: if ($t22) goto 32 else goto 38
+ 32: label L5
+ 33: $t23 := move($t0)
+ 34: $t24 := 5
+ 35: $t25 := *($t23, $t24)
+ 36: $t0 := $t25
+ 37: goto 38
+ 38: label L4
+ 39: $t26 := copy($t1)
+ 40: $t27 := 8
+ 41: $t28 := &($t26, $t27)
+ 42: $t29 := 0
+ 43: $t30 := !=($t28, $t29)
+ 44: if ($t30) goto 45 else goto 51
+ 45: label L7
+ 46: $t31 := move($t0)
+ 47: $t32 := 7
+ 48: $t33 := *($t31, $t32)
+ 49: $t0 := $t33
+ 50: goto 51
+ 51: label L6
+ 52: $t34 := move($t1)
+ 53: $t35 := 16
+ 54: $t36 := &($t34, $t35)
+ 55: $t37 := 0
+ 56: $t38 := !=($t36, $t37)
+ 57: if ($t38) goto 58 else goto 64
+ 58: label L9
+ 59: $t39 := move($t0)
+ 60: $t40 := 11
+ 61: $t41 := *($t39, $t40)
+ 62: $t0 := $t41
+ 63: goto 64
+ 64: label L8
+ 65: $t42 := move($t0)
+ 66: return $t42
+}
+
+============ after pipeline `control_flow_reconstruction` ================
+
+[variant baseline]
+fun test::sequential_if_else($t0|x: u64): u64 {
+     var $t1|result#1#0: u64
+     var $t2: u64
+     var $t3: u64
+     var $t4: bool
+     var $t5: u64
+     var $t6: u64
+     var $t7: bool
+     var $t8: u64
+     var $t9: u64
+     var $t10: bool
+     var $t11: u64
+  0: $t2 := 0
+  1: $t1 := $t2
+  2: $t3 := 1
+  3: $t4 := ==($t0, $t3)
+  4: if ($t4) goto 5 else goto 8
+  5: label L1
+  6: $t5 := 10
+  7: $t1 := $t5
+  8: label L0
+  9: $t6 := 2
+ 10: $t7 := ==($t0, $t6)
+ 11: if ($t7) goto 12 else goto 15
+ 12: label L3
+ 13: $t8 := 20
+ 14: $t1 := $t8
+ 15: label L2
+ 16: $t9 := 3
+ 17: $t10 := ==($t0, $t9)
+ 18: if ($t10) goto 19 else goto 22
+ 19: label L5
+ 20: $t11 := 30
+ 21: $t1 := $t11
+ 22: label L4
+ 23: return $t1
+}
+
+
+[variant baseline]
+fun test::sequential_if_statements($t0|value: u64, $t1|flags: u64): u64 {
+     var $t2: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: bool
+     var $t6: u64
+     var $t7: u64
+     var $t8: u64
+     var $t9: u64
+     var $t10: bool
+     var $t11: u64
+     var $t12: u64
+     var $t13: u64
+     var $t14: u64
+     var $t15: bool
+     var $t16: u64
+     var $t17: u64
+     var $t18: u64
+     var $t19: u64
+     var $t20: bool
+     var $t21: u64
+     var $t22: u64
+     var $t23: u64
+     var $t24: u64
+     var $t25: bool
+     var $t26: u64
+  0: $t2 := 1
+  1: $t3 := &($t1, $t2)
+  2: $t4 := 0
+  3: $t5 := !=($t3, $t4)
+  4: if ($t5) goto 5 else goto 8
+  5: label L1
+  6: $t6 := 2
+  7: $t0 := *($t0, $t6)
+  8: label L0
+  9: $t7 := 2
+ 10: $t8 := &($t1, $t7)
+ 11: $t9 := 0
+ 12: $t10 := !=($t8, $t9)
+ 13: if ($t10) goto 14 else goto 17
+ 14: label L3
+ 15: $t11 := 3
+ 16: $t0 := *($t0, $t11)
+ 17: label L2
+ 18: $t12 := 4
+ 19: $t13 := &($t1, $t12)
+ 20: $t14 := 0
+ 21: $t15 := !=($t13, $t14)
+ 22: if ($t15) goto 23 else goto 26
+ 23: label L5
+ 24: $t16 := 5
+ 25: $t0 := *($t0, $t16)
+ 26: label L4
+ 27: $t17 := 8
+ 28: $t18 := &($t1, $t17)
+ 29: $t19 := 0
+ 30: $t20 := !=($t18, $t19)
+ 31: if ($t20) goto 32 else goto 35
+ 32: label L7
+ 33: $t21 := 7
+ 34: $t0 := *($t0, $t21)
+ 35: label L6
+ 36: $t22 := 16
+ 37: $t23 := &($t1, $t22)
+ 38: $t24 := 0
+ 39: $t25 := !=($t23, $t24)
+ 40: if ($t25) goto 41 else goto 44
+ 41: label L9
+ 42: $t26 := 11
+ 43: $t0 := *($t0, $t26)
+ 44: label L8
+ 45: return $t0
+}
+
+
+============ Control Flow Reconstruction ================
+
+[variant baseline]
+fun test::sequential_if_else
+[
+    Basic {
+        lower: 0,
+        upper: 3,
+    },
+    IfThenElse {
+        cond_at: 4,
+        then_branch: Basic {
+            lower: 5,
+            upper: 7,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 8,
+        upper: 10,
+    },
+    IfThenElse {
+        cond_at: 11,
+        then_branch: Basic {
+            lower: 12,
+            upper: 14,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 15,
+        upper: 17,
+    },
+    IfThenElse {
+        cond_at: 18,
+        then_branch: Basic {
+            lower: 19,
+            upper: 21,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 22,
+        upper: 23,
+    },
+]
+
+[variant baseline]
+fun test::sequential_if_statements
+[
+    Basic {
+        lower: 0,
+        upper: 3,
+    },
+    IfThenElse {
+        cond_at: 4,
+        then_branch: Basic {
+            lower: 5,
+            upper: 7,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 8,
+        upper: 12,
+    },
+    IfThenElse {
+        cond_at: 13,
+        then_branch: Basic {
+            lower: 14,
+            upper: 16,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 17,
+        upper: 21,
+    },
+    IfThenElse {
+        cond_at: 22,
+        then_branch: Basic {
+            lower: 23,
+            upper: 25,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 26,
+        upper: 30,
+    },
+    IfThenElse {
+        cond_at: 31,
+        then_branch: Basic {
+            lower: 32,
+            upper: 34,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 35,
+        upper: 39,
+    },
+    IfThenElse {
+        cond_at: 40,
+        then_branch: Basic {
+            lower: 41,
+            upper: 43,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 44,
+        upper: 45,
+    },
+]
