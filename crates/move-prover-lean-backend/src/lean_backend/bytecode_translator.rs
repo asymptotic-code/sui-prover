@@ -47,7 +47,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use move_stackless_bytecode::graph::Graph;
 use std::str::FromStr;
 use crate::wip;
-use move_stackless_bytecode::control_flow_reconstructor::{reconstruct_control_flow, StructuredBlock};
+use move_stackless_bytecode::control_flow_reconstruction::{reconstruct_control_flow, StructuredBlock};
 
 pub struct LeanTranslator<'env> {
     env: &'env GlobalEnv,
@@ -2256,7 +2256,17 @@ fn generate_function_body(&mut self) {
 
     // Generate function body using reconstructed control flow
     let code = self.transformed_code.clone();
+    eprintln!("[lean] Translating {}", self.fun_target.func_env.get_full_name_str());
     let blocks = reconstruct_control_flow(&code);
+    eprintln!("[lean] Reconstructed {} top-level blocks", blocks.len());
+    for (idx, block) in blocks.iter().enumerate() {
+        eprintln!("[lean] Block {}: {:?}", idx, match block {
+            StructuredBlock::Basic { lower, upper } => format!("Basic[{}..{}]", lower, upper),
+            StructuredBlock::Seq(v) => format!("Seq({} blocks)", v.len()),
+            StructuredBlock::IfThenElse { .. } => "IfThenElse".to_string(),
+            StructuredBlock::IfElseChain { branches, .. } => format!("IfElseChain({} branches)", branches.len()),
+        });
+    }
     let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
 
     // Recursive translator for structured blocks
@@ -2268,7 +2278,7 @@ fn generate_function_body(&mut self) {
     ) {
         match block {
             StructuredBlock::Basic { .. } => {
-                for offset in block.instr_indexes() {
+                for offset in block.iter_offsets() {
                     let bytecode = &code[offset as usize];
                     // Skip branches and explicit merge jumps: the structured builder accounted for them
                     match bytecode {
@@ -2305,6 +2315,75 @@ fn generate_function_body(&mut self) {
                         translate_structured_block(this, eb, code, last_tracked_loc);
                     }
                 }
+            }
+            StructuredBlock::IfElseChain { branches, else_branch } => {
+                if branches.is_empty() {
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                    return;
+                }
+
+                let mut cond_strings: Vec<Option<String>> = Vec::with_capacity(branches.len());
+                for (cond_at, _) in branches.iter() {
+                    let cond_string = match code.get(*cond_at as usize) {
+                        Some(Bytecode::Branch(_, _tlabel, _elabel, cond_tmp)) => {
+                            Some(format!("t{}", *cond_tmp as usize))
+                        }
+                        _ => None,
+                    };
+                    cond_strings.push(cond_string);
+                }
+
+                if cond_strings.iter().any(|c| c.is_none()) {
+                    // Fallback to sequential translation if any condition is not recognizable
+                    for (_, body) in branches {
+                        translate_structured_block(this, body, code, last_tracked_loc);
+                    }
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                    return;
+                }
+
+                let resolved_conditions: Vec<String> = cond_strings
+                    .into_iter()
+                    .map(|c| c.expect("condition should be present"))
+                    .collect();
+
+                emitln!(
+                    this.writer(),
+                    "if {} then",
+                    resolved_conditions[0]
+                );
+                this.writer().indent();
+                translate_structured_block(
+                    this,
+                    &branches[0].1,
+                    code,
+                    last_tracked_loc,
+                );
+                this.writer().unindent();
+
+                for (idx, cond_str) in resolved_conditions.iter().enumerate().skip(1) {
+                    emitln!(this.writer(), "else if {} then", cond_str);
+                    this.writer().indent();
+                    translate_structured_block(
+                        this,
+                        &branches[idx].1,
+                        code,
+                        last_tracked_loc,
+                    );
+                    this.writer().unindent();
+                }
+
+                if let Some(eb) = else_branch.as_ref() {
+                    emitln!(this.writer(), "else");
+                    this.writer().indent();
+                    translate_structured_block(this, eb, code, last_tracked_loc);
+                    this.writer().unindent();
+                }
+                emitln!(this.writer(), "end");
             }
         }
     }
