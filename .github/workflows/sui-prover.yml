@@ -80,14 +80,12 @@ jobs:
         run: |
           chmod +x ~/artifact-bundle/bin/sui-prover
           chmod +x ~/artifact-bundle/bin/boogie
-          chmod +x ~/artifact-bundle/z3/z3
           chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
 
           ls ~/artifact-bundle/bin
 
           ~/artifact-bundle/bin/sui-prover --version
           ~/artifact-bundle/bin/boogie /version
-          ~/artifact-bundle/z3/z3 --version
           ~/artifact-bundle/dotnet/libexec/dotnet --version
 
   kit-specs:
