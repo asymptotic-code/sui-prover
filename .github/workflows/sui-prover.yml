@@ -22,8 +22,6 @@ jobs:
         with:
           path: |
             ~/Library/Caches/Homebrew
-            /usr/local/Homebrew
-            /opt/homebrew
           key: brew-${{ runner.os }}-dotnet8-z3-rust
           restore-keys: |
             brew-${{ runner.os }}-
@@ -47,9 +45,8 @@ jobs:
           restore-keys: |
             boogie-${{ runner.os }}
 
-      - name: Install dependencies and build prover
-        run: |
-          sh ./crates/sui-prover/tests/sui-prover.sh
+      - name: Run sui-prover tests
+        run: sh ./crates/sui-prover/tests/sui-prover.sh
 
       - name: Set artifact name
         id: set-artifact
@@ -113,7 +110,6 @@ jobs:
         run: |
           mkdir -p ~/.local/bin
 
-          # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
 
@@ -167,9 +163,12 @@ jobs:
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          cp ~/prover-bundle/bin/boogie ~/.local/bin/
-          chmod +x ~/.local/bin/sui-prover
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
           chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
@@ -203,9 +202,12 @@ jobs:
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          cp ~/prover-bundle/bin/boogie ~/.local/bin/
-          chmod +x ~/.local/bin/sui-prover
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
           chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
@@ -244,9 +246,12 @@ jobs:
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          cp ~/prover-bundle/bin/boogie ~/.local/bin/
-          chmod +x ~/.local/bin/sui-prover
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
           chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
@@ -281,9 +286,12 @@ jobs:
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          cp ~/prover-bundle/bin/boogie ~/.local/bin/
-          chmod +x ~/.local/bin/sui-prover
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
           chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
