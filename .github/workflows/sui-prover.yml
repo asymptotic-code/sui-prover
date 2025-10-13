@@ -116,8 +116,11 @@ jobs:
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
           chmod +x ~/.local/bin/boogie
-          chmod -R +x ~/.local/bin/
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
 
           # Add to PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
