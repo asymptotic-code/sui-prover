@@ -67,6 +67,18 @@ jobs:
           if-no-files-found: error
           compression-level: 6
 
+      - name: Verify installation
+        run: |
+          chmod +x ~/artifact-bundle/bin/sui-prover
+          chmod +x ~/artifact-bundle/bin/boogie
+          chmod +x ~/artifact-bundle/z3
+          chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
+
+          ~/artifact-bundle/bin/sui-prover --version
+          ~/artifact-bundle/bin/boogie /version
+          ~/artifact-bundle/z3 --version
+          ~/artifact-bundle/dotnet/libexec/dotnet --version
+
   kit-specs:
     needs: build-prover
     runs-on: macos-latest
