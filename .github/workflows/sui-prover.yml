@@ -90,8 +90,6 @@ jobs:
           chmod +x ~/artifact-bundle/bin/boogie
           chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
 
-          ls ~/artifact-bundle/bin
-
           ~/artifact-bundle/bin/sui-prover --version
           ~/artifact-bundle/bin/boogie /version
           ~/artifact-bundle/dotnet/libexec/dotnet --version
@@ -118,6 +116,7 @@ jobs:
           # Setup binaries
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+          chmod +x ~/.local/bin/boogie
           chmod -R +x ~/.local/bin/
 
           # Add to PATH
