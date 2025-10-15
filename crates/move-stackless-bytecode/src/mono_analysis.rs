@@ -28,6 +28,7 @@ use move_model::{
 
 use crate::{
     ast::ExpData,
+    dynamic_field_analysis::{self, NameValueInfo},
     function_target::FunctionTarget,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     spec_global_variable_analysis,
@@ -211,6 +212,27 @@ impl MonoAnalysisProcessor {
 
         // Analyze functions
         analyzer.analyze_funs();
+
+        // add dynamic field types
+        for (ty, name_value_infos) in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
+            analyzer.add_type_root(ty);
+            for name_value_info in name_value_infos {
+                match name_value_info {
+                    NameValueInfo::NameValue {
+                        name,
+                        value,
+                        is_mut: _,
+                    } => {
+                        analyzer.add_type_root(name);
+                        analyzer.add_type_root(value);
+                    }
+                    NameValueInfo::NameOnly(name) => {
+                        analyzer.add_type_root(name);
+                    }
+                }
+            }
+        }
+
         let Analyzer {
             mut info,
             done_types,
