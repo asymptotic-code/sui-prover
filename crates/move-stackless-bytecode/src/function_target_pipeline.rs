@@ -896,7 +896,7 @@ impl FunctionTargetPipeline {
     }
 
     /// Build the call graph
-    fn build_call_graph(
+    pub fn build_call_graph(
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
     ) -> DiGraph<QualifiedId<FunId>, ()> {
