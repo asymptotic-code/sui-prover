@@ -56,7 +56,10 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     ];
 
     if options.enable_conditional_merge_insertion {
-        // TODO(rvantonder): uncomment when complete
+        // Rerun liveness analysis and its dependencies after MemoryInstrumentation
+        // to ensure fresh liveness annotations for ConditionalMergeInsertion
+        processors.push(ReachingDefProcessor::new());
+        processors.push(LiveVarAnalysisProcessor::new());
         processors.push(ConditionalMergeInsertionProcessor::new());
     }
 

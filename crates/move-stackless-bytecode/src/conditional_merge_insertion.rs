@@ -473,8 +473,10 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         .get(&original_dst)
                         .copied()
                         .unwrap_or(original_dst);
-                    current_val.insert(original_dst, src); // Track latest rhs value of original dst
-                    builder.emit(Bytecode::Assign(attr, fresh_dst, src, kind))
+                    // Remap source operand through fresh variables
+                    let remapped_src = active_fresh_vars.get(&src).copied().unwrap_or(src);
+                    current_val.insert(original_dst, remapped_src); // Track latest rhs value of original dst
+                    builder.emit(Bytecode::Assign(attr, fresh_dst, remapped_src, kind))
                 }
                 Bytecode::Call(attr, dests, op, srcs, abort) if dests.len() == 1 => {
                     let original_dest = dests[0];
@@ -482,8 +484,13 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         .get(&original_dest)
                         .copied()
                         .unwrap_or(original_dest);
+                    // Remap source operands through fresh variables
+                    let remapped_srcs: Vec<usize> = srcs
+                        .iter()
+                        .map(|&src| active_fresh_vars.get(&src).copied().unwrap_or(src))
+                        .collect();
                     current_val.insert(original_dest, original_dest);
-                    builder.emit(Bytecode::Call(attr, vec![actual_dest], op, srcs, abort))
+                    builder.emit(Bytecode::Call(attr, vec![actual_dest], op, remapped_srcs, abort))
                 }
                 bytecode => builder.emit(bytecode),
             }

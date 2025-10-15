@@ -4,6 +4,7 @@ module 0x42::simple_max_failure_test;
 use prover::prover::{ensures};
 
 // A broken max function that returns the minimum instead (should fail verification)
+#[ext(pure)]
 public fun simple_max(a: u64, b: u64): u64 {
     if (a >= b) {
         b  // WRONG: should return a (the larger value)
