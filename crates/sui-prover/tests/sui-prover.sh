@@ -21,14 +21,19 @@ export PATH="$DOTNET_ROOT/bin:$BIN_DIR:$PATH"
 # Clone and build Sui Prover
 cargo install --locked --path ./crates/sui-prover --root "$INSTALL_DIR"
 
-# Clone and build Boogie
-git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
-cd boogie-src
-dotnet build Source/Boogie.sln -c Release
-cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
-ln -s "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
-cd ..
-rm -rf boogie-src
+if [ -d "$INSTALL_DIR/BoogieDriver" ]; then
+    echo "Boogie is already installed in $INSTALL_DIR"
+else
+    echo "Installing Boogie..."
+    git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
+    cd boogie-src || exit 1
+    dotnet build Source/Boogie.sln -c Release
+    cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
+    ln -sf "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+    chmod +x "$BIN_DIR/boogie"
+    cd ..
+    rm -rf boogie-src
+fi
 
 # Create sui-prover wrapper script
 cat <<EOF > "$BIN_DIR/sui-prover"

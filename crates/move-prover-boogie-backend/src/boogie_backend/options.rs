@@ -52,6 +52,17 @@ pub struct CustomNativeOptions {
     pub module_instance_names: Vec<(String, String, bool)>,
 }
 
+/// Options to connect to a remote Move prover service.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct RemoteOptions {
+    /// URL of the remote prover service.
+    pub url: String,
+    /// API key for authentication.
+    pub api_key: String,
+    /// Concurrency level for sending requests.
+    pub concurrency: usize,
+}
+
 /// Contains information about a native method implementing mutable borrow semantics for a given
 /// type in an alternative storage model (returning &mut without taking appropriate &mut as a
 /// parameter, much like vector::borrow_mut)
