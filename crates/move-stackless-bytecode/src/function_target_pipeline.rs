@@ -7,7 +7,7 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet}, f64::consts::E, fmt::Formatter, fs
+    collections::{BTreeMap, BTreeSet}, fmt::Formatter, fs
 };
 
 use itertools::{Either, Itertools};
@@ -926,7 +926,7 @@ impl FunctionTargetPipeline {
     }
 
     /// Build the call graph
-    fn build_call_graph(
+    pub fn build_call_graph(
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
     ) -> DiGraph<QualifiedId<FunId>, ()> {
