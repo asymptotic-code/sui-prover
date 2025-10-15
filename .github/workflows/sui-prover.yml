@@ -268,12 +268,12 @@ jobs:
           cd sui-smart-contracts/token-distribution-specs 
           sui-prover -s 2
 
-  external-bpl-generation:
+  scallop-bpl-generation:
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: external-bpl-generation-${{ github.head_ref || github.ref_name }}
+      group: scallop-bpl-generation-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
@@ -310,6 +310,45 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: scallop
 
+      - name: Run
+        run: |
+          cd scallop/contracts/specs
+          sui-prover -g
+
+  cetus-bpl-generation:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: cetus-bpl-generation-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+          chmod +x ~/prover-bundle/dotnet/libexec
+
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
       - name: Clone cetus repo
         uses: actions/checkout@v4
         with:
@@ -320,12 +359,5 @@ jobs:
 
       - name: Run
         run: |
-          cd scallop/contracts/specs
+          cd cetus/cetus_clmm_specs
           sui-prover -g
-
-          echo "Generated specs for scallop"
-
-          cd ../../../cetus/cetus_clmm_specs
-          sui-prover -g
-
-          echo "Generated specs for cetus"
