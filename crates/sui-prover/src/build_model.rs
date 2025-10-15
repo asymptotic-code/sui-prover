@@ -1,8 +1,9 @@
-use move_model::model::GlobalEnv;
+use itertools::Itertools;
+use move_model::model::{FunctionEnv, GlobalEnv};
 use termcolor::Buffer;
 use std::path::{Path,PathBuf};
 use move_package::{package_lock::PackageLock, source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig};
-use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
+use move_stackless_bytecode::function_target_pipeline::{FunctionTargetPipeline, FunctionTargetsHolder};
 use codespan_reporting::diagnostic::Severity;
 
 use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps};
@@ -87,4 +88,27 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
     }
 
     Ok((model, rerooted_path, targets))
+}
+
+#[allow(dead_code)] // This function can be used in external cli
+pub fn get_all_funs_in_topological_order<'env>(
+    env: &'env GlobalEnv,
+    targets: &'env FunctionTargetsHolder,
+    only_targeted: bool,
+) -> Vec<FunctionEnv<'env>> {
+    let mut results = vec![];
+    let graph = FunctionTargetPipeline::build_call_graph(env, targets);
+    let sccs = petgraph::algo::kosaraju_scc(&graph);
+    sccs.iter()
+        .map(|scc| scc.iter().map(|node_idx| graph[*node_idx]).collect_vec())
+        .for_each(|scc| {
+            for qid in &scc {
+                let fenv = env.get_function(*qid);
+                if !only_targeted || fenv.module_env.is_target() {
+                    results.push(fenv);
+                }
+            }
+        });
+
+    results
 }
