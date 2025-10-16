@@ -82,7 +82,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
-        // let fun_name = fun_env.get_full_name_str();
 
         // Rule 0a: mark essential functions that are needed for the verification pipeline
         let info = data
