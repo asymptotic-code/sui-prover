@@ -35,7 +35,7 @@ use itertools::Itertools;
 use log::{info, warn};
 use move_compiler::expansion;
 use move_ir_types::ast as IR;
-use num::BigUint;
+use num::{BigUint, Zero};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -450,6 +450,8 @@ pub struct GlobalEnv {
     /// Accumulated diagnosis. In a RefCell so we can add to it without needing a mutable GlobalEnv.
     /// The boolean indicates whether the diag was reported.
     diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
+    /// All diagnostics, including those already reported & deleted.
+    all_diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
     /// Pool of symbols -- internalized strings.
     symbol_pool: SymbolPool,
     /// A counter for allocating node ids.
@@ -506,6 +508,7 @@ impl GlobalEnv {
             file_idx_to_id,
             file_id_is_dep: BTreeSet::new(),
             diags: RefCell::new(vec![]),
+            all_diags: RefCell::new(vec![]),
             symbol_pool: SymbolPool::new(),
             next_free_node_id: Default::default(),
             exp_info: Default::default(),
@@ -515,6 +518,13 @@ impl GlobalEnv {
             stdlib_address: None,
             extlib_address: None,
         }
+    }
+
+    pub fn cleanup(&self) {
+        self.exp_info.borrow_mut().clear();
+        self.extensions.borrow_mut().clear();
+        self.global_id_counter.borrow_mut().set_zero();
+        self.next_free_node_id.borrow_mut().set_zero();
     }
 
     /// Creates a display container for the given value. There must be an implementation
@@ -676,7 +686,13 @@ impl GlobalEnv {
 
     /// Adds diagnostic to the environment.
     pub fn add_diag(&self, diag: Diagnostic<FileId>) {
-        self.diags.borrow_mut().push((diag, false));
+        if self.had_diag(&diag)  {
+            println!("Skipping duplicate diag: {:?}", diag);
+            // Avoid adding the same diagnostic twice.
+            return;
+        }
+        self.diags.borrow_mut().push((diag.clone(), false));
+        self.all_diags.borrow_mut().push((diag, false));
     }
 
     /// Adds an error to this environment, without notes.
@@ -731,6 +747,14 @@ impl GlobalEnv {
             .borrow()
             .iter()
             .any(|(d, _)| d.message.contains(pattern))
+    }
+
+    /// Checks whether any of the diagnostics contains string.
+    pub fn had_diag(&self, diag: &Diagnostic<FileId>) -> bool {
+        self.all_diags
+            .borrow()
+            .iter()
+            .any(|(d, _)| d.eq(diag))
     }
 
     /// Clear all accumulated diagnosis.

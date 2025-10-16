@@ -90,7 +90,7 @@ pub fn run_prover_function_mode<W: WriteColor>(
             println!("🔄 {file_name}");
         }
 
-        let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
+        let new_targets = FunctionTargetsHolder::new_with_qid(options.prover.clone(), *target);
         let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
 
         check_errors(
