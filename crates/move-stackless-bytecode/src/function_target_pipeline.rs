@@ -44,7 +44,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target_function: Option<QualifiedId<FunId>>,
-    target_module: Option<ModuleId>, 
+    target_module: Option<ModuleId>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -202,7 +202,7 @@ impl FunctionTargetsHolder {
         }
     }
 
-      pub fn new_with_qid(
+     pub fn new_with_qid(
         prover_options: ProverOptions,
         target_function: QualifiedId<FunId>,
     ) -> Self {

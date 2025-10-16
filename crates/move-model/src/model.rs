@@ -683,7 +683,7 @@ impl GlobalEnv {
 
     /// Adds diagnostic to the environment.
     pub fn add_diag(&self, diag: Diagnostic<FileId>) {
-        if self.has_diag(&diag)  {
+        if self.has_diag(&diag) {
             // Avoid adding the same diagnostic twice.
             return;
         }
@@ -905,7 +905,7 @@ impl GlobalEnv {
             .iter_mut()
             .for_each(|(diag, reported)| {
                 if !*reported && filter(diag) {
-                    let mut d: Diagnostic<FileId> = diag.clone();
+                    let mut d = diag.clone();
                     d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
                     emit(writer, &Config::default(), &self.source_files, &d)
