@@ -450,8 +450,6 @@ pub struct GlobalEnv {
     /// Accumulated diagnosis. In a RefCell so we can add to it without needing a mutable GlobalEnv.
     /// The boolean indicates whether the diag was reported.
     diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
-    /// All diagnostics, including those already reported & deleted.
-    all_diags: RefCell<Vec<(Diagnostic<FileId>, bool)>>,
     /// Pool of symbols -- internalized strings.
     symbol_pool: SymbolPool,
     /// A counter for allocating node ids.
@@ -508,7 +506,6 @@ impl GlobalEnv {
             file_idx_to_id,
             file_id_is_dep: BTreeSet::new(),
             diags: RefCell::new(vec![]),
-            all_diags: RefCell::new(vec![]),
             symbol_pool: SymbolPool::new(),
             next_free_node_id: Default::default(),
             exp_info: Default::default(),
@@ -686,13 +683,11 @@ impl GlobalEnv {
 
     /// Adds diagnostic to the environment.
     pub fn add_diag(&self, diag: Diagnostic<FileId>) {
-        if self.had_diag(&diag)  {
-            println!("Skipping duplicate diag: {:?}", diag);
+        if self.has_diag(&diag)  {
             // Avoid adding the same diagnostic twice.
             return;
         }
         self.diags.borrow_mut().push((diag.clone(), false));
-        self.all_diags.borrow_mut().push((diag, false));
     }
 
     /// Adds an error to this environment, without notes.
@@ -742,16 +737,8 @@ impl GlobalEnv {
     }
 
     /// Checks whether any of the diagnostics contains string.
-    pub fn has_diag(&self, pattern: &str) -> bool {
+    pub fn has_diag(&self, diag: &Diagnostic<FileId>) -> bool {
         self.diags
-            .borrow()
-            .iter()
-            .any(|(d, _)| d.message.contains(pattern))
-    }
-
-    /// Checks whether any of the diagnostics contains string.
-    pub fn had_diag(&self, diag: &Diagnostic<FileId>) -> bool {
-        self.all_diags
             .borrow()
             .iter()
             .any(|(d, _)| d.eq(diag))
@@ -885,7 +872,7 @@ impl GlobalEnv {
         self.diags
             .borrow()
             .iter()
-            .filter(|(d, _)| d.severity >= min_severity)
+            .filter(|(d, reported)| !reported && d.severity >= min_severity)
             .count()
     }
 
@@ -899,7 +886,7 @@ impl GlobalEnv {
         self.diags
             .borrow()
             .iter()
-            .any(|(d, _)| d.severity >= Severity::Warning)
+            .any(|(d, reported)| !reported && d.severity >= Severity::Warning)
     }
 
     /// Writes accumulated diagnostics of given or higher severity.
@@ -913,23 +900,20 @@ impl GlobalEnv {
         writer: &mut W,
         filter: F,
     ) {
-        let mut shown = BTreeSet::new();
-        self.diags.borrow_mut().retain(|(diag, _)| {
-            if filter(diag) {
-                let mut d = diag.clone();
-                // Avoid showing the same message twice. This can happen e.g. because of
-                // duplication of expressions via schema inclusion.
-                d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+        self.diags
+            .borrow_mut()
+            .iter_mut()
+            .for_each(|(diag, reported)| {
+                if !*reported && filter(diag) {
+                    let mut d: Diagnostic<FileId> = diag.clone();
+                    d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
-                if shown.insert(format!("{:?}", d)) {
                     emit(writer, &Config::default(), &self.source_files, &d)
                         .expect("emit must not fail");
+                    *reported = true;
                 }
-                false
-            } else {
-                true
             }
-        })
+        );
     }
 
     /// Adds a new module to the environment. StructData and FunctionData need to be provided
