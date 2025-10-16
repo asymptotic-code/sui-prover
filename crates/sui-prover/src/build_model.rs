@@ -79,7 +79,7 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         return Err(anyhow::anyhow!("Move Model compiled with errors.\n{}", diagnostic_output));
     }
 
-    let mut targets = FunctionTargetsHolder::new(None);
+    let mut targets = FunctionTargetsHolder::new(Default::default(),None);
 
     for module in model.get_modules() {
         for func_env in module.get_functions() {

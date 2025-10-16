@@ -31,8 +31,8 @@ use std::{
     time::Instant,
 };
 
-pub fn create_init_num_operation_state(env: &GlobalEnv) {
-    let mut global_state: GlobalNumberOperationState = Default::default();
+pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
+    let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
     for module_env in env.get_modules() {
         for struct_env in module_env.get_structs() {
             global_state.create_initial_struct_oper_state(&struct_env);
@@ -69,12 +69,8 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     // TODO: delete duplicate diagnostics reporting
     env.report_diag(error_writer, options.prover.report_severity);
 
-    // Add the prover options as an extension to the environment, so they can be accessed
-    // from there.
-    ProverOptions::set(env, options.prover.clone());
-
     // Populate initial number operation state for each function and struct based on the pragma
-    create_init_num_operation_state(env);
+    create_init_num_operation_state(env, &options.prover);
 
     // Until this point, prover and docgen have same code. Here we part ways.
     if options.run_docgen {
@@ -543,7 +539,7 @@ pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
+    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), Some(options.filter.clone()));
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -627,7 +623,7 @@ fn run_docgen<W: WriteColor>(
 */
 
 fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
-    let mut targets = FunctionTargetsHolder::new(Some(options.filter.clone()));
+    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), Some(options.filter.clone()));
     for module_env in env.get_modules() {
         for func_env in module_env.get_functions() {
             targets.add_target(&func_env);

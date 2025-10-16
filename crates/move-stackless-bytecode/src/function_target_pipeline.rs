@@ -24,11 +24,7 @@ use move_model::{
 };
 
 use crate::{
-    function_target::{FunctionData, FunctionTarget},
-    print_targets_for_test,
-    stackless_bytecode_generator::StacklessBytecodeGenerator,
-    stackless_control_flow_graph::generate_cfg_in_dot_format, 
-    target_filter::TargetFilterOptions,
+    function_target::{FunctionData, FunctionTarget}, options::ProverOptions, print_targets_for_test, stackless_bytecode_generator::StacklessBytecodeGenerator, stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions
 };
 
 /// A data structure which holds data for multiple function targets, and allows to
@@ -48,6 +44,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     filter: TargetFilterOptions,
+    prover_options: ProverOptions,
 }
 
 /// Describes a function verification flavor.
@@ -179,7 +176,10 @@ pub struct FunctionTargetPipeline {
 }
 
 impl FunctionTargetsHolder {
-    pub fn new(filter: Option<TargetFilterOptions>) -> Self {
+    pub fn new(
+        prover_options: ProverOptions,
+        filter: Option<TargetFilterOptions>,
+    ) -> Self {
         Self {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
@@ -194,7 +194,12 @@ impl FunctionTargetsHolder {
             target_modules: BTreeSet::new(),
             filter: filter.unwrap_or_default(),
             abort_check_functions: BTreeSet::new(),
+            prover_options,
         }
+    }
+
+    pub fn prover_options(&self) -> &ProverOptions {
+        &self.prover_options
     }
 
     /// Counts system specs dynamically based on their module addresses.
@@ -242,6 +247,7 @@ impl FunctionTargetsHolder {
             skip_specs: instance.skip_specs,
             filter: instance.filter,
             abort_check_functions: instance.abort_check_functions,
+            prover_options: instance.prover_options,
         }
     }
 
@@ -285,6 +291,7 @@ impl FunctionTargetsHolder {
             skip_specs: instance.skip_specs,
             filter: instance.filter,
             abort_check_functions: instance.abort_check_functions,
+            prover_options: instance.prover_options,
         }
     }
 

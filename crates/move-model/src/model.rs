@@ -379,7 +379,7 @@ impl QualifiedInstId<DatatypeId> {
 /// # Verification Scope
 
 /// Defines what functions to verify.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd)]
 pub enum VerificationScope {
     /// Verify only public functions.
     Public,
