@@ -336,13 +336,15 @@ impl<'env> BoogieTranslator<'env> {
 
                 match self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
                     Some(spec_qid) if !self.targets.omits_opaque(spec_qid) => {
-                        FunctionTranslator::new(
-                            self,
-                            &fun_target,
-                            &[],
-                            FunctionTranslationStyle::Default,
-                        )
-                        .translate();
+                        if self.targets.is_verified_spec(spec_qid) {
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
+                        }
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -422,10 +424,12 @@ impl<'env> BoogieTranslator<'env> {
             .scenario_specs()
             .contains(&fun_env.get_qualified_id())
         {
-            if self.targets.has_target(
-                fun_env,
-                &FunctionVariant::Verification(VerificationFlavor::Regular),
-            ) {
+            if self.targets.is_verified_spec(&fun_env.get_qualified_id())
+                && self.targets.has_target(
+                    fun_env,
+                    &FunctionVariant::Verification(VerificationFlavor::Regular),
+                )
+            {
                 let fun_target = self.targets.get_target(
                     fun_env,
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
@@ -438,13 +442,13 @@ impl<'env> BoogieTranslator<'env> {
             return;
         }
 
-        self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
         if self.options.boogie_file_mode == BoogieFileMode::All
             || self.targets.is_verified_spec(&fun_env.get_qualified_id())
         {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
@@ -669,10 +673,7 @@ impl<'env> BoogieTranslator<'env> {
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if style == FunctionTranslationStyle::Default
             || style == FunctionTranslationStyle::Asserts
-            || style == FunctionTranslationStyle::Aborts
             || style == FunctionTranslationStyle::SpecNoAbortCheck
-            || style == FunctionTranslationStyle::Opaque
-        // this is for the $opaque signature
         {
             FunctionTranslator::new(self, &fun_target, &[], style).translate();
         }
@@ -680,13 +681,38 @@ impl<'env> BoogieTranslator<'env> {
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
             if self
                 .targets
-                .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
-                .is_none()
+                .scenario_specs()
+                .contains(&fun_target.func_env.get_qualified_id())
             {
-                // is scenario spec
+                if self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+                    && style == FunctionTranslationStyle::Aborts
+                {
+                    FunctionTranslator::new(self, &fun_target, &[], style).translate();
+                }
                 return;
             }
-            mono_analysis::get_info(self.env)
+
+            if self.options.func_abort_check_only
+                && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                && style == FunctionTranslationStyle::Opaque
+            {
+                mono_analysis::get_info(self.env)
+                    .funs
+                    .get(&(
+                        fun_target.func_env.get_qualified_id(),
+                        FunctionVariant::Baseline,
+                    ))
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .for_each(|type_inst| {
+                        FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                    });
+                return;
+            }
+
+            let mut type_insts = mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
                     *self
@@ -696,21 +722,22 @@ impl<'env> BoogieTranslator<'env> {
                     FunctionVariant::Baseline,
                 ))
                 .unwrap_or(&BTreeSet::new())
-                .iter()
-                .for_each(|type_inst| {
-                    // Skip the none instantiation (i.e., each type parameter is
-                    // instantiated to itself as a concrete type). This has the same
-                    // effect as `type_inst: &[]` and is already captured above.
-                    let is_none_inst = type_inst
-                        .iter()
-                        .enumerate()
-                        .all(|(i, t)| matches!(t, Type::TypeParameter(idx) if *idx == i as u16));
-                    if is_none_inst {
-                        return;
-                    }
-
-                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
-                });
+                .clone();
+            if self.options.spec_no_abort_check_only
+                && !self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+            {
+                // add the identity type instance, if it's not already in the set
+                type_insts.insert(
+                    (0..fun_target.func_env.get_type_parameter_count())
+                        .map(|i| Type::TypeParameter(i as u16))
+                        .collect(),
+                );
+            }
+            for type_inst in type_insts {
+                FunctionTranslator::new(self, &fun_target, &type_inst, style).translate();
+            }
         }
     }
 
