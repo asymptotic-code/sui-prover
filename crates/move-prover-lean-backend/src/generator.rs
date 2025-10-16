@@ -38,9 +38,9 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     error_writer: &mut W,
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
-    create_init_num_operation_state(env, &options.prover);
 
-    let (targets, _err_processor) = create_and_process_bytecode(&options, env);
+    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), None);
+    let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
 
     check_errors(
         env,
@@ -70,17 +70,17 @@ pub fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
-    targets: &FunctionTargetsHolder,
+    all_targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
 
-    for target in targets.specs() {
-        if !env.get_function(*target).module_env.is_target() || !targets.is_verified_spec(target) {
+    for target in all_targets.specs() {
+        if !env.get_function(*target).module_env.is_target() || !all_targets.is_verified_spec(target) {
             continue;
         }
 
         let fun_env = env.get_function(*target);
-        let has_target = targets.has_target(
+        let has_target = all_targets.has_target(
             &env.get_function(*target),
             &FunctionVariant::Verification(VerificationFlavor::Regular),
         );
@@ -90,7 +90,10 @@ pub fn run_prover_function_mode<W: WriteColor>(
             println!("🔄 {file_name}");
         }
 
-        let new_targets = FunctionTargetsHolder::new_with_qid(options.prover.clone(), *target);
+        env.cleanup();
+        let mut new_targets = FunctionTargetsHolder::new_with_qid(options.prover.clone(), *target);
+        create_and_process_bytecode(&options, env, &mut new_targets);
+
         let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
 
         check_errors(
@@ -168,8 +171,9 @@ pub fn verify_lean(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
-) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), None);
+    targets: &mut FunctionTargetsHolder,
+) -> Option<String> {
+    create_init_num_operation_state(env, &options.prover);
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -204,20 +208,12 @@ pub fn create_and_process_bytecode(
             .into_os_string()
             .into_string()
             .unwrap();
-        pipeline.run_with_dump(env, &mut targets, &dump_file_base, options.prover.dump_cfg)
+        pipeline.run_with_dump(env, targets, &dump_file_base, options.prover.dump_cfg)
     } else {
-        pipeline.run(env, &mut targets)
+        pipeline.run(env, targets)
     };
 
-    // println!(
-    //     "{}",
-    //     mono_analysis::MonoInfoCFGDisplay {
-    //         info: &mono_analysis::get_info(env),
-    //         env
-    //     }
-    // );
-
-    (targets, res.err().map(|p| p.name()))
+    res.err().map(|p| p.name())
 }
 
 pub fn check_errors<W: WriteColor>(
