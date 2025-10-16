@@ -71,9 +71,18 @@ pub struct GlobalNumberOperationState {
     pub exp_operation_map: ExpMap,
     // Each field in the struct has a corresponding NumOperation
     pub struct_operation_map: StructOperationMap,
+    // Options from the prover
+    pub prover_options: ProverOptions,
 }
 
 impl GlobalNumberOperationState {
+    pub fn new_with_options(prover_options: ProverOptions) -> Self {
+        Self {
+            prover_options,
+            ..Default::default()
+        }
+    }
+
     /// Parse pragma bv=b"..." and pragma bv_ret=b"...", the result is a list of position (starting from 0)
     /// in the argument list of the function
     /// or a struct definition
@@ -92,8 +101,8 @@ impl GlobalNumberOperationState {
 
     /// Determine the default NumOperation for a given type
     /// Returns Arithmetic for number types, Bottom for non-number types
-    pub fn get_default_operation_for_type(ty: &Type, env: &GlobalEnv) -> NumOperation {
-        let bv_int_encoding = ProverOptions::get(env).bv_int_encoding;
+    pub fn get_default_operation_for_type(&self, ty: &Type) -> NumOperation {
+        let bv_int_encoding = self.prover_options.bv_int_encoding;
         let base_type = match ty {
             Type::Reference(_, tr) => tr,
             Type::Vector(tr) => tr,
@@ -238,7 +247,7 @@ impl GlobalNumberOperationState {
                 let local_ty = func_env.get_local_type(i);
                 default_map.insert(
                     i,
-                    Self::get_default_operation_for_type(&local_ty, &func_env.module_env.env),
+                    self.get_default_operation_for_type(&local_ty),
                 );
             }
         }
@@ -251,7 +260,7 @@ impl GlobalNumberOperationState {
                 let ret_ty = func_env.get_return_type(i);
                 default_ret_operation_map.insert(
                     i,
-                    Self::get_default_operation_for_type(&ret_ty, &func_env.module_env.env),
+                    self.get_default_operation_for_type(&ret_ty),
                 );
             }
         }
@@ -286,7 +295,7 @@ impl GlobalNumberOperationState {
                 let field_ty = field.get_type();
                 field_oper_map.insert(
                     field.get_id(),
-                    Self::get_default_operation_for_type(&field_ty, &struct_env.module_env.env),
+                    self.get_default_operation_for_type(&field_ty),
                 );
             }
         }

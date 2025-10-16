@@ -702,7 +702,7 @@ impl<'env> LeanTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = FunctionTargetsHolder::new(self.targets.prover_options().clone(), None);
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -1683,7 +1683,7 @@ impl FunctionTranslator<'_> {
                             let caller_fid = self.fun_target.get_id();
                             let fun_verified =
                                 !self.fun_target.func_env.is_explicitly_not_verified(
-                                    &ProverOptions::get(self.fun_target.global_env()).verify_scope,
+                                    &self.parent.targets.prover_options().verify_scope,
                                 );
                             let mut fun_name = lean_function_name(
                                 &callee_env,

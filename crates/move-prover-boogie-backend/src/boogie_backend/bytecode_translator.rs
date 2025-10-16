@@ -34,7 +34,7 @@ use move_stackless_bytecode::{
     }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
-    }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
+    }, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind, QuantifierType,
     }, verification_analysis
@@ -666,7 +666,7 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = FunctionTargetsHolder::new(self.targets.prover_options().clone(), None);
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -766,7 +766,7 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = FunctionTargetsHolder::new(self.targets.prover_options().clone(), None);
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -2779,7 +2779,7 @@ impl<'env> FunctionTranslator<'env> {
                             let caller_fid = self.fun_target.get_id();
                             let fun_verified =
                                 !self.fun_target.func_env.is_explicitly_not_verified(
-                                    &ProverOptions::get(self.fun_target.global_env()).verify_scope,
+                                    &self.parent.targets.prover_options().verify_scope,
                                 );
                             let mut fun_name = boogie_function_name(
                                 &callee_env,
@@ -3801,7 +3801,7 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        if ProverOptions::get(env).bv_int_encoding {
+                        if self.parent.targets.prover_options().bv_int_encoding {
                             emitln!(
                                 self.writer(),
                                 "call {} := {}Int'u{}'({}, {});",
@@ -3935,7 +3935,7 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        let code_val = if ProverOptions::get(env).bv_int_encoding {
+                        let code_val = if self.parent.targets.prover_options().bv_int_encoding {
                             "$abort_code"
                         } else {
                             "$int2bv.64($abort_code)"
@@ -4026,7 +4026,7 @@ impl<'env> FunctionTranslator<'env> {
                     );
                 }
                 let src_str = str_local(*src);
-                let src_val = if ProverOptions::get(env).bv_int_encoding {
+                let src_val = if self.parent.targets.prover_options().bv_int_encoding {
                     src_str
                 } else {
                     format!("$bv2int.64({})", src_str)

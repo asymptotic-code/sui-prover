@@ -2,12 +2,12 @@
 use std::cell::RefCell;
 use crate::generator_options::Options;
 use anyhow::anyhow;
-use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::model::GlobalEnv;
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
+use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::pipeline_factory;
 use std::fs;
 use std::path::Path;
@@ -18,8 +18,8 @@ use crate::add_prelude;
 use crate::lean_backend::bytecode_translator::LeanTranslator;
 use crate::lean_backend::lean_wrapper::LeanWrapper;
 
-pub fn create_init_num_operation_state(env: &GlobalEnv) {
-    let mut global_state: GlobalNumberOperationState = Default::default();
+pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
+    let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
     for module_env in env.get_modules() {
         for struct_env in module_env.get_structs() {
             global_state.create_initial_struct_oper_state(&struct_env);
@@ -38,8 +38,7 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     error_writer: &mut W,
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
-    env.set_extension(options.prover.clone());
-    create_init_num_operation_state(env);
+    create_init_num_operation_state(env, &options.prover);
 
     let (targets, _err_processor) = create_and_process_bytecode(&options, env);
 
@@ -170,7 +169,7 @@ pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new(None);
+    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), None);
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");

@@ -14,7 +14,6 @@ use std::fmt::{self, Formatter};
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    options::ProverOptions,
 };
 use move_model::model::{FunId, QualifiedId};
 
@@ -83,7 +82,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
-        let fun_name = fun_env.get_full_name_str();
 
         // Rule 0a: mark essential functions that are needed for the verification pipeline
         let info = data
@@ -134,7 +132,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
             if targets.is_spec(&fun_env.get_qualified_id())
-                && Self::is_within_verification_scope(fun_env)
+                && Self::is_within_verification_scope(fun_env, &targets)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
                 // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
@@ -310,8 +308,8 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         writeln!(f, "]")
     }
 
-    fn initialize(&self, env: &GlobalEnv, _targets: &mut FunctionTargetsHolder) {
-        let options = ProverOptions::get(env);
+    fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        let options = targets.prover_options();
 
         // If we are verifying only one function or module, check that this indeed exists.
         match &options.verify_scope {
@@ -461,10 +459,8 @@ impl VerificationAnalysisProcessor {
     }
 
     /// Check whether the function falls within the verification scope given in the options
-    fn is_within_verification_scope(fun_env: &FunctionEnv) -> bool {
-        let env = fun_env.module_env.env;
-        let options = ProverOptions::get(env);
-        match &options.verify_scope {
+    fn is_within_verification_scope(fun_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> bool {
+        match &targets.prover_options().verify_scope {
             VerificationScope::Public => fun_env.is_exposed(),
             VerificationScope::All => true,
             VerificationScope::Only(name) => fun_env.matches_name(name),
