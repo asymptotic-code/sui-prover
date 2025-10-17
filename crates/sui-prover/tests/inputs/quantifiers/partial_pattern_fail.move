@@ -10,13 +10,13 @@ use prover::vector_iter::{begin_map_lambda};
 fun test_1_spec() {
     let v = vector[0u64, 10, 20, 10, 30];
     let x = begin_map_lambda<u64>(&v);
-    ensures(x > 0);
+    ensures(*x > 0);
 }
 
 #[spec(prove)]
 fun test_2_spec() {
     let positive = begin_forall_lambda();
-    ensures(positive);
+    ensures(*positive);
 }
 
 #[spec(prove)]
