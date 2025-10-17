@@ -371,6 +371,21 @@ procedure {:inline 1} $1_vector_skip{{S}}(v: Vec ({{T}}), n: int) returns (res: 
 function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
+
+procedure {:inline 1} $0_vec_sum{{S}}(v: Vec int) returns (res: int) {
+    res := $0_vec_sum_range(v, 0, LenVec(v));
+}
+
+procedure {:inline 1} $0_vec_slice{{S}}(v: Vec int, start: int, end: int) returns (res: Vec int) {
+    var len: int;
+    len := LenVec(v);
+    if (start > len || end < start) {
+        res := EmptyVec();
+        return;
+    }
+    res := SliceVec(v, start, end - start + 1);
+}
+
 {% endmacro vector_module %}
 
 {# VecSet
