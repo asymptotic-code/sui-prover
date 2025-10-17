@@ -2658,6 +2658,12 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
+                            && self.style == FunctionTranslationStyle::Default
+                        {
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
                             && self.style == FunctionTranslationStyle::Asserts
                         {
                             emitln!(
