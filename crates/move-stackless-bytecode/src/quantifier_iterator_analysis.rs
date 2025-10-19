@@ -81,13 +81,6 @@ impl QuantifierIteratorAnalysisProcessor {
         }
     }
 
-    fn is_trace_local(&self, bc: &Bytecode) -> bool {
-        match bc {
-            Bytecode::Call(_, _, op, _, _) => matches!(op, Operation::TraceLocal(_)),
-            _ => false,
-        }
-    }
-
     fn is_searched_fn(&self, bc: &Bytecode, qid: QualifiedId<FunId>) -> bool {
         match bc {
             Bytecode::Call(_, _, operation, _, _) => {
@@ -130,22 +123,21 @@ impl QuantifierIteratorAnalysisProcessor {
     }
 
     pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, pattern: &QuantifierPattern, bc: &Vec<Bytecode>) -> Vec<Bytecode> {
-        let chain_len = 5;
+        let chain_len = 4;
         if bc.len() < chain_len {
             return bc.to_vec();
         }
 
         for i in 0..bc.len() - (chain_len - 1) {
             if 
-                self.is_searched_fn(&bc[i], pattern.start_qid) &&
-                self.is_trace_local(&bc[i + 1]) &&
-                self.is_fn_call(&bc[i + 2]) && 
-                self.is_destroy(&bc[i + 3]) &&
-                self.is_searched_fn(&bc[i + 4], pattern.end_qid) 
+                self.is_searched_fn(&bc[i], pattern.start_qid) && // start function
+                self.is_fn_call(&bc[i + 1]) && // actual function call
+                self.is_destroy(&bc[i + 2]) && // destroy 
+                self.is_searched_fn(&bc[i + 3], pattern.end_qid) // end function
             {
-                let (attr_id, _, _, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 2]);
+                let (attr_id, _, _, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 1]);
                 let (_, _, srcs, _, _) = self.extract_fn_call_data(&bc[i]);
-                let (_, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 4]);
+                let (_, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 3]);
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
                     return bc.to_vec();
