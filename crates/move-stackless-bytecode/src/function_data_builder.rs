@@ -334,10 +334,7 @@ impl<'env> FunctionDataBuilder<'env> {
             self.data.variant == FunctionVariant::Baseline,
         ) {
             Some(num_oper) => *num_oper,
-            None => GlobalNumberOperationState::get_default_operation_for_type(
-                &self.get_local_type(temp),
-                self.global_env(),
-            ),
+            None => global_state.get_default_operation_for_type(&self.get_local_type(temp)),
         };
         self.fun_env
             .module_env

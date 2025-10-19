@@ -15,7 +15,6 @@ use crate::{
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::{Graph, NaturalLoop},
     move_loop_invariants,
-    options::ProverOptions,
     spec_global_variable_analysis,
     stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
@@ -86,7 +85,7 @@ impl FunctionTargetProcessor for LoopAnalysisProcessor {
         // println!("after {}:", self.name());
         // println!("{}", FunctionTarget::new(func_env, &result));
         // result
-        Self::transform(func_env, data, &loop_annotation)
+        Self::transform(targets, func_env, data, &loop_annotation)
     }
 
     fn name(&self) -> String {
@@ -112,11 +111,12 @@ impl LoopAnalysisProcessor {
     ///     - In the source block of the back edge, replace the last statement (must be a jump or
     ///       branch) with the new label of X.
     fn transform(
+        targets: &FunctionTargetsHolder,
         func_env: &FunctionEnv<'_>,
         data: FunctionData,
         loop_annotation: &LoopAnnotation,
     ) -> FunctionData {
-        let options = ProverOptions::get(func_env.module_env.env);
+        let options = targets.prover_options();
 
         let ensures_requires_subst = BTreeMap::from_iter(vec![(
             Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),

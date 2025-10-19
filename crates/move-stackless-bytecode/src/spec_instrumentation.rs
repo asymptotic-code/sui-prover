@@ -108,7 +108,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
             return data;
         }
 
-        let options = ProverOptions::get(fun_env.module_env.env);
+        let options = targets.prover_options().clone();
         let verification_info =
             verification_analysis::get_info(&FunctionTarget::new(fun_env, &data));
         let is_verified = verification_info.verified;
@@ -120,7 +120,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
             let mut verification_data =
                 data.fork(FunctionVariant::Verification(VerificationFlavor::Regular));
             verification_data =
-                Instrumenter::run(&options, targets, fun_env, verification_data, scc_opt);
+                Instrumenter::run(&options.clone(), targets, fun_env, verification_data, scc_opt);
             targets.insert_target_data(
                 &fun_env.get_qualified_id(),
                 verification_data.variant.clone(),
@@ -134,7 +134,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
                 .get_fun_by_spec(&fun_env.get_qualified_id())
                 .is_some()
         {
-            Instrumenter::run(&options, targets, fun_env, data, scc_opt)
+            Instrumenter::run(&options.clone(), targets, fun_env, data, scc_opt)
         } else {
             // Clear code but keep function data stub.
             // TODO(refactoring): the stub is currently still needed because boogie_wrapper

@@ -6,20 +6,20 @@ use anyhow::anyhow;
 use codespan_reporting::{diagnostic::Severity, term::termcolor::Buffer};
 use move_command_line_common::insta_assert;
 use move_compiler::{diagnostics::warning_filters::WarningFiltersBuilder, shared::PackagePaths};
-use move_model::{model::GlobalEnv, options::ModelBuilderOptions, run_model_builder_with_options};
+use move_model::{model::GlobalEnv, run_model_builder_with_options};
 use move_stackless_bytecode::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
-        FunctionTargetPipeline, FunctionTargetsHolder, ProcessorResultDisplay,
+        FunctionHolderTarget, FunctionTargetPipeline,
+        FunctionTargetsHolder, ProcessorResultDisplay,
     },
     livevar_analysis::LiveVarAnalysisProcessor,
     memory_instrumentation::MemoryInstrumentationProcessor,
     mut_ref_instrumentation::MutRefInstrumenter,
     options::ProverOptions,
-    print_targets_for_test,
     reaching_def_analysis::ReachingDefProcessor,
 };
 use regex::Regex;
@@ -138,7 +138,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
     // Allow opting out of external deps (e.g., move-stdlib) so isolated tests can run
     // without requiring a local stdlib checkout. Set env var `STACKLESS_TEST_IGNORE_DEPS=1`.
     let ignore_deps = std::env::var("STACKLESS_TEST_IGNORE_DEPS").is_ok();
-    let mut sources = if ignore_deps {
+    let sources = if ignore_deps {
         vec![path.to_string_lossy().to_string()]
     } else {
         let mut deps = extract_test_directives(path, "// dep:")?;
@@ -154,7 +154,6 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
             named_address_map: move_stdlib::named_addresses(),
         }],
         vec![],
-        ModelBuilderOptions::default(),
         Some(WarningFiltersBuilder::unused_warnings_filter_for_test()),
     )?;
     let out = if env.has_errors() {
@@ -166,7 +165,6 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
             stable_test_output: true,
             ..Default::default()
         };
-        env.set_extension(options);
         let dir_name = path
             .parent()
             .and_then(|p| p.file_name())
@@ -176,7 +174,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Initialize and print function targets
         let mut text = String::new();
-        let mut targets = FunctionTargetsHolder::new(None);
+        let mut targets = FunctionTargetsHolder::new(options, Default::default(), FunctionHolderTarget::None);
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
                 targets.add_target(&func_env);

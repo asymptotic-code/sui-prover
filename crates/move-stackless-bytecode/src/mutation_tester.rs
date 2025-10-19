@@ -16,7 +16,6 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    options::ProverOptions,
     stackless_bytecode::{Bytecode, Operation},
 };
 
@@ -67,8 +66,8 @@ fn mutate_arith(
 }
 
 impl FunctionTargetProcessor for MutationTester {
-    fn initialize(&self, global_env: &GlobalEnv, _targets: &mut FunctionTargetsHolder) {
-        let options = ProverOptions::get(global_env);
+    fn initialize(&self, global_env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        let options = targets.prover_options();
         let m = global_env.get_extension::<MutationManager>();
         match m {
             Some(x) => global_env.set_extension(MutationManager { ..*x }),

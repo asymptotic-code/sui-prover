@@ -24,12 +24,15 @@ use move_model::{
 };
 
 use crate::{
-    function_target::{FunctionData, FunctionTarget},
-    print_targets_for_test,
-    stackless_bytecode_generator::StacklessBytecodeGenerator,
-    stackless_control_flow_graph::generate_cfg_in_dot_format, 
-    target_filter::TargetFilterOptions,
+    function_target::{FunctionData, FunctionTarget}, options::ProverOptions, print_targets_for_test, stackless_bytecode_generator::StacklessBytecodeGenerator, stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions
 };
+
+#[derive(Debug, Clone)]
+pub enum FunctionHolderTarget {
+    None,
+    Function(QualifiedId<FunId>),
+    Module(ModuleId),
+}
 
 /// A data structure which holds data for multiple function targets, and allows to
 /// manipulate them as part of a transformation pipeline.
@@ -47,7 +50,9 @@ pub struct FunctionTargetsHolder {
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
+    target: FunctionHolderTarget,
     filter: TargetFilterOptions,
+    prover_options: ProverOptions,
 }
 
 /// Describes a function verification flavor.
@@ -179,7 +184,11 @@ pub struct FunctionTargetPipeline {
 }
 
 impl FunctionTargetsHolder {
-    pub fn new(filter: Option<TargetFilterOptions>) -> Self {
+    pub fn new(
+        prover_options: ProverOptions,
+        filter: TargetFilterOptions,
+        target: FunctionHolderTarget,
+    ) -> Self {
         Self {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
@@ -192,9 +201,23 @@ impl FunctionTargetsHolder {
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
-            filter: filter.unwrap_or_default(),
             abort_check_functions: BTreeSet::new(),
+            prover_options,
+            filter,
+            target,
         }
+    }
+
+    pub fn new_dummy(&self) -> Self {
+        Self::new(
+            self.prover_options.clone(),
+            TargetFilterOptions::default(),
+            FunctionHolderTarget::None,
+        )
+    }
+
+    pub fn prover_options(&self) -> &ProverOptions {
+        &self.prover_options
     }
 
     /// Counts system specs dynamically based on their module addresses.
@@ -218,74 +241,6 @@ impl FunctionTargetsHolder {
         }
 
         system_specs_count
-    }
-
-    pub fn for_one_spec(target: &QualifiedId<FunId>, instance: FunctionTargetsHolder) -> Self {
-        let mut focus_specs = BTreeSet::new();
-        focus_specs.insert(*target);
-
-        let mut no_specs = instance.no_focus_specs.clone();
-        no_specs.append(&mut instance.no_verify_specs.clone());
-        no_specs.remove(target);
-
-        Self {
-            targets: instance.targets,
-            function_specs: instance.function_specs,
-            no_verify_specs: no_specs.clone(),
-            no_focus_specs: no_specs.clone(),
-            focus_specs: focus_specs,
-            ignore_aborts: instance.ignore_aborts,
-            scenario_specs: instance.scenario_specs,
-            datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules,
-            omit_opaque_specs: instance.omit_opaque_specs,
-            skip_specs: instance.skip_specs,
-            filter: instance.filter,
-            abort_check_functions: instance.abort_check_functions,
-        }
-    }
-
-    pub fn for_one_module(
-        target: &ModuleId,
-        instance: FunctionTargetsHolder,
-        env: &GlobalEnv,
-    ) -> Self {
-        let mut focus_specs = BTreeSet::new();
-        let mut no_focus_specs = BTreeSet::new();
-        no_focus_specs.append(&mut instance.no_focus_specs.clone());
-
-        let mut no_verify_specs: BTreeSet<QualifiedId<FunId>> = BTreeSet::new();
-        no_verify_specs.append(&mut instance.no_verify_specs.clone());
-
-        for id in instance.focus_specs() {
-            if env.get_function(*id).module_env.get_id() == *target {
-                focus_specs.insert(*id);
-            } else {
-                no_focus_specs.insert(*id);
-            }
-        }
-
-        for (id, _) in instance.function_specs() {
-            if env.get_function(*id).module_env.get_id() != *target {
-                no_verify_specs.insert(*id);
-            }
-        }
-
-        Self {
-            focus_specs,
-            no_focus_specs,
-            no_verify_specs,
-            targets: instance.targets,
-            function_specs: instance.function_specs,
-            ignore_aborts: instance.ignore_aborts,
-            scenario_specs: instance.scenario_specs,
-            datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules,
-            omit_opaque_specs: instance.omit_opaque_specs,
-            skip_specs: instance.skip_specs,
-            filter: instance.filter,
-            abort_check_functions: instance.abort_check_functions,
-        }
     }
 
     /// Get an iterator for all functions this holder.
@@ -465,7 +420,11 @@ impl FunctionTargetsHolder {
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
-            let targeted = self.filter.is_targeted(func_env);
+            let targeted = match self.target {
+                FunctionHolderTarget::None => self.filter.is_targeted(func_env),
+                FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
+                FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
+            };
 
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
