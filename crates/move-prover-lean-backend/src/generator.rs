@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::model::GlobalEnv;
-use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
+use move_stackless_bytecode::function_target_pipeline::{FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
 use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::pipeline_factory;
@@ -39,8 +39,8 @@ pub fn run_move_prover_with_model<W: WriteColor>(
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), None);
-    let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
+    let target_type = FunctionHolderTarget::None;
+    let (targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
 
     check_errors(
         env,
@@ -91,8 +91,8 @@ pub fn run_prover_function_mode<W: WriteColor>(
         }
 
         env.cleanup();
-        let mut new_targets = FunctionTargetsHolder::new_with_qid(options.prover.clone(), *target);
-        create_and_process_bytecode(&options, env, &mut new_targets);
+        let target_type = FunctionHolderTarget::Function(*target);
+        let (new_targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
 
         let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
 
@@ -171,9 +171,17 @@ pub fn verify_lean(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
-    targets: &mut FunctionTargetsHolder,
-) -> Option<String> {
+    target_type: FunctionHolderTarget,
+) -> (FunctionTargetsHolder, Option<String>) {
+    // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
+
+    let mut targets = FunctionTargetsHolder::new(
+        options.prover.clone(),
+        Default::default(),
+        target_type,
+    );
+
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -191,7 +199,7 @@ pub fn create_and_process_bytecode(
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            targets.add_target(&func_env);
         }
     }
 
@@ -208,12 +216,12 @@ pub fn create_and_process_bytecode(
             .into_os_string()
             .into_string()
             .unwrap();
-        pipeline.run_with_dump(env, targets, &dump_file_base, options.prover.dump_cfg)
+        pipeline.run_with_dump(env, &mut targets, &dump_file_base, options.prover.dump_cfg)
     } else {
-        pipeline.run(env, targets)
+        pipeline.run(env, &mut targets)
     };
 
-    res.err().map(|p| p.name())
+    (targets, res.err().map(|p| p.name()))
 }
 
 pub fn check_errors<W: WriteColor>(

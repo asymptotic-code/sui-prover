@@ -27,6 +27,13 @@ use crate::{
     function_target::{FunctionData, FunctionTarget}, options::ProverOptions, print_targets_for_test, stackless_bytecode_generator::StacklessBytecodeGenerator, stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions
 };
 
+#[derive(Debug, Clone)]
+pub enum FunctionHolderTarget {
+    None,
+    Function(QualifiedId<FunId>),
+    Module(ModuleId),
+}
+
 /// A data structure which holds data for multiple function targets, and allows to
 /// manipulate them as part of a transformation pipeline.
 #[derive(Debug, Clone)]
@@ -43,8 +50,7 @@ pub struct FunctionTargetsHolder {
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
-    target_function: Option<QualifiedId<FunId>>,
-    target_module: Option<ModuleId>,
+    target: FunctionHolderTarget,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -180,7 +186,8 @@ pub struct FunctionTargetPipeline {
 impl FunctionTargetsHolder {
     pub fn new(
         prover_options: ProverOptions,
-        filter: Option<TargetFilterOptions>,
+        filter: TargetFilterOptions,
+        target: FunctionHolderTarget,
     ) -> Self {
         Self {
             targets: BTreeMap::new(),
@@ -194,34 +201,19 @@ impl FunctionTargetsHolder {
             scenario_specs: BTreeSet::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
-            filter: filter.unwrap_or_default(),
             abort_check_functions: BTreeSet::new(),
             prover_options,
-            target_function: None,
-            target_module: None,
+            filter,
+            target,
         }
     }
 
-     pub fn new_with_qid(
-        prover_options: ProverOptions,
-        target_function: QualifiedId<FunId>,
-    ) -> Self {
-        let obj = Self::new(prover_options, None);
-        Self {
-            target_function: Some(target_function),
-            ..obj
-        }
-    }
-
-    pub fn new_with_mid(
-        prover_options: ProverOptions,
-        target_module: ModuleId,
-    ) -> Self {
-        let obj = Self::new(prover_options, None);
-        Self {
-            target_module: Some(target_module),
-            ..obj
-        }
+    pub fn new_dummy(&self) -> Self {
+        Self::new(
+            self.prover_options.clone(),
+            TargetFilterOptions::default(),
+            FunctionHolderTarget::None,
+        )
     }
 
     pub fn prover_options(&self) -> &ProverOptions {
@@ -428,18 +420,10 @@ impl FunctionTargetsHolder {
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
-            let targeted = self.filter.is_targeted(func_env) && {
-                if let Some(target_function) = &self.target_function {
-                    func_env.get_qualified_id() == *target_function
-                } else {
-                    true
-                }
-            } && {
-                if let Some(target_module) = &self.target_module {
-                    func_env.module_env.get_id() == *target_module
-                } else {
-                    true
-                }
+            let targeted = match self.target {
+                FunctionHolderTarget::None => self.filter.is_targeted(func_env),
+                FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
+                FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
             };
 
             if *no_opaque {

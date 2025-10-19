@@ -22,7 +22,7 @@ use crate::boogie_backend::{
 };
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor, function_target_pipeline::{
-        FunctionTargetPipeline, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
+        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, FunctionVariant, VerificationFlavor
     }, number_operation::GlobalNumberOperationState, options::ProverOptions, pipeline_factory
 };
 use std::{
@@ -30,6 +30,7 @@ use std::{
     path::Path,
     time::Instant,
 };
+use futures::stream::{self, StreamExt};
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
     let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
@@ -91,8 +92,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
 
     // Create and process bytecode
     let now = Instant::now();
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), Some(options.filter.clone()));
-    let _err_processor = create_and_process_bytecode(&options, env, &mut targets);
+    let (targets, _err_processor) = create_and_process_bytecode(&options, env, FunctionHolderTarget::None);
     let trafo_duration = now.elapsed();
     check_errors(
         env,
@@ -230,9 +230,8 @@ fn generate_function_bpl<W: WriteColor>(
     env.cleanup();
 
     let file_name = env.get_function(*qid).get_full_name_str();
-    let mut targets = FunctionTargetsHolder::new_with_qid(options.prover.clone(), *qid);
-
-    create_and_process_bytecode(options, env, &mut targets);
+    let target_type = FunctionHolderTarget::Function(*qid);
+    let (mut targets, _) = create_and_process_bytecode(options, env, target_type);
 
     let (code_writer, types) = generate_boogie(env, &options, &mut targets)?;
 
@@ -255,9 +254,9 @@ fn generate_module_bpl<W: WriteColor>(
     env.cleanup();
 
     let file_name = env.get_module(*mid).get_full_name_str();
-    let mut targets = FunctionTargetsHolder::new_with_mid(options.prover.clone(), *mid);
+    let target_type = FunctionHolderTarget::Module(*mid);
 
-    create_and_process_bytecode(options, env, &mut targets);
+    let (mut targets, _) = create_and_process_bytecode(options, env, target_type);
 
     let (code_writer, types) = generate_boogie(env, &options, &mut targets)?;
 
@@ -342,20 +341,22 @@ pub async fn run_prover_gradual_mode<W: WriteColor>(
     }
 
     if options.remote.is_some() {
-        for batch in files.chunks(options.remote.as_ref().unwrap().concurrency) {
-            let results = futures::future::join_all(
-                batch.iter().map(|file| async {
+        let results = stream::iter(files)
+            .map(|file| {
+                async move {
                     let mut local_error_writer = Buffer::no_color();
-                    let is_error = verify_bpl(env, &mut local_error_writer, options, all_targets, file.clone()).await;
+                    let is_error = verify_bpl(env, &mut local_error_writer, options, all_targets, file).await;
                     (local_error_writer, is_error)
-                })
-            ).await;
-
-            for (writer, is_error) in results {
-                if is_error? {
-                    has_errors = true;
                 }
-                error_writer.write(&writer.into_inner())?;
+            })
+            .buffer_unordered(options.remote.as_ref().unwrap().concurrency)
+            .collect::<Vec<_>>()
+            .await;
+
+        for (local_error_writer, is_error) in results {
+            error_writer.write_all(&local_error_writer.into_inner())?;
+            if is_error? {
+                has_errors = true;
             }
         }
     } else {
@@ -488,10 +489,16 @@ pub async fn verify_boogie(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
-    targets: &mut FunctionTargetsHolder,
-) -> Option<String> {
+    target_type: FunctionHolderTarget,
+) -> (FunctionTargetsHolder, Option<String>) {
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
+
+    let mut targets = FunctionTargetsHolder::new(
+        options.prover.clone(),
+        options.filter.clone(),
+        target_type,
+    );
 
     let output_dir = Path::new(&options.output_path)
         .parent()
@@ -527,12 +534,12 @@ pub fn create_and_process_bytecode(
             .into_os_string()
             .into_string()
             .unwrap();
-        pipeline.run_with_dump(env, targets, &dump_file_base, options.prover.dump_cfg)
+        pipeline.run_with_dump(env, &mut targets, &dump_file_base, options.prover.dump_cfg)
     } else {
-        pipeline.run(env, targets)
+        pipeline.run(env, &mut targets)
     };
 
-    res.err().map(|p| p.name())
+    (targets, res.err().map(|p| p.name()))
 }
 
 // Tools using the Move prover top-level driver
@@ -568,7 +575,11 @@ fn run_docgen<W: WriteColor>(
 */
 
 fn run_escape(env: &GlobalEnv, options: &Options, now: Instant) {
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), Some(options.filter.clone()));
+    let mut targets = FunctionTargetsHolder::new(
+        options.prover.clone(),
+        options.filter.clone(),
+        FunctionHolderTarget::None,
+    );
     for module_env in env.get_modules() {
         for func_env in module_env.get_functions() {
             targets.add_target(&func_env);

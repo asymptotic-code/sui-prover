@@ -37,20 +37,6 @@ struct CodeWriterData {
     label_map: BTreeMap<ByteIndex, ByteIndex>,
 }
 
-impl Clone for CodeWriterData {
-    fn clone(&self) -> Self {
-        Self {
-            emit_hook: Box::new(|_| None), // NOTE: Cannot clone a closure, so use default. Hook is not used
-            output: self.output.clone(),
-            indent: self.indent,
-            current_location: self.current_location.clone(),
-            output_location_map: self.output_location_map.clone(),
-            label_map: self.label_map.clone(),
-        }
-    }
-}
-
-#[derive(Clone)]
 /// A helper to emit code. Supports indentation and maintains source to target location information.
 pub struct CodeWriter(RefCell<CodeWriterData>);
 

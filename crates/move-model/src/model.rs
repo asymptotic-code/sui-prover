@@ -741,7 +741,7 @@ impl GlobalEnv {
         self.diags
             .borrow()
             .iter()
-            .any(|(d, _)| d.eq(diag))
+            .any(|(d, _)| d == diag)
     }
 
     /// Clear all accumulated diagnosis.
@@ -883,10 +883,7 @@ impl GlobalEnv {
 
     /// Returns true if diagnostics have warning severity or worse.
     pub fn has_warnings(&self) -> bool {
-        self.diags
-            .borrow()
-            .iter()
-            .any(|(d, reported)| !reported && d.severity >= Severity::Warning)
+        self.diag_count(Severity::Warning) > 0
     }
 
     /// Writes accumulated diagnostics of given or higher severity.

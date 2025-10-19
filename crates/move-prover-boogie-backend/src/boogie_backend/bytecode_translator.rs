@@ -666,7 +666,7 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(self.targets.prover_options().clone(), None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -766,7 +766,7 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(self.targets.prover_options().clone(), None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
