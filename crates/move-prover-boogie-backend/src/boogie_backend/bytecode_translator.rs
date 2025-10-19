@@ -3924,6 +3924,12 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}(ReadVec($t{}, i)));", srcs[0], dests[0], fun_name, srcs[0]);
                             }
+                            QuantifierType::Any => {
+                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}(ReadVec($t{}, i)));", dests[0], srcs[0], fun_name, srcs[0]);
+                            }
+                            QuantifierType::All => {
+                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}(ReadVec($t{}, i)));", dests[0], srcs[0], fun_name, srcs[0]);
+                            }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }
                     },
