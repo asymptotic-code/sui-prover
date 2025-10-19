@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::model::GlobalEnv;
-use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
+use move_stackless_bytecode::function_target_pipeline::{FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
 use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::pipeline_factory;
@@ -38,9 +38,9 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     error_writer: &mut W,
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
-    create_init_num_operation_state(env, &options.prover);
 
-    let (targets, _err_processor) = create_and_process_bytecode(&options, env);
+    let target_type = FunctionHolderTarget::None;
+    let (targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
 
     check_errors(
         env,
@@ -70,17 +70,17 @@ pub fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
-    targets: &FunctionTargetsHolder,
+    all_targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
 
-    for target in targets.specs() {
-        if !env.get_function(*target).module_env.is_target() || !targets.is_verified_spec(target) {
+    for target in all_targets.specs() {
+        if !env.get_function(*target).module_env.is_target() || !all_targets.is_verified_spec(target) {
             continue;
         }
 
         let fun_env = env.get_function(*target);
-        let has_target = targets.has_target(
+        let has_target = all_targets.has_target(
             &env.get_function(*target),
             &FunctionVariant::Verification(VerificationFlavor::Regular),
         );
@@ -90,7 +90,10 @@ pub fn run_prover_function_mode<W: WriteColor>(
             println!("🔄 {file_name}");
         }
 
-        let new_targets = FunctionTargetsHolder::for_one_spec(target, targets.clone());
+        env.cleanup();
+        let target_type = FunctionHolderTarget::Function(*target);
+        let (new_targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
+
         let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
 
         check_errors(
@@ -168,8 +171,17 @@ pub fn verify_lean(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
+    target_type: FunctionHolderTarget,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), None);
+    // Populate initial number operation state for each function and struct based on the pragma
+    create_init_num_operation_state(env, &options.prover);
+
+    let mut targets = FunctionTargetsHolder::new(
+        options.prover.clone(),
+        Default::default(),
+        target_type,
+    );
+
     let output_dir = Path::new(&options.output_path)
         .parent()
         .expect("expect the parent directory of the output path to exist");
@@ -187,7 +199,7 @@ pub fn create_and_process_bytecode(
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
-            targets.add_target(&func_env)
+            targets.add_target(&func_env);
         }
     }
 
@@ -208,14 +220,6 @@ pub fn create_and_process_bytecode(
     } else {
         pipeline.run(env, &mut targets)
     };
-
-    // println!(
-    //     "{}",
-    //     mono_analysis::MonoInfoCFGDisplay {
-    //         info: &mono_analysis::get_info(env),
-    //         env
-    //     }
-    // );
 
     (targets, res.err().map(|p| p.name()))
 }

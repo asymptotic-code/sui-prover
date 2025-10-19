@@ -35,7 +35,7 @@ use itertools::Itertools;
 use log::{info, warn};
 use move_compiler::expansion;
 use move_ir_types::ast as IR;
-use num::BigUint;
+use num::{BigUint, Zero};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -517,6 +517,13 @@ impl GlobalEnv {
         }
     }
 
+    pub fn cleanup(&self) {
+        self.exp_info.borrow_mut().clear();
+        self.extensions.borrow_mut().clear();
+        self.global_id_counter.borrow_mut().set_zero();
+        self.next_free_node_id.borrow_mut().set_zero();
+    }
+
     /// Creates a display container for the given value. There must be an implementation
     /// of fmt::Display for an instance to work in formatting.
     pub fn display<'a, T>(&'a self, val: &'a T) -> EnvDisplay<'a, T> {
@@ -676,7 +683,11 @@ impl GlobalEnv {
 
     /// Adds diagnostic to the environment.
     pub fn add_diag(&self, diag: Diagnostic<FileId>) {
-        self.diags.borrow_mut().push((diag, false));
+        if self.has_diag(&diag) {
+            // Avoid adding the same diagnostic twice.
+            return;
+        }
+        self.diags.borrow_mut().push((diag.clone(), false));
     }
 
     /// Adds an error to this environment, without notes.
@@ -726,11 +737,11 @@ impl GlobalEnv {
     }
 
     /// Checks whether any of the diagnostics contains string.
-    pub fn has_diag(&self, pattern: &str) -> bool {
+    pub fn has_diag(&self, diag: &Diagnostic<FileId>) -> bool {
         self.diags
             .borrow()
             .iter()
-            .any(|(d, _)| d.message.contains(pattern))
+            .any(|(d, _)| d == diag)
     }
 
     /// Clear all accumulated diagnosis.
@@ -861,7 +872,7 @@ impl GlobalEnv {
         self.diags
             .borrow()
             .iter()
-            .filter(|(d, _)| d.severity >= min_severity)
+            .filter(|(d, reported)| !reported && d.severity >= min_severity)
             .count()
     }
 
@@ -872,10 +883,7 @@ impl GlobalEnv {
 
     /// Returns true if diagnostics have warning severity or worse.
     pub fn has_warnings(&self) -> bool {
-        self.diags
-            .borrow()
-            .iter()
-            .any(|(d, _)| d.severity >= Severity::Warning)
+        self.diag_count(Severity::Warning) > 0
     }
 
     /// Writes accumulated diagnostics of given or higher severity.
@@ -889,23 +897,20 @@ impl GlobalEnv {
         writer: &mut W,
         filter: F,
     ) {
-        let mut shown = BTreeSet::new();
-        self.diags.borrow_mut().retain(|(diag, _)| {
-            if filter(diag) {
-                let mut d = diag.clone();
-                // Avoid showing the same message twice. This can happen e.g. because of
-                // duplication of expressions via schema inclusion.
-                d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
+        self.diags
+            .borrow_mut()
+            .iter_mut()
+            .for_each(|(diag, reported)| {
+                if !*reported && filter(diag) {
+                    let mut d = diag.clone();
+                    d.notes = d.notes.iter().map(|n| filter_out_sensetives(n)).collect();
 
-                if shown.insert(format!("{:?}", d)) {
                     emit(writer, &Config::default(), &self.source_files, &d)
                         .expect("emit must not fail");
+                    *reported = true;
                 }
-                false
-            } else {
-                true
             }
-        })
+        );
     }
 
     /// Adds a new module to the environment. StructData and FunctionData need to be provided

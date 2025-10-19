@@ -3,7 +3,7 @@ use move_model::model::{FunctionEnv, GlobalEnv};
 use termcolor::Buffer;
 use std::path::{Path,PathBuf};
 use move_package::{package_lock::PackageLock, source_package::layout::SourcePackageLayout, BuildConfig as MoveBuildConfig};
-use move_stackless_bytecode::function_target_pipeline::{FunctionTargetPipeline, FunctionTargetsHolder};
+use move_stackless_bytecode::function_target_pipeline::{FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder};
 use codespan_reporting::diagnostic::Severity;
 
 use crate::{legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps};
@@ -79,7 +79,11 @@ pub fn build_model_with_target(path: Option<&Path>) -> anyhow::Result<(GlobalEnv
         return Err(anyhow::anyhow!("Move Model compiled with errors.\n{}", diagnostic_output));
     }
 
-    let mut targets = FunctionTargetsHolder::new(Default::default(), None);
+    let mut targets = FunctionTargetsHolder::new(
+        Default::default(),
+        Default::default(),
+        FunctionHolderTarget::None,
+    );
 
     for module in model.get_modules() {
         for func_env in module.get_functions() {

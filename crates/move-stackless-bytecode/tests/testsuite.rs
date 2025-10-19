@@ -13,7 +13,8 @@ use move_stackless_bytecode::{
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
-        FunctionTargetPipeline, FunctionTargetsHolder, ProcessorResultDisplay,
+        FunctionHolderTarget, FunctionTargetPipeline,
+        FunctionTargetsHolder, ProcessorResultDisplay,
     },
     livevar_analysis::LiveVarAnalysisProcessor,
     memory_instrumentation::MemoryInstrumentationProcessor,
@@ -173,7 +174,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Initialize and print function targets
         let mut text = String::new();
-        let mut targets = FunctionTargetsHolder::new(options, None);
+        let mut targets = FunctionTargetsHolder::new(options, Default::default(), FunctionHolderTarget::None);
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
                 targets.add_target(&func_env);
