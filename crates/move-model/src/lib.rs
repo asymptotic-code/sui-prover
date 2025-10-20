@@ -36,14 +36,12 @@ use crate::{
     ast::ModuleName,
     builder::model_builder::ModelBuilder,
     model::{DatatypeId, FunId, FunctionData, GlobalEnv, Loc, ModuleData, ModuleId},
-    options::ModelBuilderOptions,
 };
 
 pub mod ast;
 mod builder;
 pub mod code_writer;
 pub mod model;
-pub mod options;
 pub mod pragmas;
 pub mod symbol;
 pub mod ty;
@@ -65,7 +63,6 @@ pub fn run_model_builder<
     run_model_builder_with_options(
         move_sources,
         deps,
-        ModelBuilderOptions::default(),
         warning_filter,
     )
 }
@@ -79,13 +76,11 @@ pub fn run_model_builder_with_options<
 >(
     move_sources: Vec<PackagePaths<Paths, NamedAddress>>,
     deps: Vec<PackagePaths<Paths, NamedAddress>>,
-    options: ModelBuilderOptions,
     warning_filter: Option<WarningFiltersBuilder>,
 ) -> anyhow::Result<GlobalEnv> {
     run_model_builder_with_options_and_compilation_flags(
         move_sources,
         deps,
-        options,
         Flags::empty(),
         warning_filter,
     )
@@ -99,12 +94,10 @@ pub fn run_model_builder_with_options_and_compilation_flags<
 >(
     move_sources: Vec<PackagePaths<Paths, NamedAddress>>,
     deps: Vec<PackagePaths<Paths, NamedAddress>>,
-    options: ModelBuilderOptions,
     flags: Flags,
     warning_filter: Option<WarningFiltersBuilder>,
 ) -> anyhow::Result<GlobalEnv> {
     let mut env = GlobalEnv::new();
-    env.set_extension(options);
 
     let sources_symbols: Vec<MoveSymbol> = move_sources
         .iter()
