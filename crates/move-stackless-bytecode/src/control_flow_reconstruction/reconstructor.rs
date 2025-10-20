@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::stackless_bytecode::{Bytecode, Label};
 use crate::stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use move_binary_format::file_format::CodeOffset;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -138,32 +138,13 @@ fn reconstruct_region(
 
         let instr = &ctx.code[upper as usize];
 
-        // Try mid-block branch first if the block doesn't end in a Branch
-        if !matches!(instr, Bytecode::Branch(..)) {
-            if let Some(cond_at) = find_mid_block_branch(ctx.code, lower, upper) {
-                if handle_mid_block_branch(ctx, &mut seq, cursor, lower, upper, cond_at, stop_block)
-                {
-                    break;
-                }
-            }
-        }
-
-        // Try block-ending branch if present and not part of the conditional-merge pattern
         if let Bytecode::Branch(_, tlabel, elabel, _cond) = instr {
             if !is_conditional_merge_pattern(ctx, upper, *tlabel, *elabel, &labels) {
-                if handle_block_ending_branch(
+                handle_block_ending_branch(
                     ctx, &mut seq, cursor, lower, upper, *tlabel, *elabel, &labels, stop_pc,
                     stop_block,
-                ) {
-                    break;
-                }
-
-                // Fall through could not be structured; advance
-                if let Some(next) = prefer_fallthrough_successor(ctx.forward_cfg, cursor) {
-                    cursor = next;
-                    continue;
-                }
-                break;
+                );
+                break
             }
         }
 
@@ -203,21 +184,6 @@ fn block_bounds(ctx: &ReconstructionContext, cursor: BlockId) -> Option<(CodeOff
         BlockContent::Basic { lower, upper } => Some((*lower, *upper)),
         BlockContent::Dummy => None,
     }
-}
-
-/// Finds the first `Branch` within the range `[lower, upper]` of a single block.
-/// Returns `Some(pc)` if one exists; otherwise `None`.
-fn find_mid_block_branch(
-    code: &[Bytecode],
-    lower: CodeOffset,
-    upper: CodeOffset,
-) -> Option<CodeOffset> {
-    for pc in lower..=upper {
-        if matches!(code[pc as usize], Bytecode::Branch(..)) {
-            return Some(pc);
-        }
-    }
-    None
 }
 
 /// Detects the ConditionalMergeInsertion pattern: a `Branch` whose join point
@@ -265,113 +231,6 @@ fn is_conditional_merge_pattern(
     false
 }
 
-/// Attempts to structure a mid-block `Branch` located at `cond_at` within
-/// `[lower, upper]`. Emits any pre-branch `Basic` part, constructs the
-/// `IfThenElse` (and optionally optimizes to chain), and appends the remainder
-/// after the merge. Returns `true` if structuring succeeded and control should
-/// return to the caller.
-fn handle_mid_block_branch(
-    ctx: &mut ReconstructionContext,
-    seq: &mut Vec<StructuredBlock>,
-    cursor: BlockId,
-    lower: CodeOffset,
-    upper: CodeOffset,
-    cond_at: CodeOffset,
-    stop_block: Option<BlockId>,
-) -> bool {
-    if cond_at >= upper {
-        return false;
-    }
-
-    debug!(
-        "[reconstructor] considering mid-block Branch at pc {} in block {}",
-        cond_at, cursor
-    );
-
-    let Bytecode::Branch(_, tlabel, elabel, _cond) = &ctx.code[cond_at as usize] else {
-        return false;
-    };
-
-    let Some(then_block) = resolve_label_block(ctx.code, ctx.forward_cfg, *tlabel) else {
-        return false;
-    };
-    let Some(else_block) = resolve_label_block(ctx.code, ctx.forward_cfg, *elabel) else {
-        return false;
-    };
-
-    let merge_block = find_merge_point(ctx.forward_cfg, ctx.back_cfg, cursor, then_block, else_block);
-    debug!(
-        "[reconstructor] mid-block IPD for block {} = {:?}",
-        cursor, merge_block
-    );
-
-    let Some(merge_block) = merge_block else {
-        debug!("[reconstructor] mid-block structuring skipped: no merge found");
-        return false;
-    };
-
-    debug!(
-        "[reconstructor] structuring mid-block IfThenElse at pc={} merge={} then={} else={}",
-        cond_at, merge_block, then_block, else_block
-    );
-
-    // Emit pre-branch part
-    if lower < cond_at {
-        let pre_lower = lower;
-        let pre_upper = trim_jump_to_merge(
-            ctx.code,
-            ctx.forward_cfg,
-            pre_lower,
-            cond_at - 1,
-            Some(merge_block),
-        );
-
-        if !should_suppress_label_block(
-            ctx.code,
-            ctx.back_cfg,
-            cursor,
-            pre_lower,
-            pre_upper,
-            seq.is_empty(),
-        ) {
-            seq.push(StructuredBlock::Basic {
-                lower: pre_lower,
-                upper: pre_upper,
-            });
-        }
-    }
-
-    // Build branches
-    let then_struct = reconstruct_region(ctx, then_block, Some(merge_block));
-    let else_struct = if else_block == merge_block {
-        None
-    } else {
-        reconstruct_region(ctx, else_block, Some(merge_block))
-    };
-
-    debug!(
-        "[reconstructor] EMIT mid-block IfThenElse cond_at={} then={} else={} merge={}",
-        cond_at, then_block, else_block, merge_block
-    );
-
-    let if_block = StructuredBlock::IfThenElse {
-        cond_at,
-        then_branch: Box::new(then_struct.unwrap_or(StructuredBlock::Seq(vec![]))),
-        else_branch: else_struct.map(Box::new),
-    };
-    seq.push(if_block.optimize_to_chain());
-
-    // Continue from merge
-    if let Some(rest) = reconstruct_region(ctx, merge_block, stop_block) {
-        match rest {
-            StructuredBlock::Seq(v) => seq.extend(v),
-            other => seq.push(other),
-        }
-    }
-
-    true
-}
-
 /// Attempts to structure a block-ending `Branch` at `upper` for the current
 /// block. Emits any pre-branch `Basic` part, constructs the `IfThenElse`
 /// (and optionally optimizes to chain), and appends the remainder after the
@@ -392,27 +251,25 @@ fn handle_block_ending_branch(
     let then_block = match resolve_label_block(ctx.code, ctx.forward_cfg, tlabel) {
         Some(b) => b,
         None => {
-            warn!("CFG reconstruct: failed to resolve then label; emitting Basic");
+            error!("CFG reconstruct: failed to resolve then label; emitting Basic");
             emit_basic_block_with_trim(ctx, seq, cursor, lower, upper, stop_pc, labels);
-            return false;
+            return true;
         }
     };
 
     let else_block = match resolve_label_block(ctx.code, ctx.forward_cfg, elabel) {
         Some(b) => b,
         None => {
-            warn!("CFG reconstruct: failed to resolve else label; emitting Basic");
+            error!("CFG reconstruct: failed to resolve else label; emitting Basic");
             emit_basic_block_with_trim(ctx, seq, cursor, lower, upper, stop_pc, labels);
-            return false;
+            return true;
         }
     };
 
-    let merge_block = find_merge_point(ctx.forward_cfg, ctx.back_cfg, cursor, then_block, else_block);
-
-    let Some(merge_block) = merge_block else {
-        debug!("CFG reconstruct: no IPD merge found; emitting Basic");
+    let Some(merge_block) = find_merge_point(ctx.forward_cfg, ctx.back_cfg, cursor, then_block, else_block) else {
+        error!("CFG reconstruct: no IPD merge found; emitting Basic");
         emit_basic_block_with_trim(ctx, seq, cursor, lower, upper, stop_pc, labels);
-        return false;
+        return true;
     };
 
     debug!(
@@ -446,6 +303,7 @@ fn handle_block_ending_branch(
         }
     }
 
+    println!("Got {then_block} and {else_block} for {merge_block}");
     // Build branches
     let then_struct = reconstruct_region(ctx, then_block, Some(merge_block));
     let else_struct = if else_block == merge_block {
@@ -453,16 +311,6 @@ fn handle_block_ending_branch(
     } else {
         reconstruct_region(ctx, else_block, Some(merge_block))
     };
-
-    // Verify branch at upper
-    if !matches!(&ctx.code[upper as usize], Bytecode::Branch(..)) {
-        warn!(
-            "CFG reconstruct: expected Branch at block end pc={}, falling back to Basic",
-            upper
-        );
-        emit_basic_block_with_trim(ctx, seq, cursor, lower, upper, stop_pc, labels);
-        return false;
-    }
 
     let if_block = StructuredBlock::IfThenElse {
         cond_at: upper,

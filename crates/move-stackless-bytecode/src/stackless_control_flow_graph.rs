@@ -253,8 +253,8 @@ impl StacklessControlFlowGraph {
                 back_cfg
                     .successors(*x)
                     .iter()
+                    .filter(|y| **y != DUMMY_ENTRANCE)
                     .map(|y| (*x, *y))
-                    .collect::<Vec<_>>()
             })
             .collect();
         let graph = crate::graph::Graph::new(entry, nodes.clone(), edges);
@@ -265,6 +265,7 @@ impl StacklessControlFlowGraph {
             .into_iter()
             .filter(|b| {
                 *b != branch_block
+                    && *b != DUMMY_EXIT
                     && dom_rev.is_reachable(*b)
                     && dom_rev.is_dominated_by(branch_block, *b)
             })
