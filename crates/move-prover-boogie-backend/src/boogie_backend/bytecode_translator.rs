@@ -370,7 +370,8 @@ impl<'env> BoogieTranslator<'env> {
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
                         if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All {
+                            && self.options.boogie_file_mode != BoogieFileMode::All
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -395,7 +396,8 @@ impl<'env> BoogieTranslator<'env> {
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
                         if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All {
+                            && self.options.boogie_file_mode != BoogieFileMode::All
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -489,7 +491,8 @@ impl<'env> BoogieTranslator<'env> {
         // Emit Pure variant if eligible (gated inside)
         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
         if !self.options.spec_no_abort_check_only
-            && self.options.boogie_file_mode != BoogieFileMode::All {
+            && self.options.boogie_file_mode != BoogieFileMode::All
+        {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }
@@ -2367,7 +2370,11 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     /// Check if a callee function can be used as a Boogie function (not procedure)
-    fn can_callee_be_function(&self, mid: move_model::model::ModuleId, fid: move_model::model::FunId) -> bool {
+    fn can_callee_be_function(
+        &self,
+        mid: move_model::model::ModuleId,
+        fid: move_model::model::FunId,
+    ) -> bool {
         let env = self.fun_target.global_env();
         let module_env = env.get_module(mid);
         let callee_env = module_env.get_function(fid);
@@ -2387,7 +2394,8 @@ impl<'env> FunctionTranslator<'env> {
                     if !self.can_callee_be_function(*mid, *fid) {
                         panic!(
                             "Function calls should be filtered out before function emission: {}",
-                            bytecode.display(self.fun_target, &std::collections::BTreeMap::default())
+                            bytecode
+                                .display(self.fun_target, &std::collections::BTreeMap::default())
                         );
                     }
                 }
@@ -2509,7 +2517,8 @@ impl<'env> FunctionTranslator<'env> {
                             if let [src] = srcs.as_slice() {
                                 let inst = &self.inst_slice(inst);
                                 let mut src_str = fmt_temp(*src);
-                                let struct_env = fun_target.global_env().get_module(*mid).into_struct(*sid);
+                                let struct_env =
+                                    fun_target.global_env().get_module(*mid).into_struct(*sid);
                                 let field_env = &struct_env.get_field_by_offset(*field_offset);
                                 let sel_fun = boogie_field_sel(field_env, inst);
                                 if fun_target.get_local_type(*src).is_reference() {
@@ -2522,7 +2531,13 @@ impl<'env> FunctionTranslator<'env> {
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
                                 // Bitwise operations and shifts are functions, not operators
-                                let is_func_op = matches!(op, Operation::BitAnd | Operation::BitOr | Operation::Shl | Operation::Shr);
+                                let is_func_op = matches!(
+                                    op,
+                                    Operation::BitAnd
+                                        | Operation::BitOr
+                                        | Operation::Shl
+                                        | Operation::Shr
+                                );
                                 if is_func_op {
                                     let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                     // For bitwise operations, we need to add type suffix
@@ -2569,7 +2584,7 @@ impl<'env> FunctionTranslator<'env> {
             if let Some(return_temp) = final_return_temp {
                 emitln!(writer, "{}", fmt_temp(return_temp));
             } else {
-                emitln!(writer, "0");
+                panic!("expected Some return value");
             }
         } else {
             // Emit nested var bindings: (var x := e; (var y := f; body))
@@ -2583,7 +2598,7 @@ impl<'env> FunctionTranslator<'env> {
             } else if let Some((last_dest, _)) = bindings.last() {
                 emit!(writer, "$t{}", last_dest);
             } else {
-                emit!(writer, "0");
+                panic!("expected Some return value");
             }
 
             // Close all the nested parens
@@ -2959,7 +2974,11 @@ impl<'env> FunctionTranslator<'env> {
                         // ONLY in Default and Pure styles (as requested by user)
                         // In other styles (SpecNoAbortCheck, Aborts, Opaque, Asserts), use procedures
                         // Only applies to non-opaque calls (if use_func is not already set by opaque logic above)
-                        if callee_is_pure && !use_func && (self.style == FunctionTranslationStyle::Default || self.style == FunctionTranslationStyle::Pure) {
+                        if callee_is_pure
+                            && !use_func
+                            && (self.style == FunctionTranslationStyle::Default
+                                || self.style == FunctionTranslationStyle::Pure)
+                        {
                             use_func = true;
                         }
 
