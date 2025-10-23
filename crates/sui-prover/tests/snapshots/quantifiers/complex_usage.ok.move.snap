@@ -1,0 +1,15 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 260
+expression: output
+---
+exiting with verification errors
+error: prover::asserts conditions are not complete
+   ┌─ tests/inputs/quantifiers/complex_usage.ok.move:28:1
+   │  
+28 │ ╭ fun vec_leq_spec(u: vector<u8>, v: vector<u8>): bool {
+29 │ │     vec_leq(u, v)
+30 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/quantifiers/complex_usage.ok.move:28: vec_leq_spec
