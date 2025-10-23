@@ -707,6 +707,10 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 }
 {%- endif %}
 
+{%- if impl.fun_drop != "" %}
+procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
+{%- endif %}
+
 {% endmacro table_module %}
 
 
