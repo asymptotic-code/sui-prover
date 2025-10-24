@@ -374,6 +374,10 @@ impl FunctionTargetsHolder {
         &self.datatype_invs
     }
 
+    pub fn has_target_mode(&self) -> bool {
+        !matches!(self.target, FunctionHolderTarget::None)
+    }
+
     /// Return the specification of the callee function if the specification can
     /// be used instead of the callee by the caller. This is the case if and
     /// only if
