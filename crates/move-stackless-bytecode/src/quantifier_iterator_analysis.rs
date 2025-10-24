@@ -139,13 +139,20 @@ impl QuantifierIteratorAnalysisProcessor {
             Bytecode::Load(_, _, _) => true,
             Bytecode::Call(_, _, op, _, _) => {
                 match op {
+                    // traces
                     Operation::TraceLocal(_)
                     | Operation::TraceExp(_, _)
                     | Operation::TraceGhost(_, _)
                     | Operation::TraceAbort
                     | Operation::TraceReturn(_)
                     | Operation::TraceGlobalMem(_)
-                    | Operation::TraceMessage(_) => true,
+                    | Operation::TraceMessage(_)
+                    // struct props
+                    | Operation::BorrowField(_,_,_,_)
+                    | Operation::BorrowGlobal(_,_,_)
+                    | Operation::GetField(_,_,_,_)
+                    | Operation::GetGlobal(_,_,_)
+                    => true,
                     Operation::Function(mod_id, fun_id, _) => {
                         let qid = mod_id.qualified(*fun_id);
                         // Filter out vector index access (borrow and borrow_mut)
@@ -177,8 +184,10 @@ impl QuantifierIteratorAnalysisProcessor {
             {
                 let (start_attr_id, dests, srcs_vec, _, _) = self.extract_fn_call_data(&bc[i]);
                 let (actual_call_attr_id, _, srcs_funcs, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 1]);
-                let destroy_attr_id= self.extract_call_attr_id(&bc[i + 2]);
+                let destroy_attr_id = self.extract_call_attr_id(&bc[i + 2]);
                 let (end_attr_id, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 3]);
+
+                let lambda_index = srcs_funcs.iter().position(|src| *src == dests[0]).unwrap_or(0);
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
                     return all_bc.to_vec();
@@ -188,8 +197,9 @@ impl QuantifierIteratorAnalysisProcessor {
                 let new_bc_el = Bytecode::Call(
                     actual_call_attr_id,
                     dsts,
-                    Operation::Quantifier(pattern.quantifier_type, callee_id, type_params, dests[0], srcs_vec),
-                    srcs_funcs,
+                    Operation::Quantifier(pattern.quantifier_type, callee_id, type_params, lambda_index),
+                    // for forall and exists it will be [] othervise [v]
+                    srcs_vec.into_iter().chain(srcs_funcs.into_iter()).collect(),
                     None
                 );
 

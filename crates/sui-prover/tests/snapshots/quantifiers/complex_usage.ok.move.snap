@@ -4,6 +4,16 @@ assertion_line: 260
 expression: output
 ---
 exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/complex_usage.ok.move:17:19
+   │
+17 │     invariant!(|| ensures(i <= u.length() && !exists!<u64>(|j| invariant_expression(*j, i, u[*j], v[*j]))));
+   │                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/complex_usage.ok.move:28: vec_leq_spec
+   =     enter loop, variable(s) i#1#0 havocked and reassigned
+   =     at tests/../../../packages/prover/sources/prover.move:11
+
 error: prover::asserts conditions are not complete
    ┌─ tests/inputs/quantifiers/complex_usage.ok.move:28:1
    │  

@@ -42,6 +42,11 @@ fun extra_forall_spec(s: S) {
     ensures(forall!<u64>(|x| all_is_positive(*x, a, b)));
 }
 
+#[spec(prove, no_opaque)]
+fun extra_props_forall_spec(s: S) {
+    ensures(forall!<u64>(|x| all_is_positive(s.f, s.g, *x)));
+}
+
 #[spec(prove)]
 fun extra_sum_spec() {
     let v = vector[10, 20, 10, 30];

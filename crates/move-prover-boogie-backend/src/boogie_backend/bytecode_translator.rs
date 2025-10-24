@@ -3902,7 +3902,7 @@ impl<'env> FunctionTranslator<'env> {
                             false_expr_str
                         );
                     },
-                    Quantifier(qt, qid, inst, lambda_var_idx, srcs_vec) => {
+                    Quantifier(qt, qid, inst, li) => {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
@@ -3913,9 +3913,23 @@ impl<'env> FunctionTranslator<'env> {
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
 
-                        let lambda_arg = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) { "x".to_string() } else { format!("ReadVec($t{}, i)", srcs_vec[0]) };
-                        let map_local = |idx: usize| if idx == *lambda_var_idx { lambda_arg.clone() } else { format!("$t{}", idx) };
-                        let args = srcs.iter().cloned().map(map_local).join(", ");
+                        let args = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                            srcs.iter()
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { "x".to_string() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        } else {
+                            let lambda_arg = format!("ReadVec($t{}, i)", srcs[0]);
+                            srcs.iter()
+                                .skip(1)
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { lambda_arg.clone() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        };
 
                         match qt {
                             QuantifierType::Forall => {
@@ -3925,8 +3939,8 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));", dests[0], b_type, suffix, fun_name, args);
                             },
                             QuantifierType::Map => {
-                                emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs_vec[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs_vec[0], dests[0], fun_name, args);
+                                emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, args);
                             }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }

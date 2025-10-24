@@ -2034,7 +2034,7 @@ impl FunctionTranslator<'_> {
                     EmitEvent => wip!("EmitEvent"),
                     EventStoreDiverge => wip!("EventStoreDiverge"),
                     TraceGlobalMem(mem) => {},
-                    Quantifier(_,_,_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
+                    Quantifier(_,_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}
