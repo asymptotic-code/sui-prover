@@ -12,6 +12,8 @@ use crate::{
 use move_binary_format::file_format::CodeOffset;
 use petgraph::{dot::Dot, graph::Graph};
 use std::collections::{BTreeMap, BTreeSet};
+use itertools::Itertools;
+use crate::graph::DomRelation;
 
 type Map<K, V> = BTreeMap<K, V>;
 type Set<V> = BTreeSet<V>;
@@ -258,7 +260,7 @@ impl StacklessControlFlowGraph {
             })
             .collect();
         let graph = crate::graph::Graph::new(entry, nodes.clone(), edges);
-        let dom_rev = crate::graph::DomRelation::new(&graph);
+        let dom_rev = DomRelation::new(&graph);
 
         // Candidates are postdominators of branch_block (including itself and exit)
         let candidates: Vec<BlockId> = nodes

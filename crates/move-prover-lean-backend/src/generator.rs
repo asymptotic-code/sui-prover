@@ -2,12 +2,12 @@
 use std::cell::RefCell;
 use crate::generator_options::Options;
 use anyhow::anyhow;
+use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::model::GlobalEnv;
-use move_stackless_bytecode::function_target_pipeline::{FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
+use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
-use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::pipeline_factory;
 use std::fs;
 use std::path::Path;
@@ -32,7 +32,7 @@ pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverO
     env.set_extension(global_state);
 }
 
-pub fn run_move_prover_with_model<W: WriteColor>(
+pub async fn run_move_prover_with_model<W: WriteColor>(
     options: Options,
     env: &GlobalEnv,
     error_writer: &mut W,
@@ -56,17 +56,17 @@ pub fn run_move_prover_with_model<W: WriteColor>(
     if !output_existed {
         fs::create_dir_all(output_path)?;
     }
-    
-    let has_errors = run_prover_function_mode(env, error_writer, &options, &targets)?;
+
+    let has_errors = run_prover_function_mode(env, error_writer, &options, &targets).await?;
 
     if has_errors {
         return Err(anyhow!("exiting with verification errors"));
     }
-    
+
     Ok(())
 }
 
-pub fn run_prover_function_mode<W: WriteColor>(
+pub async fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
@@ -103,7 +103,15 @@ pub fn run_prover_function_mode<W: WriteColor>(
             "exiting with condition generation errors",
         )?;
 
-        verify_lean(env, &options, &new_targets, code_writer, types, file_name.clone())?;
+        verify_lean(
+            env,
+            &options,
+            &new_targets,
+            code_writer,
+            types,
+            file_name.clone(),
+        )
+        .await?;
 
         let is_error = env.has_errors();
         env.report_diag(error_writer, options.prover.report_severity);
@@ -138,7 +146,7 @@ pub fn generate_lean(
     Ok((writer, types.into_inner()))
 }
 
-pub fn verify_lean(
+pub async fn verify_lean(
     env: &GlobalEnv,
     options: &Options,
     targets: &FunctionTargetsHolder,
@@ -148,10 +156,12 @@ pub fn verify_lean(
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.lean", options.output_path, target_name);
 
-    writer.process_result(|result| if cfg!(target_os = "windows") {
-        fs::write(&file_name.replace("::", "_"), result)
-    } else {
-        fs::write(&file_name, result)
+    writer.process_result(|result| {
+        if cfg!(target_os = "windows") {
+            fs::write(&file_name.replace("::", "_"), result)
+        } else {
+            fs::write(&file_name, result)
+        }
     })?;
 
     if !options.prover.generate_only {
@@ -162,7 +172,7 @@ pub fn verify_lean(
             writer: &writer,
             types: &types,
         };
-        lean.call_lean_and_verify_output(&file_name)?;
+        lean.call_lean_and_verify_output(&file_name).await?;
     }
 
     Ok(())
@@ -195,7 +205,7 @@ pub fn create_and_process_bytecode(
             info!("preparing module {}", module_env.get_full_name_str());
         }
         if options.prover.dump_bytecode {
-            let dump_file = output_dir.join(format!("{}.mv.disas", output_prefix));
+            let dump_file = output_dir.join(format!("{}.mv.final", output_prefix));
             fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
         }
         for func_env in module_env.get_functions() {
@@ -220,7 +230,7 @@ pub fn create_and_process_bytecode(
     } else {
         pipeline.run(env, &mut targets)
     };
-
+    
     (targets, res.err().map(|p| p.name()))
 }
 
