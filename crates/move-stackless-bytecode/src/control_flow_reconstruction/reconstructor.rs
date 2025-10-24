@@ -19,8 +19,8 @@ struct ReconstructionContext<'ctx> {
 
 /// Reconstructs control flow from basic blocks into a structured representation.
 pub fn reconstruct_control_flow(code: &[Bytecode]) -> Vec<StructuredBlock> {
-    let forward_cfg = StacklessControlFlowGraph::new_forward(code);
-    let back_cfg = StacklessControlFlowGraph::new_backward(code, false);
+    let forward_cfg = StacklessControlFlowGraph::new_forward_with_options(code, true);
+    let back_cfg = StacklessControlFlowGraph::new_backward_with_options(code, false, true);
     let mut visited: BTreeSet<BlockId> = BTreeSet::new();
 
     let mut ctx = ReconstructionContext {

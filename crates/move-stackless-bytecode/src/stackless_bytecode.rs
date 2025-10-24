@@ -539,6 +539,15 @@ impl Bytecode {
         code: &[Bytecode],
         label_offsets: &BTreeMap<Label, CodeOffset>,
     ) -> Vec<CodeOffset> {
+        Self::get_successors_with_options(pc, code, label_offsets, false)
+    }
+
+    pub fn get_successors_with_options(
+        pc: CodeOffset,
+        code: &[Bytecode],
+        label_offsets: &BTreeMap<Label, CodeOffset>,
+        ignore_aborts: bool,
+    ) -> Vec<CodeOffset> {
         let bytecode = &code[pc as usize];
         let mut v = vec![];
         if !bytecode.is_branch() {
@@ -557,6 +566,15 @@ impl Bytecode {
                 }
             }
         }
+
+        // Filter out abort edges if requested
+        if ignore_aborts {
+            if let Bytecode::Call(_, _, _, _, Some(AbortAction::Jump(abort_label, _))) = bytecode {
+                let abort_pc = *label_offsets.get(abort_label).expect("abort label defined");
+                v.retain(|&pc| pc != abort_pc);
+            }
+        }
+
         // always give successors in ascending order
         if v.len() > 1 && v[0] > v[1] {
             v.swap(0, 1);
