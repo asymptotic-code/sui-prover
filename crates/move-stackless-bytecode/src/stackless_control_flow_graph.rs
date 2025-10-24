@@ -38,6 +38,7 @@ pub struct StacklessControlFlowGraph {
     entry_block_id: BlockId,
     blocks: Map<BlockId, Block>,
     backward: bool,
+    ignore_aborts: bool,
 }
 
 const DUMMY_ENTRANCE: BlockId = 0;
@@ -45,17 +46,26 @@ const DUMMY_EXIT: BlockId = 1;
 
 impl StacklessControlFlowGraph {
     pub fn new_forward(code: &[Bytecode]) -> Self {
+        Self::new_forward_with_options(code, false)
+    }
+
+    pub fn new_forward_with_options(code: &[Bytecode], ignore_aborts: bool) -> Self {
         Self {
             entry_block_id: DUMMY_ENTRANCE,
-            blocks: Self::collect_blocks(code),
+            blocks: Self::collect_blocks(code, ignore_aborts),
             backward: false,
+            ignore_aborts,
         }
     }
 
     /// If from_all_blocks is false, perform backward analysis only from blocks that may exit.
     /// If from_all_blocks is true, perform backward analysis from all blocks.
     pub fn new_backward(code: &[Bytecode], from_all_blocks: bool) -> Self {
-        let blocks = Self::collect_blocks(code);
+        Self::new_backward_with_options(code, from_all_blocks, false)
+    }
+
+    pub fn new_backward_with_options(code: &[Bytecode], from_all_blocks: bool, ignore_aborts: bool) -> Self {
+        let blocks = Self::collect_blocks(code, ignore_aborts);
         let mut block_id_to_predecessors: Map<BlockId, Vec<BlockId>> =
             blocks.keys().map(|block_id| (*block_id, vec![])).collect();
         for (block_id, block) in &blocks {
@@ -90,6 +100,7 @@ impl StacklessControlFlowGraph {
                 })
                 .collect(),
             backward: true,
+            ignore_aborts,
         }
     }
 
@@ -129,10 +140,11 @@ impl StacklessControlFlowGraph {
             entry_block_id: DUMMY_ENTRANCE,
             blocks,
             backward: false,
+            ignore_aborts: false,
         }
     }
 
-    fn collect_blocks(code: &[Bytecode]) -> Map<BlockId, Block> {
+    fn collect_blocks(code: &[Bytecode], ignore_aborts: bool) -> Map<BlockId, Block> {
         // First go through and collect basic block offsets.
         // Need to do this first in order to handle backwards edges.
         let label_offsets = Bytecode::label_offsets(code);
@@ -157,7 +169,7 @@ impl StacklessControlFlowGraph {
             let co_pc: CodeOffset = pc as CodeOffset;
             // Create a basic block
             if StacklessControlFlowGraph::is_end_of_block(co_pc, code, &bb_offsets) {
-                let mut successors = Bytecode::get_successors(co_pc, code, &label_offsets);
+                let mut successors = Bytecode::get_successors_with_options(co_pc, code, &label_offsets, ignore_aborts);
                 for successor in successors.iter_mut() {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);
