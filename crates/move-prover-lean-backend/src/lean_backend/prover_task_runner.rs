@@ -14,15 +14,12 @@ use rand::Rng;
 use regex::Regex;
 use std::{
     process::Output,
-    sync::{
-        mpsc::{channel, RecvTimeoutError, Sender},
-        Arc,
-    },
+    sync::Arc,
     time::Duration,
 };
 use tokio::{
     process::Command,
-    sync::{broadcast, broadcast::Receiver, Semaphore},
+    sync::{broadcast, broadcast::Receiver, mpsc, Semaphore},
 };
 use crate::lean_backend::options::LeanOptions;
 
@@ -56,7 +53,7 @@ pub struct ProverTaskRunner();
 impl ProverTaskRunner {
     /// Run `num_instances` instances of the prover `task` and returns the task id
     /// as well as the result of the fastest running instance.
-    pub fn run_tasks<T>(
+    pub async fn run_tasks<T>(
         mut task: T,
         num_instances: usize,
         sequential: bool,
@@ -65,17 +62,13 @@ impl ProverTaskRunner {
     where
         T: ProverTask + Clone + Send + 'static,
     {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
         let sem = if sequential {
             Arc::new(Semaphore::new(1))
         } else {
             Arc::new(Semaphore::new(MAX_PERMITS))
         };
-        // Create channels for communication.
-        let (worker_tx, master_rx) = channel();
+        // Create channels for communication - using tokio async channels
+        let (worker_tx, mut master_rx) = mpsc::unbounded_channel();
         let (master_tx, _): (
             tokio::sync::broadcast::Sender<BroadcastMsg>,
             Receiver<BroadcastMsg>,
@@ -89,7 +82,7 @@ impl ProverTaskRunner {
             let worker_rx = master_tx.subscribe();
             let cloned_task = task.clone();
             // Spawn a task worker for each task_id.
-            rt.spawn(async move {
+            tokio::spawn(async move {
                 Self::run_task_until_cancelled(cloned_task, task_id, send_n, worker_rx, s).await;
             });
         }
@@ -102,9 +95,12 @@ impl ProverTaskRunner {
             } else {
                 u64::MAX
             });
-            let res = master_rx.recv_timeout(timeout);
+
+            // Use tokio's async recv with timeout
+            let res = tokio::time::timeout(timeout, master_rx.recv()).await;
+
             match res {
-                Ok((task_id, result)) => {
+                Ok(Some((task_id, result))) => {
                     if num_working_instances == 1 {
                         return (task_id, result);
                     } else if task.is_success(&result) {
@@ -114,10 +110,14 @@ impl ProverTaskRunner {
                         return (task_id, result);
                     }
                     debug!("previous instance failed, waiting for another worker to report...");
-                    num_working_instances = usize::saturating_add(num_working_instances, 1);
+                    num_working_instances = usize::saturating_sub(num_working_instances, 1);
                 }
-                Err(RecvTimeoutError::Timeout) => {
-                    // recv timeout, i.e. lean/underlying solver is hanging
+                Ok(None) => {
+                    // Channel closed without result
+                    debug!("worker channel closed unexpectedly");
+                }
+                Err(_) => {
+                    // Timeout occurred
                     let _ = master_tx.send(BroadcastMsg::Stop);
                     debug!(
                         "prover task exceeded hard timeout of {}s",
@@ -125,7 +125,6 @@ impl ProverTaskRunner {
                     );
                     return task.make_timeout();
                 }
-                _ => {}
             }
         }
     }
@@ -135,7 +134,7 @@ impl ProverTaskRunner {
     async fn run_task_until_cancelled<T>(
         mut task: T,
         task_id: T::TaskId,
-        tx: Sender<(T::TaskId, T::TaskResult)>,
+        tx: mpsc::UnboundedSender<(T::TaskId, T::TaskResult)>,
         rx: Receiver<BroadcastMsg>,
         sem: Arc<Semaphore>,
     ) where
