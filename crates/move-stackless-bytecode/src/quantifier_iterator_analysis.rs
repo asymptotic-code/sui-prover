@@ -187,7 +187,18 @@ impl QuantifierIteratorAnalysisProcessor {
                 let destroy_attr_id = self.extract_call_attr_id(&bc[i + 2]);
                 let (end_attr_id, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 3]);
 
-                let lambda_index = srcs_funcs.iter().position(|src| *src == dests[0]).unwrap_or(0);
+                let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
+                    Some(idx) => idx,
+                    None => {
+                        let callee_env = env.get_function(callee_id);
+                        env.diag(
+                            Severity::Error,
+                            &callee_env.get_loc(),
+                            "Invalid quantifier macro pattern: lambda parameter not found in function call arguments",
+                        );
+                        return all_bc.to_vec();
+                    }
+                };
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
                     return all_bc.to_vec();
@@ -198,7 +209,7 @@ impl QuantifierIteratorAnalysisProcessor {
                     actual_call_attr_id,
                     dsts,
                     Operation::Quantifier(pattern.quantifier_type, callee_id, type_params, lambda_index),
-                    // for forall and exists it will be [] othervise [v]
+                    // for forall and exists it will be [] otherwise [v]
                     srcs_vec.into_iter().chain(srcs_funcs.into_iter()).collect(),
                     None
                 );
