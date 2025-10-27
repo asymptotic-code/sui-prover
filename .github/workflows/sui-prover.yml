@@ -4,7 +4,7 @@ on: [pull_request]
 
 jobs:
   build-prover:
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: build-prover-${{ github.head_ref || github.ref_name }}
