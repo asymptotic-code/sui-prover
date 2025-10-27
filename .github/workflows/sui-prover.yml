@@ -95,7 +95,7 @@ jobs:
 
   kit-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: kit-specs-${{ github.head_ref || github.ref_name }}
@@ -144,7 +144,7 @@ jobs:
   internal-tests:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: internal-tests-${{ github.head_ref || github.ref_name }}
@@ -186,7 +186,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
@@ -230,7 +230,7 @@ jobs:
 
   token-distribution-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: token-distribution-specs-${{ github.head_ref || github.ref_name }}
@@ -270,7 +270,7 @@ jobs:
 
   scallop-bpl-generation:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: scallop-bpl-generation-${{ github.head_ref || github.ref_name }}
@@ -317,7 +317,7 @@ jobs:
 
   cetus-bpl-generation:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
 
     concurrency:
       group: cetus-bpl-generation-${{ github.head_ref || github.ref_name }}
