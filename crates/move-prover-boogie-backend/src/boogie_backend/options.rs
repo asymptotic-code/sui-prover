@@ -18,6 +18,7 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-enhancedErrorMessages:1",
     //"-monomorphize",
     "-proverOpt:O:model_validate=true",
+    "-infer:j",
 ];
 
 const MIN_BOOGIE_VERSION: &str = "2.15.8";
