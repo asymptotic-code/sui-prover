@@ -118,6 +118,18 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             return data;
         }
 
+        // Rule 4: mark loop invariant functions as inlined
+        if targets.is_loop_invariant_function(&fun_env.get_qualified_id()) {
+            let info = data
+                .annotations
+                .get_or_default_mut::<VerificationInfo>(true);
+            if !info.inlined {
+                info.inlined = true;
+                Self::mark_callees_inlined(fun_env, targets);
+            }
+            return data;
+        }
+
         // // Rule 1: never verify if "pragma verify = false;"
         // if !fun_env.is_pragma_true(VERIFY_PRAGMA, || true) {
         //     return data;
@@ -178,13 +190,19 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Remove functions that aren't used for verification
-        // Keep: verified functions, inlined functions, essential functions, reachable functions, datatype invariant functions
+        // Keep: verified functions, inlined functions, essential functions, reachable functions, 
+        // datatype invariant functions, loop invariant functions
 
         let mut functions_to_keep = BTreeSet::new();
 
         // Keep all datatype invariant functions
         for (_, inv_fun_id) in targets.get_datatype_invs() {
             functions_to_keep.insert(*inv_fun_id);
+        }
+
+        // Keep all loop invariant functions
+        for loop_inv_fun_id in targets.get_all_loop_invariant_functions() {
+            functions_to_keep.insert(loop_inv_fun_id);
         }
 
         // Keep functions that are verified, inlined, or essential

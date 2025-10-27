@@ -883,6 +883,7 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                                 // self recursion (this is because we removed the current target from `self.targets`)
                                 self.func_target.get_annotations().get::<BorrowAnnotation>()
                             } else {
+                                println!("Callee: {}", callee_env.get_full_name_str());
                                 let callee_target = self
                                     .targets
                                     .get_target_opt(callee_env, &FunctionVariant::Baseline)
