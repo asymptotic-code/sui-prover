@@ -134,7 +134,7 @@ impl QuantifierIteratorAnalysisProcessor {
     }
 
     // filter out trace, load operations and index accesses
-    fn filter_bc(&self, env: &GlobalEnv, bc: &Bytecode) -> bool {
+    fn filter_bc(&self, bc: &Bytecode) -> bool {
         match bc {
             Bytecode::Load(_, _, _) => true,
             Bytecode::Call(_, _, op, _, _) => {
@@ -153,12 +153,6 @@ impl QuantifierIteratorAnalysisProcessor {
                     | Operation::GetField(_,_,_,_)
                     | Operation::GetGlobal(_,_,_)
                     => true,
-                    Operation::Function(mod_id, fun_id, _) => {
-                        let qid = mod_id.qualified(*fun_id);
-                        // Filter out vector index access (borrow and borrow_mut)
-                        env.std_vector_borrow_qid() == Some(qid)
-                            || env.std_vector_borrow_mut_qid() == Some(qid)
-                    }
                     _ => false,
                 }
             }
@@ -169,7 +163,7 @@ impl QuantifierIteratorAnalysisProcessor {
     pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, pattern: &QuantifierPattern, all_bc: &Vec<Bytecode>) -> Vec<Bytecode> {
         let chain_len = 4;
 
-        let bc = all_bc.iter().filter(|bc| !self.filter_bc(env, bc)).collect::<Vec<&Bytecode>>();
+        let bc = all_bc.iter().filter(|bc| !self.filter_bc(bc)).collect::<Vec<&Bytecode>>();
 
         if bc.len() < chain_len {
             return all_bc.to_vec();

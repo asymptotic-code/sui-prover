@@ -2,29 +2,28 @@
 module 0x42::quantifiers_complex_usage;
 
 #[spec_only]
-use prover::prover::{exists, ensures, invariant};
+use prover::prover::{exists, ensures, requires, invariant};
 use prover::vector_iter::map;
 
-fun invariant_expression(j: u64, i: u64, u_j: u8, v_j: u8): bool {
-    j < i && u_j > v_j
+#[ext(no_abort)]
+fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
+    if (j < u.length() && i < v.length()) {
+        j <= i && u[j] > v[i]
+    } else {
+        false
+    }
 }
 
-fun vec_leq(u: vector<u8>, v: vector<u8>): bool {
-    if (u.length() > v.length()) {
-        return false;
-    };
-    let mut i = 0;
-    invariant!(|| ensures(i <= u.length() && !exists!<u64>(|j| invariant_expression(*j, i, u[*j], v[*j]))));
-    while (i < u.length()) {
-        if (u[i] > v[i]) {
-            return false;
-        };
-        i = i+1;
-    };
-    true
+fun vec_leq(i: u64): bool { // for any i exists j <= i such that u[j] > v[j]
+   let v: vector<u8> = vector[10, 20, 30, 40];
+   let u: vector<u8> = vector[15, 25, 35, 45];
+   exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
 }
 
 #[spec(prove)]
-fun vec_leq_spec(u: vector<u8>, v: vector<u8>): bool {
-    vec_leq(u, v)
+fun vec_leq_spec(i: u64): bool {
+    requires(i < 4);
+    let res = vec_leq(i);
+    ensures(res);
+    res
 }
