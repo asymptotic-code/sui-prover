@@ -325,6 +325,10 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_focus_specs.contains(id)
     }
 
+    pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
+        self.scenario_specs.contains(id)
+    }
+
     pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
         self.omit_opaque_specs.contains(id)
     }
