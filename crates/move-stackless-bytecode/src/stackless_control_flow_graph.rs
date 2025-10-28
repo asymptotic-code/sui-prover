@@ -12,7 +12,6 @@ use crate::{
 use move_binary_format::file_format::CodeOffset;
 use petgraph::{dot::Dot, graph::Graph};
 use std::collections::{BTreeMap, BTreeSet};
-use itertools::Itertools;
 use crate::graph::DomRelation;
 
 type Map<K, V> = BTreeMap<K, V>;

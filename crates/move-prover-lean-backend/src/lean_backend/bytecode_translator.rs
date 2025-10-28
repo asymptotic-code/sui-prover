@@ -1370,15 +1370,7 @@ impl FunctionTranslator<'_> {
             fun_target.data.variant,
             fun_target.get_loc().display(env)
         );
-
-        let label_offsets = Bytecode::label_offsets(&fun_target.data.code);
-        println!("Function {}:\n{}", env.display(&qid), fun_target.data.code
-            .iter()
-            .enumerate()
-            .map(|(i, bytecode)| format!("  {}: {}", i, bytecode.display(fun_target, &label_offsets)))
-            .collect::<Vec<_>>()
-            .join("\n"));
-
+        
         // Special handling for SpecNoAbortCheck: generate a theorem instead of a function
         if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
             self.generate_no_abort_check_theorem();

@@ -205,10 +205,6 @@ pub fn create_and_process_bytecode(
         if module_env.is_target() {
             info!("preparing module {}", module_env.get_full_name_str());
         }
-        if options.prover.dump_bytecode {
-            let dump_file = output_dir.join(format!("{}.mv.final", output_prefix));
-            fs::write(&dump_file, module_env.disassemble()).expect("dumping disassembled module");
-        }
         for func_env in module_env.get_functions() {
             targets.add_target(&func_env);
         }
