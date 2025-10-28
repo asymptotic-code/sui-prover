@@ -231,7 +231,7 @@ impl RunBoogieWithSeeds {
         self.options
             .boogie_flags
             .push(format!("-proverOpt:O:smt.random_seed={}", seed));
-        self.options.get_boogie_command(&self.boogie_file)
+        self.options.get_boogie_command(&self.boogie_file, None)
     }
 
     /// Returns whether the output string contains any Boogie compilation errors.

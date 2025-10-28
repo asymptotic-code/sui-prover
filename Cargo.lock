@@ -901,7 +901,7 @@ dependencies = [
 [[package]]
 name = "enum-compat-util"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "serde_yaml",
 ]
@@ -2070,17 +2070,17 @@ dependencies = [
 [[package]]
 name = "move-abstract-interpreter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 
 [[package]]
 name = "move-abstract-stack"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 
 [[package]]
 name = "move-binary-format"
 version = "0.0.3"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "enum-compat-util",
@@ -2096,12 +2096,12 @@ dependencies = [
 [[package]]
 name = "move-borrow-graph"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 
 [[package]]
 name = "move-bytecode-source-map"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2117,7 +2117,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-utils"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "indexmap 2.11.1",
@@ -2130,7 +2130,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "move-abstract-interpreter",
  "move-abstract-stack",
@@ -2145,7 +2145,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier-meter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -2155,7 +2155,7 @@ dependencies = [
 [[package]]
 name = "move-command-line-common"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2176,7 +2176,7 @@ dependencies = [
 [[package]]
 name = "move-compiler"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2212,7 +2212,7 @@ dependencies = [
 [[package]]
 name = "move-core-types"
 version = "0.0.4"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2237,7 +2237,7 @@ dependencies = [
 [[package]]
 name = "move-coverage"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2262,7 +2262,7 @@ dependencies = [
 [[package]]
 name = "move-disassembler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2283,7 +2283,7 @@ dependencies = [
 [[package]]
 name = "move-docgen"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "clap",
@@ -2306,7 +2306,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "codespan-reporting",
@@ -2324,7 +2324,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode-syntax"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "hex",
@@ -2337,7 +2337,7 @@ dependencies = [
 [[package]]
 name = "move-ir-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "hex",
  "move-command-line-common",
@@ -2375,7 +2375,7 @@ dependencies = [
 [[package]]
 name = "move-model"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "codespan",
@@ -2400,7 +2400,7 @@ dependencies = [
 [[package]]
 name = "move-model-2"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2423,7 +2423,7 @@ dependencies = [
 [[package]]
 name = "move-package"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "clap",
@@ -2438,7 +2438,7 @@ dependencies = [
  "move-core-types",
  "move-disassembler",
  "move-docgen",
- "move-model 0.1.0 (git+https://github.com/asymptotic-code/sui?branch=next)",
+ "move-model 0.1.0 (git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec)",
  "move-model-2",
  "move-symbol-pool",
  "named-lock",
@@ -2460,7 +2460,7 @@ dependencies = [
 [[package]]
 name = "move-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "enum-compat-util",
  "quote",
@@ -2567,7 +2567,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "anyhow",
  "hex",
@@ -2586,7 +2586,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib-natives"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "hex",
  "move-binary-format",
@@ -2601,7 +2601,7 @@ dependencies = [
 [[package]]
 name = "move-symbol-pool"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "once_cell",
  "phf",
@@ -2611,7 +2611,7 @@ dependencies = [
 [[package]]
 name = "move-trace-format"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -2623,7 +2623,7 @@ dependencies = [
 [[package]]
 name = "move-vm-config"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "move-binary-format",
  "once_cell",
@@ -2632,7 +2632,7 @@ dependencies = [
 [[package]]
 name = "move-vm-profiler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "move-vm-config",
  "once_cell",
@@ -2644,7 +2644,7 @@ dependencies = [
 [[package]]
 name = "move-vm-runtime"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "better_any",
  "fail",
@@ -2664,7 +2664,7 @@ dependencies = [
 [[package]]
 name = "move-vm-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=next#64ef490acb27072844752cf88ecd4addb7eebe34"
+source = "git+https://github.com/asymptotic-code/sui?branch=boogie-opt-for-spec#d00f49b636eda774bdaaf0f9d5a687993dcc787c"
 dependencies = [
  "bcs",
  "move-binary-format",

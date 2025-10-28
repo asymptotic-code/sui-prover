@@ -133,16 +133,21 @@ pub struct RemoteProverResponse {
 }
 
 impl<'env> BoogieWrapper<'env> {
-    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
+    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file)
             .map_err(|e| 
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
             )?;
 
         let client = reqwest::Client::new();        
-        let request_body = json!({
-            "file_text": file_text
-        });
+        let request_body = if individual_options.is_some() {
+            json!({ 
+                "file_text": file_text,
+                "options": individual_options,
+            })
+        } else {
+            json!({ "file_text": file_text })
+        };
 
         let response = client
             .post(remote_opt.url.as_str())
@@ -172,17 +177,17 @@ impl<'env> BoogieWrapper<'env> {
         Ok(response_json)
     }
 
-    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {
-        let res = self.call_remote(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let res = self.call_remote(boogie_file, remote_opt, individual_options).await?;
         self.analyze_output(&res.out, &res.err, res.status)
     }
 
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
     /// output of boogie.
-    fn call_boogie(&self, boogie_file: &str) -> anyhow::Result<BoogieOutput> {
-        let args = self.options.get_boogie_command(boogie_file)?;
+    fn call_boogie(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let args = self.options.get_boogie_command(boogie_file, individual_options)?;
         info!("running solver");
-        debug!("command line: {}", args.iter().join(" "));
+        println!("command line: {}", args.iter().join(" "));
         let mut task = RunBoogieWithSeeds {
             options: self.options.clone(),
             boogie_file: boogie_file.to_string(),
@@ -293,13 +298,13 @@ impl<'env> BoogieWrapper<'env> {
     }
 
     /// Calls boogie and analyzes output.
-    pub fn call_boogie_and_verify_output(&self, boogie_file: &str) -> anyhow::Result<()> {
-        let output = self.call_boogie(boogie_file)?;
+    pub fn call_boogie_and_verify_output(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_boogie(boogie_file, individual_options)?;
         self.verify_boogie_output(&output, boogie_file)
     }
 
-    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<()> {
-        let output = self.call_remote_boogie(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_remote_boogie(boogie_file, remote_opt, individual_options).await?;
         self.verify_boogie_output(&output, boogie_file)
     }
 

@@ -247,7 +247,7 @@ impl BoogieOptions {
     }
 
     /// Returns command line to call boogie.
-    pub fn get_boogie_command(&self, boogie_file: &str) -> anyhow::Result<Vec<String>> {
+    pub fn get_boogie_command(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<Vec<String>> {
         let mut result = if self.use_exp_boogie {
             // This should have a better ux...
             vec![read_env_var("EXP_BOOGIE_EXE")]
@@ -310,7 +310,11 @@ impl BoogieOptions {
                 // Error messages may appear in non-deterministic order otherwise.
                 1
             } else {
-                self.proc_cores
+                if let Some(cores) = self.path_split {
+                    cores
+                } else {
+                    self.proc_cores
+                }
             }
         )]);
 
@@ -334,7 +338,6 @@ impl BoogieOptions {
         }
         if let Some(n) = self.path_split {
             add(&[
-                &format!("-vcsCores:{}", n),
                 "-verifySeparately",
                 &format!("-vcsMaxKeepGoingSplits:{}", n),
                 "-vcsSplitOnEveryAssert",
@@ -354,6 +357,13 @@ impl BoogieOptions {
             .unwrap_or_else(Vec::new);
 
         add(&additional_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+
+        let individual_options = individual_options
+            .as_deref()
+            .map(|s| s.split(' ').map(|opt| opt.to_string()).collect()) 
+            .unwrap_or_else(Vec::new);
+
+        add(&individual_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
 
         result.extend(seen_options.into_iter());
 
