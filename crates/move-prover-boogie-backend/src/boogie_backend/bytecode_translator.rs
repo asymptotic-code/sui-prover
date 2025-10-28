@@ -2744,8 +2744,7 @@ impl<'env> FunctionTranslator<'env> {
                                     &self.parent.targets,
                                     &self.parent.env.get_function(mid.qualified(*fid)),
                                     None,
-                                ) && !self.parent.options.func_abort_check_only
-                                {
+                                ) {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",
