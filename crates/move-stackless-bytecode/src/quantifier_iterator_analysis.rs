@@ -167,19 +167,20 @@ impl QuantifierIteratorAnalysisProcessor {
         None
     }
 
-    fn validate_lambda_variable_non_use(&self, bc: &Vec<&Bytecode>, temp_var: usize, start_idx: usize, end_idx: usize) -> bool {
+    fn find_lambda_variable_uses(&self, bc: &Vec<&Bytecode>, temp_var: usize, start_idx: usize, end_idx: usize) -> Vec<AttrId> {
+        let mut findings = vec![];
         for i in start_idx..end_idx {
-            if let Bytecode::Call(_, _, _, srcs, _) = bc[i] {
+            if let Bytecode::Call(attr_id, _, _, srcs, _) = bc[i] {
                 if srcs.contains(&temp_var) {
-                    return false;
+                    findings.push(attr_id.clone());
                 }
             }
         }
 
-        true
+        findings
     }
 
-    pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, pattern: &QuantifierPattern, all_bc: &Vec<Bytecode>) -> Vec<Bytecode> {
+    pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, target: &FunctionTarget, pattern: &QuantifierPattern, all_bc: &Vec<Bytecode>) -> Vec<Bytecode> {
         let chain_len = 4;
 
         let bc = all_bc.iter().filter(|bc| !self.filter_traces(bc)).collect::<Vec<&Bytecode>>();
@@ -202,14 +203,17 @@ impl QuantifierIteratorAnalysisProcessor {
 
                 // NOTE: dests[0] -> is produced "X" lambda variable
 
-                if !self.validate_lambda_variable_non_use(&bc, dests[0], start_idx, i) {
-                    let callee_env = env.get_function(callee_id);
+                let restricted_usages = self.find_lambda_variable_uses(&bc, dests[0], start_idx, i);
+                for attr in &restricted_usages {
                     env.diag(
                         Severity::Error,
-                        &callee_env.get_loc(),
+                        &target.get_bytecode_loc(*attr),
                         "Invalid quantifier macro pattern: lambda parameter is used externally",
                     );
-                    return all_bc.to_vec();
+                }
+
+                if !restricted_usages.is_empty() {
+                    return all_bc.clone();
                 }
 
                 let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
@@ -258,7 +262,7 @@ impl QuantifierIteratorAnalysisProcessor {
                 }
 
                 // recursively search for more macro of this type
-                return self.find_macro_patterns(env, targets, pattern, &new_bc);
+                return self.find_macro_patterns(env, targets, target, pattern, &new_bc);
             }
         }
 
@@ -310,7 +314,7 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
         let mut bc = code.to_vec();
 
         for pattern in &patterns {
-            bc = self.find_macro_patterns(env, &targets, pattern, &bc);
+            bc = self.find_macro_patterns(env, &targets, &func_target, pattern, &bc);
         }
 
         let mut data = data.clone();
