@@ -1699,7 +1699,7 @@ impl<'env> FunctionTranslator<'env> {
         let result = format!("{}{}", fun_name, suffix);
 
         if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
-            result.replace("$spec_no_abort_check", "$abort_check")
+            result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
         }
@@ -2739,11 +2739,13 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-                                
-                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
-                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
-                                let info = no_abort_analysis::get_info(data);
-                                if !info.does_not_abort && !self.parent.options.func_abort_check_only {
+
+                                if !no_abort_analysis::does_not_abort(
+                                    &self.parent.targets,
+                                    &self.parent.env.get_function(mid.qualified(*fid)),
+                                    None,
+                                ) && !self.parent.options.func_abort_check_only
+                                {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",
