@@ -98,7 +98,6 @@ COPY --from=builder /opt/aws-lambda-rie /usr/local/bin/aws-lambda-rie
 RUN chmod +x /opt/bin/lambda-handler /opt/bin/z3 /opt/tini /usr/local/bin/aws-lambda-rie
 
 RUN echo '#!/bin/sh' > /entry.sh && \
-    echo 'echo 1048576 > /proc/sys/fs/pipe-max-size 2>/dev/null || true' >> /entry.sh && \
     echo 'if [ -z "${AWS_LAMBDA_RUNTIME_API}" ]; then' >> /entry.sh && \
     echo '  exec /opt/tini -- /usr/local/bin/aws-lambda-rie /opt/bin/lambda-handler' >> /entry.sh && \
     echo 'else' >> /entry.sh && \

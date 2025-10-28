@@ -21,12 +21,14 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-printModel:1",
     "-enhancedErrorMessages:1",
     "-useArrayAxioms",
+    "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100",
+    "-proverOpt:O:smt.QI.LAZY_THRESHOLD=100",
     "-proverOpt:O:model_validate=true",
-    "-vcsCores:2",
+    "-vcsCores:4",
     "-verifySeparately",
     "-vcsMaxKeepGoingSplits:2",
     "-vcsSplitOnEveryAssert",
-    "-vcsFinalAssertTimeout:1400",
+    "-vcsFinalAssertTimeout:600",
 ];
 
 pub struct ProverHandler {
