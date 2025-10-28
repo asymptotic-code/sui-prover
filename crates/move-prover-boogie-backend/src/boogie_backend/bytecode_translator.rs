@@ -2165,6 +2165,9 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
+        if self.parent.targets.is_scenario_spec(&self.fun_target.func_env.get_qualified_id()) {
+            return false;
+        }
         let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
             .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
             .count();
