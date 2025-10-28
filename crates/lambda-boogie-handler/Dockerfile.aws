@@ -28,8 +28,6 @@ ENV PATH="/root/.cargo/bin:$PATH"
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | \
     TERM=linux /bin/bash -s -- --channel ${DOTNET_VERSION} --install-dir "${DOTNET_INSTALL_DIR}" --version latest
 
-RUN curl -L https://github.com/krallin/tini/releases/download/v0.19.0/tini-arm64 -o /opt/tini
-
 RUN Z3_PKG="z3-${Z3_VERSION}-arm64-glibc-2.34" && \
     curl -LOs "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_PKG}.zip" && \
     unzip -q "${Z3_PKG}.zip" && \
@@ -81,20 +79,19 @@ ENV DOTNET_GCConserveMemory=9
 
 RUN mkdir -p /opt/bin /opt/dotnet/tools
 
-COPY --from=builder /opt/tini /opt/tini
 COPY --from=builder /opt/dotnet /opt/dotnet
 COPY --from=builder /opt/bin/z3 /opt/bin/z3
 COPY --from=builder /app/target/release/lambda-handler /opt/bin/lambda-handler
 COPY --from=builder /opt/aws-lambda-rie /usr/local/bin/aws-lambda-rie
 
-RUN chmod +x /opt/bin/lambda-handler /opt/bin/z3 /opt/tini /usr/local/bin/aws-lambda-rie
+RUN chmod +x /opt/bin/lambda-handler /usr/local/bin/aws-lambda-rie
 
 # Create entry point script to detect local vs Lambda environment
 RUN echo '#!/bin/sh' > /entry.sh && \
     echo 'if [ -z "${AWS_LAMBDA_RUNTIME_API}" ]; then' >> /entry.sh && \
-    echo '  exec /opt/tini -- /usr/local/bin/aws-lambda-rie /opt/bin/lambda-handler' >> /entry.sh && \
+    echo '  /usr/local/bin/aws-lambda-rie /opt/bin/lambda-handler' >> /entry.sh && \
     echo 'else' >> /entry.sh && \
-    echo '  exec /opt/tini -- /opt/bin/lambda-handler' >> /entry.sh && \
+    echo '  /opt/bin/lambda-handler' >> /entry.sh && \
     echo 'fi' >> /entry.sh && \
     chmod +x /entry.sh
 
