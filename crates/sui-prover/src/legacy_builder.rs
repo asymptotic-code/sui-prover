@@ -10,7 +10,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use move_compiler::Flags;
 use move_model::{
-    model::GlobalEnv, options::ModelBuilderOptions,
+    model::GlobalEnv,
     run_model_builder_with_options_and_compilation_flags,
 };
 
@@ -92,7 +92,6 @@ impl ModelBuilderLegacy {
         run_model_builder_with_options_and_compilation_flags(
             all_targets,
             all_deps,
-            ModelBuilderOptions::default(),
             flags,
             None,
         )

@@ -28,6 +28,7 @@ use move_model::{
 
 use crate::{
     ast::ExpData,
+    dynamic_field_analysis::{self, NameValueInfo},
     function_target::FunctionTarget,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     spec_global_variable_analysis,
@@ -211,6 +212,27 @@ impl MonoAnalysisProcessor {
 
         // Analyze functions
         analyzer.analyze_funs();
+
+        // add dynamic field types
+        for (ty, name_value_infos) in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
+            analyzer.add_type_root(ty);
+            for name_value_info in name_value_infos {
+                match name_value_info {
+                    NameValueInfo::NameValue {
+                        name,
+                        value,
+                        is_mut: _,
+                    } => {
+                        analyzer.add_type_root(name);
+                        analyzer.add_type_root(value);
+                    }
+                    NameValueInfo::NameOnly(name) => {
+                        analyzer.add_type_root(name);
+                    }
+                }
+            }
+        }
+
         let Analyzer {
             mut info,
             done_types,
@@ -487,17 +509,19 @@ impl Analyzer<'_> {
                 if let Some(spec_qid) = self.targets.get_spec_by_fun(&callee_env.get_qualified_id())
                 {
                     self.push_todo_fun(spec_qid.clone(), actuals.clone());
-                    if spec_qid == &target.func_env.get_qualified_id()
-                        && (self.targets.is_verified_spec(spec_qid)
-                            || self.targets.omits_opaque(spec_qid))
+                    if (spec_qid == &target.func_env.get_qualified_id()
+                        && self.targets.is_verified_spec(spec_qid))
+                        || self.targets.omits_opaque(spec_qid)
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        self.info
-                            .funs
-                            .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                            .or_default()
-                            .insert(actuals.clone());
+                        if spec_qid != &target.func_env.get_qualified_id() {
+                            self.info
+                                .funs
+                                .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
+                                .or_default()
+                                .insert(actuals.clone());
+                        }
                         self.analyze_fun_types(
                             &self
                                 .targets

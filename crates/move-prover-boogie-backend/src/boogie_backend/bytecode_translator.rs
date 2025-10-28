@@ -34,7 +34,7 @@ use move_stackless_bytecode::{
     }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
-    }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
+    }, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind, QuantifierType,
     }, verification_analysis
@@ -336,13 +336,15 @@ impl<'env> BoogieTranslator<'env> {
 
                 match self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
                     Some(spec_qid) if !self.targets.omits_opaque(spec_qid) => {
-                        FunctionTranslator::new(
-                            self,
-                            &fun_target,
-                            &[],
-                            FunctionTranslationStyle::Default,
-                        )
-                        .translate();
+                        if self.targets.is_verified_spec(spec_qid) {
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
+                        }
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -422,10 +424,12 @@ impl<'env> BoogieTranslator<'env> {
             .scenario_specs()
             .contains(&fun_env.get_qualified_id())
         {
-            if self.targets.has_target(
-                fun_env,
-                &FunctionVariant::Verification(VerificationFlavor::Regular),
-            ) {
+            if self.targets.is_verified_spec(&fun_env.get_qualified_id())
+                && self.targets.has_target(
+                    fun_env,
+                    &FunctionVariant::Verification(VerificationFlavor::Regular),
+                )
+            {
                 let fun_target = self.targets.get_target(
                     fun_env,
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
@@ -438,13 +442,13 @@ impl<'env> BoogieTranslator<'env> {
             return;
         }
 
-        self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
         if self.options.boogie_file_mode == BoogieFileMode::All
             || self.targets.is_verified_spec(&fun_env.get_qualified_id())
         {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
@@ -662,17 +666,14 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if style == FunctionTranslationStyle::Default
             || style == FunctionTranslationStyle::Asserts
-            || style == FunctionTranslationStyle::Aborts
             || style == FunctionTranslationStyle::SpecNoAbortCheck
-            || style == FunctionTranslationStyle::Opaque
-        // this is for the $opaque signature
         {
             FunctionTranslator::new(self, &fun_target, &[], style).translate();
         }
@@ -680,13 +681,38 @@ impl<'env> BoogieTranslator<'env> {
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
             if self
                 .targets
-                .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
-                .is_none()
+                .scenario_specs()
+                .contains(&fun_target.func_env.get_qualified_id())
             {
-                // is scenario spec
+                if self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+                    && style == FunctionTranslationStyle::Aborts
+                {
+                    FunctionTranslator::new(self, &fun_target, &[], style).translate();
+                }
                 return;
             }
-            mono_analysis::get_info(self.env)
+
+            if self.options.func_abort_check_only
+                && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                && style == FunctionTranslationStyle::Opaque
+            {
+                mono_analysis::get_info(self.env)
+                    .funs
+                    .get(&(
+                        fun_target.func_env.get_qualified_id(),
+                        FunctionVariant::Baseline,
+                    ))
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .for_each(|type_inst| {
+                        FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                    });
+                return;
+            }
+
+            let mut type_insts = mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
                     *self
@@ -696,21 +722,22 @@ impl<'env> BoogieTranslator<'env> {
                     FunctionVariant::Baseline,
                 ))
                 .unwrap_or(&BTreeSet::new())
-                .iter()
-                .for_each(|type_inst| {
-                    // Skip the none instantiation (i.e., each type parameter is
-                    // instantiated to itself as a concrete type). This has the same
-                    // effect as `type_inst: &[]` and is already captured above.
-                    let is_none_inst = type_inst
-                        .iter()
-                        .enumerate()
-                        .all(|(i, t)| matches!(t, Type::TypeParameter(idx) if *idx == i as u16));
-                    if is_none_inst {
-                        return;
-                    }
-
-                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
-                });
+                .clone();
+            if self.options.spec_no_abort_check_only
+                && !self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+            {
+                // add the identity type instance, if it's not already in the set
+                type_insts.insert(
+                    (0..fun_target.func_env.get_type_parameter_count())
+                        .map(|i| Type::TypeParameter(i as u16))
+                        .collect(),
+                );
+            }
+            for type_inst in type_insts {
+                FunctionTranslator::new(self, &fun_target, &type_inst, style).translate();
+            }
         }
     }
 
@@ -739,7 +766,7 @@ impl<'env> BoogieTranslator<'env> {
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -2138,6 +2165,9 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
+        if self.parent.targets.is_scenario_spec(&self.fun_target.func_env.get_qualified_id()) {
+            return false;
+        }
         let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
             .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
             .count();
@@ -2752,7 +2782,7 @@ impl<'env> FunctionTranslator<'env> {
                             let caller_fid = self.fun_target.get_id();
                             let fun_verified =
                                 !self.fun_target.func_env.is_explicitly_not_verified(
-                                    &ProverOptions::get(self.fun_target.global_env()).verify_scope,
+                                    &self.parent.targets.prover_options().verify_scope,
                                 );
                             let mut fun_name = boogie_function_name(
                                 &callee_env,
@@ -3774,7 +3804,7 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        if ProverOptions::get(env).bv_int_encoding {
+                        if self.parent.targets.prover_options().bv_int_encoding {
                             emitln!(
                                 self.writer(),
                                 "call {} := {}Int'u{}'({}, {});",
@@ -3908,7 +3938,7 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        let code_val = if ProverOptions::get(env).bv_int_encoding {
+                        let code_val = if self.parent.targets.prover_options().bv_int_encoding {
                             "$abort_code"
                         } else {
                             "$int2bv.64($abort_code)"
@@ -3999,7 +4029,7 @@ impl<'env> FunctionTranslator<'env> {
                     );
                 }
                 let src_str = str_local(*src);
-                let src_val = if ProverOptions::get(env).bv_int_encoding {
+                let src_val = if self.parent.targets.prover_options().bv_int_encoding {
                     src_str
                 } else {
                     format!("$bv2int.64({})", src_str)

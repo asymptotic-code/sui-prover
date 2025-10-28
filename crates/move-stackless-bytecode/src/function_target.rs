@@ -5,7 +5,7 @@
 use crate::{
     annotations::Annotations,
     ast::{Exp, ExpData, TempIndex},
-    borrow_analysis, conditional_merge_insertion, livevar_analysis, reaching_def_analysis,
+    borrow_analysis, livevar_analysis, reaching_def_analysis,
     stackless_bytecode::{AttrId, Bytecode, Label},
 };
 use itertools::Itertools;

@@ -269,8 +269,8 @@ impl<'env> BoogieWrapper<'env> {
         debug!("analyzing boogie output");
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
-        
-        self.analyze_output(&out, &err, output.status.code().unwrap())
+
+        self.analyze_output(&out, &err, output.status.code().unwrap_or(-1))
     }
 
     fn analyze_output(&self, out: &str, err: &str, status: i32) -> anyhow::Result<BoogieOutput> {
