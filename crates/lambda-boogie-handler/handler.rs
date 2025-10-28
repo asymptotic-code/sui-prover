@@ -130,7 +130,7 @@ impl ProverHandler {
         let args = self.get_boogie_command(temp_file_path)?;
 
         let mut child = unsafe {
-            Command::new(&args[0]) // Replace with your command
+            Command::new(&args[0])
                 .args(&args[1..])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())

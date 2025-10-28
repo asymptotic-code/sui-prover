@@ -1,4 +1,4 @@
-# 1. For complate flow
+# 1. For complete flow
 docker build -t my-lambda-function .
 
 
