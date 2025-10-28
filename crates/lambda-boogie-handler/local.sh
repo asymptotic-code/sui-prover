@@ -1,4 +1,4 @@
-# 1.
+# 1. For complate flow
 docker build -t my-lambda-function .
 
 
@@ -25,3 +25,13 @@ curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
     "httpMethod": "POST",
     "path": "/"
   }'
+
+# For basic usage
+
+# 1.
+
+docker build -f Dockerfile.boogie-runner -t boogie-runner...
+
+# 2.
+
+docker run -v $(pwd):/workspace boogie-runner pool::withdraw_spec.bpl
