@@ -133,10 +133,8 @@ impl QuantifierIteratorAnalysisProcessor {
         return false;
     }
 
-    // filter out trace, load operations and index accesses
-    fn filter_bc(&self, bc: &Bytecode) -> bool {
+    fn filter_traces(&self, bc: &Bytecode) -> bool {
         match bc {
-            Bytecode::Load(_, _, _) => true,
             Bytecode::Call(_, _, op, _, _) => {
                 match op {
                     // traces
@@ -147,11 +145,6 @@ impl QuantifierIteratorAnalysisProcessor {
                     | Operation::TraceReturn(_)
                     | Operation::TraceGlobalMem(_)
                     | Operation::TraceMessage(_)
-                    // struct props
-                    | Operation::BorrowField(_,_,_,_)
-                    | Operation::BorrowGlobal(_,_,_)
-                    | Operation::GetField(_,_,_,_)
-                    | Operation::GetGlobal(_,_,_)
                     => true,
                     _ => false,
                 }
@@ -160,26 +153,64 @@ impl QuantifierIteratorAnalysisProcessor {
         }
     }
 
+    fn get_start_func_pos_before(&self, bc: &Vec<&Bytecode>, start_qid: QualifiedId<FunId>, index: usize) -> Option<usize> {
+        if index == 0 {
+            return None;
+        }
+
+        for i in (0..index).rev() {
+           if self.is_searched_fn(bc[i], start_qid) {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    fn validate_lambda_variable_non_use(&self, bc: &Vec<&Bytecode>, temp_var: usize, start_idx: usize, end_idx: usize) -> bool {
+        for i in start_idx..end_idx {
+            if let Bytecode::Call(_, _, _, srcs, _) = bc[i] {
+                if srcs.contains(&temp_var) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
     pub fn find_macro_patterns(&self, env: &GlobalEnv, targets: &FunctionTargetsHolder, pattern: &QuantifierPattern, all_bc: &Vec<Bytecode>) -> Vec<Bytecode> {
         let chain_len = 4;
 
-        let bc = all_bc.iter().filter(|bc| !self.filter_bc(bc)).collect::<Vec<&Bytecode>>();
+        let bc = all_bc.iter().filter(|bc| !self.filter_traces(bc)).collect::<Vec<&Bytecode>>();
 
         if bc.len() < chain_len {
             return all_bc.to_vec();
         }
 
-        for i in 0..bc.len() - (chain_len - 1) {
-            if 
-                self.is_searched_fn(&bc[i], pattern.start_qid) && // start function
-                self.is_fn_call(&bc[i + 1]) && // actual function call
-                self.is_destroy(&bc[i + 2]) && // destroy 
-                self.is_searched_fn(&bc[i + 3], pattern.end_qid) // end function
+        for i in 0..bc.len() - 2 {
+            if self.is_fn_call(&bc[i]) // actual function call
+                && self.is_destroy(&bc[i + 1]) // destroy 
+                && self.is_searched_fn(&bc[i + 2], pattern.end_qid) // end function
+                && self.get_start_func_pos_before(&bc, pattern.start_qid, i).is_some() // search for start fun
             {
-                let (start_attr_id, dests, srcs_vec, _, _) = self.extract_fn_call_data(&bc[i]);
-                let (actual_call_attr_id, _, srcs_funcs, callee_id, type_params) = self.extract_fn_call_data(&bc[i + 1]);
-                let destroy_attr_id = self.extract_call_attr_id(&bc[i + 2]);
-                let (end_attr_id, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 3]);
+                let start_idx = self.get_start_func_pos_before(&bc, pattern.start_qid, i).unwrap();
+                let (start_attr_id, dests, srcs_vec, _, _) = self.extract_fn_call_data(&bc[start_idx]);
+                let (actual_call_attr_id, _, srcs_funcs, callee_id, type_params) = self.extract_fn_call_data(&bc[i]);
+                let destroy_attr_id = self.extract_call_attr_id(&bc[i + 1]);
+                let (end_attr_id, dsts, _, _, _) = self.extract_fn_call_data(&bc[i + 2]);
+
+                // NOTE: dests[0] -> is produced "X" lambda variable
+
+                if !self.validate_lambda_variable_non_use(&bc, dests[0], start_idx, i) {
+                    let callee_env = env.get_function(callee_id);
+                    env.diag(
+                        Severity::Error,
+                        &callee_env.get_loc(),
+                        "Invalid quantifier macro pattern: lambda parameter is used externally",
+                    );
+                    return all_bc.to_vec();
+                }
 
                 let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
                     Some(idx) => idx,
@@ -228,7 +259,11 @@ impl QuantifierIteratorAnalysisProcessor {
 
                 // recursively search for more macro of this type
                 return self.find_macro_patterns(env, targets, pattern, &new_bc);
-            } else if self.is_searched_fn(&bc[i], pattern.start_qid) {
+            }
+        }
+
+        for i in 0..bc.len() {
+            if self.is_searched_fn(&bc[i], pattern.start_qid) {
                 let callee_env = env.get_function(pattern.start_qid);
                 env.diag(
                     Severity::Error,
