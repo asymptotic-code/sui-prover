@@ -303,7 +303,6 @@ fn handle_block_ending_branch(
         }
     }
 
-    println!("Got {then_block} and {else_block} for {merge_block}");
     // Build branches
     let then_struct = reconstruct_region(ctx, then_block, Some(merge_block));
     let else_struct = if else_block == merge_block {
