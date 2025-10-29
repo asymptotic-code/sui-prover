@@ -7,7 +7,10 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet}, fmt::Formatter, fs
+    any::Any,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Formatter,
+    fs,
 };
 
 use itertools::{Either, Itertools};
@@ -807,6 +810,17 @@ impl FunctionTargetsHolder {
                 id
             ))
             .insert(variant, data);
+    }
+
+    pub fn get_annotation<T: Any>(&self, id: &QualifiedId<FunId>, variant: &FunctionVariant) -> &T {
+        self.get_data(id, variant)
+            .expect("function data not found")
+            .annotations
+            .get::<T>()
+            .expect(&format!(
+                "annotation {} not found",
+                std::any::type_name::<T>()
+            ))
     }
 
     /// Processes the function target data for given function.

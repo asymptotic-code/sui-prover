@@ -575,7 +575,11 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(bc.update_abort_action(|_| None));
+                        builder.emit(if omit_havoc {
+                            bc
+                        } else {
+                            bc.update_abort_action(|_| None)
+                        });
                         if !omit_havoc {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
@@ -1699,7 +1703,7 @@ impl<'env> FunctionTranslator<'env> {
         let result = format!("{}{}", fun_name, suffix);
 
         if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
-            result.replace("$spec_no_abort_check", "$abort_check")
+            result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
         }
@@ -2554,75 +2558,6 @@ impl<'env> FunctionTranslator<'env> {
                         // special casing for type reflection
                         let mut processed = false;
 
-                        // TODO(mengxu): change it to a better address name instead of extlib
-                        if env.get_extlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                }
-                                processed = true;
-                            } else if qualified_name == TYPE_INFO_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                let (flag, info) = boogie_reflection_type_info(env, &inst[0]);
-                                emitln!(self.writer(), "if (!{}) {{", flag);
-                                self.writer().with_indent(|| {
-                                    emitln!(self.writer(), "call $ExecFailureAbort();")
-                                });
-                                emitln!(self.writer(), "}");
-                                if !dest_str.is_empty() {
-                                    emitln!(self.writer(), "else {");
-                                    self.writer().with_indent(|| {
-                                        emitln!(self.writer(), "{} := {};", dest_str, info)
-                                    });
-                                    emitln!(self.writer(), "}");
-                                }
-                                processed = true;
-                            }
-                        }
-
-                        if env.get_stdlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_GET_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                }
-                                processed = true;
-                            }
-                        }
-
                         if callee_env.get_qualified_id() == self.parent.env.global_borrow_mut_qid()
                         {
                             emitln!(
@@ -2734,11 +2669,12 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-                                
-                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
-                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
-                                let info = no_abort_analysis::get_info(data);
-                                if !info.does_not_abort && !self.parent.options.func_abort_check_only {
+
+                                if !no_abort_analysis::does_not_abort(
+                                    &self.parent.targets,
+                                    &self.parent.env.get_function(mid.qualified(*fid)),
+                                    None,
+                                ) {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",

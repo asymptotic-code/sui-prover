@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use libc::{killpg, SIGKILL};
 use redis::{AsyncCommands, RedisError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::process::Command;
+use std::io::{BufReader, Read};
+use std::process::{Command, Stdio};
+use std::os::unix::process::CommandExt;
 
 #[derive(Serialize, Debug)]
 pub struct ProverResponse {
@@ -18,10 +21,12 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-printModel:1",
     "-enhancedErrorMessages:1",
     "-useArrayAxioms",
+    "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100",
+    "-proverOpt:O:smt.QI.LAZY_THRESHOLD=100",
     "-proverOpt:O:model_validate=true",
     "-vcsCores:4",
     "-verifySeparately",
-    "-vcsMaxKeepGoingSplits:4",
+    "-vcsMaxKeepGoingSplits:2",
     "-vcsSplitOnEveryAssert",
     "-vcsFinalAssertTimeout:600",
 ];
@@ -32,13 +37,13 @@ pub struct ProverHandler {
 }
 
 impl ProverHandler {
-    pub fn new(skip_redis: bool) -> Result<Self> {        
+    pub fn new() -> Result<Self> {        
         let cache_lifetime_seconds = std::env::var("CACHE_LIFETIME_SECONDS")
             .unwrap_or_else(|_| "172800".to_string())
             .parse::<u64>()
             .context("Invalid CACHE_LIFETIME_SECONDS value")?;
 
-        if skip_redis {
+        if std::env::var("REDIS_HOST").is_err() {
             return Ok(Self { 
                 redis_client: None,
                 cache_lifetime_seconds,
@@ -129,18 +134,56 @@ impl ProverHandler {
     async fn execute_boogie(&self, temp_file_path: &str, individual_options: Option<String>) -> Result<(String, String, i32)> {
         let args = self.get_boogie_command(temp_file_path, individual_options)?;
 
-        let output = Command::new(&args[0])
-            .args(&args[1..])
-            .output()
-            .context("Failed to execute boogie command")?;
+        let mut child = unsafe {
+            Command::new(&args[0])
+                .args(&args[1..])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .pre_exec(|| {
+                    libc::setsid();
+                    Ok(())
+                })
+                .spawn()
+                .context("Failed to spawn command")
+        }?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let pid = child.id() as i32;
+        println!("Spawned process with PID {}", pid);
+
+        // Capture stdout/stderr in separate threads
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+
+        let mut stdout_reader = BufReader::new(stdout);
+        let mut stderr_reader = BufReader::new(stderr);
+
+        let mut stdout_buf = String::new();
+        let mut stderr_buf = String::new();
+
+        // Read stdout and stderr
+        let status = child.wait().context("Failed to wait for child")?;
+
+        stdout_reader.read_to_string(&mut stdout_buf).ok();
+        stderr_reader.read_to_string(&mut stderr_buf).ok();
+
+        println!("Captured stdout:\n{}", stdout_buf);
+        println!("Captured stderr:\n{}", stderr_buf);
+        println!("Process exited with: {}", status);
+
+        // Kill the whole process group
+        println!("Killing process group...");
+        unsafe {
+            let result = killpg(pid, SIGKILL);
+            if result != 0 {
+                println!("Failed to kill process group {}", result);
+            }
+        }
 
         Ok((
-            stdout.to_string(),
-            stderr.to_string(),
-            output.status.code().unwrap_or(-1),
+            stdout_buf,
+            stderr_buf,
+            status.code().unwrap_or(-1),
         ))
     }
 

@@ -12,6 +12,52 @@ pub struct NoAbortInfo {
     pub does_not_abort: bool,
 }
 
+pub fn has_no_abort_spec(targets: &FunctionTargetsHolder, fun_env: &FunctionEnv) -> bool {
+    targets
+        .get_spec_by_fun(&fun_env.get_qualified_id())
+        .is_some_and(|spec_qid| {
+            // TODO: remove this check once unused functions are properly removed from targets
+            if targets
+                .get_data(&spec_qid, &FunctionVariant::Baseline)
+                .is_none()
+            {
+                return false;
+            }
+
+            let spec_data = targets
+                .get_data(&spec_qid, &FunctionVariant::Baseline)
+                .expect(&format!(
+                    "missing spec data for spec={}, fun={}",
+                    fun_env
+                        .module_env
+                        .env
+                        .get_function(*spec_qid)
+                        .get_full_name_str(),
+                    fun_env.get_full_name_str()
+                ));
+
+            !targets.ignore_aborts().contains(&spec_qid)
+                && !Bytecode::calls_function(&spec_data.code, &fun_env.module_env.env.asserts_qid())
+        })
+}
+
+pub fn does_not_abort(
+    targets: &FunctionTargetsHolder,
+    callee_env: &FunctionEnv,
+    caller_env: Option<&FunctionEnv>,
+) -> bool {
+    let no_abort_info = targets
+        .get_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline);
+    let use_no_abort_spec = targets.get_spec_by_fun(&callee_env.get_qualified_id())
+        != caller_env
+            .map(|fun_env| fun_env.get_qualified_id())
+            .as_ref()
+        && has_no_abort_spec(targets, callee_env);
+    no_abort_info.does_not_abort
+        || use_no_abort_spec
+        || targets.is_abort_check_fun(&callee_env.get_qualified_id())
+}
+
 pub struct NoAbortAnalysisProcessor();
 
 impl NoAbortAnalysisProcessor {
@@ -34,7 +80,6 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
 
         let env = fun_env.module_env.env;
         let qualified_id = fun_env.get_qualified_id();
-        let variant = FunctionVariant::Baseline;
 
         if fun_env.is_native() {
             info.does_not_abort = env.func_not_aborts(qualified_id).unwrap();
@@ -42,14 +87,11 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         }
 
         for callee in fun_env.get_called_functions() {
-            let callee_info = targets
-                .get_data(&callee, &variant)
-                .unwrap()
-                .annotations
-                .get::<NoAbortInfo>()
-                .unwrap();
-
-            if !callee_info.does_not_abort && !targets.is_abort_check_fun(&callee) {
+            if !does_not_abort(
+                targets,
+                &fun_env.module_env.env.get_function(callee),
+                Some(&fun_env),
+            ) {
                 info.does_not_abort = false;
                 return data;
             }
@@ -102,8 +144,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
                 let result = target
                     .get_annotations()
                     .get::<NoAbortInfo>()
-                    .cloned()
-                    .unwrap_or_default();
+                    .unwrap();
                 write!(f, "  {}: ", fenv.get_full_name_str())?;
                 if result.does_not_abort {
                     writeln!(f, "does not abort")?;
