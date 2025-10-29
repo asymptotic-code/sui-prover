@@ -1780,7 +1780,9 @@ impl<'env> FunctionTranslator<'env> {
             );
         let result = format!("{}{}", fun_name, suffix);
 
-        if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
+        if self.parent.options.func_abort_check_only
+            && style == FunctionTranslationStyle::SpecNoAbortCheck
+        {
             result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
@@ -1808,7 +1810,8 @@ impl<'env> FunctionTranslator<'env> {
             FunctionVariant::Verification(flavor) => {
                 let mut attribs = vec![format!(
                     "{{:timeLimit {}}} ",
-                    self.parent.targets
+                    self.parent
+                        .targets
                         .get_spec_timeout(&self.fun_target.func_env.get_qualified_id())
                         .unwrap_or(&(options.vc_timeout as u64)),
                 )];
@@ -2286,7 +2289,11 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
-        if self.parent.targets.is_scenario_spec(&self.fun_target.func_env.get_qualified_id()) {
+        if self
+            .parent
+            .targets
+            .is_scenario_spec(&self.fun_target.func_env.get_qualified_id())
+        {
             return false;
         }
         let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
@@ -2311,7 +2318,6 @@ impl<'env> FunctionTranslator<'env> {
         dinfo.is_deterministic && correct_style
     }
 
-    /// Check if function is marked with #[ext(pure)] attribute.
     fn is_pure_function(&self) -> bool {
         self.check_ext_attribute(&self.fun_target.func_env, PURE_PRAGMA)
     }
@@ -2961,7 +2967,6 @@ impl<'env> FunctionTranslator<'env> {
                         let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
-                            // Opaque variants ($opaque suffix) ALWAYS use function syntax
                             use_func = true;
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
@@ -2971,9 +2976,6 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        // ONLY in Default and Pure styles (as requested by user)
-                        // In other styles (SpecNoAbortCheck, Aborts, Opaque, Asserts), use procedures
-                        // Only applies to non-opaque calls (if use_func is not already set by opaque logic above)
                         if callee_is_pure
                             && !use_func
                             && (self.style == FunctionTranslationStyle::Default
@@ -4331,21 +4333,30 @@ impl<'env> FunctionTranslator<'env> {
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
 
-                        let args = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                        let args = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall)
+                        {
                             srcs.iter()
                                 .enumerate()
-                                .map(
-                                    |(index, vidx)| if index == *li { "x".to_string() } else { format!("$t{}", vidx) }
-                                )
+                                .map(|(index, vidx)| {
+                                    if index == *li {
+                                        "x".to_string()
+                                    } else {
+                                        format!("$t{}", vidx)
+                                    }
+                                })
                                 .join(", ")
                         } else {
                             let lambda_arg = format!("ReadVec($t{}, i)", srcs[0]);
                             srcs.iter()
                                 .skip(1)
                                 .enumerate()
-                                .map(
-                                    |(index, vidx)| if index == *li { lambda_arg.clone() } else { format!("$t{}", vidx) }
-                                )
+                                .map(|(index, vidx)| {
+                                    if index == *li {
+                                        lambda_arg.clone()
+                                    } else {
+                                        format!("$t{}", vidx)
+                                    }
+                                })
                                 .join(", ")
                         };
 
