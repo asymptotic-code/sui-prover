@@ -12,10 +12,10 @@ BIN_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
 
 # Install dependencies using Homebrew
-brew install dotnet@8 rust z3
+brew install z3
 
 # Set environment variables
-export DOTNET_ROOT="$(brew --prefix dotnet@8)/libexec"
+export DOTNET_ROOT="/usr/local/share/dotnet"
 export PATH="$DOTNET_ROOT/bin:$BIN_DIR:$PATH"
 
 # Clone and build Sui Prover

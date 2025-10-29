@@ -4,7 +4,7 @@ on: [pull_request]
 
 jobs:
   build-prover:
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: build-prover-${{ github.head_ref || github.ref_name }}
@@ -17,15 +17,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Homebrew
-        uses: actions/cache@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /opt/homebrew
-          key: brew-${{ runner.os }}-dotnet8-z3-rust-${{ hashFiles('**/Brewfile') }}
-          restore-keys: |
-            brew-${{ runner.os }}-
+          dotnet-version: '8.0.x'
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -57,19 +51,15 @@ jobs:
       - name: Prepare artifact bundle
         run: |
           mkdir -p ~/artifact-bundle/bin
-          mkdir -p ~/artifact-bundle/dotnet
           mkdir -p ~/artifact-bundle/z3
           mkdir -p ~/artifact-bundle/boogie
 
           # Copy sui-prover binary
           cp target/release/sui-prover ~/artifact-bundle/bin/
-          
+
           # Copy boogie executable and all its dependencies
           cp -r ~/.local/libexec/sui-prover/* ~/artifact-bundle/boogie/
           ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
-
-          # Copy .NET runtime
-          cp -r "$(brew --prefix dotnet@8)/libexec" ~/artifact-bundle/dotnet/
 
           # Copy Z3 (just the bin directory is needed)
           cp -r "$(brew --prefix z3)/bin" ~/artifact-bundle/z3/
@@ -87,15 +77,13 @@ jobs:
         run: |
           chmod +x ~/artifact-bundle/bin/sui-prover
           chmod +x ~/artifact-bundle/bin/boogie
-          chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
 
           ~/artifact-bundle/bin/sui-prover --version
           ~/artifact-bundle/bin/boogie /version
-          ~/artifact-bundle/dotnet/libexec/dotnet --version
 
   kit-specs:
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: kit-specs-${{ github.head_ref || github.ref_name }}
@@ -118,13 +106,12 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           # Add to PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -133,18 +120,18 @@ jobs:
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 
           cd sui-kit/examples/amm
-          sui-prover -s 2
+          sui-prover
 
           cd ../showcase
-          sui-prover -s 2
+          sui-prover
 
           cd ../guide
-          sui-prover -s 2
+          sui-prover
 
   internal-tests:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: internal-tests-${{ github.head_ref || github.ref_name }}
@@ -170,12 +157,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -186,7 +172,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
@@ -209,12 +195,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -223,14 +208,14 @@ jobs:
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover -s 2
+          sui-prover
 
           cd ../specs-bv
-          sui-prover -s 2 --no-bv-int-encoding
+          sui-prover --no-bv-int-encoding
 
   token-distribution-specs:
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: token-distribution-specs-${{ github.head_ref || github.ref_name }}
@@ -253,12 +238,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -266,11 +250,11 @@ jobs:
         run: |
           git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
           cd sui-smart-contracts/token-distribution-specs 
-          sui-prover -s 2
+          sui-prover
 
   scallop-bpl-generation:
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: scallop-bpl-generation-${{ github.head_ref || github.ref_name }}
@@ -293,12 +277,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -317,7 +300,7 @@ jobs:
 
   cetus-bpl-generation:
     needs: build-prover
-    runs-on: macos-26-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: cetus-bpl-generation-${{ github.head_ref || github.ref_name }}
@@ -340,12 +323,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
