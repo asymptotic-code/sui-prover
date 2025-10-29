@@ -885,6 +885,25 @@ impl Bytecode {
             _ => self.clone(),
         }
     }
+
+    pub fn get_called_function(&self) -> Option<QualifiedId<FunId>> {
+        if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = self {
+            Some(mid.qualified(*fid))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_called_functions<'a>(
+        code: &'a [Bytecode],
+    ) -> impl Iterator<Item = QualifiedId<FunId>> + 'a {
+        code.iter().filter_map(|bc| bc.get_called_function())
+    }
+
+    pub fn calls_function(code: &[Bytecode], fun_qid: &QualifiedId<FunId>) -> bool {
+        code.iter()
+            .any(|bc| bc.get_called_function() == Some(*fun_qid))
+    }
 }
 
 // =================================================================================================
