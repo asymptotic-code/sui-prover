@@ -27,7 +27,7 @@ jobs:
       - name: Cache Boogie
         uses: actions/cache@v4
         with:
-          path: ~/.local/libexec/sui-prover
+          path: ~/.local/sui-prover
           key: boogie-${{ runner.os }}-
           restore-keys: |
             boogie-${{ runner.os }}
@@ -83,7 +83,7 @@ jobs:
           cp target/release/sui-prover ~/artifact-bundle/bin/
 
           # Copy boogie executable and all its dependencies
-          cp -r ~/.local/libexec/sui-prover/* ~/artifact-bundle/boogie/
+          cp -r ~/.local/sui-prover/* ~/artifact-bundle/boogie/
           ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
           # Copy Z3 (just the bin directory is needed)
