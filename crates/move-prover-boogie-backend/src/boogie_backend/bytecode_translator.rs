@@ -1716,17 +1716,12 @@ impl<'env> FunctionTranslator<'env> {
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
             FunctionVariant::Verification(flavor) => {
-                // let timeout = fun_target
-                //     .func_env
-                //     .get_num_pragma(TIMEOUT_PRAGMA, || options.vc_timeout);
-                // let mut attribs = vec![format!("{{:timeLimit {}}} ", timeout)];
-                // if fun_target.func_env.is_num_pragma_set(SEED_PRAGMA) {
-                //     let seed = fun_target
-                //         .func_env
-                //         .get_num_pragma(SEED_PRAGMA, || options.random_seed);
-                //     attribs.push(format!("{{:random_seed {}}} ", seed));
-                // };
-                let mut attribs = vec![format!("{{:timeLimit {}}} ", options.vc_timeout)];
+                let mut attribs = vec![format!(
+                    "{{:timeLimit {}}} ",
+                    self.parent.targets
+                        .get_spec_timeout(&self.fun_target.func_env.get_qualified_id())
+                        .unwrap_or(&(options.vc_timeout as u64)),
+                )];
                 match flavor {
                     VerificationFlavor::Regular => "".to_string(),
                     VerificationFlavor::Instantiated(_) => "".to_string(),

@@ -46,7 +46,6 @@ use crate::boogie_backend::{
         boogie_struct_name_prefix,
     },
     options::{BoogieOptions, RemoteOptions, VectorTheory},
-    prover_task_runner::{ProverTaskRunner, RunBoogieWithSeeds},
 };
 
 /// A type alias for the way how we use crate `pretty`'s document type. `pretty` is a
@@ -187,27 +186,16 @@ impl<'env> BoogieWrapper<'env> {
     fn call_boogie(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
         let args = self.options.get_boogie_command(boogie_file, individual_options)?;
         info!("running solver");
-        println!("command line: {}", args.iter().join(" "));
-        let mut task = RunBoogieWithSeeds {
-            options: self.options.clone(),
-            boogie_file: boogie_file.to_string(),
-        };
-        // When running on complicated formulas(especially those with quantifiers), SMT solvers
-        // can suffer from the so-called butterfly effect, where minor changes such as using
-        // different random seeds cause significant instabilities in verification times.
-        // Thus by running multiple instances of Boogie with different random seeds, we can
-        // potentially alleviate the instability.
-        let (seed, output_res) = if self.options.sequential_task {
-            let seed = 0;
-            (seed, task.run_sync(seed))
-        } else {
-            ProverTaskRunner::run_tasks(
-                task,
-                self.options.num_instances,
-                self.options.sequential_task,
-                self.options.hard_timeout_secs,
-            )
-        };
+        debug!("command line: {}", args.iter().join(" "));
+
+        if !self.options.sequential_task {
+            return Err(anyhow!("Parallel boogie execution is not supported in the current environment."));
+        }
+
+        let output_res = std::process::Command::new(&args[0])
+            .args(&args[1..])
+            .output();
+
         let output = match output_res {
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::TimedOut {
@@ -231,9 +219,6 @@ impl<'env> BoogieWrapper<'env> {
             }
             Ok(out) => out,
         };
-        if self.options.num_instances > 1 {
-            debug!("Boogie instance with seed {} finished first", seed);
-        }
 
         debug!("analyzing boogie output");
         let out = String::from_utf8_lossy(&output.stdout).to_string();

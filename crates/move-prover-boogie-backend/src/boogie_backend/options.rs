@@ -349,8 +349,6 @@ impl BoogieOptions {
             add(&["-noVerify"]);
         }
 
-        add(&[boogie_file]);
-
         let additional_options = self.string_options
             .as_deref()
             .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect()) 
@@ -360,10 +358,12 @@ impl BoogieOptions {
 
         let individual_options = individual_options
             .as_deref()
-            .map(|s| s.split(' ').map(|opt| opt.to_string()).collect()) 
+            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect()) 
             .unwrap_or_else(Vec::new);
 
         add(&individual_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+
+        add(&[boogie_file]);
 
         result.extend(seen_options.into_iter());
 
