@@ -121,6 +121,11 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         }
     }
 
+    if targets.has_spec_boogie_options() && options.backend.boogie_file_mode != BoogieFileMode::Function {
+        // TODO: Emit normal warning
+        warn!("Boogie options specified in specs can only be used in 'function' boogie file mode.");
+    }
+
     let has_errors = match options.backend.boogie_file_mode {
         BoogieFileMode::Function | BoogieFileMode::Module => run_prover_gradual_mode(env, &options, &targets, error_writer, options.backend.boogie_file_mode.clone()).await?,
         BoogieFileMode::All => run_prover_all_mode(env, &options, &targets, error_writer).await?,
@@ -169,7 +174,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-    verify_boogie(env, &options, &targets, code_writer, types, file_name.to_owned()).await?;
+    verify_boogie(env, &options, &targets, code_writer, types, file_name.to_owned(), None).await?;
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
 
@@ -206,7 +211,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-    verify_boogie(env, &options, &targets, code_writer, types, file_name.to_owned()).await?;
+    verify_boogie(env, &options, &targets, code_writer, types, file_name.to_owned(), None).await?;
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
 
@@ -226,7 +231,7 @@ fn generate_function_bpl<W: WriteColor>(
     options: &Options,
     error_writer: &mut W,
     qid: &QualifiedId<FunId>,
-) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>)> {
+) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)> {
     env.cleanup();
 
     let file_name = env.get_function(*qid).get_full_name_str();
@@ -242,7 +247,7 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
-    Ok((file_name, code_writer, types))
+    Ok((file_name, code_writer, types, targets.get_spec_boogie_options(qid).cloned()))
 }
 
 fn generate_module_bpl<W: WriteColor>(
@@ -250,7 +255,7 @@ fn generate_module_bpl<W: WriteColor>(
     options: &Options,
     error_writer: &mut W,
     mid: &ModuleId,
-) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>)> {
+) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)> {
     env.cleanup();
 
     let file_name = env.get_module(*mid).get_full_name_str();
@@ -266,15 +271,15 @@ fn generate_module_bpl<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-
-    Ok((file_name, code_writer, types))
+    // Note: Module-level boogie options are not supported yet
+    Ok((file_name, code_writer, types, None))
 }
 
-async fn verify_bpl<W: WriteColor>(env: &GlobalEnv, error_writer: &mut W,  options: &Options, targets: &FunctionTargetsHolder, file: (String, CodeWriter, BiBTreeMap<Type, String>)) -> anyhow::Result<bool> {
-    let (file_name, code_writer, types) = file;
+async fn verify_bpl<W: WriteColor>(env: &GlobalEnv, error_writer: &mut W,  options: &Options, targets: &FunctionTargetsHolder, file: (String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)) -> anyhow::Result<bool> {
+    let (file_name, code_writer, types, boogie_options) = file;
     println!("🔄 {file_name}");
 
-    verify_boogie(env, &options, targets, code_writer, types, file_name.clone()).await?;
+    verify_boogie(env, &options, targets, code_writer, types, file_name.clone(), boogie_options).await?;
 
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
@@ -402,7 +407,7 @@ pub async fn run_prover_all_mode<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
-    verify_boogie(env, &options, &targets, code_writer, types, "output".to_string()).await?;
+    verify_boogie(env, &options, &targets, code_writer, types, "output".to_string(), None).await?;
 
     let errors = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
@@ -460,6 +465,7 @@ pub async fn verify_boogie(
     writer: CodeWriter,
     types: BiBTreeMap<Type, String>,
     target_name: String,
+    boogie_options: Option<String>,
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
 
@@ -476,9 +482,9 @@ pub async fn verify_boogie(
             types: &types,
         };
         if options.remote.is_some() {
-            boogie.call_remote_boogie_and_verify_output(&file_name, &options.remote.as_ref().unwrap()).await?;
+            boogie.call_remote_boogie_and_verify_output(&file_name, &options.remote.as_ref().unwrap(), boogie_options).await?;
         } else {
-            boogie.call_boogie_and_verify_output(&file_name)?;
+            boogie.call_boogie_and_verify_output(&file_name, boogie_options)?;
         }
     }
 

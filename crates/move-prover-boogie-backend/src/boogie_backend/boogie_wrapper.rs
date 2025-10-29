@@ -46,7 +46,6 @@ use crate::boogie_backend::{
         boogie_struct_name_prefix,
     },
     options::{BoogieOptions, RemoteOptions, VectorTheory},
-    prover_task_runner::{ProverTaskRunner, RunBoogieWithSeeds},
 };
 
 /// A type alias for the way how we use crate `pretty`'s document type. `pretty` is a
@@ -140,7 +139,7 @@ pub struct RemoteProverResponseWrapper {
 }
 
 impl<'env> BoogieWrapper<'env> {
-    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
+    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file)
             .map_err(|e| 
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
@@ -152,11 +151,20 @@ impl<'env> BoogieWrapper<'env> {
 
         let is_remote = remote_opt.url.as_str().contains("https://");
 
-        let request_body = if is_remote {
+        let request_body = if individual_options.is_some() {
+            json!({ 
+                "file_text": file_text,
+                "options": individual_options,
+            })
+        } else {
             json!({ "file_text": file_text })
+        };
+
+        let request = if is_remote {
+            request_body
         } else {
             json!({
-                "body": json!({ "file_text": file_text }).to_string(),
+                "body": request_body.to_string(),
                 "headers": {
                     "Content-Type": "application/json",
                     "Authorization": remote_opt.api_key.as_str()
@@ -169,7 +177,7 @@ impl<'env> BoogieWrapper<'env> {
         let response = client
             .post(remote_opt.url.as_str())
             .header("Authorization", remote_opt.api_key.as_str())
-            .json(&request_body)
+            .json(&request)
             .send()
             .await
             .map_err(|e| 
@@ -208,37 +216,26 @@ impl<'env> BoogieWrapper<'env> {
         Ok(result)
     }
 
-    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {
-        let res = self.call_remote(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let res = self.call_remote(boogie_file, remote_opt, individual_options).await?;
         self.analyze_output(&res.out, &res.err, res.status)
     }
 
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
     /// output of boogie.
-    fn call_boogie(&self, boogie_file: &str) -> anyhow::Result<BoogieOutput> {
-        let args = self.options.get_boogie_command(boogie_file)?;
+    fn call_boogie(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let args = self.options.get_boogie_command(boogie_file, individual_options)?;
         info!("running solver");
         debug!("command line: {}", args.iter().join(" "));
-        let mut task = RunBoogieWithSeeds {
-            options: self.options.clone(),
-            boogie_file: boogie_file.to_string(),
-        };
-        // When running on complicated formulas(especially those with quantifiers), SMT solvers
-        // can suffer from the so-called butterfly effect, where minor changes such as using
-        // different random seeds cause significant instabilities in verification times.
-        // Thus by running multiple instances of Boogie with different random seeds, we can
-        // potentially alleviate the instability.
-        let (seed, output_res) = if self.options.sequential_task {
-            let seed = 0;
-            (seed, task.run_sync(seed))
-        } else {
-            ProverTaskRunner::run_tasks(
-                task,
-                self.options.num_instances,
-                self.options.sequential_task,
-                self.options.hard_timeout_secs,
-            )
-        };
+
+        if !self.options.sequential_task {
+            return Err(anyhow!("Parallel boogie execution is not supported in the current environment."));
+        }
+
+        let output_res = std::process::Command::new(&args[0])
+            .args(&args[1..])
+            .output();
+
         let output = match output_res {
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::TimedOut {
@@ -262,9 +259,6 @@ impl<'env> BoogieWrapper<'env> {
             }
             Ok(out) => out,
         };
-        if self.options.num_instances > 1 {
-            debug!("Boogie instance with seed {} finished first", seed);
-        }
 
         debug!("analyzing boogie output");
         let out = String::from_utf8_lossy(&output.stdout).to_string();
@@ -329,13 +323,13 @@ impl<'env> BoogieWrapper<'env> {
     }
 
     /// Calls boogie and analyzes output.
-    pub fn call_boogie_and_verify_output(&self, boogie_file: &str) -> anyhow::Result<()> {
-        let output = self.call_boogie(boogie_file)?;
+    pub fn call_boogie_and_verify_output(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_boogie(boogie_file, individual_options)?;
         self.verify_boogie_output(&output, boogie_file)
     }
 
-    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<()> {
-        let output = self.call_remote_boogie(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_remote_boogie(boogie_file, remote_opt, individual_options).await?;
         self.verify_boogie_output(&output, boogie_file)
     }
 
