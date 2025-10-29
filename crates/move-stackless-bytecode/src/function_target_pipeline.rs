@@ -453,12 +453,12 @@ impl FunctionTargetsHolder {
                 FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
             };
 
-            if boogie_opt.is_some() {
-                self.spec_boogie_options.insert(func_env.get_qualified_id(), boogie_opt.clone().unwrap());
+            if let Some(opt) = boogie_opt {
+                self.spec_boogie_options.insert(func_env.get_qualified_id(), opt.clone());
             }
 
-            if timeout.is_some() {
-                self.spec_timeouts.insert(func_env.get_qualified_id(), timeout.unwrap());
+            if let Some(timeout) = timeout {
+                self.spec_timeouts.insert(func_env.get_qualified_id(), *timeout);
             }
 
             if *no_opaque {

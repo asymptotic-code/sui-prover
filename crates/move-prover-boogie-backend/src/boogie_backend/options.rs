@@ -310,11 +310,7 @@ impl BoogieOptions {
                 // Error messages may appear in non-deterministic order otherwise.
                 1
             } else {
-                if let Some(cores) = self.path_split {
-                    cores
-                } else {
-                    self.proc_cores
-                }
+                self.path_split.unwrap_or(self.proc_cores)
             }
         )]);
 
