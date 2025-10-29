@@ -21,16 +21,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
+          shared-key: "sui-prover"
+          cache-targets: true
+          workspaces: "crates/sui-prover"
 
       - name: Cache Boogie
         uses: actions/cache@v4
