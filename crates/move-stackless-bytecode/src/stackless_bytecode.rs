@@ -248,7 +248,7 @@ pub enum Operation {
     EventStoreDiverge,
 
     // Quantifiers
-    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>),
+    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>, usize),
 }
 
 impl Operation {
@@ -318,7 +318,7 @@ impl Operation {
             Operation::TraceGlobalMem(..) => false,
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
-            Operation::Quantifier(qt, _, _) => qt.can_abort(),
+            Operation::Quantifier(qt, _, _, _) => qt.can_abort(),
         }
     }
 
@@ -885,6 +885,25 @@ impl Bytecode {
             _ => self.clone(),
         }
     }
+
+    pub fn get_called_function(&self) -> Option<QualifiedId<FunId>> {
+        if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = self {
+            Some(mid.qualified(*fid))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_called_functions<'a>(
+        code: &'a [Bytecode],
+    ) -> impl Iterator<Item = QualifiedId<FunId>> + 'a {
+        code.iter().filter_map(|bc| bc.get_called_function())
+    }
+
+    pub fn calls_function(code: &[Bytecode], fun_qid: &QualifiedId<FunId>) -> bool {
+        code.iter()
+            .any(|bc| bc.get_called_function() == Some(*fun_qid))
+    }
 }
 
 // =================================================================================================
@@ -1298,7 +1317,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
-            Quantifier(qt, _, _) => write!(f, "quantifier({})", qt.display())?,
+            Quantifier(qt, _, _, _) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
     }

@@ -7,7 +7,10 @@ use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
 use std::{
-    collections::{BTreeMap, BTreeSet}, fmt::Formatter, fs
+    any::Any,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Formatter,
+    fs,
 };
 
 use itertools::{Either, Itertools};
@@ -47,6 +50,8 @@ pub struct FunctionTargetsHolder {
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
+    spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
+    spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
@@ -199,6 +204,8 @@ impl FunctionTargetsHolder {
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
+            spec_boogie_options: BTreeMap::new(),
+            spec_timeouts: BTreeMap::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
@@ -325,6 +332,10 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_focus_specs.contains(id)
     }
 
+    pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
+        self.scenario_specs.contains(id)
+    }
+
     pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
         self.omit_opaque_specs.contains(id)
     }
@@ -374,6 +385,22 @@ impl FunctionTargetsHolder {
         &self.datatype_invs
     }
 
+    pub fn get_spec_boogie_options(&self, id: &QualifiedId<FunId>) -> Option<&String> {
+        self.spec_boogie_options.get(id)
+    }
+
+    pub fn has_spec_boogie_options(&self) -> bool {
+        !self.spec_boogie_options.is_empty()
+    }
+
+    pub fn get_spec_timeout(&self, id: &QualifiedId<FunId>) -> Option<&u64> {
+        self.spec_timeouts.get(id)
+    }
+
+    pub fn has_target_mode(&self) -> bool {
+        !matches!(self.target, FunctionHolderTarget::None)
+    }
+
     /// Return the specification of the callee function if the specification can
     /// be used instead of the callee by the caller. This is the case if and
     /// only if
@@ -415,7 +442,7 @@ impl FunctionTargetsHolder {
             }
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort })) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort, boogie_opt, timeout })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
@@ -425,6 +452,14 @@ impl FunctionTargetsHolder {
                 FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
                 FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
             };
+
+            if let Some(opt) = boogie_opt {
+                self.spec_boogie_options.insert(func_env.get_qualified_id(), opt.clone());
+            }
+
+            if let Some(timeout) = timeout {
+                self.spec_timeouts.insert(func_env.get_qualified_id(), *timeout);
+            }
 
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
@@ -775,6 +810,17 @@ impl FunctionTargetsHolder {
                 id
             ))
             .insert(variant, data);
+    }
+
+    pub fn get_annotation<T: Any>(&self, id: &QualifiedId<FunId>, variant: &FunctionVariant) -> &T {
+        self.get_data(id, variant)
+            .expect("function data not found")
+            .annotations
+            .get::<T>()
+            .expect(&format!(
+                "annotation {} not found",
+                std::any::type_name::<T>()
+            ))
     }
 
     /// Processes the function target data for given function.

@@ -643,7 +643,11 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(bc.update_abort_action(|_| None));
+                        builder.emit(if omit_havoc {
+                            bc
+                        } else {
+                            bc.update_abort_action(|_| None)
+                        });
                         if !omit_havoc {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
@@ -1776,10 +1780,8 @@ impl<'env> FunctionTranslator<'env> {
             );
         let result = format!("{}{}", fun_name, suffix);
 
-        if self.parent.options.func_abort_check_only
-            && style == FunctionTranslationStyle::SpecNoAbortCheck
-        {
-            result.replace("$spec_no_abort_check", "$abort_check")
+        if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
+            result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
         }
@@ -1804,17 +1806,12 @@ impl<'env> FunctionTranslator<'env> {
                 }
             }
             FunctionVariant::Verification(flavor) => {
-                // let timeout = fun_target
-                //     .func_env
-                //     .get_num_pragma(TIMEOUT_PRAGMA, || options.vc_timeout);
-                // let mut attribs = vec![format!("{{:timeLimit {}}} ", timeout)];
-                // if fun_target.func_env.is_num_pragma_set(SEED_PRAGMA) {
-                //     let seed = fun_target
-                //         .func_env
-                //         .get_num_pragma(SEED_PRAGMA, || options.random_seed);
-                //     attribs.push(format!("{{:random_seed {}}} ", seed));
-                // };
-                let mut attribs = vec![format!("{{:timeLimit {}}} ", options.vc_timeout)];
+                let mut attribs = vec![format!(
+                    "{{:timeLimit {}}} ",
+                    self.parent.targets
+                        .get_spec_timeout(&self.fun_target.func_env.get_qualified_id())
+                        .unwrap_or(&(options.vc_timeout as u64)),
+                )];
                 match flavor {
                     VerificationFlavor::Regular => "".to_string(),
                     VerificationFlavor::Instantiated(_) => "".to_string(),
@@ -2289,6 +2286,9 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
+        if self.parent.targets.is_scenario_spec(&self.fun_target.func_env.get_qualified_id()) {
+            return false;
+        }
         let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
             .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
             .count();
@@ -3005,75 +3005,6 @@ impl<'env> FunctionTranslator<'env> {
                         // special casing for type reflection
                         let mut processed = false;
 
-                        // TODO(mengxu): change it to a better address name instead of extlib
-                        if env.get_extlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                }
-                                processed = true;
-                            } else if qualified_name == TYPE_INFO_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                let (flag, info) = boogie_reflection_type_info(env, &inst[0]);
-                                emitln!(self.writer(), "if (!{}) {{", flag);
-                                self.writer().with_indent(|| {
-                                    emitln!(self.writer(), "call $ExecFailureAbort();")
-                                });
-                                emitln!(self.writer(), "}");
-                                if !dest_str.is_empty() {
-                                    emitln!(self.writer(), "else {");
-                                    self.writer().with_indent(|| {
-                                        emitln!(self.writer(), "{} := {};", dest_str, info)
-                                    });
-                                    emitln!(self.writer(), "}");
-                                }
-                                processed = true;
-                            }
-                        }
-
-                        if env.get_stdlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_GET_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                }
-                                processed = true;
-                            }
-                        }
-
                         if callee_env.get_qualified_id() == self.parent.env.global_borrow_mut_qid()
                         {
                             emitln!(
@@ -3185,16 +3116,11 @@ impl<'env> FunctionTranslator<'env> {
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
 
-                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
-                                let data = self
-                                    .parent
-                                    .targets
-                                    .get_target(fenv, &FunctionVariant::Baseline)
-                                    .data;
-                                let info = no_abort_analysis::get_info(data);
-                                if !info.does_not_abort
-                                    && !self.parent.options.func_abort_check_only
-                                {
+                                if !no_abort_analysis::does_not_abort(
+                                    &self.parent.targets,
+                                    &self.parent.env.get_function(mid.qualified(*fid)),
+                                    None,
+                                ) {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",
@@ -4393,7 +4319,7 @@ impl<'env> FunctionTranslator<'env> {
                             false_expr_str
                         );
                     }
-                    Quantifier(qt, qid, inst) => {
+                    Quantifier(qt, qid, inst, li) => {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fun_name =
@@ -4405,16 +4331,40 @@ impl<'env> FunctionTranslator<'env> {
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
 
+                        let args = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                            srcs.iter()
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { "x".to_string() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        } else {
+                            let lambda_arg = format!("ReadVec($t{}, i)", srcs[0]);
+                            srcs.iter()
+                                .skip(1)
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { lambda_arg.clone() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        };
+
                         match qt {
                             QuantifierType::Forall => {
-                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));", dests[0], b_type, suffix, fun_name, args);
                             },
                             QuantifierType::Exists => {
-                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));", dests[0], b_type, suffix, fun_name, args);
                             },
                             QuantifierType::Map => {
                                 emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}(ReadVec($t{}, i)));", srcs[0], dests[0], fun_name, srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, args);
+                            }
+                            QuantifierType::Any => {
+                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, args);
+                            }
+                            QuantifierType::All => {
+                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, args);
                             }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }
