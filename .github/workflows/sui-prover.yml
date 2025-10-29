@@ -17,10 +17,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -38,7 +34,40 @@ jobs:
 
       - name: Install dependencies and build prover
         run: |
-          sh ./crates/sui-prover/tests/sui-prover.sh
+          INSTALL_DIR="~/.local/sui-prover"
+          BIN_DIR="~/.local/bin"
+
+          mkdir -p "$INSTALL_DIR" "$BIN_DIR"
+
+          brew install z3
+
+          cargo install --locked --path ./crates/sui-prover --root "$INSTALL_DIR"
+
+          if [ -d "$INSTALL_DIR/BoogieDriver" ]; then
+              echo "Boogie is already installed in $INSTALL_DIR"
+          else
+              echo "Installing Boogie..."
+              git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
+              cd boogie-src
+              dotnet build Source/Boogie.sln -c Release
+              cp -r Source/BoogieDriver/bin/Release/net9.0/* "$INSTALL_DIR"
+              ln -sf "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+              chmod +x "$BIN_DIR/boogie"
+              cd ..
+              rm -rf boogie-src
+          fi
+
+          cat <<EOF > "$BIN_DIR/sui-prover"
+          #!/bin/bash
+          export DOTNET_ROOT="$DOTNET_ROOT"
+          export BOOGIE_EXE="$BIN_DIR/boogie"
+          export Z3_EXE="$(brew --prefix z3)/bin/z3"
+          exec "$INSTALL_DIR/bin/sui-prover" "\$@"
+          EOF
+
+          chmod +x "$BIN_DIR/sui-prover"
+
+          echo "export PATH=$BIN_DIR:\$PATH" >> ~/.bashrc
 
       - name: Set artifact name
         id: set-artifact
@@ -91,10 +120,6 @@ jobs:
         with:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
 
       - name: Setup
         run: |
