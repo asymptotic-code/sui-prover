@@ -575,7 +575,11 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(bc.update_abort_action(|_| None));
+                        builder.emit(if omit_havoc {
+                            bc
+                        } else {
+                            bc.update_abort_action(|_| None)
+                        });
                         if !omit_havoc {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
