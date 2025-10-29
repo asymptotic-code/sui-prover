@@ -27,14 +27,14 @@ jobs:
       - name: Cache Boogie
         uses: actions/cache@v4
         with:
-          path: ~/.local/sui-prover
+          path: ~/.local/temp/sui-prover
           key: boogie-${{ runner.os }}-
           restore-keys: |
             boogie-${{ runner.os }}
 
       - name: Install dependencies and build prover
         run: |
-          INSTALL_DIR="~/.local/sui-prover"
+          INSTALL_DIR="~/.local/temp/sui-prover"
           BIN_DIR="~/.local/bin"
 
           mkdir -p "$INSTALL_DIR" "$BIN_DIR"
@@ -59,7 +59,6 @@ jobs:
 
           cat <<EOF > "$BIN_DIR/sui-prover"
           #!/bin/bash
-          export DOTNET_ROOT="$DOTNET_ROOT"
           export BOOGIE_EXE="$BIN_DIR/boogie"
           export Z3_EXE="$(brew --prefix z3)/bin/z3"
           exec "$INSTALL_DIR/bin/sui-prover" "\$@"
@@ -83,7 +82,7 @@ jobs:
           cp target/release/sui-prover ~/artifact-bundle/bin/
 
           # Copy boogie executable and all its dependencies
-          cp -r ~/.local/sui-prover/* ~/artifact-bundle/boogie/
+          cp -r ~/.local/temp/sui-prover/* ~/artifact-bundle/boogie/
           ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
           # Copy Z3 (just the bin directory is needed)
@@ -136,7 +135,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -186,7 +184,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -224,7 +221,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -267,7 +263,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -306,7 +301,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -352,7 +346,6 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=/usr/local/share/dotnet" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
