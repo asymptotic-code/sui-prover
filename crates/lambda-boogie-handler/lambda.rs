@@ -117,10 +117,15 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     }
 
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();
-
+    let boogie_options = if let Some(options) = body.get("options") {
+        Some(options.as_str().unwrap().to_string())
+    } else {
+        None
+    };
+    
     let prover = ProverHandler::new()?;
 
-    let response = match prover.process(file_text).await {
+    let response = match prover.process(file_text, boogie_options).await {
         Ok(resp) => resp,
         Err(e) => {
             return Ok(make_error_response(500, &format!("Prover processing failed: {}", e)));
@@ -155,7 +160,7 @@ async fn local_handler() -> Result<()> {
     };
 
     let prover = ProverHandler::new().unwrap();
-    prover.process(file_text).await.unwrap();
+    prover.process(file_text, None).await.unwrap();
 
     Ok(())
 }
