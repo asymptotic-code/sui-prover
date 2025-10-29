@@ -8,7 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     num::ParseIntError,
-    option::Option::None,
+    option::Option::None, time::Duration,
 };
 
 use anyhow::anyhow;
@@ -132,6 +132,13 @@ pub struct RemoteProverResponse {
     pub cached: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct RemoteProverResponseWrapper {
+    pub body: String,
+    #[serde(rename = "statusCode")]
+    pub status_code: i32,
+}
+
 impl<'env> BoogieWrapper<'env> {
     async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file)
@@ -139,10 +146,25 @@ impl<'env> BoogieWrapper<'env> {
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
             )?;
 
-        let client = reqwest::Client::new();        
-        let request_body = json!({
-            "file_text": file_text
-        });
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(900)) // 15 minutes timeout
+            .build()?;
+
+        let is_remote = remote_opt.url.as_str().contains("https://");
+
+        let request_body = if is_remote {
+            json!({ "file_text": file_text })
+        } else {
+            json!({
+                "body": json!({ "file_text": file_text }).to_string(),
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": remote_opt.api_key.as_str()
+                },
+                "httpMethod": "POST",
+                "path": "/",
+            })
+        };
 
         let response = client
             .post(remote_opt.url.as_str())
@@ -162,14 +184,28 @@ impl<'env> BoogieWrapper<'env> {
             );
         }
 
-        let response_json: RemoteProverResponse = response
-            .json()
-            .await
-            .map_err(|e| 
-                anyhow!(format!("Failed to read response body: {}", e))
-            )?;
+        let response_body = response.text().await?;
 
-        Ok(response_json)
+        let result = if is_remote {
+            let response: RemoteProverResponse = serde_json::from_str(&response_body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to parse response body JSON: {}", e))
+                )?;
+            response
+        } else {
+            let response_json: RemoteProverResponseWrapper = serde_json::from_str(&response_body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to read response body: {}", e))
+                )?;
+
+            let response: RemoteProverResponse = serde_json::from_str(&response_json.body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to parse response body JSON: {}", e))
+                )?;
+            response
+        };
+
+        Ok(result)
     }
 
     pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {

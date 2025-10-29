@@ -28,6 +28,7 @@ use crate::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
     },
     livevar_analysis::LiveVarAnalysisProcessor,
+    no_abort_analysis,
     options::ProverOptions,
     reaching_def_analysis::ReachingDefProcessor,
     spec_translator::{SpecTranslator, TranslatedSpec},
@@ -185,6 +186,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
 }
 
 struct Instrumenter<'a> {
+    targets: &'a FunctionTargetsHolder,
     options: &'a ProverOptions,
     builder: FunctionDataBuilder<'a>,
     ret_locals: Vec<TempIndex>,
@@ -280,6 +282,7 @@ impl<'a> Instrumenter<'a> {
 
         // Create and run the instrumenter.
         let mut instrumenter = Instrumenter {
+            targets,
             options,
             builder,
             ret_locals,
@@ -290,7 +293,7 @@ impl<'a> Instrumenter<'a> {
             can_abort: false,
             mem_info: &mem_info,
         };
-        instrumenter.instrument(&targets, &spec, &inlined_props);
+        instrumenter.instrument(&spec, &inlined_props);
 
         // Run copy propagation (reaching definitions) and then assignment
         // elimination (live vars). This cleans up some redundancy created by
@@ -308,7 +311,6 @@ impl<'a> Instrumenter<'a> {
 
     fn instrument(
         &mut self,
-        targets: &FunctionTargetsHolder,
         spec: &TranslatedSpec,
         inlined_props: &BTreeMap<AttrId, (TranslatedSpec, Exp)>,
     ) {
@@ -371,7 +373,8 @@ impl<'a> Instrumenter<'a> {
                     &self.builder.data
                 ))
                 .inlined
-                    || targets
+                    || self
+                        .targets
                         .get_fun_by_spec(&self.builder.fun_env.get_qualified_id())
                         .is_some()
             );
@@ -564,14 +567,23 @@ impl<'a> Instrumenter<'a> {
 
         // From here on code differs depending on whether the callee is opaque or not.
         if !callee_opaque || self.options.for_interpretation {
+            let abort_action = if !no_abort_analysis::does_not_abort(
+                self.targets,
+                &callee_env,
+                Some(&self.builder.fun_env),
+            ) {
+                self.can_abort = true;
+                Some(AbortAction::Jump(self.abort_label, self.abort_local))
+            } else {
+                None
+            };
             self.builder.emit(Call(
                 id,
                 dests,
                 Operation::Function(mid, fid, targs.clone()),
                 srcs,
-                Some(AbortAction::Jump(self.abort_label, self.abort_local)),
+                abort_action,
             ));
-            self.can_abort = true;
         } else {
             // Generates OpaqueCallBegin.
             self.generate_opaque_call(
