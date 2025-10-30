@@ -50,6 +50,23 @@ pub struct MonoInfo {
 }
 
 impl MonoInfo {
+    pub fn is_used_datatype(&self, env: &GlobalEnv, dt_qid: &QualifiedId<DatatypeId>) -> bool {
+        if dt_qid == &env.option_qid().unwrap() {
+            return self.is_used_datatype_helper(dt_qid)
+                || self.is_used_datatype_helper(&env.vec_set_qid().unwrap())
+                || self.is_used_datatype_helper(&env.vec_map_qid().unwrap());
+        } else {
+            return self.is_used_datatype_helper(dt_qid);
+        }
+    }
+
+    fn is_used_datatype_helper(&self, dt_qid: &QualifiedId<DatatypeId>) -> bool {
+        self.funs
+            .keys()
+            .map(|(fun_qid, _)| fun_qid.module_id)
+            .contains(&dt_qid.module_id)
+    }
+
     pub fn dump(&self, env: &GlobalEnv, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "\n\n==== mono-analysis result ====\n")?;
         let tctx = TypeDisplayContext::WithEnv {
@@ -359,6 +376,12 @@ impl Analyzer<'_> {
                         continue;
                     }
 
+                    self.info
+                        .funs
+                        .entry((fun.get_qualified_id(), variant))
+                        .or_default()
+                        .insert(vec![]);
+
                     self.analyze_fun(target.clone());
 
                     let info = spec_global_variable_analysis::get_info(&target.data);
@@ -531,7 +554,7 @@ impl Analyzer<'_> {
                     }
                 };
 
-                if (callee_env.is_native() || callee_env.is_intrinsic()) && !actuals.is_empty() {
+                if callee_env.is_native() || callee_env.is_intrinsic() {
                     self.info
                         .funs
                         .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
