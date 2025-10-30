@@ -707,9 +707,6 @@ impl Options {
                 .parse::<usize>()?;
             options.backend.num_instances = std::cmp::max(num_instances, 1); // at least one instance
         }
-        if matches.get_flag("sequential") {
-            options.prover.sequential_task = true;
-        }
         if matches.get_flag("stable-test-output") {
             //options.prover.stable_test_output = true;
             options.backend.stable_test_output = true;

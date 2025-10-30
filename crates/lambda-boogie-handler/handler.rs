@@ -112,7 +112,7 @@ impl ProverHandler {
         Ok(())
     }
 
-    fn get_boogie_command(&self, boogie_file_name: &str) -> Result<Vec<String>> {
+    fn get_boogie_command(&self, boogie_file_name: &str, individual_options: Option<String>) -> Result<Vec<String>> {
         let boogie_exe = std::env::var("BOOGIE_EXE")
             .context("BOOGIE_EXE environment variable not set")?;
         let z3_exe = std::env::var("Z3_EXE")
@@ -120,14 +120,19 @@ impl ProverHandler {
 
         let mut result = vec![boogie_exe];
         result.extend(DEFAULT_BOOGIE_FLAGS.iter().map(|s| s.to_string()));
+
+        if let Some(options) = individual_options {
+            result.extend(options.split_whitespace().map(|s| s.to_string()));
+        }
+
         result.push(format!("-proverOpt:PROVER_PATH={z3_exe}"));
         result.push(boogie_file_name.to_string());
 
         Ok(result)
     }
 
-    async fn execute_boogie(&self, temp_file_path: &str) -> Result<(String, String, i32)> {
-        let args = self.get_boogie_command(temp_file_path)?;
+    async fn execute_boogie(&self, temp_file_path: &str, individual_options: Option<String>) -> Result<(String, String, i32)> {
+        let args = self.get_boogie_command(temp_file_path, individual_options)?;
 
         let mut child = unsafe {
             Command::new(&args[0])
@@ -182,7 +187,7 @@ impl ProverHandler {
         ))
     }
 
-    pub async fn process(&self, file_text: String) -> Result<ProverResponse> {
+    pub async fn process(&self, file_text: String, boogie_options: Option<String>) -> Result<ProverResponse> {
         let hash = Self::generate_hash(&file_text);
 
         if let Some((out, err, status)) = self.check_cache(&hash).await? {
@@ -205,7 +210,7 @@ impl ProverHandler {
 
         let temp_file_path = temp_file.path().to_string_lossy().to_string();
 
-        let (out, err, status) = match self.execute_boogie(&temp_file_path).await {
+        let (out, err, status) = match self.execute_boogie(&temp_file_path, boogie_options).await {
             Ok(output) => output,
             Err(e) => (String::new(), format!("Error executing boogie remotely: {}", e), -1),
         };
