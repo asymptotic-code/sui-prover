@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use bimap::BiBTreeMap;
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
 use move_model::{model::FunctionEnv, ty::Type};
@@ -414,6 +415,7 @@ impl LoopAnalysisProcessor {
     ) -> LoopAnnotation {
         // build for natural loops
         let func_target = FunctionTarget::new(func_env, data);
+        let builder = FunctionDataBuilder::new(func_env, data.clone());
         let code = func_target.get_bytecode();
         let cfg = StacklessControlFlowGraph::new_forward(code);
         let entry = cfg.entry_block();
@@ -441,14 +443,28 @@ impl LoopAnalysisProcessor {
                 .push(single_loop);
         }
 
-        let invariants =
-            move_loop_invariants::get_all_invariants(func_env.module_env.env, &func_target, code);
-        let invariants_map: BTreeMap<_, _> = invariants
+        let invariants_attrs = move_loop_invariants::get_info(&func_target).attrs;
+        let invariants_offset = move_loop_invariants::get_invariant_span_bimap(func_env.module_env.env, code);
+
+        let invariants = invariants_attrs
             .iter()
-            .map(|(begin, end)| match &code[begin - 1] {
-                // TODO: check if the label is the header of a loop
-                Bytecode::Label(_, label) => (label, (*begin, *end)),
-                _ => panic!("A loop invariant should begin with a label"),
+            .map(|(begin, end)| {
+                (
+                    builder.get_offset_by_attr(*begin).unwrap(),
+                    builder.get_offset_by_attr(*end).unwrap(),
+                )
+            })
+            .chain(invariants_offset)
+            .collect::<BiBTreeMap<usize, usize>>();
+
+        let invariants_map: BTreeMap<Label, (usize, usize)> = invariants
+            .iter()
+            .map(|(begin, end)| {
+                match &code[begin - 1] {
+                    // TODO: check if the label is the header of a loop
+                    Bytecode::Label(_, label) => (*label, (*begin, *end)),
+                    _ => panic!("A loop invariant should begin with a label"),
+                }
             })
             .collect();
 

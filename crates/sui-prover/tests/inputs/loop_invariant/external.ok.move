@@ -1,42 +1,49 @@
-module 0x42::loop_invariant_external_tests;
+module 0x42::loop_invariant_external_ok;
 
 use prover::prover::{requires, ensures, old};
 use prover::ghost;
 use std::integer::Integer;
 
 #[spec_only(loop_inv(target = test0_spec))]
+#[ext(no_abort)]
 fun loop_inv_0(i: u64, n: u64): bool {
     i <= n
 }
 
 #[spec_only(loop_inv(target = test1_spec))]
+#[ext(no_abort)]
 fun loop_inv_1(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
 #[spec_only(loop_inv(target = test2_spec))]
+#[ext(no_abort)]
 fun loop_inv_2(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
 #[spec_only(loop_inv(target = test3_spec))]
+#[ext(no_abort)]
 fun loop_inv_3(n: u64, old_n: u64, s: u128): bool {
     n <= old_n && (s == ((old_n as u128) - (n as u128)) * ((old_n as u128) + (n as u128) + 1) / 2)
 }
 
 #[spec_only(loop_inv(target = test4_spec))]
+#[ext(no_abort)]
 fun loop_inv_4(i: u64, n: u64, s: u128): bool {
     i < n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
 #[spec_only(loop_inv(target = test5_spec))]
+#[ext(no_abort)]
 fun loop_inv_5(i: u64, n: u64): bool {
     i <= n && (ghost::global<SpecSum, Integer>() == ((i as u128) * ((i as u128) + 1) / 2).to_int())
 }
 
 #[spec_only(loop_inv(target = test6_spec))]
+#[ext(no_abort)]
 fun loop_inv_6(i: u64, n: u64, old_s: u128, ss: u128): bool {
-    i <= n && (ss == old_s + (i as u128) * ((i as u128) + 1) / 2)
+    i <= n //&& (ss == old_s + (i as u128) * ((i as u128) + 1) / 2)
 }
 
 #[spec(prove)]

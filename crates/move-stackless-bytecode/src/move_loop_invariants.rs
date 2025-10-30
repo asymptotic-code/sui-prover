@@ -6,18 +6,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::{PrimitiveType, Type}};
 
 use crate::{
-    exp_generator::ExpGenerator,
-    function_data_builder::FunctionDataBuilder,
-    function_target::{FunctionData, FunctionTarget},
-    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    stackless_bytecode::{Bytecode, Label, Operation},
+    deterministic_analysis, exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, no_abort_analysis, stackless_bytecode::{AttrId, Bytecode, Label, Operation}
 };
 
 pub struct MoveLoopInvariantsProcessor {}
 
 #[derive(Clone, Default, Debug)]
 pub struct TargetedLoopInfo {
-    offsets: BiBTreeMap<usize, usize>
+    pub attrs: BiBTreeMap<AttrId, AttrId>
 }
 
 pub fn get_info(target: &FunctionTarget<'_>) -> TargetedLoopInfo {
@@ -58,21 +54,17 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         if !invariants.is_empty() {
             Self::handle_classical_loop_invariants(func_env, data, invariants)
         } else if let Some(invs) = loop_inv_functions {
-            if loop_info.len() < invariants.len() {
-                func_env.module_env.env.diag(
-                    Severity::Error,
-                    &func_env.get_loc(),
-                    "Number of loop invariant functions exceeds number of loops in the function",
-                );
+            if !Self::is_valid_inv_function(&targets, invs, &loop_info, func_env) {
+                return data;
             }
 
-            let (mut new_data, offsets) = Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info);
+            let (mut new_data, attrs) = Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info);
 
             let info = new_data
                 .annotations
                 .get_or_default_mut::<TargetedLoopInfo>(true);
 
-            info.offsets = offsets;
+            info.attrs = attrs;
 
             new_data
         } else {
@@ -86,6 +78,81 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
 }
 
 impl MoveLoopInvariantsProcessor {
+    fn is_valid_inv_function(
+        targets: &FunctionTargetsHolder,
+        invs: &BTreeSet<(QualifiedId<FunId>, u64)>,
+        loops: &BTreeMap<usize, Vec<usize>>,
+        func_env: &FunctionEnv,
+    ) -> bool {
+        let env = func_env.module_env.env;
+        if invs.len() > loops.len() {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                "Number of loop invariant functions exceeds number of loops in the function",
+            );
+
+            return false;
+        }
+
+        for (qid, label) in invs {
+            if *label as usize >= loops.len() {
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!("Loop Invariant Label {} exceeds number of loops in function {}", label, func_env.get_full_name_str()),
+                );
+            }
+
+            let inv_env = env.get_function(*qid);
+            let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
+
+            if !no_abort_analysis::get_info(inv_data).does_not_abort && !targets.is_abort_check_fun(&qid) {
+                env.diag(
+                    Severity::Error,
+                    &inv_env.get_loc(),
+                    "Invariant function should not abort",
+                );
+            }
+
+            if !deterministic_analysis::get_info(inv_data).is_deterministic {
+                env.diag(
+                    Severity::Error,
+                    &inv_env.get_loc(),
+                    "Invariant function should be deterministic",
+                );
+            }
+
+            for pt in inv_env.get_parameter_types() {
+                if pt.is_mutable_reference() {
+                    env.diag(
+                        Severity::Error,
+                        &inv_env.get_loc(),
+                        "Mutable references are not allowed in loop invariant functions",
+                    );
+                }
+            }
+
+            if inv_env.get_return_count() != 1 {
+                env.diag(
+                    Severity::Error,
+                    &inv_env.get_loc(),
+                    "Loop invariant functions must have exactly one return value",
+                );
+            }
+
+            if !inv_env.get_return_type(0).is_bool() {
+                env.diag(
+                    Severity::Error,
+                    &inv_env.get_loc(),
+                    "Loop invariant functions must return a boolean value",
+                );
+            }
+        }
+
+        env.has_errors()
+    }
+
     fn match_invariant_arguments(
         builder: &FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
@@ -212,20 +279,19 @@ impl MoveLoopInvariantsProcessor {
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
         data: FunctionData,
-        invariants: &BTreeSet<(QualifiedId<FunId>, Option<String>)>,
+        invariants: &BTreeSet<(QualifiedId<FunId>, u64)>,
         loop_info: &BTreeMap<usize, Vec<usize>>
-    ) -> (FunctionData, BiBTreeMap<usize, usize>) {
+    ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
         let mut loop_header_to_invariant: BTreeMap<usize, QualifiedId<FunId>> = BTreeMap::new();
         for (qid, label) in invariants {
-            let idx = label.as_deref().unwrap_or("0").parse::<usize>().unwrap();
-            let header_offset = loop_info.iter().nth(idx).map(|(k, _)| *k).unwrap();
+            let header_offset = loop_info.iter().nth(*label as usize).map(|(k, _)| *k).unwrap();
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
 
-        let mut offsets = BiBTreeMap::new();
+        let mut attrs: BiBTreeMap<AttrId, AttrId> = BiBTreeMap::new();
 
         for (offset, bc) in code.into_iter().enumerate() {
             builder.emit(bc);
@@ -259,11 +325,11 @@ impl MoveLoopInvariantsProcessor {
                     None,
                 ));
 
-                offsets.insert(offset + 1, offset + 2);
+                attrs.insert(attr_id, ensures_attr_id);
             }
         }
 
-        (builder.data, offsets)
+        (builder.data, attrs)
     }
 
     pub fn new() -> Box<Self> {
@@ -273,7 +339,7 @@ impl MoveLoopInvariantsProcessor {
 
 // Returns a bimap between the begin offset of an invariant and the end offset
 // of the invariant.
-fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
+pub fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
     let invariant_begin_function = Operation::apply_fun_qid(&env.invariant_begin_qid(), vec![]);
     let invariant_end_function = Operation::apply_fun_qid(&env.invariant_end_qid(), vec![]);
     let begin_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
@@ -288,10 +354,4 @@ fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<us
         // TODO: check if the begin offsets and end offsets are well paired
         .zip_eq(end_offsets)
         .collect()
-}
-
-pub fn get_all_invariants(env: &GlobalEnv, target: &FunctionTarget<'_>, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
-    let mut result = get_invariant_span_bimap(env, code);
-    result.extend(get_info(target).offsets);
-    result
 }

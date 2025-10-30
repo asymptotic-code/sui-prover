@@ -56,7 +56,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BTreeSet<(QualifiedId<FunId>, Option<String>)>>,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BTreeSet<(QualifiedId<FunId>, u64)>>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -406,18 +406,16 @@ impl FunctionTargetsHolder {
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
-    ) -> Option<&BTreeSet<(QualifiedId<FunId>, Option<String>)>> {
+    ) -> Option<&BTreeSet<(QualifiedId<FunId>, u64)>> {
         self.loop_invariants.get(id)
     }
 
-    /// Returns an iterator over all loop invariant function IDs
     pub fn get_all_loop_invariant_functions(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.loop_invariants
             .values()
             .flat_map(|set| set.iter().map(|(fun_id, _)| *fun_id))
     }
 
-    /// Check if a function is a loop invariant function
     pub fn is_loop_invariant_function(&self, id: &QualifiedId<FunId>) -> bool {
         self.loop_invariants
             .values()
@@ -575,7 +573,7 @@ impl FunctionTargetsHolder {
                             func_env,
                             &module_env,
                             fun_name,
-                            loop_inv.label.map(|s| s.to_string()),
+                            loop_inv.label,
                         );
                     }
                     None => {
@@ -726,18 +724,9 @@ impl FunctionTargetsHolder {
         func_env: &FunctionEnv<'_>,
         module_env: &ModuleEnv<'_>,
         fun_name: String,
-        label: Option<String>,
+        label: u64,
     ) {
         let env = module_env.env;
-
-        if label.is_some() && label.as_ref().unwrap().parse::<usize>().is_err() {
-            env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                &format!("Invalid Loop Invariant Label {} in {}", label.unwrap_or_default(), fun_name),
-            );
-            return;
-        }
 
         if let Some(target_func_env) =
             module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
@@ -755,19 +744,10 @@ impl FunctionTargetsHolder {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
-                            &format!("Duplicated Loop Invariant Label {} in {}", label.unwrap_or_default(), fun_name),
+                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
                         );
                         return;
                     }
-                }
-
-                if label.is_none() {
-                    env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        &format!("Empty Loop Invariant Label Is not allowed in {}", fun_name),
-                    );
-                    return;
                 }
 
                 existing.insert((func_env.get_qualified_id(), label));
