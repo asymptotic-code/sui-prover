@@ -24,14 +24,6 @@ jobs:
           shared-key: "sui-prover"
           cache-on-failure: true
 
-      - name: Cache Boogie
-        uses: actions/cache@v4
-        with:
-          path: $HOME/.local/temp/sui-prover
-          key: boogie-${{ runner.os }}-
-          restore-keys: |
-            boogie-${{ runner.os }}
-
       - name: Install dependencies and build prover
         run: |
           INSTALL_DIR="$HOME/.local/temp/sui-prover"
@@ -43,19 +35,14 @@ jobs:
 
           cargo install --locked --path ./crates/sui-prover --root "$INSTALL_DIR"
 
-          if [ -d "$INSTALL_DIR/BoogieDriver" ]; then
-              echo "Boogie is already installed in $INSTALL_DIR"
-          else
-              echo "Installing Boogie..."
-              git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
-              cd boogie-src
-              dotnet build Source/Boogie.sln -c Release
-              cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
-              ln -sf "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
-              chmod +x "$BIN_DIR/boogie"
-              cd ..
-              rm -rf boogie-src
-          fi
+          git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
+          cd boogie-src
+          dotnet build Source/Boogie.sln -c Release
+          cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
+          ln -sf "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+          chmod +x "$BIN_DIR/boogie"
+          cd ..
+          rm -rf boogie-src
 
           cat <<EOF > "$BIN_DIR/sui-prover"
           #!/bin/bash
