@@ -47,6 +47,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use move_stackless_bytecode::graph::Graph;
 use std::str::FromStr;
 use crate::wip;
+use move_stackless_bytecode::control_flow_reconstruction::{reconstruct_control_flow, StructuredBlock};
 
 pub struct LeanTranslator<'env> {
     env: &'env GlobalEnv,
@@ -63,6 +64,7 @@ pub struct FunctionTranslator<'env> {
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
     ensures_info: RefCell<Vec<(usize, TempIndex)>>,
+    transformed_code: Vec<Bytecode>,
 }
 
 pub struct StructTranslator<'env> {
@@ -120,7 +122,30 @@ impl<'env> LeanTranslator<'env> {
                 .and_then(|uid_qid| mono_info.structs.get(&uid_qid))
                 .is_some();
             if is_uid {
-                todo!()
+                // Sui-specific: allow unresolved type params to be treated as Sui objects in Lean
+                // Emit a Lean structure with a uid field of type object::UID, and a borrow_uid helper.
+                // Determine the Lean name for the UID struct type.
+                let uid_qid = self
+                    .env
+                    .find_datatype_by_tag(&StructTag::from_str("0x2::object::UID").unwrap())
+                    .expect("object::UID type must exist when is_uid is true");
+                let uid_struct_env = self.env.get_struct_qid(uid_qid);
+                let uid_type_name = lean_struct_name(&uid_struct_env, &[]);
+
+                emitln!(writer, "structure {} where", param_type);
+                writer.indent();
+                emitln!(writer, "    uid : {}", uid_type_name);
+                writer.unindent();
+                emitln!(
+                    writer,
+                    "def {}_borrow_uid (obj : {}) : {} := obj.uid",
+                    param_type,
+                    param_type,
+                    uid_type_name
+                );
+            } else {
+                // Declare an abstract Lean type for the type parameter.
+                emitln!(writer, "constant {} : Type", param_type);
             }
         }
         emitln!(writer);
@@ -238,6 +263,7 @@ impl<'env> LeanTranslator<'env> {
                             type_inst,
                             style: FunctionTranslationStyle::Default,
                             ensures_info: RefCell::new(Vec::new()),
+                            transformed_code: Vec::new(),
                         }
                             .translate();
                     }
@@ -292,39 +318,17 @@ impl<'env> LeanTranslator<'env> {
                 }
             }
             
-            // Debug: Print the ordering for overflowing_mul related functions
-            eprintln!("=== FUNCTION ORDERING ===");
-            for (i, (qid, is_spec)) in ordered_qids.iter().enumerate() {
-                let fun_env = self.env.get_function(*qid);
-                let fun_name = fun_env.get_name_str();
-                if fun_name.contains("overflowing_mul") || fun_name.contains("mul_spec") {
-                    eprintln!("  {}: {} (is_spec: {}, needed: {})", i, fun_name, is_spec, needed_functions.contains(qid));
-                }
-            }
-            eprintln!("=========================");
-            
             for (qid, is_spec) in ordered_qids {
                 let fun_env = self.env.get_function(qid);
                 
                 // Filter out native and intrinsic functions during processing
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&qid) {
-                    if fun_env.get_name_str().contains("overflowing_mul") {
-                        eprintln!("FILTERED OUT: {} (native: {}, intrinsic: {})", 
-                                  fun_env.get_name_str(), fun_env.is_native(), intrinsic_fun_ids.contains(&qid));
-                    }
                     continue;
                 }
                 
                 // Only process functions that are actually needed
                 if !needed_functions.contains(&qid) {
-                    if fun_env.get_name_str().contains("overflowing_mul") {
-                        eprintln!("SKIPPED: {} (not needed)", fun_env.get_name_str());
-                    }
                     continue;
-                }
-                
-                if fun_env.get_name_str().contains("overflowing_mul") {
-                    eprintln!("PROCESSING: {} (is_spec: {})", fun_env.get_name_str(), is_spec);
                 }
                 
                 if is_spec {
@@ -344,6 +348,7 @@ impl<'env> LeanTranslator<'env> {
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
+                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
                                 .translate();
                         }
@@ -354,52 +359,33 @@ impl<'env> LeanTranslator<'env> {
                 } else {
                     let fun_target = self.targets.get_target(&fun_env, &FunctionVariant::Baseline);
                     
-                    if fun_env.get_name_str().contains("overflowing_mul") {
-                        eprintln!("  Regular function processing for: {}", fun_env.get_name_str());
-                        let spec_qid = self.targets.get_spec_by_fun(&fun_env.get_qualified_id());
-                        eprintln!("    Has spec counterpart: {:?}", spec_qid.is_some());
-                        if let Some(spec_qid) = spec_qid {
-                            eprintln!("    Spec function: {}", self.env.get_function(*spec_qid).get_name_str());
-                            eprintln!("    No verify specs contains: {}", self.targets.no_verify_specs().contains(spec_qid));
-                        } else {
-                            eprintln!("    Inlined: {}", verification_analysis::get_info(&fun_target).inlined);
-                        }
-                    }
-                    
                     // Process functions that have spec counterparts
                     if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
-                            if fun_env.get_name_str().contains("overflowing_mul") {
-                                eprintln!("    -> Translating {} (has spec counterpart)", fun_env.get_name_str());
-                            }
                             FunctionTranslator {
                                 parent: self,
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
+                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
                                 .translate();
                         } else {
                             // Only translate if this function is actually needed as a dependency
                             // Since we're processing in dependency order, if we reach here, it means
                             // this function is needed by something else
-                            if fun_env.get_name_str().contains("overflowing_mul") {
-                                eprintln!("    -> Translating {} (spec in no_verify_specs but function is needed as dependency)", fun_env.get_name_str());
-                            }
                             FunctionTranslator {
                                 parent: self,
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
+                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
                                 .translate();
                         }
                     } else if verification_analysis::get_info(&fun_target).inlined {
-                        if fun_env.get_name_str().contains("overflowing_mul") {
-                            eprintln!("    -> Translating {} (inlined, no spec counterpart)", fun_env.get_name_str());
-                        }
                         // This variant is inlined, so translate for all type instantiations.
                         for type_inst in mono_info
                             .funs
@@ -415,11 +401,10 @@ impl<'env> LeanTranslator<'env> {
                                 type_inst,
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
+                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
                                 .translate();
                         }
-                    } else if fun_env.get_name_str().contains("overflowing_mul") {
-                        eprintln!("    -> NOT translating {} (not inlined, no spec counterpart)", fun_env.get_name_str());
                     }
                 }
             }
@@ -479,6 +464,7 @@ impl<'env> LeanTranslator<'env> {
                     type_inst: &[],
                     style: FunctionTranslationStyle::Default,
                     ensures_info: RefCell::new(all_ensures_info.clone()),
+                    transformed_code: fun_target.get_bytecode().to_vec(),
                 };
                 
                 for (idx, _) in all_ensures_info.iter().enumerate() {
@@ -699,6 +685,8 @@ impl<'env> LeanTranslator<'env> {
             }
         }
 
+        // Keep a copy of the transformed code for CFG/emission (before dataflow rewrites)
+        let transformed_for_cfg = builder.data.code.clone();
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
@@ -720,6 +708,7 @@ impl<'env> LeanTranslator<'env> {
                 type_inst: &[],
                 style,
                 ensures_info: RefCell::new(Vec::new()),
+                transformed_code: transformed_for_cfg.clone(),
             };
             let ensures_info = translator.translate_with_ensures_control(generate_theorems);
             
@@ -758,6 +747,7 @@ impl<'env> LeanTranslator<'env> {
                         type_inst,
                         style,
                         ensures_info: RefCell::new(Vec::new()),
+                        transformed_code: transformed_for_cfg.clone(),
                     }
                         .translate_with_ensures_control(generate_theorems);
                 });
@@ -1417,6 +1407,7 @@ impl FunctionTranslator<'_> {
         &mut self,
         last_tracked_loc: &mut Option<(Loc, LineIndex)>,
         bytecode: &Bytecode,
+        cur_index: Option<usize>,
     ) {
         use Bytecode::*;
 
@@ -1464,8 +1455,6 @@ impl FunctionTranslator<'_> {
             .global_env()
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number operation state");
-        let mid = self.fun_target.func_env.module_env.get_id();
-        let fid = self.fun_target.func_env.get_id();
 
         // Translate the bytecode instruction.
         match bytecode {
@@ -1562,8 +1551,9 @@ impl FunctionTranslator<'_> {
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             // Track this ensures call
                             if !srcs.is_empty() {
-                                let bytecode_idx = self.fun_target.get_bytecode().iter().position(|bc| std::ptr::eq(bc, bytecode)).unwrap();
-                                self.ensures_info.borrow_mut().push((bytecode_idx, srcs[0]));
+                                if let Some(idx) = cur_index {
+                                    self.ensures_info.borrow_mut().push((idx, srcs[0]));
+                                }
                             }
 
                             emitln!(
@@ -2096,7 +2086,6 @@ fn loc_str(&self, loc: &Loc) -> String {
 /// suffix as indicated by `entry_point`.
 fn generate_function_sig(&self) {
     let writer = self.parent.writer;
-    let options = self.parent.options;
     let fun_target = self.fun_target;
     let (args, prerets) = self.generate_function_args_and_returns();
 
@@ -2245,14 +2234,144 @@ fn generate_function_body(&mut self) {
         emitln!(writer, "");
     }
 
-    // Generate function body using direct bytecode translation with ternary operators
-    let fun_target = self.fun_target;
-    let code = fun_target.get_bytecode();
+    // Generate function body using reconstructed control flow
+    let code = self.transformed_code.clone();
+    eprintln!("[lean] Translating {}", self.fun_target.func_env.get_full_name_str());
+    let blocks = reconstruct_control_flow(&code);
+    eprintln!("[lean] Reconstructed {} top-level blocks", blocks.len());
+    for (idx, block) in blocks.iter().enumerate() {
+        eprintln!("[lean] Block {}: {:?}", idx, match block {
+            StructuredBlock::Basic { lower, upper } => format!("Basic[{}..{}]", lower, upper),
+            StructuredBlock::Seq(v) => format!("Seq({} blocks)", v.len()),
+            StructuredBlock::IfThenElse { .. } => "IfThenElse".to_string(),
+            StructuredBlock::IfElseChain { branches, .. } => format!("IfElseChain({} branches)", branches.len()),
+        });
+    }
     let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
-    
-    // Translate each bytecode instruction directly
-    for bytecode in code {
-        self.translate_bytecode(&mut last_tracked_loc, bytecode);
+
+    // Recursive translator for structured blocks
+    fn translate_structured_block(
+        this: &mut FunctionTranslator<'_>,
+        block: &StructuredBlock,
+        code: &[Bytecode],
+        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
+    ) {
+        match block {
+            StructuredBlock::Basic { .. } => {
+                for offset in block.iter_offsets() {
+                    let bytecode = &code[offset as usize];
+                    // Skip branches and explicit merge jumps: the structured builder accounted for them
+                    match bytecode {
+                        Bytecode::Branch(..) => continue,
+                        _ => {}
+                    }
+                    this.translate_bytecode(last_tracked_loc, bytecode, Some(offset as usize));
+                }
+            }
+            StructuredBlock::Seq(blocks) => {
+                for b in blocks {
+                    translate_structured_block(this, b, code, last_tracked_loc);
+                }
+            }
+            StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } => {
+                // Extract condition temp from the Branch at cond_at
+                if let Bytecode::Branch(_, _tlabel, _elabel, cond_tmp) = &code[*cond_at as usize] {
+                    let cond_str = format!("t{}", *cond_tmp as usize);
+                    emitln!(this.writer(), "if {} then", cond_str);
+                    this.writer().indent();
+                    translate_structured_block(this, then_branch, code, last_tracked_loc);
+                    this.writer().unindent();
+                    if let Some(eb) = else_branch.as_ref() {
+                        emitln!(this.writer(), "else");
+                        this.writer().indent();
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                        this.writer().unindent();
+                    }
+                    emitln!(this.writer(), "end");
+                } else {
+                    // Fallback: no recognizable branch at cond_at, just translate bodies
+                    translate_structured_block(this, then_branch, code, last_tracked_loc);
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                }
+            }
+            StructuredBlock::IfElseChain { branches, else_branch } => {
+                if branches.is_empty() {
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                    return;
+                }
+
+                let mut cond_strings: Vec<Option<String>> = Vec::with_capacity(branches.len());
+                for (cond_at, _) in branches.iter() {
+                    let cond_string = match code.get(*cond_at as usize) {
+                        Some(Bytecode::Branch(_, _tlabel, _elabel, cond_tmp)) => {
+                            Some(format!("t{}", *cond_tmp as usize))
+                        }
+                        _ => None,
+                    };
+                    cond_strings.push(cond_string);
+                }
+
+                if cond_strings.iter().any(|c| c.is_none()) {
+                    // Fallback to sequential translation if any condition is not recognizable
+                    for (_, body) in branches {
+                        translate_structured_block(this, body, code, last_tracked_loc);
+                    }
+                    if let Some(eb) = else_branch.as_ref() {
+                        translate_structured_block(this, eb, code, last_tracked_loc);
+                    }
+                    return;
+                }
+
+                let resolved_conditions: Vec<String> = cond_strings
+                    .into_iter()
+                    .map(|c| c.expect("condition should be present"))
+                    .collect();
+
+                emitln!(
+                    this.writer(),
+                    "if {} then",
+                    resolved_conditions[0]
+                );
+                this.writer().indent();
+                translate_structured_block(
+                    this,
+                    &branches[0].1,
+                    code,
+                    last_tracked_loc,
+                );
+                this.writer().unindent();
+
+                for (idx, cond_str) in resolved_conditions.iter().enumerate().skip(1) {
+                    emitln!(this.writer(), "else if {} then", cond_str);
+                    this.writer().indent();
+                    translate_structured_block(
+                        this,
+                        &branches[idx].1,
+                        code,
+                        last_tracked_loc,
+                    );
+                    this.writer().unindent();
+                }
+
+                if let Some(eb) = else_branch.as_ref() {
+                    emitln!(this.writer(), "else");
+                    this.writer().indent();
+                    translate_structured_block(this, eb, code, last_tracked_loc);
+                    this.writer().unindent();
+                }
+                emitln!(this.writer(), "end");
+            }
+        }
+    }
+
+    if !blocks.is_empty() {
+        for block in &blocks {
+            translate_structured_block(self, block, &code, &mut last_tracked_loc);
+        }
     }
 
     writer.unindent();
@@ -2474,6 +2593,7 @@ fn generate_ensures_check_function(&self, ensures_idx: usize, bytecode_idx: usiz
         type_inst: self.type_inst,
         style: self.style,
         ensures_info: RefCell::new(Vec::new()),
+        transformed_code: self.transformed_code.clone(),
     };
 
     // Generate bytecode up to the ensures
@@ -2501,7 +2621,7 @@ fn generate_ensures_check_function(&self, ensures_idx: usize, bytecode_idx: usiz
             }
             _ => {}
         }
-        translator.translate_bytecode(&mut last_tracked_loc, bytecode);
+        translator.translate_bytecode(&mut last_tracked_loc, bytecode, Some(idx));
     }
 
     // Return the ensures condition
