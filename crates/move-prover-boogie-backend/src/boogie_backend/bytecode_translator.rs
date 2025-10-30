@@ -2202,7 +2202,7 @@ impl<'env> FunctionTranslator<'env> {
             }
 
             // Generate function body using let expressions instead of statements
-            self.generate_pure_expression(&mut last_tracked_loc, code);
+            self.generate_pure_expression(code);
         } else {
             // For procedures: emit all bytecodes as normal
             for bytecode in code.iter() {
@@ -2431,11 +2431,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     /// Generate Boogie pure function body using let/var expression nesting
-    fn generate_pure_expression(
-        &mut self,
-        _last_tracked_loc: &mut Option<(Loc, LineIndex)>,
-        code: &[Bytecode],
-    ) {
+    fn generate_pure_expression(&mut self, code: &[Bytecode]) {
         use Bytecode::*;
         use Operation::*;
 
@@ -2499,7 +2495,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fmt_temp(*else_val)
                                 )
                             } else {
-                                continue;
+                                panic!("unreachable: expected values for IfThenElse expressions")
                             }
                         } else if let Function(mid, fid, inst) = op {
                             // Handle function calls for functions that can be emitted as Boogie functions
@@ -2580,7 +2576,13 @@ impl<'env> FunctionTranslator<'env> {
                         final_return_temp = Some(*src);
                     }
                 }
-                _ => {} // Skip control flow and other bytecodes
+                Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
+                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) | Call(..) => {
+                    panic!(
+                        "Unsupported bytecode for #[ext(pure)] target: {:?}",
+                        bytecode
+                    )
+                }
             }
         }
 
