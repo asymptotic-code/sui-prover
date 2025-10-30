@@ -82,12 +82,14 @@ pub struct StructTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     struct_env: &'env StructEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 pub struct EnumTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     enum_env: &'env EnumEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 impl<'env> BoogieTranslator<'env> {
@@ -275,6 +277,8 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info
+                            .is_used_datatype(self.env, &struct_env.get_qualified_id()),
                     }
                     .translate();
                 }
@@ -294,6 +298,8 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         enum_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info
+                            .is_used_datatype(self.env, &enum_env.get_qualified_id()),
                     }
                     .translate();
                 }
@@ -411,8 +417,10 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_spec(&self, fun_env: &FunctionEnv<'env>) {
         if self.options.spec_no_abort_check_only {
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            if !self.targets.is_scenario_spec(&fun_env.get_qualified_id()) {
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            }
             if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
                 self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
             }
@@ -956,6 +964,11 @@ impl<'env> StructTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
+
         let struct_type = Type::Datatype(
             struct_env.module_env.get_id(),
             struct_env.get_id(),
@@ -1146,31 +1159,8 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
-        // Generate object::borrow_uid function for structs with key ability
-        if struct_env.get_abilities().has_key() {
-            let object_borrow_uid_fun_name = format!(
-                "$2_object_borrow_uid'{}'",
-                boogie_type_suffix(
-                    env,
-                    &Type::Datatype(
-                        struct_env.module_env.get_id(),
-                        struct_env.get_id(),
-                        self.type_inst.to_vec()
-                    )
-                )
-            );
-            let writer = self.parent.writer;
-            emitln!(
-                writer,
-                "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
-                object_borrow_uid_fun_name,
-                struct_name
-            );
-            writer.indent();
-            emitln!(writer, "res := obj->$id;");
-            writer.unindent();
-            emitln!(writer, "}");
-        }
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
 
         if struct_env.has_memory() {
             // Emit memory variable.
@@ -1212,6 +1202,89 @@ impl<'env> StructTranslator<'env> {
         writer.unindent();
         emitln!(writer, "}");
         emitln!(writer);
+    }
+
+    // Generate object::borrow_uid function for structs with key ability
+    fn translate_object_borrow_uid(&self) {
+        if !self.struct_env.get_abilities().has_key() {
+            return;
+        }
+
+        let object_borrow_uid_fun_name = format!(
+            "$2_object_borrow_uid'{}'",
+            boogie_type_suffix(
+                self.parent.env,
+                &Type::Datatype(
+                    self.struct_env.module_env.get_id(),
+                    self.struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )
+            )
+        );
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+            object_borrow_uid_fun_name,
+            boogie_struct_name(self.struct_env, self.type_inst),
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := obj->$id;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+    }
+
+    fn translate_opaque(&self) {
+        let struct_name = boogie_struct_name(self.struct_env, self.type_inst);
+        let suffix = boogie_type_suffix_for_struct(self.struct_env, self.type_inst, false);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", struct_name);
+        self.parent.writer.indent();
+        let content = if self.struct_env.get_abilities().has_key() {
+            "$id: $2_object_UID"
+        } else {
+            "$content: int"
+        };
+        emitln!(self.parent.writer, "{}({})", struct_name, content);
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+            || {
+                if self.struct_env.get_abilities().has_key() {
+                    emitln!(self.parent.writer, "$IsValid'$2_object_UID'(s->$id)")
+                } else {
+                    emitln!(self.parent.writer, "true")
+                }
+            },
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, struct_name, struct_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            struct_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
@@ -1284,6 +1357,11 @@ impl<'env> EnumTranslator<'env> {
 
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
+
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
 
         // Emit data type
         let enum_name = boogie_enum_name(enum_env, self.type_inst);
@@ -1495,6 +1573,46 @@ impl<'env> EnumTranslator<'env> {
         emitln!(writer, "}");
 
         emitln!(writer);
+    }
+
+    fn translate_opaque(&self) {
+        let enum_name = boogie_enum_name(self.enum_env, self.type_inst);
+        let suffix = boogie_enum_name(self.enum_env, self.type_inst);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", enum_name);
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "{}({})", enum_name, "$content: int");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, enum_name),
+            || emitln!(self.parent.writer, "true"),
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, enum_name, enum_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            enum_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
