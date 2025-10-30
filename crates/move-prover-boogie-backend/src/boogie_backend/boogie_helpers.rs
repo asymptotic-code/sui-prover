@@ -56,11 +56,11 @@ pub fn boogie_struct_name_bv(struct_env: &StructEnv<'_>, inst: &[Type], _bv_flag
     //     let type_fun = if bv_flag { boogie_bv_type } else { boogie_type };
     //     format!("Table int ({})", type_fun(env, &inst[1]))
     // } else {
-        format!(
-            "{}{}",
-            boogie_struct_name_prefix(struct_env),
-            boogie_inst_suffix(struct_env.module_env.env, inst)
-        )
+    format!(
+        "{}{}",
+        boogie_struct_name_prefix(struct_env),
+        boogie_inst_suffix(struct_env.module_env.env, inst)
+    )
     // }
 }
 
@@ -187,7 +187,9 @@ pub fn boogie_enum_field_update(field_env: &FieldEnv<'_>) -> String {
         "$Update'{}'_{}_{}",
         boogie_enum_name_prefix(&variant_env.enum_env),
         variant_env.get_name().display(variant_env.symbol_pool()),
-        field_env.get_name().display(variant_env.enum_env.symbol_pool()),
+        field_env
+            .get_name()
+            .display(variant_env.enum_env.symbol_pool()),
     )
 }
 
@@ -202,6 +204,7 @@ pub enum FunctionTranslationStyle {
     Aborts,
     SpecNoAbortCheck,
     Opaque,
+    Pure,
 }
 
 /// Return boogie name of given global spec variable.
@@ -221,6 +224,7 @@ pub fn boogie_function_name(
         FunctionTranslationStyle::Asserts => "$asserts",
         FunctionTranslationStyle::Aborts => "$aborts",
         FunctionTranslationStyle::SpecNoAbortCheck => "$spec_no_abort_check",
+        FunctionTranslationStyle::Pure => "$pure",
     };
     let non_empty_inst = if inst.is_empty() {
         (0..fun_env.get_type_parameter_count())
