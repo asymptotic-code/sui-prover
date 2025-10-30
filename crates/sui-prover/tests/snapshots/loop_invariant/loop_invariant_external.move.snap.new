@@ -3,31 +3,4 @@ source: crates/sui-prover/tests/integration.rs
 assertion_line: 260
 expression: output
 ---
-exiting with verification errors
-error: prover::ensures does not hold
-   ┌─ tests/inputs/loop_invariant/loop_invariant_external.move:6:1
-   │  
- 6 │ ╭ fun test0_spec(n: u64) {
- 7 │ │     let mut i = 0;
- 8 │ │ 
- 9 │ │     while (i < n) {
-   · │
-13 │ │     ensures(i == n);
-14 │ │ }
-   │ ╰─^
-   │  
-   =     at tests/inputs/loop_invariant/loop_invariant_external.move:6: test0_spec
-
-error: prover::asserts conditions are not complete
-   ┌─ tests/inputs/loop_invariant/loop_invariant_external.move:6:1
-   │  
- 6 │ ╭ fun test0_spec(n: u64) {
- 7 │ │     let mut i = 0;
- 8 │ │ 
- 9 │ │     while (i < n) {
-   · │
-13 │ │     ensures(i == n);
-14 │ │ }
-   │ ╰─^
-   │  
-   =     at tests/inputs/loop_invariant/loop_invariant_external.move:6: test0_spec
+Verification failed, panic during verification: ""

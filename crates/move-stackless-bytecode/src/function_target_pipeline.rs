@@ -449,8 +449,6 @@ impl FunctionTargetsHolder {
             .or_default()
             .insert(FunctionVariant::Baseline, data.clone());
 
-        println!("Added target: {}", func_env.get_full_name_str());
-
         if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::External)

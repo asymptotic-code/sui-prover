@@ -442,7 +442,7 @@ impl LoopAnalysisProcessor {
         }
 
         let invariants =
-            move_loop_invariants::get_invariant_span_bimap(func_env.module_env.env, code);
+            move_loop_invariants::get_all_invariants(func_env.module_env.env, &func_target, code);
         let invariants_map: BTreeMap<_, _> = invariants
             .iter()
             .map(|(begin, end)| match &code[begin - 1] {

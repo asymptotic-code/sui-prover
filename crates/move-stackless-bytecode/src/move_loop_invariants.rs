@@ -8,12 +8,25 @@ use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::{Primi
 use crate::{
     exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
-    function_target::FunctionData,
+    function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     stackless_bytecode::{Bytecode, Label, Operation},
 };
 
 pub struct MoveLoopInvariantsProcessor {}
+
+#[derive(Clone, Default, Debug)]
+pub struct TargetedLoopInfo {
+    offsets: BiBTreeMap<usize, usize>
+}
+
+pub fn get_info(target: &FunctionTarget<'_>) -> TargetedLoopInfo {
+    target
+        .get_annotations()
+        .get::<TargetedLoopInfo>()
+        .cloned()
+        .unwrap_or_default()
+}
 
 impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
     fn process(
@@ -53,7 +66,15 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
                 );
             }
 
-            Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info)
+            let (mut new_data, offsets) = Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info);
+
+            let info = new_data
+                .annotations
+                .get_or_default_mut::<TargetedLoopInfo>(true);
+
+            info.offsets = offsets;
+
+            new_data
         } else {
             data
         }
@@ -193,7 +214,7 @@ impl MoveLoopInvariantsProcessor {
         data: FunctionData,
         invariants: &BTreeSet<(QualifiedId<FunId>, Option<String>)>,
         loop_info: &BTreeMap<usize, Vec<usize>>
-    ) -> FunctionData {
+    ) -> (FunctionData, BiBTreeMap<usize, usize>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
@@ -203,6 +224,8 @@ impl MoveLoopInvariantsProcessor {
             let header_offset = loop_info.iter().nth(idx).map(|(k, _)| *k).unwrap();
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
+
+        let mut offsets = BiBTreeMap::new();
 
         for (offset, bc) in code.into_iter().enumerate() {
             builder.emit(bc);
@@ -235,10 +258,12 @@ impl MoveLoopInvariantsProcessor {
                     [temp].to_vec(),
                     None,
                 ));
+
+                offsets.insert(offset + 1, offset + 2);
             }
         }
 
-        builder.data
+        (builder.data, offsets)
     }
 
     pub fn new() -> Box<Self> {
@@ -248,7 +273,7 @@ impl MoveLoopInvariantsProcessor {
 
 // Returns a bimap between the begin offset of an invariant and the end offset
 // of the invariant.
-pub fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
+fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
     let invariant_begin_function = Operation::apply_fun_qid(&env.invariant_begin_qid(), vec![]);
     let invariant_end_function = Operation::apply_fun_qid(&env.invariant_end_qid(), vec![]);
     let begin_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
@@ -263,4 +288,10 @@ pub fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMa
         // TODO: check if the begin offsets and end offsets are well paired
         .zip_eq(end_offsets)
         .collect()
+}
+
+pub fn get_all_invariants(env: &GlobalEnv, target: &FunctionTarget<'_>, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
+    let mut result = get_invariant_span_bimap(env, code);
+    result.extend(get_info(target).offsets);
+    result
 }
