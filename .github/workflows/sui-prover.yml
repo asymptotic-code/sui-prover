@@ -151,6 +151,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sui-prover"
+          save-if: false
+
       - name: Download
         uses: actions/download-artifact@v4
         with:
