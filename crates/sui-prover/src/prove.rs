@@ -273,9 +273,10 @@ async fn execute_backend_lean(
     } else {
         LevelFilter::Info
     };
+    options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
     let mut error_writer = Buffer::no_color();
-    match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer) {
+    match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer).await {
         Ok(_) => {
             let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
             println!("Output: {}", output);

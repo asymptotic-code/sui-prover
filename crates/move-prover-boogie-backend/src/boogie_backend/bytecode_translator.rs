@@ -82,12 +82,14 @@ pub struct StructTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     struct_env: &'env StructEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 pub struct EnumTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     enum_env: &'env EnumEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 impl<'env> BoogieTranslator<'env> {
@@ -275,6 +277,8 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info
+                            .is_used_datatype(self.env, &struct_env.get_qualified_id()),
                     }
                     .translate();
                 }
@@ -294,6 +298,8 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         enum_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info
+                            .is_used_datatype(self.env, &enum_env.get_qualified_id()),
                     }
                     .translate();
                 }
@@ -411,8 +417,10 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_spec(&self, fun_env: &FunctionEnv<'env>) {
         if self.options.spec_no_abort_check_only {
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            if !self.targets.is_scenario_spec(&fun_env.get_qualified_id()) {
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            }
             if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
                 self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
             }
@@ -575,7 +583,11 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(bc.update_abort_action(|_| None));
+                        builder.emit(if omit_havoc {
+                            bc
+                        } else {
+                            bc.update_abort_action(|_| None)
+                        });
                         if !omit_havoc {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
@@ -952,6 +964,11 @@ impl<'env> StructTranslator<'env> {
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
 
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
+
         let struct_type = Type::Datatype(
             struct_env.module_env.get_id(),
             struct_env.get_id(),
@@ -1142,31 +1159,8 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
-        // Generate object::borrow_uid function for structs with key ability
-        if struct_env.get_abilities().has_key() {
-            let object_borrow_uid_fun_name = format!(
-                "$2_object_borrow_uid'{}'",
-                boogie_type_suffix(
-                    env,
-                    &Type::Datatype(
-                        struct_env.module_env.get_id(),
-                        struct_env.get_id(),
-                        self.type_inst.to_vec()
-                    )
-                )
-            );
-            let writer = self.parent.writer;
-            emitln!(
-                writer,
-                "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
-                object_borrow_uid_fun_name,
-                struct_name
-            );
-            writer.indent();
-            emitln!(writer, "res := obj->$id;");
-            writer.unindent();
-            emitln!(writer, "}");
-        }
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
 
         if struct_env.has_memory() {
             // Emit memory variable.
@@ -1208,6 +1202,89 @@ impl<'env> StructTranslator<'env> {
         writer.unindent();
         emitln!(writer, "}");
         emitln!(writer);
+    }
+
+    // Generate object::borrow_uid function for structs with key ability
+    fn translate_object_borrow_uid(&self) {
+        if !self.struct_env.get_abilities().has_key() {
+            return;
+        }
+
+        let object_borrow_uid_fun_name = format!(
+            "$2_object_borrow_uid'{}'",
+            boogie_type_suffix(
+                self.parent.env,
+                &Type::Datatype(
+                    self.struct_env.module_env.get_id(),
+                    self.struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )
+            )
+        );
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+            object_borrow_uid_fun_name,
+            boogie_struct_name(self.struct_env, self.type_inst),
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := obj->$id;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+    }
+
+    fn translate_opaque(&self) {
+        let struct_name = boogie_struct_name(self.struct_env, self.type_inst);
+        let suffix = boogie_type_suffix_for_struct(self.struct_env, self.type_inst, false);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", struct_name);
+        self.parent.writer.indent();
+        let content = if self.struct_env.get_abilities().has_key() {
+            "$id: $2_object_UID"
+        } else {
+            "$content: int"
+        };
+        emitln!(self.parent.writer, "{}({})", struct_name, content);
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+            || {
+                if self.struct_env.get_abilities().has_key() {
+                    emitln!(self.parent.writer, "$IsValid'$2_object_UID'(s->$id)")
+                } else {
+                    emitln!(self.parent.writer, "true")
+                }
+            },
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, struct_name, struct_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            struct_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
@@ -1280,6 +1357,11 @@ impl<'env> EnumTranslator<'env> {
 
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
+
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
 
         // Emit data type
         let enum_name = boogie_enum_name(enum_env, self.type_inst);
@@ -1493,6 +1575,46 @@ impl<'env> EnumTranslator<'env> {
         emitln!(writer);
     }
 
+    fn translate_opaque(&self) {
+        let enum_name = boogie_enum_name(self.enum_env, self.type_inst);
+        let suffix = boogie_enum_name(self.enum_env, self.type_inst);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", enum_name);
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "{}({})", enum_name, "$content: int");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, enum_name),
+            || emitln!(self.parent.writer, "true"),
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, enum_name, enum_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            enum_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
+    }
+
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
         self.emit_function_with_attr("{:inline} ", signature, body_fn)
     }
@@ -1699,7 +1821,7 @@ impl<'env> FunctionTranslator<'env> {
         let result = format!("{}{}", fun_name, suffix);
 
         if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
-            result.replace("$spec_no_abort_check", "$abort_check")
+            result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
         }
@@ -1716,17 +1838,12 @@ impl<'env> FunctionTranslator<'env> {
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => "{:inline 1} ".to_string(),
             FunctionVariant::Verification(flavor) => {
-                // let timeout = fun_target
-                //     .func_env
-                //     .get_num_pragma(TIMEOUT_PRAGMA, || options.vc_timeout);
-                // let mut attribs = vec![format!("{{:timeLimit {}}} ", timeout)];
-                // if fun_target.func_env.is_num_pragma_set(SEED_PRAGMA) {
-                //     let seed = fun_target
-                //         .func_env
-                //         .get_num_pragma(SEED_PRAGMA, || options.random_seed);
-                //     attribs.push(format!("{{:random_seed {}}} ", seed));
-                // };
-                let mut attribs = vec![format!("{{:timeLimit {}}} ", options.vc_timeout)];
+                let mut attribs = vec![format!(
+                    "{{:timeLimit {}}} ",
+                    self.parent.targets
+                        .get_spec_timeout(&self.fun_target.func_env.get_qualified_id())
+                        .unwrap_or(&(options.vc_timeout as u64)),
+                )];
                 match flavor {
                     VerificationFlavor::Regular => "".to_string(),
                     VerificationFlavor::Instantiated(_) => "".to_string(),
@@ -2559,75 +2676,6 @@ impl<'env> FunctionTranslator<'env> {
                         // special casing for type reflection
                         let mut processed = false;
 
-                        // TODO(mengxu): change it to a better address name instead of extlib
-                        if env.get_extlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                }
-                                processed = true;
-                            } else if qualified_name == TYPE_INFO_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                let (flag, info) = boogie_reflection_type_info(env, &inst[0]);
-                                emitln!(self.writer(), "if (!{}) {{", flag);
-                                self.writer().with_indent(|| {
-                                    emitln!(self.writer(), "call $ExecFailureAbort();")
-                                });
-                                emitln!(self.writer(), "}");
-                                if !dest_str.is_empty() {
-                                    emitln!(self.writer(), "else {");
-                                    self.writer().with_indent(|| {
-                                        emitln!(self.writer(), "{} := {};", dest_str, info)
-                                    });
-                                    emitln!(self.writer(), "}");
-                                }
-                                processed = true;
-                            }
-                        }
-
-                        if env.get_stdlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_GET_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                }
-                                processed = true;
-                            }
-                        }
-
                         if callee_env.get_qualified_id() == self.parent.env.global_borrow_mut_qid()
                         {
                             emitln!(
@@ -2739,11 +2787,12 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-                                
-                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
-                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
-                                let info = no_abort_analysis::get_info(data);
-                                if !info.does_not_abort && !self.parent.options.func_abort_check_only {
+
+                                if !no_abort_analysis::does_not_abort(
+                                    &self.parent.targets,
+                                    &self.parent.env.get_function(mid.qualified(*fid)),
+                                    None,
+                                ) {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",
@@ -3905,7 +3954,7 @@ impl<'env> FunctionTranslator<'env> {
                             false_expr_str
                         );
                     },
-                    Quantifier(qt, qid, inst) => {
+                    Quantifier(qt, qid, inst, li) => {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
@@ -3916,16 +3965,40 @@ impl<'env> FunctionTranslator<'env> {
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
 
+                        let args = if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                            srcs.iter()
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { "x".to_string() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        } else {
+                            let lambda_arg = format!("ReadVec($t{}, i)", srcs[0]);
+                            srcs.iter()
+                                .skip(1)
+                                .enumerate()
+                                .map(
+                                    |(index, vidx)| if index == *li { lambda_arg.clone() } else { format!("$t{}", vidx) }
+                                )
+                                .join(", ")
+                        };
+
                         match qt {
                             QuantifierType::Forall => {
-                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));", dests[0], b_type, suffix, fun_name, args);
                             },
                             QuantifierType::Exists => {
-                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));", dests[0], b_type, suffix, fun_name, args);
                             },
                             QuantifierType::Map => {
                                 emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}(ReadVec($t{}, i)));", srcs[0], dests[0], fun_name, srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, args);
+                            }
+                            QuantifierType::Any => {
+                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, args);
+                            }
+                            QuantifierType::All => {
+                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, args);
                             }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }

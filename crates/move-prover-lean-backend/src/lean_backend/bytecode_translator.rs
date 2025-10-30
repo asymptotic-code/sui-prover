@@ -788,21 +788,11 @@ impl<'env> LeanTranslator<'env> {
             // Get function dependencies by analyzing bytecode calls
             let fun_env = self.env.get_function(*qid);
             let dependencies = self.get_function_dependencies(&fun_env);
-            if fun_env.get_name_str().contains("mul") {
-                for dep_qid in &dependencies {
-                    println!("DEPENDENCY: {} depends on {}", fun_env.get_name_str(), self.env.get_function(dep_qid.clone()).get_name_str());
-                }
-            }
             
             for dep_qid in dependencies {
                 // Filter out native and intrinsic functions from dependency graph
                 let dep_fun_env = self.env.get_function(dep_qid);
                 if dep_fun_env.is_native() || intrinsic_fun_ids.contains(&dep_qid) {
-                    if fun_env.get_name_str().contains("mul") {
-                        println!("FILTERED DEPENDENCY: {} -> {} (native: {}, intrinsic: {})", 
-                                 fun_env.get_name_str(), dep_fun_env.get_name_str(), 
-                                 dep_fun_env.is_native(), intrinsic_fun_ids.contains(&dep_qid));
-                    }
                     continue;
                 }
                 
@@ -810,9 +800,6 @@ impl<'env> LeanTranslator<'env> {
                     // Add edge from dependency to current function
                     graph[dep_idx].push(i);
                     in_degree[i] += 1;
-                    if fun_env.get_name_str().contains("mul") {
-                        println!("ADDED DEPENDENCY EDGE: {} -> {}", dep_fun_env.get_name_str(), fun_env.get_name_str());
-                    }
                 }
             }
         }
@@ -924,17 +911,9 @@ impl<'env> LeanTranslator<'env> {
                             let callee_name = self.env.get_function(callee_qid).get_name_str();
                             let is_math_call = callee_name.contains("math_u128") || callee_name.contains("math_u64") || callee_name.contains("overflowing_mul");
                             
-                            if should_debug || is_math_call {
-                                eprintln!("      Function call to: {} (module: {:?}, same_module: {})", 
-                                          callee_name, module_id, *module_id == fun_env.module_env.get_id());
-                            }
-                            
                             // Include dependencies from the same module and cross-module dependencies
                             // Don't filter out based on native/intrinsic here - let the processing phase handle that
                             dependencies.push(callee_qid);
-                            if should_debug || is_math_call {
-                                eprintln!("      -> Added dependency: {} (cross-module: {})", callee_name, *module_id != fun_env.module_env.get_id());
-                            }
                         } else if should_debug {
                             eprintln!("      Non-function operation: {:?}", operation);
                         }
@@ -1391,7 +1370,7 @@ impl FunctionTranslator<'_> {
             fun_target.data.variant,
             fun_target.get_loc().display(env)
         );
-
+        
         // Special handling for SpecNoAbortCheck: generate a theorem instead of a function
         if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
             self.generate_no_abort_check_theorem();
@@ -2034,7 +2013,7 @@ impl FunctionTranslator<'_> {
                     EmitEvent => wip!("EmitEvent"),
                     EventStoreDiverge => wip!("EventStoreDiverge"),
                     TraceGlobalMem(mem) => {},
-                    Quantifier(_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
+                    Quantifier(_,_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}
