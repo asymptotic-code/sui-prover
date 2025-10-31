@@ -3,15 +3,15 @@ use std::path::PathBuf;
 use clap::*;
 use colored::Colorize;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use prove::{GeneralConfig, BuildConfig, RemoteConfig, execute};
+use prove::{execute, BuildConfig, GeneralConfig, RemoteConfig};
 use tracing::debug;
 
-mod prove;
+mod build_model;
+mod legacy_builder;
 mod llm_explain;
 mod prompts;
-mod legacy_builder;
+mod prove;
 mod system_dependencies;
-mod build_model;
 
 #[derive(Parser)]
 #[clap(
@@ -70,7 +70,8 @@ async fn main() {
         args.build_config,
         args.boogie_config,
         args.filter_config,
-    ).await;
+    )
+    .await;
 
     match result {
         Ok(_) => (),

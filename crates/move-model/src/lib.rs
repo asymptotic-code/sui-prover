@@ -60,11 +60,7 @@ pub fn run_model_builder<
     deps: Vec<PackagePaths<Paths, NamedAddress>>,
     warning_filter: Option<WarningFiltersBuilder>,
 ) -> anyhow::Result<GlobalEnv> {
-    run_model_builder_with_options(
-        move_sources,
-        deps,
-        warning_filter,
-    )
+    run_model_builder_with_options(move_sources, deps, warning_filter)
 }
 
 /// Build the move model with default compilation flags and custom options and a set of provided
@@ -109,11 +105,10 @@ pub fn run_model_builder_with_options_and_compilation_flags<
     all_deps.extend(deps);
 
     // Step 1: parse the program to get comments and a separation of targets and dependencies.
-    let (files, comments_and_compiler_res) =
-        Compiler::from_package_paths(None, all_deps, vec![])?
-            .set_flags(flags)
-            .set_warning_filter(warning_filter)
-            .run::<PASS_PARSER>()?;
+    let (files, comments_and_compiler_res) = Compiler::from_package_paths(None, all_deps, vec![])?
+        .set_flags(flags)
+        .set_warning_filter(warning_filter)
+        .run::<PASS_PARSER>()?;
     let compiler = match comments_and_compiler_res {
         Err((_pass, diags)) => {
             // Add source files so that the env knows how to translate locations of parse errors
@@ -148,7 +143,11 @@ pub fn run_model_builder_with_options_and_compilation_flags<
     {
         let fhash = member.def.file_hash();
         let (fname, fsrc) = files.get(&fhash).unwrap();
-        let is_dep = if member.package.is_none() { true } else { !sources_symbols.contains(&member.package.unwrap()) };
+        let is_dep = if member.package.is_none() {
+            true
+        } else {
+            !sources_symbols.contains(&member.package.unwrap())
+        };
         let aliases = parsed_prog
             .named_address_maps
             .get(member.named_address_map)
