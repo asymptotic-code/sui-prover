@@ -80,7 +80,7 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
 impl MoveLoopInvariantsProcessor {
     fn is_valid_inv_function(
         targets: &FunctionTargetsHolder,
-        invs: &BTreeSet<(QualifiedId<FunId>, u64)>,
+        invs: &BTreeSet<(QualifiedId<FunId>, usize)>,
         loops: &BTreeMap<usize, Vec<usize>>,
         func_env: &FunctionEnv,
     ) -> bool {
@@ -96,7 +96,7 @@ impl MoveLoopInvariantsProcessor {
         }
 
         for (qid, label) in invs {
-            if *label as usize >= loops.len() {
+            if *label >= loops.len() {
                 env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
@@ -150,7 +150,7 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        env.has_errors()
+        !env.has_errors()
     }
 
     fn match_invariant_arguments(
@@ -279,7 +279,7 @@ impl MoveLoopInvariantsProcessor {
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
         data: FunctionData,
-        invariants: &BTreeSet<(QualifiedId<FunId>, u64)>,
+        invariants: &BTreeSet<(QualifiedId<FunId>, usize)>,
         loop_info: &BTreeMap<usize, Vec<usize>>
     ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
@@ -287,7 +287,7 @@ impl MoveLoopInvariantsProcessor {
 
         let mut loop_header_to_invariant: BTreeMap<usize, QualifiedId<FunId>> = BTreeMap::new();
         for (qid, label) in invariants {
-            let header_offset = loop_info.iter().nth(*label as usize).map(|(k, _)| *k).unwrap();
+            let header_offset = loop_info.iter().nth(*label).map(|(k, _)| *k).unwrap();
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
 

@@ -1,11 +1,11 @@
-module 0x42::loop_invariant_external_wrong_label_fail;
+module 0x42::loop_invariant_external_invalid_arg_name_fail;
 
 use prover::prover::ensures;
 
-#[spec_only(loop_inv(target = test_spec, label = 5))]
+#[spec_only(loop_inv(target = test_spec))]
 #[ext(no_abort)]
-fun loop_inv(i: u64, n: u64, s: u128): bool {
-    i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
+fun loop_inv(i: u64, n: u64, compare: u128): bool {
+    i <= n && (compare == (i as u128) * ((i as u128) + 1) / 2)
 }
 
 #[spec(prove)]

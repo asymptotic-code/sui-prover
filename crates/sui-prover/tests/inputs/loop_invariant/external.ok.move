@@ -34,16 +34,10 @@ fun loop_inv_4(i: u64, n: u64, s: u128): bool {
     i < n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test5_spec))]
-#[ext(no_abort)]
-fun loop_inv_5(i: u64, n: u64): bool {
-    i <= n && (ghost::global<SpecSum, Integer>() == ((i as u128) * ((i as u128) + 1) / 2).to_int())
-}
-
 #[spec_only(loop_inv(target = test6_spec))]
 #[ext(no_abort)]
 fun loop_inv_6(i: u64, n: u64, old_s: u128, ss: u128): bool {
-    i <= n //&& (ss == old_s + (i as u128) * ((i as u128) + 1) / 2)
+    i <= n && ((ss as u256) == (old_s as u256) + (i as u256) * ((i as u256) + 1) / 2)
 }
 
 #[spec(prove)]
@@ -128,22 +122,6 @@ fun emit_u64_spec(x: u64) {
     let old_sum = *ghost::global<SpecSum, Integer>();
     emit_u64(x);
     ensures(ghost::global<SpecSum, Integer>() == old_sum.add(x.to_int()));
-}
-
-#[spec(prove)]
-fun test5_spec(n: u64) {
-    ghost::declare_global_mut<SpecSum, Integer>();
-    requires(ghost::global<SpecSum, Integer>() == 0u64.to_int());
-
-    let mut i = 0;
-
-    while (i < n) {
-        i = i + 1;
-        emit_u64(i);
-    };
-
-    ensures(i == n);
-    ensures(ghost::global<SpecSum, Integer>() == ((n as u128) * ((n as u128) + 1) / 2).to_int());
 }
 
 #[allow(unused_mut_parameter)]

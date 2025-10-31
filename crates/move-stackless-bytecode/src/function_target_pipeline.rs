@@ -56,7 +56,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BTreeSet<(QualifiedId<FunId>, u64)>>,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BTreeSet<(QualifiedId<FunId>, usize)>>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -406,7 +406,7 @@ impl FunctionTargetsHolder {
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
-    ) -> Option<&BTreeSet<(QualifiedId<FunId>, u64)>> {
+    ) -> Option<&BTreeSet<(QualifiedId<FunId>, usize)>> {
         self.loop_invariants.get(id)
     }
 
@@ -724,7 +724,7 @@ impl FunctionTargetsHolder {
         func_env: &FunctionEnv<'_>,
         module_env: &ModuleEnv<'_>,
         fun_name: String,
-        label: u64,
+        label: usize,
     ) {
         let env = module_env.env;
 
