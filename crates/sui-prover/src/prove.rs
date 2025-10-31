@@ -9,10 +9,8 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
-use move_prover_boogie_backend::generator::{run_boogie_gen, create_and_process_bytecode, display_function_stats};
-use move_prover_boogie_backend::generator_options::Options as BoogieOptions;
+use move_prover_boogie_backend::generator::{run_boogie_gen};
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use std::fmt::{Display, Formatter};
 use std::{
     collections::BTreeMap,
