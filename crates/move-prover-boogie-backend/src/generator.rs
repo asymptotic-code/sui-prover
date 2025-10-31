@@ -26,6 +26,7 @@ use move_stackless_bytecode::{
     }, number_operation::GlobalNumberOperationState, options::ProverOptions, pipeline_factory
 };
 use std::{
+    collections::BTreeMap,
     fs,
     path::Path,
     time::Instant,
@@ -101,6 +102,11 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         // TODO: add _err_processor to this message
         "exiting with bytecode transformation errors",
     )?;
+
+    if options.show_stats {
+        display_function_stats(env, &targets);
+        return Ok(("Function statistics displayed").to_string());
+    }
 
     let output_path = std::path::Path::new(&options.output_path);
     let output_existed = output_path.exists();
@@ -271,8 +277,105 @@ fn generate_module_bpl<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-    // Note: Module-level boogie options are not supported yet
+
     Ok((file_name, code_writer, types, None))
+}
+
+#[derive(Debug, Clone)]
+enum ProofStatus {
+    NoSpec,
+    SpecButNoProof,
+    SkippedSpec,
+    SuccessfulProof,
+}
+
+impl std::fmt::Display for ProofStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProofStatus::NoSpec => write!(f, "❌ no spec"),
+            ProofStatus::SpecButNoProof => write!(f, "⚠️  spec but no proof"),
+            ProofStatus::SkippedSpec => write!(f, "⏭️  skipped spec"),
+            ProofStatus::SuccessfulProof => write!(f, "✅ successful proof"),
+        }
+    }
+}
+
+pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) {
+    println!("📊 Function Statistics\n");
+    
+    let mut total_functions = 0;
+    let mut stats_by_status = BTreeMap::new();
+    
+    let mut functions_by_module: BTreeMap<String, Vec<_>> = BTreeMap::new();
+    
+    for module_env in env.get_target_modules() {
+        println!("Module: {}", module_env.get_full_name_str());
+
+            for func_env in module_env.get_functions() {
+                let func_id = func_env.get_qualified_id();
+                let has_spec = targets.get_spec_by_fun(&func_id).is_some() || 
+                               targets.function_specs().contains_left(&func_id);
+                
+                if func_env.is_exposed() || has_spec {
+                    let module_name_str = func_env.module_env.get_name().display(env.symbol_pool()).to_string();
+                    functions_by_module.entry(module_name_str).or_default().push(func_id);
+                }
+            }
+        
+    }
+    
+    println!("Debug: Found {} target modules", env.get_modules().filter(|m| m.is_target()).count());
+    println!("Debug: Total spec functions: {}", targets.function_specs().len());
+    
+    for (module_name, func_ids) in functions_by_module {
+        println!("📦 Module: {}", module_name);
+        
+        if func_ids.is_empty() {
+            println!("  (no public functions)");
+        } else {
+            for func_id in func_ids {
+                let func_env = env.get_function(func_id);
+                total_functions += 1;
+                
+                let status = determine_proof_status(&func_env, targets);
+                let count = stats_by_status.entry(format!("{}", status)).or_insert(0);
+                *count += 1;
+                
+                println!("  {} {}", status, func_env.get_name_str());
+            }
+        }
+        println!();
+    }
+    
+    println!("📈 Summary:");
+    println!("Total public functions: {}", total_functions);
+    for (status, count) in stats_by_status {
+        println!("  {}: {}", status, count);
+    }
+}
+
+fn determine_proof_status(func_env: &move_model::model::FunctionEnv, targets: &FunctionTargetsHolder) -> ProofStatus {
+    let func_id = func_env.get_qualified_id();
+    
+    if let Some(spec_id) = targets.get_spec_by_fun(&func_id) {
+        if targets.skip_specs().any(|id| id == spec_id) {
+            ProofStatus::SkippedSpec
+        } else if targets.is_verified_spec(spec_id) {
+            ProofStatus::SuccessfulProof
+        } else {
+            ProofStatus::SpecButNoProof
+        }
+    } else if targets.function_specs().contains_left(&func_id) {
+        if targets.skip_specs().any(|id| id == &func_id) {
+            ProofStatus::SkippedSpec
+        } else if targets.is_verified_spec(&func_id) {
+            ProofStatus::SuccessfulProof
+        } else {
+            ProofStatus::SpecButNoProof
+        }
+    } else {
+        ProofStatus::NoSpec
+    }
 }
 
 async fn verify_bpl<W: WriteColor>(env: &GlobalEnv, error_writer: &mut W,  options: &Options, targets: &FunctionTargetsHolder, file: (String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)) -> anyhow::Result<bool> {
