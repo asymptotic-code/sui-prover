@@ -19,7 +19,10 @@ use move_model::{
     ty::{Type, TypeDisplayContext},
 };
 use num::BigUint;
-use std::{collections::BTreeMap, fmt::{self, Formatter}};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Formatter},
+};
 
 /// A label for a branch destination.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]

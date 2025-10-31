@@ -14,10 +14,7 @@
 //! Because data invariants cannot refer to global memory, they are not relevant for memory
 //! usage, and their injection therefore can happen after this phase.
 
-use move_model::{
-    model::FunctionEnv,
-    ty::BOOL_TYPE,
-};
+use move_model::{model::FunctionEnv, ty::BOOL_TYPE};
 
 use crate::{
     ast::Operation,

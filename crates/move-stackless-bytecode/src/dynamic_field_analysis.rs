@@ -156,7 +156,8 @@ pub fn get_fun_info(data: &FunctionData) -> &DynamicFieldInfo {
 pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Option<usize> {
     let mut return_pos = None;
     for bc in code.into_iter() {
-        if return_pos.is_some() { // if function have few return statments
+        if return_pos.is_some() {
+            // if function have few return statments
             return None;
         }
 
@@ -167,7 +168,7 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
                         return_pos = Some(i);
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -470,13 +471,18 @@ fn compute_uid_info(
                 if !dests.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
-                let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline).unwrap();
+                let callee_data = targets
+                    .get_data(&callee_id, &FunctionVariant::Baseline)
+                    .unwrap();
                 let callee_mapping = &get_fun_info(callee_data).uid_info;
 
                 for key in callee_mapping.keys() {
                     if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
                         let (_, obj_type) = callee_mapping.get(key).unwrap();
-                        return Some((dests[ret_pos], (srcs[0], obj_type.instantiate(tys), *attr_id)));
+                        return Some((
+                            dests[ret_pos],
+                            (srcs[0], obj_type.instantiate(tys), *attr_id),
+                        ));
                     }
                 }
 

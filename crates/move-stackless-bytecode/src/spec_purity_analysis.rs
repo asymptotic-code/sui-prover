@@ -160,10 +160,8 @@ impl SpecPurityAnalysis {
                                 .unwrap()
                                 .annotations
                                 .get::<PurityVerificationInfo>();
-                            
-                            let annotation_info = annotation
-                                .cloned()
-                                .unwrap_or_default();
+
+                            let annotation_info = annotation.cloned().unwrap_or_default();
 
                             // Propagate network call impurity
                             if annotation_info.is_network_call {
@@ -213,14 +211,17 @@ impl SpecPurityAnalysis {
                 let spec_name = func_env.get_full_name_str();
                 let target_func_env = env.get_function(*underlying_func_id.unwrap());
                 let target_name = target_func_env.get_full_name_str();
-                
+
                 env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
-                    &format!("Spec function `{}` should call target function `{}`", spec_name, target_name),
+                    &format!(
+                        "Spec function `{}` should call target function `{}`",
+                        spec_name, target_name
+                    ),
                 );
             }
-            
+
             if !network_calls.is_empty() {
                 for loc in network_calls.iter() {
                     env.diag(

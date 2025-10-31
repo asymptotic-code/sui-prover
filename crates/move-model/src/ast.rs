@@ -12,12 +12,11 @@ use std::{
     hash::Hash,
 };
 
-
 use num::{BigInt, BigUint, Num};
 use once_cell::sync::Lazy;
 
 use crate::{
-    model::{NodeId, GlobalId},
+    model::{GlobalId, NodeId},
     symbol::{Symbol, SymbolPool},
 };
 

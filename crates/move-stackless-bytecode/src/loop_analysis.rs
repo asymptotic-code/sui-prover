@@ -14,8 +14,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::{Graph, NaturalLoop},
-    move_loop_invariants,
-    spec_global_variable_analysis,
+    move_loop_invariants, spec_global_variable_analysis,
     stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
 };

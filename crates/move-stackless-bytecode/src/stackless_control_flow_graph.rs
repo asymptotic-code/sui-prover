@@ -5,6 +5,7 @@
 //! Adapted from control_flow_graph for Bytecode, this module defines the control-flow graph on
 //! Stackless Bytecode used in analysis as part of Move prover.
 
+use crate::graph::DomRelation;
 use crate::{
     function_target::FunctionTarget,
     stackless_bytecode::{Bytecode, Label},
@@ -12,7 +13,6 @@ use crate::{
 use move_binary_format::file_format::CodeOffset;
 use petgraph::{dot::Dot, graph::Graph};
 use std::collections::{BTreeMap, BTreeSet};
-use crate::graph::DomRelation;
 
 type Map<K, V> = BTreeMap<K, V>;
 type Set<V> = BTreeSet<V>;
@@ -63,7 +63,11 @@ impl StacklessControlFlowGraph {
         Self::new_backward_with_options(code, from_all_blocks, false)
     }
 
-    pub fn new_backward_with_options(code: &[Bytecode], from_all_blocks: bool, ignore_aborts: bool) -> Self {
+    pub fn new_backward_with_options(
+        code: &[Bytecode],
+        from_all_blocks: bool,
+        ignore_aborts: bool,
+    ) -> Self {
         let blocks = Self::collect_blocks(code, ignore_aborts);
         let mut block_id_to_predecessors: Map<BlockId, Vec<BlockId>> =
             blocks.keys().map(|block_id| (*block_id, vec![])).collect();
@@ -168,7 +172,12 @@ impl StacklessControlFlowGraph {
             let co_pc: CodeOffset = pc as CodeOffset;
             // Create a basic block
             if StacklessControlFlowGraph::is_end_of_block(co_pc, code, &bb_offsets) {
-                let mut successors = Bytecode::get_successors_with_options(co_pc, code, &label_offsets, ignore_aborts);
+                let mut successors = Bytecode::get_successors_with_options(
+                    co_pc,
+                    code,
+                    &label_offsets,
+                    ignore_aborts,
+                );
                 for successor in successors.iter_mut() {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);

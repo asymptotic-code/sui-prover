@@ -53,7 +53,11 @@ integration-test = "0x9"
 
     let extra_bpl_path = file_path
         .strip_prefix(Path::new("tests/inputs"))
-        .map(|p| Path::new("tests/extra_prelude").join(p).with_extension("bpl"))
+        .map(|p| {
+            Path::new("tests/extra_prelude")
+                .join(p)
+                .with_extension("bpl")
+        })
         .unwrap_or(PathBuf::from("prelude_extra.bpl"));
 
     // Join it to the sources directory
@@ -108,7 +112,9 @@ integration-test = "0x9"
                         &mut error_buffer,
                         options.clone(),
                         None,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(output) => {
                             let error_output =
                                 String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
@@ -206,7 +212,9 @@ fn extract_impl_and_pure_functions(bpl_content: &str) -> Vec<String> {
     let mut function_lines = Vec::new();
 
     for line in lines {
-        if (line.contains("$impl") || line.contains("$pure")) && (line.contains("procedure") || line.contains("function")) {
+        if (line.contains("$impl") || line.contains("$pure"))
+            && (line.contains("procedure") || line.contains("function"))
+        {
             in_target_function = true;
             function_lines.push(line);
         } else if in_target_function {

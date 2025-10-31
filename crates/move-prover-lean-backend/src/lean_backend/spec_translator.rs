@@ -4,7 +4,6 @@
 
 //! This module translates specification conditions to Lean code.
 /// This file is nearly identical to Boogie's spec_translator.rs, with minor var name changes.
-
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[allow(unused_imports)]
@@ -111,7 +110,5 @@ impl<'env> SpecTranslator<'env> {
 // ============================
 
 impl<'env> SpecTranslator<'env> {
-    pub(crate) fn finalize(&self) {
-        
-    }
+    pub(crate) fn finalize(&self) {}
 }

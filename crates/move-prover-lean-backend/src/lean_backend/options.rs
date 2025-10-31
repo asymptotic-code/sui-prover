@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
 use move_command_line_common::env::read_env_var;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 /// Default flags passed to lean. Additional flags will be added to this via the -B option.
 const DEFAULT_LEAN_FLAGS: &[&str] = &[];
@@ -115,7 +115,6 @@ impl Default for LeanOptions {
 }
 
 impl LeanOptions {
-
     /// Returns command line to call lean.
     pub fn get_lean_command(&self, lean_file: &str) -> anyhow::Result<Vec<String>> {
         let mut result = vec![self.lean_exe.clone()];
@@ -141,12 +140,16 @@ impl LeanOptions {
 
         add(&[lean_file]);
 
-        let additional_options = self.string_options
+        let additional_options = self
+            .string_options
             .as_deref()
             .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect())
             .unwrap_or_else(Vec::new);
 
-        add(&additional_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+        add(&additional_options
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>());
 
         result.extend(seen_options.into_iter());
 

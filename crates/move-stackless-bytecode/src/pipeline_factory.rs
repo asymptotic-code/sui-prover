@@ -25,6 +25,7 @@ use crate::{
     no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
+    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
@@ -34,7 +35,6 @@ use crate::{
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
-    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
 };
 
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {

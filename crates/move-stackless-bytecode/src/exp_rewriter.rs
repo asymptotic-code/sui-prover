@@ -4,13 +4,13 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
+use itertools::Itertools;
 use move_model::{
     ast::Value,
     model::{GlobalEnv, NodeId},
     symbol::Symbol,
     ty::Type,
 };
-use itertools::Itertools;
 
 use crate::ast::{Exp, ExpData, LocalVarDecl, Operation, TempIndex};
 

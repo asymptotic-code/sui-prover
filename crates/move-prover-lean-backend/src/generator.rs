@@ -1,23 +1,25 @@
-/// This file is nearly identical to Boogie's generator.rs, with minor var name changes.
-use std::cell::RefCell;
+use crate::add_prelude;
 use crate::generator_options::Options;
+use crate::lean_backend::bytecode_translator::LeanTranslator;
+use crate::lean_backend::lean_wrapper::LeanWrapper;
 use anyhow::anyhow;
+use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
+use move_model::code_writer::CodeWriter;
 use move_model::model::GlobalEnv;
-use move_stackless_bytecode::function_target_pipeline::{FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor};
+use move_model::ty::Type;
+use move_stackless_bytecode::function_target_pipeline::{
+    FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
+};
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
 use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::pipeline_factory;
+/// This file is nearly identical to Boogie's generator.rs, with minor var name changes.
+use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
-use bimap::BiBTreeMap;
-use move_model::code_writer::CodeWriter;
-use move_model::ty::Type;
-use crate::add_prelude;
-use crate::lean_backend::bytecode_translator::LeanTranslator;
-use crate::lean_backend::lean_wrapper::LeanWrapper;
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
     let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
@@ -76,7 +78,9 @@ pub async fn run_prover_function_mode<W: WriteColor>(
     let mut has_errors = false;
 
     for target in all_targets.specs() {
-        if !env.get_function(*target).module_env.is_target() || !all_targets.is_verified_spec(target) {
+        if !env.get_function(*target).module_env.is_target()
+            || !all_targets.is_verified_spec(target)
+        {
             continue;
         }
 
@@ -187,11 +191,8 @@ pub fn create_and_process_bytecode(
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
 
-    let mut targets = FunctionTargetsHolder::new(
-        options.prover.clone(),
-        Default::default(),
-        target_type,
-    );
+    let mut targets =
+        FunctionTargetsHolder::new(options.prover.clone(), Default::default(), target_type);
 
     let output_dir = Path::new(&options.output_path)
         .parent()
@@ -227,7 +228,7 @@ pub fn create_and_process_bytecode(
     } else {
         pipeline.run(env, &mut targets)
     };
-    
+
     (targets, res.err().map(|p| p.name()))
 }
 
