@@ -1,4 +1,6 @@
 
+use std::{fs::remove_dir_all, fs::create_dir_all, process::Command};
+
 use anyhow::Result;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use rustls::crypto::CryptoProvider;
@@ -7,6 +9,32 @@ use serde_json::{from_str, json, Value};
 use dotenv;
 
 pub mod handler;
+
+fn cleanup_processes() {
+    if let Ok(output) = Command::new("ps")
+        .args(["-ef"])
+        .output()
+    {
+        println!("--- Process list before cleanup ---");
+        if let Ok(process_list) = String::from_utf8(output.stdout) {
+            println!("{}", process_list);
+        }
+    }
+
+    // Kill any orphaned Z3 processes
+    let _ = Command::new("pkill")
+        .args(["-9", "z3"])
+        .output();
+    
+    // Kill any orphaned dotnet processes
+    let _ = Command::new("pkill")
+        .args(["-9", "dotnet"])
+        .output();
+    
+    // Clean temp files
+    remove_dir_all("/tmp").ok();
+    create_dir_all("/tmp/lambda").ok();
+}
 
 fn make_error_response(status_code: u16, error: &str) -> Value {
     json!({
@@ -62,6 +90,7 @@ fn security_check(event: Value) -> Option<Value> {
 }
 
 async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    cleanup_processes();
     dotenv::dotenv().ok();
 
     match CryptoProvider::install_default(rustls::crypto::ring::default_provider()) {
@@ -88,10 +117,15 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     }
 
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();
+    let boogie_options = if let Some(options) = body.get("options") {
+        Some(options.as_str().unwrap().to_string())
+    } else {
+        None
+    };
+    
+    let prover = ProverHandler::new()?;
 
-    let prover = ProverHandler::new(false)?;
-
-    let response = match prover.process(file_text).await {
+    let response = match prover.process(file_text, boogie_options).await {
         Ok(resp) => resp,
         Err(e) => {
             return Ok(make_error_response(500, &format!("Prover processing failed: {}", e)));
@@ -125,8 +159,8 @@ async fn local_handler() -> Result<()> {
         }
     };
 
-    let prover = ProverHandler::new(true).unwrap();
-    prover.process(file_text).await.unwrap();
+    let prover = ProverHandler::new().unwrap();
+    prover.process(file_text, None).await.unwrap();
 
     Ok(())
 }

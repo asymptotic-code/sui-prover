@@ -8,7 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     num::ParseIntError,
-    option::Option::None,
+    option::Option::None, time::Duration,
 };
 
 use anyhow::anyhow;
@@ -46,7 +46,6 @@ use crate::boogie_backend::{
         boogie_struct_name_prefix,
     },
     options::{BoogieOptions, RemoteOptions, VectorTheory},
-    prover_task_runner::{ProverTaskRunner, RunBoogieWithSeeds},
 };
 
 /// A type alias for the way how we use crate `pretty`'s document type. `pretty` is a
@@ -132,22 +131,53 @@ pub struct RemoteProverResponse {
     pub cached: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct RemoteProverResponseWrapper {
+    pub body: String,
+    #[serde(rename = "statusCode")]
+    pub status_code: i32,
+}
+
 impl<'env> BoogieWrapper<'env> {
-    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<RemoteProverResponse> {
+    async fn call_remote(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file)
             .map_err(|e| 
                 anyhow!(format!("Failed to read boogie file '{}': {}", boogie_file, e))
             )?;
 
-        let client = reqwest::Client::new();        
-        let request_body = json!({
-            "file_text": file_text
-        });
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(900)) // 15 minutes timeout
+            .build()?;
+
+        let is_remote = remote_opt.url.as_str().contains("https://");
+
+        let request_body = if individual_options.is_some() {
+            json!({ 
+                "file_text": file_text,
+                "options": individual_options,
+            })
+        } else {
+            json!({ "file_text": file_text })
+        };
+
+        let request = if is_remote {
+            request_body
+        } else {
+            json!({
+                "body": request_body.to_string(),
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": remote_opt.api_key.as_str()
+                },
+                "httpMethod": "POST",
+                "path": "/",
+            })
+        };
 
         let response = client
             .post(remote_opt.url.as_str())
             .header("Authorization", remote_opt.api_key.as_str())
-            .json(&request_body)
+            .json(&request)
             .send()
             .await
             .map_err(|e| 
@@ -162,47 +192,50 @@ impl<'env> BoogieWrapper<'env> {
             );
         }
 
-        let response_json: RemoteProverResponse = response
-            .json()
-            .await
-            .map_err(|e| 
-                anyhow!(format!("Failed to read response body: {}", e))
-            )?;
+        let response_body = response.text().await?;
 
-        Ok(response_json)
+        let result = if is_remote {
+            let response: RemoteProverResponse = serde_json::from_str(&response_body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to parse response body JSON: {}", e))
+                )?;
+            response
+        } else {
+            let response_json: RemoteProverResponseWrapper = serde_json::from_str(&response_body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to read response body: {}", e))
+                )?;
+
+            let response: RemoteProverResponse = serde_json::from_str(&response_json.body)
+                .map_err(|e| 
+                    anyhow!(format!("Failed to parse response body JSON: {}", e))
+                )?;
+            response
+        };
+
+        Ok(result)
     }
 
-    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<BoogieOutput> {
-        let res = self.call_remote(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let res = self.call_remote(boogie_file, remote_opt, individual_options).await?;
         self.analyze_output(&res.out, &res.err, res.status)
     }
 
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
     /// output of boogie.
-    fn call_boogie(&self, boogie_file: &str) -> anyhow::Result<BoogieOutput> {
-        let args = self.options.get_boogie_command(boogie_file)?;
+    fn call_boogie(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<BoogieOutput> {
+        let args = self.options.get_boogie_command(boogie_file, individual_options)?;
         info!("running solver");
         debug!("command line: {}", args.iter().join(" "));
-        let mut task = RunBoogieWithSeeds {
-            options: self.options.clone(),
-            boogie_file: boogie_file.to_string(),
-        };
-        // When running on complicated formulas(especially those with quantifiers), SMT solvers
-        // can suffer from the so-called butterfly effect, where minor changes such as using
-        // different random seeds cause significant instabilities in verification times.
-        // Thus by running multiple instances of Boogie with different random seeds, we can
-        // potentially alleviate the instability.
-        let (seed, output_res) = if self.options.sequential_task {
-            let seed = 0;
-            (seed, task.run_sync(seed))
-        } else {
-            ProverTaskRunner::run_tasks(
-                task,
-                self.options.num_instances,
-                self.options.sequential_task,
-                self.options.hard_timeout_secs,
-            )
-        };
+
+        if !self.options.sequential_task {
+            return Err(anyhow!("Parallel boogie execution is not supported in the current environment."));
+        }
+
+        let output_res = std::process::Command::new(&args[0])
+            .args(&args[1..])
+            .output();
+
         let output = match output_res {
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::TimedOut {
@@ -226,15 +259,12 @@ impl<'env> BoogieWrapper<'env> {
             }
             Ok(out) => out,
         };
-        if self.options.num_instances > 1 {
-            debug!("Boogie instance with seed {} finished first", seed);
-        }
 
         debug!("analyzing boogie output");
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
-        
-        self.analyze_output(&out, &err, output.status.code().unwrap())
+
+        self.analyze_output(&out, &err, output.status.code().unwrap_or(-1))
     }
 
     fn analyze_output(&self, out: &str, err: &str, status: i32) -> anyhow::Result<BoogieOutput> {
@@ -293,13 +323,13 @@ impl<'env> BoogieWrapper<'env> {
     }
 
     /// Calls boogie and analyzes output.
-    pub fn call_boogie_and_verify_output(&self, boogie_file: &str) -> anyhow::Result<()> {
-        let output = self.call_boogie(boogie_file)?;
+    pub fn call_boogie_and_verify_output(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_boogie(boogie_file, individual_options)?;
         self.verify_boogie_output(&output, boogie_file)
     }
 
-    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions) -> anyhow::Result<()> {
-        let output = self.call_remote_boogie(boogie_file, remote_opt).await?;
+    pub async fn call_remote_boogie_and_verify_output(&self, boogie_file: &str, remote_opt: &RemoteOptions, individual_options: Option<String>) -> anyhow::Result<()> {
+        let output = self.call_remote_boogie(boogie_file, remote_opt, individual_options).await?;
         self.verify_boogie_output(&output, boogie_file)
     }
 

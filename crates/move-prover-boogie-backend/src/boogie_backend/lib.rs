@@ -200,10 +200,11 @@ pub fn add_prelude(
     let mut dynamic_field_instances = vec![];
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        if mono_info
-            .structs
-            .get(&struct_qid)
-            .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
+        if mono_info.is_used_datatype(env, &struct_qid)
+            && mono_info
+                .structs
+                .get(&struct_qid)
+                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
         {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
@@ -248,16 +249,17 @@ pub fn add_prelude(
         let option_env = option_module_env
             .find_struct(env.symbol_pool().make("Option"))
             .unwrap();
-        let option_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) 
-                    if did == option_env.get_qualified_id() => Some(&tys[0]),
-                _ => None,
-            })
-            .map(|ty| TypeInfo::new(env, options, ty, false))
-            .collect_vec();
+        let option_instances = if mono_info.is_used_datatype(env, &option_env.get_qualified_id()) {
+            mono_info
+                .structs
+                .get(&option_env.get_qualified_id())
+                .unwrap_or(&BTreeSet::new())
+                .iter()
+                .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                .collect_vec()
+        } else {
+            vec![]
+        };
         context.insert("option_instances", &option_instances);
     }
 
@@ -265,15 +267,18 @@ pub fn add_prelude(
         let vec_set_struct_env = vec_set_module_env
             .find_struct(env.symbol_pool().make("VecSet"))
             .unwrap();
-        let vec_set_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) if did == vec_set_struct_env.get_qualified_id() => Some(&tys[0]),
-                _ => None,
-            })
-            .map(|ty| TypeInfo::new(env, options, ty, false))
-            .collect_vec();
+        let vec_set_instances =
+            if mono_info.is_used_datatype(env, &vec_set_struct_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&vec_set_struct_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .collect_vec()
+            } else {
+                vec![]
+            };
         context.insert("vec_set_instances", &vec_set_instances);
     }
 
@@ -281,39 +286,43 @@ pub fn add_prelude(
         let vec_map_struct_env = vec_map_module_env
             .find_struct(env.symbol_pool().make("VecMap"))
             .unwrap();
-        let vec_map_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) if did == vec_map_struct_env.get_qualified_id() => {
-                    Some((&tys[0], &tys[1]))
-                }
-                _ => None,
-            })
-            .map(|(ty0, ty1)| {
-                (
-                    TypeInfo::new(env, options, ty0, false),
-                    TypeInfo::new(env, options, ty1, false),
-                )
-            })
-            .collect_vec();
+        let vec_map_instances =
+            if mono_info.is_used_datatype(env, &vec_map_struct_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&vec_map_struct_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| {
+                        (
+                            TypeInfo::new(env, options, &tys[0], false),
+                            TypeInfo::new(env, options, &tys[1], false),
+                        )
+                    })
+                    .collect_vec()
+            } else {
+                vec![]
+            };
         context.insert("vec_map_instances", &vec_map_instances);
     }
 
-    if let Some(table_vec_module_env) = env.find_module_by_name(env.symbol_pool().make("table_vec")) {
+    if let Some(table_vec_module_env) = env.find_module_by_name(env.symbol_pool().make("table_vec"))
+    {
         let table_vec_env = table_vec_module_env
             .find_struct(env.symbol_pool().make("TableVec"))
             .unwrap();
-        let table_vec_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) 
-                    if did == table_vec_env.get_qualified_id() => Some(&tys[0]),
-                _ => None,
-            })
-            .map(|ty| TypeInfo::new(env, options, ty, false))
-            .collect_vec();
+        let table_vec_instances =
+            if mono_info.is_used_datatype(env, &table_vec_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&table_vec_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .collect_vec()
+            } else {
+                vec![]
+            };
         context.insert("table_vec_instances", &table_vec_instances);
     }
 

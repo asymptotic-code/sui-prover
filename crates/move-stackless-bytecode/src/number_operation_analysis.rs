@@ -7,20 +7,12 @@
 // The result of this analysis will be used when generating the boogie code
 
 use crate::{
-    ast::TempIndex,
-    dataflow_analysis::{DataflowAnalysis, TransferFunctions},
-    dataflow_domains::{AbstractDomain, JoinResult},
-    function_target::FunctionTarget,
-    function_target_pipeline::{
+    ast::TempIndex, dataflow_analysis::{DataflowAnalysis, TransferFunctions}, dataflow_domains::{AbstractDomain, JoinResult}, function_target::FunctionTarget, function_target_pipeline::{
         FunctionTargetPipeline, FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant,
-    },
-    number_operation::{
+    }, number_operation::{
         GlobalNumberOperationState,
         NumOperation::{self, Arithmetic, Bitwise, Bottom},
-    },
-    options::ProverOptions,
-    stackless_bytecode::{AttrId, Bytecode, Operation},
-    stackless_control_flow_graph::StacklessControlFlowGraph,
+    }, options::ProverOptions, stackless_bytecode::{AttrId, Bytecode, Operation}, stackless_control_flow_graph::StacklessControlFlowGraph
 };
 use itertools::Either;
 use move_binary_format::file_format::CodeOffset;
@@ -63,7 +55,7 @@ impl NumberOperationProcessor {
                         if target.data.code.is_empty() {
                             continue;
                         }
-                        self.analyze_fun(env, target.clone());
+                        self.analyze_fun(targets, target.clone());
                     }
                 }
                 Either::Right(scc) => {
@@ -73,7 +65,7 @@ impl NumberOperationProcessor {
                             if target.data.code.is_empty() {
                                 continue;
                             }
-                            self.analyze_fun(env, target.clone());
+                            self.analyze_fun(targets, target.clone());
                         }
                     }
                 }
@@ -81,12 +73,12 @@ impl NumberOperationProcessor {
         }
     }
 
-    fn analyze_fun(&self, env: &GlobalEnv, target: FunctionTarget) {
+    fn analyze_fun(&self, targets: &FunctionTargetsHolder, target: FunctionTarget) {
         if !target.func_env.is_native() {
             let cfg = StacklessControlFlowGraph::one_block(target.get_bytecode());
             let analyzer = NumberOperationAnalysis {
                 func_target: target,
-                ban_int_2_bv_conversion: ProverOptions::get(env).ban_int_2_bv,
+                options: targets.prover_options().clone(),
             };
             analyzer.analyze_function(
                 NumberOperationState::create_initial_state(),
@@ -125,7 +117,7 @@ impl FunctionTargetProcessor for NumberOperationProcessor {
 
 struct NumberOperationAnalysis<'a> {
     func_target: FunctionTarget<'a>,
-    ban_int_2_bv_conversion: bool,
+    options: ProverOptions,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
@@ -168,7 +160,7 @@ fn table_funs_name_propogate_to_srcs(callee_name: &str) -> bool {
 impl NumberOperationAnalysis<'_> {
     /// Check whether operations in s conflicting
     fn check_conflict_set(&self, s: &BTreeSet<&NumOperation>) -> bool {
-        if self.ban_int_2_bv_conversion {
+        if self.options.ban_int_2_bv {
             let mut arith_flag = false;
             let mut bitwise_flag = false;
             for &oper in s {
@@ -187,7 +179,7 @@ impl NumberOperationAnalysis<'_> {
 
     /// Check whether oper_1 and oper_2 conflict
     fn check_conflict(&self, oper_1: &NumOperation, oper_2: &NumOperation) -> bool {
-        if self.ban_int_2_bv_conversion {
+        if self.options.ban_int_2_bv {
             oper_1.conflict(oper_2)
         } else {
             false
@@ -314,15 +306,13 @@ impl NumberOperationAnalysis<'_> {
                 .get_non_param_local_map(mid, fid, baseline_flag)
                 .contains_key(&i)
             {
+                let default_oper = global_state.get_default_operation_for_type(
+                    &self.func_target.get_local_type(i),
+                );
+
                 global_state
                     .get_mut_non_param_local_map(mid, fid, baseline_flag)
-                    .insert(
-                        i,
-                        GlobalNumberOperationState::get_default_operation_for_type(
-                            &self.func_target.get_local_type(i),
-                            &self.func_target.func_env.module_env.env,
-                        ),
-                    );
+                    .insert(i, default_oper);
             }
         }
     }
@@ -422,7 +412,7 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                     }
                     Add | Sub | Mul | Div | Mod => {
                         let mut num_oper = Arithmetic;
-                        if !self.ban_int_2_bv_conversion {
+                        if !self.options.ban_int_2_bv {
                             let op_srcs_0 = global_state
                                 .get_temp_index_oper(cur_mid, cur_fid, srcs[0], baseline_flag)
                                 .unwrap();
@@ -448,7 +438,7 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                         );
                     }
                     BitOr | BitAnd | Xor => {
-                        if self.ban_int_2_bv_conversion {
+                        if self.options.ban_int_2_bv {
                             self.check_and_update_oper(
                                 id,
                                 state,
@@ -464,7 +454,7 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                             self.check_and_update_oper_dest(
                                 state,
                                 dests,
-                                if ProverOptions::get(self.func_target.global_env()).bv_int_encoding
+                                if self.options.bv_int_encoding
                                 {
                                     Arithmetic
                                 } else {

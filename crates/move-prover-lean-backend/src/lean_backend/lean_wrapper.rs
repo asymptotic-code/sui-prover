@@ -40,7 +40,7 @@ pub struct LeanError {
 impl LeanWrapper<'_> {
     /// Calls lean on the given file. On success, returns a struct representing the analyzed
     /// output of lean.
-    pub fn call_lean(&self, lean_file: &str) -> anyhow::Result<LeanOutput> {
+    pub async fn call_lean(&self, lean_file: &str) -> anyhow::Result<LeanOutput> {
         let args = self.options.get_lean_command(lean_file)?;
         info!("running solver");
         debug!("command line: {}", args.iter().join(" "));
@@ -63,7 +63,7 @@ impl LeanWrapper<'_> {
                 self.options.num_instances,
                 self.options.sequential_task,
                 self.options.hard_timeout_secs,
-            )
+            ).await
         };
         let output = match output_res {
             Err(err) => {
@@ -101,8 +101,8 @@ impl LeanWrapper<'_> {
     }
 
     /// Calls lean and analyzes output.
-    pub fn call_lean_and_verify_output(&self, lean_file: &str) -> anyhow::Result<()> {
-        let LeanOutput { errors, all_output } = self.call_lean(lean_file)?;
+    pub async fn call_lean_and_verify_output(&self, lean_file: &str) -> anyhow::Result<()> {
+        let LeanOutput { errors, all_output } = self.call_lean(lean_file).await?;
         let lean_log_file = self.options.get_lean_log_file(lean_file);
         let log_file_existed = std::path::Path::new(&lean_log_file).exists();
         debug!("writing lean log to {}", lean_log_file);

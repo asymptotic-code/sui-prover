@@ -25,7 +25,7 @@ use simplelog::{
 use codespan_reporting::diagnostic::Severity;
 use move_docgen::DocgenOptions;
 use move_model::{
-    model::VerificationScope, options::ModelBuilderOptions,
+    model::VerificationScope,
 };
 use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
@@ -66,8 +66,6 @@ pub struct Options {
     pub experimental_pipeline: bool,
 
     /// BEGIN OF STRUCTURED OPTIONS. DO NOT ADD VALUE FIELDS AFTER THIS
-    /// Options for the model builder.
-    pub model_builder: ModelBuilderOptions,
     /// Options for the documentation generator.
     pub docgen: DocgenOptions,
     /// Options for the prover.
@@ -91,7 +89,6 @@ impl Default for Options {
             move_sources: vec![],
             move_deps: vec![],
             move_named_address_values: vec![],
-            model_builder: ModelBuilderOptions::default(),
             prover: ProverOptions::default(),
             backend: BoogieOptions::default(),
             docgen: DocgenOptions::default(),
@@ -709,9 +706,6 @@ impl Options {
                 .unwrap()
                 .parse::<usize>()?;
             options.backend.num_instances = std::cmp::max(num_instances, 1); // at least one instance
-        }
-        if matches.get_flag("sequential") {
-            options.prover.sequential_task = true;
         }
         if matches.get_flag("stable-test-output") {
             //options.prover.stable_test_output = true;
