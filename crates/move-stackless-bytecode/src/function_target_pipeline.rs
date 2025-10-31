@@ -56,7 +56,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BTreeSet<(QualifiedId<FunId>, usize)>>,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -406,7 +406,7 @@ impl FunctionTargetsHolder {
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
-    ) -> Option<&BTreeSet<(QualifiedId<FunId>, usize)>> {
+    ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
         self.loop_invariants.get(id)
     }
 
@@ -732,15 +732,15 @@ impl FunctionTargetsHolder {
             module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
         {
             if let Some(existing) = self.loop_invariants.get_mut(&target_func_env.get_qualified_id()) {
-                for row in existing.iter() {
-                    if row.0 == func_env.get_qualified_id() {
+                for (id, lb) in existing.iter() {
+                    if *id == func_env.get_qualified_id() {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
                             &format!("Invalid Loop Invariant Function {} in {}", func_env.get_full_name_str(), fun_name),
                         );
                         return;
-                    } else if row.1 == label {
+                    } else if *lb == label {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
@@ -750,14 +750,14 @@ impl FunctionTargetsHolder {
                     }
                 }
 
-                existing.insert((func_env.get_qualified_id(), label));
+                existing.insert(func_env.get_qualified_id(), label);
             } else {
                 self.loop_invariants.insert(
                     target_func_env.get_qualified_id(),
                     {
-                        let mut set = BTreeSet::new();
-                        set.insert((func_env.get_qualified_id(), label));
-                        set
+                        let mut map = BiBTreeMap::new();
+                        map.insert(func_env.get_qualified_id(), label);
+                        map
                     }
                 );
             }

@@ -1,12 +1,12 @@
 use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeMap;
 
 use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::{PrimitiveType, Type}};
 
 use crate::{
-    deterministic_analysis, exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, no_abort_analysis, stackless_bytecode::{AttrId, Bytecode, Label, Operation}
+    deterministic_analysis, exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, helpers::loop_helpers::find_loops_headers, no_abort_analysis, stackless_bytecode::{AttrId, Bytecode, Label, Operation}
 };
 
 pub struct MoveLoopInvariantsProcessor {}
@@ -36,8 +36,8 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             return data;
         }
 
-        let invariants = get_invariant_span_bimap(&func_env.module_env.env, &data.code);
-        let loop_info = Self::analyze_loops(&data.code);
+        let invariants = Self::get_invariant_span_bimap(&func_env.module_env.env, &data.code);
+        let loop_info = find_loops_headers(func_env, &data).keys().cloned().collect::<Vec<_>>();
 
         let loop_inv_functions = targets
             .get_loop_invariants(&func_env.get_qualified_id());
@@ -51,25 +51,27 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             return data;
         }
 
-        if !invariants.is_empty() {
-            Self::handle_classical_loop_invariants(func_env, data, invariants)
-        } else if let Some(invs) = loop_inv_functions {
+        if invariants.is_empty() && loop_inv_functions.is_none() {
+            return data;
+        }
+
+        let (mut new_data, attrs) = if let Some(invs) = loop_inv_functions {
             if !Self::is_valid_inv_function(&targets, invs, &loop_info, func_env) {
                 return data;
             }
 
-            let (mut new_data, attrs) = Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info);
-
-            let info = new_data
-                .annotations
-                .get_or_default_mut::<TargetedLoopInfo>(true);
-
-            info.attrs = attrs;
-
-            new_data
+            Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info)
         } else {
-            data
-        }
+            Self::handle_classical_loop_invariants(func_env, data, invariants)
+        };
+
+        let info = new_data
+            .annotations
+            .get_or_default_mut::<TargetedLoopInfo>(true);
+
+        info.attrs = attrs;
+
+        new_data
     }
 
     fn name(&self) -> String {
@@ -80,8 +82,8 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
 impl MoveLoopInvariantsProcessor {
     fn is_valid_inv_function(
         targets: &FunctionTargetsHolder,
-        invs: &BTreeSet<(QualifiedId<FunId>, usize)>,
-        loops: &BTreeMap<usize, Vec<usize>>,
+        invs: &BiBTreeMap<QualifiedId<FunId>, usize>,
+        loops: &Vec<Label>,
         func_env: &FunctionEnv,
     ) -> bool {
         let env = func_env.module_env.env;
@@ -197,12 +199,30 @@ impl MoveLoopInvariantsProcessor {
         args
     }
 
+    // Returns a bimap between the begin offset of an invariant and the end offset of the invariant.
+    fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
+        let invariant_begin_function = Operation::apply_fun_qid(&env.invariant_begin_qid(), vec![]);
+        let invariant_end_function = Operation::apply_fun_qid(&env.invariant_end_qid(), vec![]);
+        let begin_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
+            Bytecode::Call(_, _, op, _, _) if *op == invariant_begin_function => Some(i),
+            _ => None,
+        });
+        let end_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
+            Bytecode::Call(_, _, op, _, _) if *op == invariant_end_function => Some(i),
+            _ => None,
+        });
+        begin_offsets
+            // TODO: check if the begin offsets and end offsets are well paired
+            .zip_eq(end_offsets)
+            .collect()
+    }
+
     fn handle_classical_loop_invariants(
         func_env: &FunctionEnv,
         data: FunctionData,
         invariants: BiBTreeMap<usize, usize>,
-    ) -> FunctionData {
-        let mut builder = FunctionDataBuilder::new(func_env, data);
+    ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
+        let mut builder: FunctionDataBuilder<'_> = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
         let invariant_labels = invariants
             .iter()
@@ -215,79 +235,51 @@ impl MoveLoopInvariantsProcessor {
                 }
             })
             .collect::<BTreeMap<_, _>>();
+
+        let mut attrs: BiBTreeMap<AttrId, AttrId> = BiBTreeMap::new();
+
+        for (begin, end) in invariants.iter() {
+            if let (Some(start_bc), Some(end_bc)) = (code.get(begin + 1), code.get(end - 1)) {
+                let start_attr = start_bc.get_attr_id();
+                let end_attr = end_bc.get_attr_id();
+                attrs.insert(start_attr, end_attr);
+            }
+        }
+
         for (offset, bc) in code.into_iter().enumerate() {
             if let Some(label_bc) = invariant_labels.get(&offset) {
                 builder.emit(label_bc.clone());
             }
+
+            if invariants.contains_left(&offset) || invariants.contains_right(&offset) {
+                continue;
+            }
             if offset > 0 && invariants.contains_right(&(offset - 1)) {
                 continue;
             }
+
             builder.emit(bc);
         }
 
-        builder.data
+        (builder.data, attrs)
     }
 
-    pub fn build_label_to_offset_map(code: &[Bytecode]) -> HashMap<Label, usize> {
-        code.iter()
-            .enumerate()
-            .filter_map(|(offset, bc)| match bc {
-                Bytecode::Label(_, label) => Some((*label, offset)),
-                _ => None,
-            })
-            .collect()
-    }
-
-    pub fn find_backward_jumps(code: &[Bytecode]) -> Vec<(usize, usize)> {
-        let label_map = Self::build_label_to_offset_map(code);
-        let mut backward_jumps = Vec::new();
-
-        for (offset, bc) in code.iter().enumerate() {
-            let target_labels: Vec<Label> = match bc {
-                Bytecode::Jump(_, label) => vec![*label],
-                Bytecode::Branch(_, true_label, false_label, _) => vec![*true_label, *false_label],
-                Bytecode::VariantSwitch(_, _, labels) => labels.clone(),
-                _ => continue,
-            };
-
-            for target_label in target_labels {
-                if let Some(&target_offset) = label_map.get(&target_label) {
-                    if target_offset <= offset {
-                        backward_jumps.push((offset, target_offset));
-                    }
-                }
-            }
-        }
-
-        backward_jumps
-    }
-
-    pub fn analyze_loops(code: &[Bytecode]) -> BTreeMap<usize, Vec<usize>> {
-        let backward_jumps = Self::find_backward_jumps(code);
-        let mut loop_info: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-
-        for (from_offset, to_offset) in backward_jumps {
-            loop_info
-                .entry(to_offset)
-                .or_default()
-                .push(from_offset);
-        }
-
-        loop_info
+    fn find_label_offset(code: &[Bytecode], label: Label) -> Option<usize> {
+        code.iter().position(|bc| matches!(bc, Bytecode::Label(_, l) if *l == label))
     }
 
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
         data: FunctionData,
-        invariants: &BTreeSet<(QualifiedId<FunId>, usize)>,
-        loop_info: &BTreeMap<usize, Vec<usize>>
+        invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
+        loop_info: &Vec<Label>
     ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
         let mut loop_header_to_invariant: BTreeMap<usize, QualifiedId<FunId>> = BTreeMap::new();
         for (qid, label) in invariants {
-            let header_offset = loop_info.iter().nth(*label).map(|(k, _)| *k).unwrap();
+            let header_offset = Self::find_label_offset(&code, *loop_info.iter().nth(*label).unwrap()).unwrap();
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
 
@@ -335,23 +327,4 @@ impl MoveLoopInvariantsProcessor {
     pub fn new() -> Box<Self> {
         Box::new(Self {})
     }
-}
-
-// Returns a bimap between the begin offset of an invariant and the end offset
-// of the invariant.
-pub fn get_invariant_span_bimap(env: &GlobalEnv, code: &[Bytecode]) -> BiBTreeMap<usize, usize> {
-    let invariant_begin_function = Operation::apply_fun_qid(&env.invariant_begin_qid(), vec![]);
-    let invariant_end_function = Operation::apply_fun_qid(&env.invariant_end_qid(), vec![]);
-    let begin_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
-        Bytecode::Call(_, _, op, _, _) if *op == invariant_begin_function => Some(i),
-        _ => None,
-    });
-    let end_offsets = code.iter().enumerate().filter_map(|(i, bc)| match bc {
-        Bytecode::Call(_, _, op, _, _) if *op == invariant_end_function => Some(i),
-        _ => None,
-    });
-    begin_offsets
-        // TODO: check if the begin offsets and end offsets are well paired
-        .zip_eq(end_offsets)
-        .collect()
 }

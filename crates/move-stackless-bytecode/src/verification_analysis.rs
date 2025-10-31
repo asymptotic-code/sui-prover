@@ -119,11 +119,22 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         }
 
         // Rule 4: mark loop invariant functions as inlined
-        if targets.is_loop_invariant_function(&fun_env.get_qualified_id()) {
-            let info = data
-                .annotations
-                .get_or_default_mut::<VerificationInfo>(true);
-            if !info.inlined {
+        if let Some(loop_invs) = targets.get_loop_invariants(&fun_env.get_qualified_id()) {
+            let mut inlined = false;
+            
+            for (inv_id, _) in loop_invs {
+                let inv_data = targets.get_data(&inv_id, &FunctionVariant::Baseline).unwrap();
+                let inv_info = inv_data
+                    .annotations
+                    .get::<VerificationInfo>()
+                    .unwrap();
+
+                if inv_info.inlined {
+                    inlined = true;
+                }
+            }
+
+            if !info.inlined && inlined {
                 info.inlined = true;
                 Self::mark_callees_inlined(fun_env, targets);
             }
