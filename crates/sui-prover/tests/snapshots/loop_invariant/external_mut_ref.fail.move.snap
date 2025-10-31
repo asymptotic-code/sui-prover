@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 262
+expression: output
+---
+exiting with bytecode transformation errors
+warning: unused mutable reference '&mut' parameter
+  ┌─ tests/inputs/loop_invariant/external_mut_ref.fail.move:7:33
+  │
+7 │ fun loop_inv(i: u64, n: u64, s: &mut u128): bool {
+  │                              -  ^^^^^^^^^ Mutable reference is never used mutably, consider switching to an immutable reference '&' instead
+  │                              │   
+  │                              For parameters, this can be silenced by prefixing the name with an underscore, e.g. '_s'
+  │
+  = This warning can be suppressed with '#[allow(unused_mut_parameter)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: Mutable references are not allowed in loop invariant functions
+  ┌─ tests/inputs/loop_invariant/external_mut_ref.fail.move:7:1
+  │  
+7 │ ╭ fun loop_inv(i: u64, n: u64, s: &mut u128): bool {
+8 │ │     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
+9 │ │ }
+  │ ╰─^

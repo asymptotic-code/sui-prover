@@ -1,0 +1,19 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 262
+expression: output
+---
+exiting with model building errors
+error: invalid usage of known attribute
+  ┌─ tests/inputs/loop_invariant/external_no_target.fail.move:5:3
+  │
+5 │ #[spec_only(loop_inv(label = 0))]
+  │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Missing required attribute 'target' for loop_inv.
+
+warning: unused function
+  ┌─ tests/inputs/loop_invariant/external_no_target.fail.move:6:5
+  │
+6 │ fun loop_inv(i: u64, n: u64, s: u128): bool {
+  │     ^^^^^^^^ The non-'public', non-'entry' function 'loop_inv' is never called. Consider removing it.
+  │
+  = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
