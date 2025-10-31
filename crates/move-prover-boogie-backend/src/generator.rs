@@ -31,7 +31,11 @@ use move_stackless_bytecode::{
     options::ProverOptions,
     pipeline_factory,
 };
-use std::{fs, path::Path, time::Instant};
+use std::{
+    fs,
+    path::Path,
+    time::Instant,
+};
 
 pub struct FileOptions {
     pub file_name: String,

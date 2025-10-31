@@ -66,6 +66,9 @@ pub struct Options {
     /// Whether to run experimental pipeline
     pub experimental_pipeline: bool,
 
+    /// Whether to show function statistics
+    pub show_stats: bool,
+
     /// BEGIN OF STRUCTURED OPTIONS. DO NOT ADD VALUE FIELDS AFTER THIS
     /// Options for the documentation generator.
     pub docgen: DocgenOptions,
@@ -96,6 +99,7 @@ impl Default for Options {
             experimental_pipeline: false,
             filter: TargetFilterOptions::default(),
             remote: None,
+            show_stats: false,
         }
     }
 }

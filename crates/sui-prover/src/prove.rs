@@ -9,8 +9,10 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
-use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_prover_boogie_backend::generator::{run_boogie_gen, create_and_process_bytecode, display_function_stats};
+use move_prover_boogie_backend::generator_options::Options as BoogieOptions;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
+use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use std::fmt::{Display, Formatter};
 use std::{
     collections::BTreeMap,
@@ -107,6 +109,10 @@ pub struct GeneralConfig {
     /// Skip checking spec functions that do not abort
     #[clap(name = "skip-spec-no-abort", long, global = true)]
     pub skip_spec_no_abort: bool,
+
+    /// Dump control-flow graphs to file
+    #[clap(name = "stats", long, global = false)]
+    pub stats: bool,
 }
 
 #[derive(Args, Default)]
@@ -254,6 +260,7 @@ async fn execute_backend_boogie(
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
+    options.show_stats = general_config.stats;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
