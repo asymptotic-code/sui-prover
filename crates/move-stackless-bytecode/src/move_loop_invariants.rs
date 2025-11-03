@@ -1,7 +1,7 @@
 use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
-use std::collections::BTreeMap;
+use std::{collections::{BTreeMap, BTreeSet}, vec};
 
 use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::{PrimitiveType, Type}};
 
@@ -13,7 +13,7 @@ pub struct MoveLoopInvariantsProcessor {}
 
 #[derive(Clone, Default, Debug)]
 pub struct TargetedLoopInfo {
-    pub attrs: BiBTreeMap<AttrId, AttrId>
+    pub attrs: BTreeSet<Vec<AttrId>>,
 }
 
 pub fn get_info(target: &FunctionTarget<'_>) -> TargetedLoopInfo {
@@ -32,9 +32,12 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
+        println!("Checking ALL for loop invariants: {}", func_env.get_full_name_str());
         if func_env.is_native() {
             return data;
         }
+
+        println!("Processing function for loop invariants: {}", func_env.get_full_name_str());
 
         let invariants = Self::get_invariant_span_bimap(&func_env.module_env.env, &data.code);
         let loop_info = find_loops_headers(func_env, &data).keys().cloned().collect::<Vec<_>>();
@@ -52,10 +55,14 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         }
 
         if invariants.is_empty() && loop_inv_functions.is_none() {
+            println!("No loop invariants for function {}", func_env.get_full_name_str());
             return data;
+        } else {
+            println!("Processing loop invariants for function {}", func_env.get_full_name_str());
         }
 
         let (mut new_data, attrs) = if let Some(invs) = loop_inv_functions {
+            println!("Processing targeted loop invariants for function {}", func_env.get_full_name_str());
             if !Self::is_valid_inv_function(&targets, invs, &loop_info, func_env) {
                 return data;
             }
@@ -87,17 +94,8 @@ impl MoveLoopInvariantsProcessor {
         func_env: &FunctionEnv,
     ) -> bool {
         let env = func_env.module_env.env;
-        if invs.len() > loops.len() {
-            env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                "Number of loop invariant functions exceeds number of loops in the function",
-            );
-
-            return false;
-        }
-
         for (qid, label) in invs {
+            println!("Checking loop invariant function {:?} for label {}", qid, label);
             if *label >= loops.len() {
                 env.diag(
                     Severity::Error,
@@ -108,6 +106,9 @@ impl MoveLoopInvariantsProcessor {
 
             let inv_env = env.get_function(*qid);
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
+
+            println!("INFO {:?}", no_abort_analysis::get_info(inv_data));
+            println!("INFO 2 {:?}", targets.is_abort_check_fun(&qid));
 
             if !no_abort_analysis::get_info(inv_data).does_not_abort && !targets.is_abort_check_fun(&qid) {
                 env.diag(
@@ -221,7 +222,7 @@ impl MoveLoopInvariantsProcessor {
         func_env: &FunctionEnv,
         data: FunctionData,
         invariants: BiBTreeMap<usize, usize>,
-    ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
+    ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
         let mut builder: FunctionDataBuilder<'_> = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
         let invariant_labels = invariants
@@ -236,14 +237,14 @@ impl MoveLoopInvariantsProcessor {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let mut attrs: BiBTreeMap<AttrId, AttrId> = BiBTreeMap::new();
+        let mut attrs: BTreeSet<Vec<AttrId>> = BTreeSet::new();
 
         for (begin, end) in invariants.iter() {
-            if let (Some(start_bc), Some(end_bc)) = (code.get(begin + 1), code.get(end - 1)) {
-                let start_attr = start_bc.get_attr_id();
-                let end_attr = end_bc.get_attr_id();
-                attrs.insert(start_attr, end_attr);
+            let mut vrange = vec![];
+            for i in (*begin + 1)..=(*end - 1) {
+                vrange.push(code[i].get_attr_id());
             }
+            attrs.insert(vrange);
         }
 
         for (offset, bc) in code.into_iter().enumerate() {
@@ -273,7 +274,7 @@ impl MoveLoopInvariantsProcessor {
         data: FunctionData,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>
-    ) -> (FunctionData, BiBTreeMap<AttrId, AttrId>) {
+    ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
@@ -283,7 +284,7 @@ impl MoveLoopInvariantsProcessor {
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
 
-        let mut attrs: BiBTreeMap<AttrId, AttrId> = BiBTreeMap::new();
+        let mut attrs: BTreeSet<Vec<AttrId>> = BTreeSet::new();
 
         for (offset, bc) in code.into_iter().enumerate() {
             builder.emit(bc);
@@ -317,7 +318,7 @@ impl MoveLoopInvariantsProcessor {
                     None,
                 ));
 
-                attrs.insert(attr_id, ensures_attr_id);
+                attrs.insert(vec![attr_id, ensures_attr_id]);
             }
         }
 

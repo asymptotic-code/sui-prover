@@ -417,11 +417,17 @@ impl LoopAnalysisProcessor {
         let invariants = move_loop_invariants::get_info(&func_target)
             .attrs
             .iter()
-            .map(|(begin, end)| {
-                (
-                    builder.get_offset_by_attr(*begin).unwrap(),
-                    builder.get_offset_by_attr(*end).unwrap(),
-                )
+            .filter_map(|vrange| {
+                let offsets: Vec<usize> = vrange
+                    .iter()
+                    .filter_map(|attr_id| builder.get_offset_by_attr(*attr_id))
+                    .collect();
+
+                if offsets.is_empty() {
+                    panic!("A loop invariant should have at least 1 bytecode element")
+                } else {
+                    Some((*offsets.first().unwrap(), *offsets.last().unwrap()))
+                }
             })
             .collect::<BiBTreeMap<usize, usize>>();
 

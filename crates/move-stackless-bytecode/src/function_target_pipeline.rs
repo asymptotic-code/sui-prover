@@ -410,16 +410,13 @@ impl FunctionTargetsHolder {
         self.loop_invariants.get(id)
     }
 
-    pub fn get_all_loop_invariant_functions(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
+    pub fn get_loop_inv_with_targets(&self) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
         self.loop_invariants
-            .values()
-            .flat_map(|set| set.iter().map(|(fun_id, _)| *fun_id))
-    }
-
-    pub fn is_loop_invariant_function(&self, id: &QualifiedId<FunId>) -> bool {
-        self.loop_invariants
-            .values()
-            .any(|set| set.iter().any(|(fun_id, _)| fun_id == id))
+            .iter()
+            .map(|(target_fun_id, invs)| {
+                (target_fun_id.clone(), invs.iter().map(|el| el.0.clone()).collect())
+            })
+            .collect()
     }
 
     /// Return the specification of the callee function if the specification can

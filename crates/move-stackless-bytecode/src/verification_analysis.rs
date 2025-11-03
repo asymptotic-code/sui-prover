@@ -118,29 +118,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             return data;
         }
 
-        // Rule 4: mark loop invariant functions as inlined
-        if let Some(loop_invs) = targets.get_loop_invariants(&fun_env.get_qualified_id()) {
-            let mut inlined = false;
-            
-            for (inv_id, _) in loop_invs {
-                let inv_data = targets.get_data(&inv_id, &FunctionVariant::Baseline).unwrap();
-                let inv_info = inv_data
-                    .annotations
-                    .get::<VerificationInfo>()
-                    .unwrap();
-
-                if inv_info.inlined {
-                    inlined = true;
-                }
-            }
-
-            if !info.inlined && inlined {
-                info.inlined = true;
-                Self::mark_callees_inlined(fun_env, targets);
-            }
-            return data;
-        }
-
         // // Rule 1: never verify if "pragma verify = false;"
         // if !fun_env.is_pragma_true(VERIFY_PRAGMA, || true) {
         //     return data;
@@ -211,11 +188,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             functions_to_keep.insert(*inv_fun_id);
         }
 
-        // Keep all loop invariant functions
-        for loop_inv_fun_id in targets.get_all_loop_invariant_functions() {
-            functions_to_keep.insert(loop_inv_fun_id);
-        }
-
         // Keep functions that are verified, inlined, or essential
         for fun_id in targets.get_funs() {
             let fun_env = env.get_function(fun_id);
@@ -229,6 +201,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 }
             }
         }
+
+        // Mark loop invariant functions as inlined
+        targets.get_loop_inv_with_targets().iter().for_each(|(target_qid, invs)| {
+            let target_data = targets
+                .get_data(&target_qid, &FunctionVariant::Baseline)
+                .unwrap();
+
+            let target_info = target_data
+                .annotations
+                .get::<VerificationInfo>();
+
+            if let Some(target_info) = target_info {
+                if target_info.inlined {
+                    functions_to_keep.extend(invs);
+                }
+            }
+        });
 
         // Mark functions reachable from verified/inlined/essential functions and collect them
         let reachable_functions = Self::mark_reachable(env, targets, &functions_to_keep);
