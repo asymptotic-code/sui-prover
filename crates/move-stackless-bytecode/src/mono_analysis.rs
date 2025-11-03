@@ -18,11 +18,9 @@ use move_model::{
         DatatypeId, EnumEnv, FunId, GlobalEnv, ModuleId, QualifiedId, QualifiedInstId, StructEnv,
         StructOrEnumEnv,
     },
-    pragmas::INTRINSIC_TYPE_MAP,
     ty::{Type, TypeDisplayContext, TypeInstantiationDerivation, TypeUnificationAdapter, Variance},
     well_known::{
-        TYPE_INFO_MOVE, TYPE_INFO_SPEC, TYPE_NAME_GET_MOVE, TYPE_NAME_GET_SPEC, TYPE_NAME_MOVE,
-        TYPE_NAME_SPEC, TYPE_SPEC_IS_STRUCT,
+        TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE,
     },
 };
 

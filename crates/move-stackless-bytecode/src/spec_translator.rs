@@ -11,17 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use move_model::{
     model::{DatatypeId, FunctionEnv, GlobalId, Loc, NodeId, QualifiedInstId},
-    pragmas::{
-        ABORTS_IF_IS_STRICT_PRAGMA, CONDITION_ABSTRACT_PROP, CONDITION_CONCRETE_PROP,
-        CONDITION_EXPORT_PROP, CONDITION_INJECTED_PROP,
-    },
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 
 use crate::{
     ast::{
-        Condition, ConditionKind, Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel,
+        Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel,
         Operation, TempIndex, TraceKind,
     },
     exp_generator::ExpGenerator,

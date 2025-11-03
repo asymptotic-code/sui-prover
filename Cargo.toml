@@ -25,6 +25,10 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(msim)',
   'cfg(fail_points)',
 ] }
+dead_code = "allow"
+unused_variables = "allow"
+unused_imports = "deny"
+unused_mut = "deny"
 
 [workspace.dependencies]
 move-model = { path = "crates/move-model" }
