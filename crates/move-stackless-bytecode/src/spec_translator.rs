@@ -17,8 +17,7 @@ use move_model::{
 
 use crate::{
     ast::{
-        Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel,
-        Operation, TempIndex, TraceKind,
+        Exp, ExpData, GlobalInvariant, LocalVarDecl, MemoryLabel, Operation, TempIndex, TraceKind,
     },
     exp_generator::ExpGenerator,
     exp_rewriter::ExpRewriterFunctions,

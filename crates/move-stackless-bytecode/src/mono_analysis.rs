@@ -19,9 +19,7 @@ use move_model::{
         StructOrEnumEnv,
     },
     ty::{Type, TypeDisplayContext, TypeInstantiationDerivation, TypeUnificationAdapter, Variance},
-    well_known::{
-        TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE,
-    },
+    well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 
 use crate::{

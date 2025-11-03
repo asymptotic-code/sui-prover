@@ -1,7 +1,6 @@
 use crate::lean_backend::lean_helpers::{
-    lean_enum_name, lean_field_sel, lean_function_name,
-    lean_resource_memory_name, lean_struct_name, lean_type, lean_type_param,
-    lean_type_suffix, FunctionTranslationStyle,
+    lean_enum_name, lean_field_sel, lean_function_name, lean_resource_memory_name,
+    lean_struct_name, lean_type, lean_type_param, lean_type_suffix, FunctionTranslationStyle,
 };
 use crate::lean_backend::options::LeanOptions;
 use crate::lean_backend::spec_translator::SpecTranslator;
@@ -14,13 +13,12 @@ use move_compiler::interface_generator::NATIVE_INTERFACE;
 use move_core_types::language_storage::StructTag;
 use move_model::ast::Attribute;
 use move_model::code_writer::CodeWriter;
+use move_model::emitln;
 use move_model::model::{
-    EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId,
-    StructEnv,
+    EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, StructEnv,
 };
 use move_model::ty::{Type, TypeDisplayContext, BOOL_TYPE};
 use move_model::well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE};
-use move_model::emitln;
 use move_stackless_bytecode::ast::TempIndex;
 use move_stackless_bytecode::function_data_builder::FunctionDataBuilder;
 use move_stackless_bytecode::function_target::FunctionTarget;
