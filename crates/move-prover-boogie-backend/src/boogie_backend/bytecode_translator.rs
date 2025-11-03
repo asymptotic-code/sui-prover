@@ -2412,8 +2412,8 @@ impl<'env> FunctionTranslator<'env> {
         for bc in self.fun_target.get_bytecode() {
             if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
                 if matches!(qt, QuantifierType::Find | QuantifierType::FindIndex) {
-                    emitln!(self.parent.writer,"var $find_i: int;");
-                    emitln!(self.parent.writer,"var $find_exists: bool;");
+                    emitln!(self.parent.writer, "var $find_i: int;");
+                    emitln!(self.parent.writer, "var $find_exists: bool;");
                     return;
                 }
             }
