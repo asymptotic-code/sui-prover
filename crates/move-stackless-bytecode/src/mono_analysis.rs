@@ -214,9 +214,9 @@ impl MonoAnalysisProcessor {
         targets
             .specs()
             .filter_map(|id| {
-                targets.get_data(id, &FunctionVariant::Baseline).map(|data| {
-                    spec_global_variable_analysis::get_info(data).all_vars()
-                })
+                targets
+                    .get_data(id, &FunctionVariant::Baseline)
+                    .map(|data| spec_global_variable_analysis::get_info(data).all_vars())
             })
             .flatten()
             .collect::<BTreeSet<_>>()
@@ -282,8 +282,9 @@ impl MonoAnalysisProcessor {
                 .map_or(false, |set| !set.is_empty());
 
             if has_vec_set {
-                info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
-                
+                info.vec_inst
+                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+
                 info.structs
                     .entry(env.option_qid().unwrap())
                     .or_default()
@@ -317,7 +318,8 @@ impl MonoAnalysisProcessor {
                 .map_or(false, |set| !set.is_empty());
 
             if has_vec_map {
-                info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
+                info.vec_inst
+                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
 
                 info.structs
                     .entry(env.option_qid().unwrap())
@@ -327,7 +329,8 @@ impl MonoAnalysisProcessor {
         }
 
         // Add bool instantiation by default for dynamic fields
-        info.vec_inst.insert(Type::Primitive(move_model::ty::PrimitiveType::Bool));
+        info.vec_inst
+            .insert(Type::Primitive(move_model::ty::PrimitiveType::Bool));
         info.structs
             .entry(env.option_qid().unwrap())
             .or_default()
@@ -335,17 +338,11 @@ impl MonoAnalysisProcessor {
 
         // Add ID generation by default
         if let Some(id_qid) = env.id_qid() {
-            info.structs
-                .entry(id_qid)
-                .or_default()
-                .insert(vec![]);
+            info.structs.entry(id_qid).or_default().insert(vec![]);
         }
 
         if let Some(uid_qid) = env.uid_qid() {
-            info.structs
-                .entry(uid_qid)
-                .or_default()
-                .insert(vec![]);
+            info.structs.entry(uid_qid).or_default().insert(vec![]);
         }
 
         env.set_extension(info);

@@ -1,4 +1,5 @@
 use crate::lean_backend::options::LeanOptions;
+use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
 use anyhow::anyhow;
 use bimap::BiBTreeMap;
 use itertools::Itertools;
@@ -8,7 +9,6 @@ use move_model::model::{GlobalEnv, Loc};
 use move_model::ty::Type;
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 use std::fs;
-use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
 
 /// This file is nearly identical to Boogie's boogie_wrapper.rs, with minor var name changes.
 
@@ -63,7 +63,8 @@ impl LeanWrapper<'_> {
                 self.options.num_instances,
                 self.options.sequential_task,
                 self.options.hard_timeout_secs,
-            ).await
+            )
+            .await
         };
         let output = match output_res {
             Err(err) => {

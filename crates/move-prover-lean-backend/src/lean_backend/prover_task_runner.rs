@@ -5,6 +5,7 @@
 //! Prover task runner that runs multiple instances of the prover task and returns
 //! as soon as the fastest instance finishes.
 
+use crate::lean_backend::options::LeanOptions;
 /// This file is nearly identical to Boogie's prover_task_runner.rs, with minor var name changes.
 ///
 use async_trait::async_trait;
@@ -12,16 +13,11 @@ use futures::{future::FutureExt, pin_mut, select};
 use log::debug;
 use rand::Rng;
 use regex::Regex;
-use std::{
-    process::Output,
-    sync::Arc,
-    time::Duration,
-};
+use std::{process::Output, sync::Arc, time::Duration};
 use tokio::{
     process::Command,
     sync::{broadcast, broadcast::Receiver, mpsc, Semaphore},
 };
-use crate::lean_backend::options::LeanOptions;
 
 #[derive(Debug, Clone)]
 enum BroadcastMsg {

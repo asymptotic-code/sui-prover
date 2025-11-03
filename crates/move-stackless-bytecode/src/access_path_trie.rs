@@ -8,8 +8,8 @@
 //! Each node is (optionally) associated with abstract value of a generic type `T`.
 
 use crate::{
-    ast::TempIndex,
     access_path::{AbsAddr, AccessPath, AccessPathMap, FootprintDomain, Offset, Root},
+    ast::TempIndex,
     dataflow_domains::{AbstractDomain, JoinResult, MapDomain},
 };
 use im::ordmap::Entry;

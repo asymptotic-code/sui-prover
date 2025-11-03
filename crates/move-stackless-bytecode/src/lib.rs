@@ -19,9 +19,8 @@ pub mod conditional_merge_insertion;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
-pub mod no_abort_analysis;
-pub mod deterministic_analysis;
 pub mod debug_instrumentation;
+pub mod deterministic_analysis;
 pub mod dynamic_field_analysis;
 pub mod eliminate_imm_refs;
 pub mod escape_analysis;
@@ -41,11 +40,13 @@ pub mod mono_analysis;
 pub mod move_loop_invariants;
 pub mod mut_ref_instrumentation;
 pub mod mutation_tester;
+pub mod no_abort_analysis;
 pub mod number_operation;
 pub mod number_operation_analysis;
 pub mod options;
 pub mod packed_types_analysis;
 pub mod pipeline_factory;
+pub mod quantifier_iterator_analysis;
 pub mod reaching_def_analysis;
 pub mod spec_global_variable_analysis;
 pub mod spec_instrumentation;
@@ -60,7 +61,6 @@ pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod quantifier_iterator_analysis;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(

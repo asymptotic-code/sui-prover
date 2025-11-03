@@ -120,8 +120,13 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
             // out of this data and into the clone.
             let mut verification_data =
                 data.fork(FunctionVariant::Verification(VerificationFlavor::Regular));
-            verification_data =
-                Instrumenter::run(&options.clone(), targets, fun_env, verification_data, scc_opt);
+            verification_data = Instrumenter::run(
+                &options.clone(),
+                targets,
+                fun_env,
+                verification_data,
+                scc_opt,
+            );
             targets.insert_target_data(
                 &fun_env.get_qualified_id(),
                 verification_data.variant.clone(),

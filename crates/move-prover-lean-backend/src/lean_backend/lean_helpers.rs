@@ -1,6 +1,11 @@
 use itertools::Itertools;
-use move_model::model::{DatatypeId, EnclosingEnv, EnumEnv, FieldEnv, FunctionEnv, GlobalEnv, ModuleEnv, QualifiedInstId, StructEnv, StructOrEnumEnv, SCRIPT_MODULE_NAME};
-use move_model::ty::PrimitiveType::{Address, Bool, EventStore, Num, Range, Signer, U128, U16, U256, U32, U64, U8};
+use move_model::model::{
+    DatatypeId, EnclosingEnv, EnumEnv, FieldEnv, FunctionEnv, GlobalEnv, ModuleEnv,
+    QualifiedInstId, StructEnv, StructOrEnumEnv, SCRIPT_MODULE_NAME,
+};
+use move_model::ty::PrimitiveType::{
+    Address, Bool, EventStore, Num, Range, Signer, U128, U16, U256, U32, U64, U8,
+};
 use move_model::ty::Type;
 use move_model::ty::Type::Error;
 use move_stackless_bytecode::ast::MemoryLabel;
@@ -11,7 +16,6 @@ use move_stackless_bytecode::ast::MemoryLabel;
 pub fn lean_struct_name(struct_env: &StructEnv<'_>, inst: &[Type]) -> String {
     lean_struct_name_bv(struct_env, inst, false)
 }
-
 
 pub fn lean_struct_name_bv(struct_env: &StructEnv<'_>, inst: &[Type], _bv_flag: bool) -> String {
     // if struct_env.is_intrinsic_of(INTRINSIC_TYPE_MAP) {
@@ -93,7 +97,6 @@ pub enum FunctionTranslationStyle {
     Opaque,
 }
 
-
 /// Return lean name of given function.
 pub fn lean_function_name(
     fun_env: &FunctionEnv<'_>,
@@ -173,10 +176,7 @@ pub fn lean_type(env: &GlobalEnv, ty: &Type) -> String {
 
 /// Creates the name of the resource memory domain for any function for the given struct.
 /// This variable represents a local variable of the lean translation of this function.
-pub fn lean_modifies_memory_name(
-    env: &GlobalEnv,
-    memory: &QualifiedInstId<DatatypeId>,
-) -> String {
+pub fn lean_modifies_memory_name(env: &GlobalEnv, memory: &QualifiedInstId<DatatypeId>) -> String {
     let struct_env = &env.get_struct_qid(memory.to_qualified_id());
     format!("{}_modifies", lean_struct_name(struct_env, &memory.inst))
 }
