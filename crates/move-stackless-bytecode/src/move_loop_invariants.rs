@@ -32,12 +32,9 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        println!("Checking ALL for loop invariants: {}", func_env.get_full_name_str());
         if func_env.is_native() {
             return data;
         }
-
-        println!("Processing function for loop invariants: {}", func_env.get_full_name_str());
 
         let invariants = Self::get_invariant_span_bimap(&func_env.module_env.env, &data.code);
         let loop_info = find_loops_headers(func_env, &data).keys().cloned().collect::<Vec<_>>();
@@ -55,14 +52,10 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         }
 
         if invariants.is_empty() && loop_inv_functions.is_none() {
-            println!("No loop invariants for function {}", func_env.get_full_name_str());
             return data;
-        } else {
-            println!("Processing loop invariants for function {}", func_env.get_full_name_str());
         }
 
         let (mut new_data, attrs) = if let Some(invs) = loop_inv_functions {
-            println!("Processing targeted loop invariants for function {}", func_env.get_full_name_str());
             if !Self::is_valid_inv_function(&targets, invs, &loop_info, func_env) {
                 return data;
             }
@@ -95,7 +88,6 @@ impl MoveLoopInvariantsProcessor {
     ) -> bool {
         let env = func_env.module_env.env;
         for (qid, label) in invs {
-            println!("Checking loop invariant function {:?} for label {}", qid, label);
             if *label >= loops.len() {
                 env.diag(
                     Severity::Error,
@@ -106,9 +98,6 @@ impl MoveLoopInvariantsProcessor {
 
             let inv_env = env.get_function(*qid);
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
-
-            println!("INFO {:?}", no_abort_analysis::get_info(inv_data));
-            println!("INFO 2 {:?}", targets.is_abort_check_fun(&qid));
 
             if !no_abort_analysis::get_info(inv_data).does_not_abort && !targets.is_abort_check_fun(&qid) {
                 env.diag(
