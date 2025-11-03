@@ -6,6 +6,9 @@ publish = false
 edition = "2021"
 version = "0.0.1"
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "lambda-handler"
 path = "lambda.rs"
