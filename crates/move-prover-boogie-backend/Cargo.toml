@@ -37,3 +37,6 @@ move-model.workspace = true
 move-binary-format.workspace = true
 move-core-types.workspace = true
 move-docgen.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }

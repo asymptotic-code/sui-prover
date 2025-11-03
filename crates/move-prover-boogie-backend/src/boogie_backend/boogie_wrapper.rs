@@ -47,6 +47,7 @@ use crate::boogie_backend::{
         boogie_struct_name_prefix,
     },
     options::{BoogieOptions, RemoteOptions, VectorTheory},
+    runner,
 };
 
 /// A type alias for the way how we use crate `pretty`'s document type. `pretty` is a
@@ -144,6 +145,7 @@ impl<'env> BoogieWrapper<'env> {
         &self,
         boogie_file: &str,
         remote_opt: &RemoteOptions,
+        individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<RemoteProverResponse> {
         let file_text = fs::read_to_string(boogie_file).map_err(|e| {
@@ -154,7 +156,7 @@ impl<'env> BoogieWrapper<'env> {
         })?;
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(900)) // 15 minutes timeout
+            .timeout(Duration::from_secs(individual_timeout.unwrap_or(600))) // 10 minutes timeout
             .build()?;
 
         let is_remote = remote_opt.url.as_str().contains("https://");
@@ -226,10 +228,16 @@ impl<'env> BoogieWrapper<'env> {
         &self,
         boogie_file: &str,
         remote_opt: &RemoteOptions,
+        individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<BoogieOutput> {
         let res = self
-            .call_remote(boogie_file, remote_opt, individual_options)
+            .call_remote(
+                boogie_file,
+                remote_opt,
+                individual_timeout,
+                individual_options,
+            )
             .await?;
         self.analyze_output(&res.out, &res.err, res.status)
     }
@@ -239,6 +247,7 @@ impl<'env> BoogieWrapper<'env> {
     fn call_boogie(
         &self,
         boogie_file: &str,
+        individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<BoogieOutput> {
         let args = self
@@ -253,9 +262,14 @@ impl<'env> BoogieWrapper<'env> {
             ));
         }
 
-        let output_res = std::process::Command::new(&args[0])
-            .args(&args[1..])
-            .output();
+        let timeout =
+            Duration::from_secs(individual_timeout.unwrap_or(self.options.vc_timeout as u64));
+
+        let output_res = if self.options.force_timeout {
+            runner::run_with_timeout(&args, timeout)
+        } else {
+            runner::run(&args)
+        };
 
         let output = match output_res {
             Err(err) => {
@@ -265,7 +279,7 @@ impl<'env> BoogieWrapper<'env> {
                         loc: self.env.unknown_loc(),
                         message: format!(
                             "Boogie execution exceeded hard timeout of {}s",
-                            self.options.hard_timeout_secs
+                            timeout.as_secs(),
                         ),
                         execution_trace: vec![],
                         model: None,
@@ -347,9 +361,10 @@ impl<'env> BoogieWrapper<'env> {
     pub fn call_boogie_and_verify_output(
         &self,
         boogie_file: &str,
+        individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<()> {
-        let output = self.call_boogie(boogie_file, individual_options)?;
+        let output = self.call_boogie(boogie_file, individual_timeout, individual_options)?;
         self.verify_boogie_output(&output, boogie_file)
     }
 
@@ -357,10 +372,16 @@ impl<'env> BoogieWrapper<'env> {
         &self,
         boogie_file: &str,
         remote_opt: &RemoteOptions,
+        individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<()> {
         let output = self
-            .call_remote_boogie(boogie_file, remote_opt, individual_options)
+            .call_remote_boogie(
+                boogie_file,
+                remote_opt,
+                individual_timeout,
+                individual_options,
+            )
             .await?;
         self.verify_boogie_output(&output, boogie_file)
     }
