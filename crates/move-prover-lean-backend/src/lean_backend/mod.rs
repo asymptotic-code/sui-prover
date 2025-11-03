@@ -9,5 +9,5 @@ pub mod spec_translator;
 macro_rules! wip {
     ($name:expr) => {
         println!("WIP: {}", $name)
-    }
+    };
 }
