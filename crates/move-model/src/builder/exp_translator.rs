@@ -10,17 +10,12 @@ use std::{
 use itertools::Itertools;
 use num::{BigInt, BigUint, FromPrimitive};
 
-use move_compiler::{
-    expansion::ast as EA, parser::ast as PA, shared::Name,
-};
+use move_compiler::{expansion::ast as EA, parser::ast as PA, shared::Name};
 use move_core_types::runtime_value::MoveValue;
 
 use crate::{
     ast::Value,
-    builder::{
-        model_builder::LocalVarEntry,
-        module_builder::ModuleBuilder,
-    },
+    builder::{model_builder::LocalVarEntry, module_builder::ModuleBuilder},
     model::{Loc, NodeId},
     symbol::{Symbol, SymbolPool},
     ty::{PrimitiveType, Substitution, Type, TypeDisplayContext},

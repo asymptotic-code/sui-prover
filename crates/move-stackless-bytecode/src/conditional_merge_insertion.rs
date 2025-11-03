@@ -490,7 +490,13 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         .map(|&src| active_fresh_vars.get(&src).copied().unwrap_or(src))
                         .collect();
                     current_val.insert(original_dest, original_dest);
-                    builder.emit(Bytecode::Call(attr, vec![actual_dest], op, remapped_srcs, abort))
+                    builder.emit(Bytecode::Call(
+                        attr,
+                        vec![actual_dest],
+                        op,
+                        remapped_srcs,
+                        abort,
+                    ))
                 }
                 bytecode => builder.emit(bytecode),
             }

@@ -2,13 +2,11 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeMap;
 use itertools::Itertools;
+use std::collections::BTreeMap;
 
 use move_binary_format::{
-    file_format::{
-        Constant, EnumDefinitionIndex, FunctionDefinitionIndex, StructDefinitionIndex,
-    },
+    file_format::{Constant, EnumDefinitionIndex, FunctionDefinitionIndex, StructDefinitionIndex},
     CompiledModule,
 };
 use move_bytecode_source_map::source_map::SourceMap;
@@ -27,9 +25,8 @@ use crate::{
         model_builder::{ConstEntry, DatatypeData, ModelBuilder},
     },
     model::{
-        DatatypeId, EnumData, FunId, FunctionData, FunctionVisibility,
-        Loc, ModuleId, NamedConstantData, NamedConstantId,
-        StructData, SCRIPT_BYTECODE_FUN_NAME,
+        DatatypeId, EnumData, FunId, FunctionData, FunctionVisibility, Loc, ModuleId,
+        NamedConstantData, NamedConstantId, StructData, SCRIPT_BYTECODE_FUN_NAME,
     },
     project_1st,
     symbol::{Symbol, SymbolPool},
@@ -88,7 +85,13 @@ impl<'env, 'translator> ModuleBuilder<'env, 'translator> {
         self.decl_ana(&module_def, &compiled_module, &source_map);
         self.def_ana(&module_def);
         let attributes = vec![];
-        self.populate_env_from_result(loc, attributes, compiled_module, source_map, &function_infos);
+        self.populate_env_from_result(
+            loc,
+            attributes,
+            compiled_module,
+            source_map,
+            &function_infos,
+        );
     }
 }
 
