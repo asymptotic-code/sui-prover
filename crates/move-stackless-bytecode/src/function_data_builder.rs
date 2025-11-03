@@ -130,10 +130,11 @@ impl<'env> FunctionDataBuilder<'env> {
     }
 
     pub fn get_offset_by_attr(&self, attr_id: AttrId) -> Option<usize> {
-        self.data.code
-        .iter()
-        .find_position(|c| c.get_attr_id() == attr_id)
-        .map(|res| res.0)
+        self.data
+            .code
+            .iter()
+            .find_position(|c| c.get_attr_id() == attr_id)
+            .map(|res| res.0)
     }
 
     /// Creates a new bytecode attribute id with default location.

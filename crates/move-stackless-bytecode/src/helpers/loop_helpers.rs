@@ -1,11 +1,17 @@
-use std::collections::BTreeMap;
 use move_model::model::FunctionEnv;
+use std::collections::BTreeMap;
 
 use crate::{
-    function_target::{FunctionData, FunctionTarget}, graph::{Graph, NaturalLoop}, stackless_bytecode::{Label, Bytecode}, stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph}
+    function_target::{FunctionData, FunctionTarget},
+    graph::{Graph, NaturalLoop},
+    stackless_bytecode::{Bytecode, Label},
+    stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
 };
 
-pub fn find_loops_headers(func_env: &FunctionEnv, data: &FunctionData) -> BTreeMap<Label, Vec<NaturalLoop<u16>>> {
+pub fn find_loops_headers(
+    func_env: &FunctionEnv,
+    data: &FunctionData,
+) -> BTreeMap<Label, Vec<NaturalLoop<u16>>> {
     // build for natural loops
     let func_target = FunctionTarget::new(func_env, data);
     let code = func_target.get_bytecode();
@@ -22,9 +28,9 @@ pub fn find_loops_headers(func_env: &FunctionEnv, data: &FunctionData) -> BTreeM
         })
         .collect();
     let graph = Graph::new(entry, nodes, edges);
-    let natural_loops = graph.compute_reducible().expect(
-        "A well-formed Move function is expected to have a reducible control-flow graph",
-    );
+    let natural_loops = graph
+        .compute_reducible()
+        .expect("A well-formed Move function is expected to have a reducible control-flow graph");
 
     // collect shared headers from loops
     let mut fat_headers = BTreeMap::new();

@@ -178,7 +178,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Remove functions that aren't used for verification
-        // Keep: verified functions, inlined functions, essential functions, reachable functions, 
+        // Keep: verified functions, inlined functions, essential functions, reachable functions,
         // datatype invariant functions, loop invariant functions
 
         let mut functions_to_keep = BTreeSet::new();
@@ -203,21 +203,22 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         }
 
         // Mark loop invariant functions as inlined
-        targets.get_loop_inv_with_targets().iter().for_each(|(target_qid, invs)| {
-            let target_data = targets
-                .get_data(&target_qid, &FunctionVariant::Baseline)
-                .unwrap();
+        targets
+            .get_loop_inv_with_targets()
+            .iter()
+            .for_each(|(target_qid, invs)| {
+                let target_data = targets
+                    .get_data(&target_qid, &FunctionVariant::Baseline)
+                    .unwrap();
 
-            let target_info = target_data
-                .annotations
-                .get::<VerificationInfo>();
+                let target_info = target_data.annotations.get::<VerificationInfo>();
 
-            if let Some(target_info) = target_info {
-                if target_info.inlined {
-                    functions_to_keep.extend(invs);
+                if let Some(target_info) = target_info {
+                    if target_info.inlined {
+                        functions_to_keep.extend(invs);
+                    }
                 }
-            }
-        });
+            });
 
         // Mark functions reachable from verified/inlined/essential functions and collect them
         let reachable_functions = Self::mark_reachable(env, targets, &functions_to_keep);

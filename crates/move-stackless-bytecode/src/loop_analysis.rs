@@ -15,10 +15,10 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::NaturalLoop,
+    helpers::loop_helpers::find_loops_headers,
     move_loop_invariants, spec_global_variable_analysis,
     stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
-    helpers::loop_helpers::find_loops_headers,
 };
 
 /// A fat-loop captures the information of one or more natural loops that share the same loop

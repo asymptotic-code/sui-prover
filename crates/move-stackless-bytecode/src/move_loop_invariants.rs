@@ -1,12 +1,25 @@
 use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
-use std::{collections::{BTreeMap, BTreeSet}, vec};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    vec,
+};
 
-use move_model::{model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, ty::{PrimitiveType, Type}};
+use move_model::{
+    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
+    ty::{PrimitiveType, Type},
+};
 
 use crate::{
-    deterministic_analysis, exp_generator::ExpGenerator, function_data_builder::FunctionDataBuilder, function_target::{FunctionData, FunctionTarget}, function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant}, helpers::loop_helpers::find_loops_headers, no_abort_analysis, stackless_bytecode::{AttrId, Bytecode, Label, Operation}
+    deterministic_analysis,
+    exp_generator::ExpGenerator,
+    function_data_builder::FunctionDataBuilder,
+    function_target::{FunctionData, FunctionTarget},
+    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
+    helpers::loop_helpers::find_loops_headers,
+    no_abort_analysis,
+    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
 };
 
 pub struct MoveLoopInvariantsProcessor {}
@@ -37,10 +50,12 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         }
 
         let invariants = Self::get_invariant_span_bimap(&func_env.module_env.env, &data.code);
-        let loop_info = find_loops_headers(func_env, &data).keys().cloned().collect::<Vec<_>>();
+        let loop_info = find_loops_headers(func_env, &data)
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
 
-        let loop_inv_functions = targets
-            .get_loop_invariants(&func_env.get_qualified_id());
+        let loop_inv_functions = targets.get_loop_invariants(&func_env.get_qualified_id());
 
         if !invariants.is_empty() && loop_inv_functions.is_some() {
             func_env.module_env.env.diag(
@@ -92,14 +107,20 @@ impl MoveLoopInvariantsProcessor {
                 env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
-                    &format!("Loop Invariant Label {} exceeds number of loops in function {}", label, func_env.get_full_name_str()),
+                    &format!(
+                        "Loop Invariant Label {} exceeds number of loops in function {}",
+                        label,
+                        func_env.get_full_name_str()
+                    ),
                 );
             }
 
             let inv_env = env.get_function(*qid);
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-            if !no_abort_analysis::get_info(inv_data).does_not_abort && !targets.is_abort_check_fun(&qid) {
+            if !no_abort_analysis::get_info(inv_data).does_not_abort
+                && !targets.is_abort_check_fun(&qid)
+            {
                 env.diag(
                     Severity::Error,
                     &inv_env.get_loc(),
@@ -255,21 +276,23 @@ impl MoveLoopInvariantsProcessor {
     }
 
     fn find_label_offset(code: &[Bytecode], label: Label) -> Option<usize> {
-        code.iter().position(|bc| matches!(bc, Bytecode::Label(_, l) if *l == label))
+        code.iter()
+            .position(|bc| matches!(bc, Bytecode::Label(_, l) if *l == label))
     }
 
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
         data: FunctionData,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
-        loop_info: &Vec<Label>
+        loop_info: &Vec<Label>,
     ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
         let mut loop_header_to_invariant: BTreeMap<usize, QualifiedId<FunId>> = BTreeMap::new();
         for (qid, label) in invariants {
-            let header_offset = Self::find_label_offset(&code, *loop_info.iter().nth(*label).unwrap()).unwrap();
+            let header_offset =
+                Self::find_label_offset(&code, *loop_info.iter().nth(*label).unwrap()).unwrap();
             loop_header_to_invariant.insert(header_offset, qid.clone());
         }
 
@@ -299,10 +322,7 @@ impl MoveLoopInvariantsProcessor {
                 builder.emit(Bytecode::Call(
                     ensures_attr_id,
                     vec![],
-                    Operation::apply_fun_qid(
-                        &func_env.module_env.env.ensures_qid(), 
-                        vec![],
-                    ),
+                    Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
                     [temp].to_vec(),
                     None,
                 ));

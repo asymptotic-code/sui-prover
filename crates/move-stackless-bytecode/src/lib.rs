@@ -32,6 +32,7 @@ pub mod function_target_pipeline;
 pub mod global_invariant_analysis;
 pub mod global_invariant_instrumentation;
 pub mod graph;
+pub mod helpers;
 pub mod inconsistency_check;
 pub mod livevar_analysis;
 pub mod loop_analysis;
@@ -61,7 +62,6 @@ pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod helpers;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(

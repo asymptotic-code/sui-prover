@@ -426,11 +426,16 @@ impl FunctionTargetsHolder {
         self.loop_invariants.get(id)
     }
 
-    pub fn get_loop_inv_with_targets(&self) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
+    pub fn get_loop_inv_with_targets(
+        &self,
+    ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
         self.loop_invariants
             .iter()
             .map(|(target_fun_id, invs)| {
-                (target_fun_id.clone(), invs.iter().map(|el| el.0.clone()).collect())
+                (
+                    target_fun_id.clone(),
+                    invs.iter().map(|el| el.0.clone()).collect(),
+                )
             })
             .collect()
     }
@@ -579,11 +584,13 @@ impl FunctionTargetsHolder {
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target, loop_inv })) = 
-            func_env
-                .get_toplevel_attributes()
-                .get_(&AttributeKind_::SpecOnly)
-                .map(|attr| &attr.value)
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
+            inv_target,
+            loop_inv,
+        })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::SpecOnly)
+            .map(|attr| &attr.value)
         {
             if func_env.get_name_str().contains("type_inv") {
                 return;
@@ -595,12 +602,7 @@ impl FunctionTargetsHolder {
                 match Self::parse_module_access(&loop_inv.target, env, &func_env.module_env) {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
-                        self.process_loop_inv(
-                            func_env,
-                            &module_env,
-                            fun_name,
-                            loop_inv.label,
-                        );
+                        self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
                     }
                     None => {
                         let module_name = func_env.module_env.get_full_name_str();
@@ -770,13 +772,20 @@ impl FunctionTargetsHolder {
         if let Some(target_func_env) =
             module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
         {
-            if let Some(existing) = self.loop_invariants.get_mut(&target_func_env.get_qualified_id()) {
+            if let Some(existing) = self
+                .loop_invariants
+                .get_mut(&target_func_env.get_qualified_id())
+            {
                 for (id, lb) in existing.iter() {
                     if *id == func_env.get_qualified_id() {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
-                            &format!("Invalid Loop Invariant Function {} in {}", func_env.get_full_name_str(), fun_name),
+                            &format!(
+                                "Invalid Loop Invariant Function {} in {}",
+                                func_env.get_full_name_str(),
+                                fun_name
+                            ),
                         );
                         return;
                     } else if *lb == label {
@@ -791,14 +800,12 @@ impl FunctionTargetsHolder {
 
                 existing.insert(func_env.get_qualified_id(), label);
             } else {
-                self.loop_invariants.insert(
-                    target_func_env.get_qualified_id(),
-                    {
+                self.loop_invariants
+                    .insert(target_func_env.get_qualified_id(), {
                         let mut map = BiBTreeMap::new();
                         map.insert(func_env.get_qualified_id(), label);
                         map
-                    }
-                );
+                    });
             }
         } else {
             env.diag(
