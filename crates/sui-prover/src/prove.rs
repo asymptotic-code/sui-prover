@@ -9,7 +9,7 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
-use move_prover_boogie_backend::generator::{run_boogie_gen};
+use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
