@@ -207,8 +207,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .get_loop_inv_with_targets()
             .iter()
             .for_each(|(target_qid, invs)| {
-                let target_data = targets
-                    .get_data(&target_qid, &FunctionVariant::Baseline);
+                let target_data = targets.get_data(&target_qid, &FunctionVariant::Baseline);
 
                 if let Some(target_data) = target_data {
                     let target_info = target_data.annotations.get::<VerificationInfo>();
