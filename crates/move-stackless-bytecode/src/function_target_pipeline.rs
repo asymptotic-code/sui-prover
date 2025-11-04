@@ -789,16 +789,16 @@ impl FunctionTargetsHolder {
                             ),
                         );
                         return;
-                    },
+                    }
                     bimap::Overwritten::Right(..) => {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
                             &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
-                            );
-                            return;
-                    },
-                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..)  => {
+                        );
+                        return;
+                    }
+                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
