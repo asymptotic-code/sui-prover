@@ -776,29 +776,41 @@ impl FunctionTargetsHolder {
                 .loop_invariants
                 .get_mut(&target_func_env.get_qualified_id())
             {
-                for (id, lb) in existing.iter() {
-                    if *id == func_env.get_qualified_id() {
+                match existing.insert(func_env.get_qualified_id(), label) {
+                    bimap::Overwritten::Neither => {}
+                    bimap::Overwritten::Left(..) => {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
                             &format!(
-                                "Invalid Loop Invariant Function {} in {}",
+                                "Duplicated Loop Invariant Function {} in {}",
                                 func_env.get_full_name_str(),
                                 fun_name
                             ),
                         );
                         return;
-                    } else if *lb == label {
+                    },
+                    bimap::Overwritten::Right(..) => {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),
                             &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
+                            );
+                            return;
+                    },
+                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..)  => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!(
+                                "Duplicated Loop Invariant Function {} and Label {} in {}",
+                                func_env.get_full_name_str(),
+                                label,
+                                fun_name
+                            ),
                         );
-                        return;
                     }
                 }
-
-                existing.insert(func_env.get_qualified_id(), label);
             } else {
                 self.loop_invariants
                     .insert(target_func_env.get_qualified_id(), {

@@ -32,7 +32,6 @@ pub mod function_target_pipeline;
 pub mod global_invariant_analysis;
 pub mod global_invariant_instrumentation;
 pub mod graph;
-pub mod helpers;
 pub mod inconsistency_check;
 pub mod livevar_analysis;
 pub mod loop_analysis;

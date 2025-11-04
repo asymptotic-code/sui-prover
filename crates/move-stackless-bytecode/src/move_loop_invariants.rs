@@ -17,7 +17,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    helpers::loop_helpers::find_loops_headers,
+    loop_analysis::find_loops_headers,
     no_abort_analysis,
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
 };
@@ -29,12 +29,8 @@ pub struct TargetedLoopInfo {
     pub attrs: BTreeSet<Vec<AttrId>>,
 }
 
-pub fn get_info(target: &FunctionTarget<'_>) -> TargetedLoopInfo {
-    target
-        .get_annotations()
-        .get::<TargetedLoopInfo>()
-        .cloned()
-        .unwrap_or_default()
+pub fn get_info(target: &FunctionTarget<'_>) -> Option<TargetedLoopInfo> {
+    target.get_annotations().get::<TargetedLoopInfo>().cloned()
 }
 
 impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
@@ -61,7 +57,7 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             func_env.module_env.env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
-                "Cannot use both classical loop invariants (invariant_begin/invariant_end) and new loop invariant functions. Please use only one type.",
+                "Cannot use both inlined loop invariants and loop invariant functions. Please use only one type.",
             );
             return data;
         }
@@ -192,6 +188,19 @@ impl MoveLoopInvariantsProcessor {
             }
 
             if let Some(idx) = found_idx {
+                if param.1.skip_reference() != builder.get_local_type(idx).skip_reference() {
+                    builder.fun_env.module_env.env.diag(
+                        Severity::Error,
+                        &builder.fun_env.get_loc(),
+                        &format!(
+                            "Loop invariant function {} expects some type for '{}' parameter in function {}",
+                            loop_inv_env.get_full_name_str(),
+                            param_name_str,
+                            builder.fun_env.get_full_name_str()
+                        ),
+                    );
+                }
+
                 args.push(idx);
             } else {
                 builder.fun_env.module_env.env.diag(

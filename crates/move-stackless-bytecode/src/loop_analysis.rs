@@ -14,8 +14,7 @@ use crate::{
     function_data_builder::{FunctionDataBuilder, FunctionDataBuilderOptions},
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    graph::NaturalLoop,
-    helpers::loop_helpers::find_loops_headers,
+    graph::{Graph, NaturalLoop},
     move_loop_invariants, spec_global_variable_analysis,
     stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
@@ -415,20 +414,32 @@ impl LoopAnalysisProcessor {
     ) -> LoopAnnotation {
         // build for natural loops
         let func_target = FunctionTarget::new(func_env, data);
-        let builder = FunctionDataBuilder::new(func_env, data.clone());
         let code = func_target.get_bytecode();
         let cfg = StacklessControlFlowGraph::new_forward(code);
 
         // collect shared headers from loops
         let fat_headers = find_loops_headers(func_env, data);
 
+        if move_loop_invariants::get_info(&func_target).is_none() {
+            return LoopAnnotation {
+                fat_loops: BTreeMap::new(),
+                invariant_offsets: vec![],
+            };
+        }
+
         let invariants = move_loop_invariants::get_info(&func_target)
+            .unwrap()
             .attrs
             .iter()
             .filter_map(|vrange| {
                 let offsets: Vec<usize> = vrange
                     .iter()
-                    .filter_map(|attr_id| builder.get_offset_by_attr(*attr_id))
+                    .filter_map(|attr_id| {
+                        // Find the offset of the bytecode with the given attribute id
+                        code.iter()
+                            .find_position(|c| c.get_attr_id() == *attr_id)
+                            .map(|res| res.0)
+                    })
                     .collect();
 
                 if offsets.is_empty() {
@@ -489,4 +500,48 @@ impl LoopAnalysisProcessor {
             invariant_offsets: invariants.into_iter().collect(),
         }
     }
+}
+
+pub fn find_loops_headers(
+    func_env: &FunctionEnv,
+    data: &FunctionData,
+) -> BTreeMap<Label, Vec<NaturalLoop<u16>>> {
+    // build for natural loops
+    let func_target = FunctionTarget::new(func_env, data);
+    let code = func_target.get_bytecode();
+    let cfg = StacklessControlFlowGraph::new_forward(code);
+    let entry = cfg.entry_block();
+    let nodes = cfg.blocks();
+    let edges: Vec<(BlockId, BlockId)> = nodes
+        .iter()
+        .flat_map(|x| {
+            cfg.successors(*x)
+                .iter()
+                .map(|y| (*x, *y))
+                .collect::<Vec<(BlockId, BlockId)>>()
+        })
+        .collect();
+    let graph = Graph::new(entry, nodes, edges);
+    let natural_loops = graph
+        .compute_reducible()
+        .expect("A well-formed Move function is expected to have a reducible control-flow graph");
+
+    // collect shared headers from loops
+    let mut fat_headers = BTreeMap::new();
+    for single_loop in natural_loops {
+        let label = match cfg.content(single_loop.loop_header) {
+            BlockContent::Dummy => panic!("A loop header should never be a dummy block"),
+            BlockContent::Basic { lower, upper: _ } => match code[*lower as usize] {
+                Bytecode::Label(_, label) => label,
+                _ => panic!("A loop header block is expected to start with a Label bytecode"),
+            },
+        };
+
+        fat_headers
+            .entry(label)
+            .or_insert_with(Vec::new)
+            .push(single_loop);
+    }
+
+    fat_headers
 }

@@ -13,7 +13,6 @@ use crate::{
     number_operation::GlobalNumberOperationState,
     stackless_bytecode::{AttrId, Bytecode, HavocKind, Label, Operation, PropKind},
 };
-use itertools::Itertools;
 use move_model::{
     model::{FunctionEnv, Loc},
     ty::{Type, BOOL_TYPE},
@@ -127,14 +126,6 @@ impl<'env> FunctionDataBuilder<'env> {
             .get(&attr_id)
             .cloned()
             .unwrap_or_else(|| self.fun_env.get_loc())
-    }
-
-    pub fn get_offset_by_attr(&self, attr_id: AttrId) -> Option<usize> {
-        self.data
-            .code
-            .iter()
-            .find_position(|c| c.get_attr_id() == attr_id)
-            .map(|res| res.0)
     }
 
     /// Creates a new bytecode attribute id with default location.
