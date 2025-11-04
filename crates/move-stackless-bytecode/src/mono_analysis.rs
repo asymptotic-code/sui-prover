@@ -610,7 +610,7 @@ impl Analyzer<'_> {
         }
     }
 
-        fn analyze_type_invariant_functions(&mut self) {
+    fn analyze_type_invariant_functions(&mut self) {
         let struct_instantiations: Vec<_> = self.info.structs.clone().into_iter().collect();
 
         for (struct_qid, type_instantiations) in struct_instantiations {
@@ -623,8 +623,12 @@ impl Analyzer<'_> {
                         .insert(type_inst.clone());
 
                     let inv_fun_env = self.env.get_function(*inv_fun_qid);
-                    if let Some(inv_target) = self.targets.get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
-                        let old_inst = std::mem::replace(&mut self.inst_opt, Some(type_inst.clone()));
+                    if let Some(inv_target) = self
+                        .targets
+                        .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
+                    {
+                        let old_inst =
+                            std::mem::replace(&mut self.inst_opt, Some(type_inst.clone()));
 
                         self.analyze_fun_types(&inv_target, self.inst_opt.clone());
 
@@ -644,7 +648,10 @@ impl Analyzer<'_> {
         for inv_fun_qid in all_inv_functions {
             if let Some(struct_qid) = self.targets.get_datatype_by_inv(&inv_fun_qid) {
                 let inv_fun_env = self.env.get_function(inv_fun_qid);
-                if let Some(inv_target) = self.targets.get_target_opt(&inv_fun_env, &FunctionVariant::Baseline) {
+                if let Some(inv_target) = self
+                    .targets
+                    .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
+                {
                     // For type invariant functions, we might need to add common instantiations
                     // like bool, u64, etc. that could be used in expressions within the invariant
                     let common_types = vec![
