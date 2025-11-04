@@ -6,7 +6,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    reaching_def_analysis::{Def, ReachingDefProcessor, ReachingDefState},
+    reaching_def_analysis::{ReachingDefProcessor, ReachingDefState},
     stackless_bytecode::{Bytecode, Operation},
     verification_analysis::get_info,
 };

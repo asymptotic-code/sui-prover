@@ -1,0 +1,18 @@
+name: Check
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: dtolnay/rust-toolchain@stable
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Check for warnings
+      run: cargo check --all-targets --all-features
+      env:
+        RUSTFLAGS: "-D warnings"
