@@ -29,8 +29,12 @@ pub struct TargetedLoopInfo {
     pub attrs: BTreeSet<Vec<AttrId>>,
 }
 
-pub fn get_info(target: &FunctionTarget<'_>) -> Option<TargetedLoopInfo> {
-    target.get_annotations().get::<TargetedLoopInfo>().cloned()
+pub fn get_info(target: &FunctionTarget<'_>) -> TargetedLoopInfo {
+    target
+        .get_annotations()
+        .get::<TargetedLoopInfo>()
+        .cloned()
+        .unwrap()
 }
 
 impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
@@ -38,12 +42,16 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         &self,
         targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if func_env.is_native() {
             return data;
         }
+
+        let info = data
+            .annotations
+            .get_or_default_mut::<TargetedLoopInfo>(true);
 
         let invariants = Self::get_invariant_span_bimap(&func_env.module_env.env, &data.code);
         let loop_info = find_loops_headers(func_env, &data)
@@ -176,6 +184,8 @@ impl MoveLoopInvariantsProcessor {
             if let Some(&local_idx) = builder.data.name_to_index.get(&param_name) {
                 found_idx = Some(local_idx);
             } else {
+                // Note: builder.data.name_to_index usually looks like
+                // n -> 0, i#1#0 -> 1, s#1#0 -> 2
                 for (name, &idx) in &builder.data.name_to_index {
                     let name_str = builder.fun_env.symbol_pool().string(*name);
                     if let Some(base_name) = name_str.split('#').next() {

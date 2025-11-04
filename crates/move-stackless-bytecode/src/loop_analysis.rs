@@ -420,7 +420,10 @@ impl LoopAnalysisProcessor {
         // collect shared headers from loops
         let fat_headers = find_loops_headers(func_env, data);
 
-        if move_loop_invariants::get_info(&func_target).is_none() {
+        if move_loop_invariants::get_info(&func_target)
+            .attrs
+            .is_empty()
+        {
             return LoopAnnotation {
                 fat_loops: BTreeMap::new(),
                 invariant_offsets: vec![],
@@ -428,7 +431,6 @@ impl LoopAnalysisProcessor {
         }
 
         let invariants = move_loop_invariants::get_info(&func_target)
-            .unwrap()
             .attrs
             .iter()
             .filter_map(|vrange| {
