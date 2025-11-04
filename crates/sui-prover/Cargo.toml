@@ -6,6 +6,9 @@ publish = false
 edition = "2021"
 version = "0.0.2"
 
+[lints]
+workspace = true
+
 [dependencies]
 itertools.workspace = true
 log.workspace = true

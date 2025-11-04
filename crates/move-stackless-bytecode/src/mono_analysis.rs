@@ -18,12 +18,8 @@ use move_model::{
         DatatypeId, EnumEnv, FunId, GlobalEnv, ModuleId, QualifiedId, QualifiedInstId, StructEnv,
         StructOrEnumEnv,
     },
-    pragmas::INTRINSIC_TYPE_MAP,
     ty::{Type, TypeDisplayContext, TypeInstantiationDerivation, TypeUnificationAdapter, Variance},
-    well_known::{
-        TYPE_INFO_MOVE, TYPE_INFO_SPEC, TYPE_NAME_GET_MOVE, TYPE_NAME_GET_SPEC, TYPE_NAME_MOVE,
-        TYPE_NAME_SPEC, TYPE_SPEC_IS_STRUCT,
-    },
+    well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 
 use crate::{
@@ -241,7 +237,8 @@ impl MonoAnalysisProcessor {
                         is_mut: _,
                     } => {
                         analyzer.add_type_root(name);
-                        analyzer.add_type_root(value);
+                        // add the value type to Option instantiations
+                        analyzer.add_option_type(value);
                     }
                     NameValueInfo::NameOnly(name) => {
                         analyzer.add_type_root(name);
@@ -250,100 +247,78 @@ impl MonoAnalysisProcessor {
             }
         }
 
+        if let Some(vec_set_qid) = env.vec_set_qid() {
+            let vec_set_tys = analyzer
+                .info
+                .structs
+                .get(&vec_set_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone());
+
+            // VecSet<T> uses vector<T> internally, so we need to add T to vec_inst
+            for tys in &vec_set_tys {
+                if let [t_ty] = tys.as_slice() {
+                    analyzer.info.vec_inst.insert(t_ty.clone());
+                    analyzer.add_type_root(t_ty);
+                }
+            }
+
+            // VecSet also uses vector<u64> internally for storing indices, so we need to add u64 to vec_inst
+            let has_vec_set = analyzer
+                .info
+                .structs
+                .get(&vec_set_qid)
+                .is_some_and(|set| !set.is_empty());
+
+            if has_vec_set {
+                analyzer.add_option_type(&Type::Primitive(move_model::ty::PrimitiveType::U64));
+            }
+        }
+
+        if let Some(vec_map_qid) = env.vec_map_qid() {
+            let vec_map_tys = analyzer
+                .info
+                .structs
+                .get(&vec_map_qid)
+                .map_or_else(BTreeSet::new, |set| set.clone());
+
+            // VecMap<K, V> uses vector<K> and vector<V> internally, so we need to add K and V to vec_inst
+            for tys in &vec_map_tys {
+                if let [k_ty, v_ty] = tys.as_slice() {
+                    analyzer.info.vec_inst.insert(k_ty.clone());
+                    analyzer.info.vec_inst.insert(v_ty.clone());
+                    analyzer.add_type_root(k_ty);
+                    // add the value type to Option instantiations
+                    analyzer.add_option_type(v_ty);
+                }
+            }
+
+            // VecMap also uses vec<u64> internally for storing indices, so we need to add u64 to vec_inst
+            let has_vec_map = analyzer
+                .info
+                .structs
+                .get(&vec_map_qid)
+                .is_some_and(|set| !set.is_empty());
+
+            if has_vec_map {
+                analyzer.add_option_type(&Type::Primitive(move_model::ty::PrimitiveType::U64));
+            }
+        }
+
+        // Add ID generation by default
+        if let Some(id_qid) = env.id_qid() {
+            analyzer.add_type_root(&Type::Datatype(id_qid.module_id, id_qid.id, vec![]));
+        }
+
+        if let Some(uid_qid) = env.uid_qid() {
+            analyzer.add_type_root(&Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
+        }
+
         let Analyzer {
             mut info,
             done_types,
             ..
         } = analyzer;
         info.all_types = done_types;
-
-        if let Some(vec_set_qid) = env.vec_set_qid() {
-            let vec_set_tys = info
-                .structs
-                .get(&vec_set_qid)
-                .map_or_else(BTreeSet::new, |set| set.clone());
-
-            // VecSet<T> uses vec<T> internally, so we need to add T to vec_inst
-            for tys in &vec_set_tys {
-                if !tys.is_empty() {
-                    info.vec_inst.extend(tys.iter().cloned());
-                }
-            }
-
-            info.structs
-                .entry(env.option_qid().unwrap())
-                .or_default()
-                .extend(vec_set_tys);
-
-            // VecSet also uses vec<u64> internally for storing indices, so we need to add u64 to vec_inst
-            let has_vec_set = info
-                .structs
-                .get(&vec_set_qid)
-                .map_or(false, |set| !set.is_empty());
-
-            if has_vec_set {
-                info.vec_inst
-                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
-
-                info.structs
-                    .entry(env.option_qid().unwrap())
-                    .or_default()
-                    .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::U64)]);
-            }
-        }
-        if let Some(vec_map_qid) = env.vec_map_qid() {
-            let vec_map_tys = info
-                .structs
-                .get(&vec_map_qid)
-                .map_or_else(BTreeSet::new, |set| set.clone());
-
-            // VecMap<K, V> uses vec<K> internally, so we need to add K to vec_inst
-            for tys in &vec_map_tys {
-                info.vec_inst.extend(tys.iter().cloned());
-            }
-
-            // Also add the key type to Option instantiations
-            let vec_map_option_tys = vec_map_tys
-                .into_iter()
-                .flat_map(|tys| tys.into_iter().map(|ty| vec![ty]));
-            info.structs
-                .entry(env.option_qid().unwrap())
-                .or_default()
-                .extend(vec_map_option_tys);
-
-            // VecMap also uses vec<u64> internally for storing indices, so we need to add u64 to vec_inst
-            let has_vec_map = info
-                .structs
-                .get(&vec_map_qid)
-                .map_or(false, |set| !set.is_empty());
-
-            if has_vec_map {
-                info.vec_inst
-                    .insert(Type::Primitive(move_model::ty::PrimitiveType::U64));
-
-                info.structs
-                    .entry(env.option_qid().unwrap())
-                    .or_default()
-                    .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::U64)]);
-            }
-        }
-
-        // Add bool instantiation by default for dynamic fields
-        info.vec_inst
-            .insert(Type::Primitive(move_model::ty::PrimitiveType::Bool));
-        info.structs
-            .entry(env.option_qid().unwrap())
-            .or_default()
-            .insert(vec![Type::Primitive(move_model::ty::PrimitiveType::Bool)]);
-
-        // Add ID generation by default
-        if let Some(id_qid) = env.id_qid() {
-            info.structs.entry(id_qid).or_default().insert(vec![]);
-        }
-
-        if let Some(uid_qid) = env.uid_qid() {
-            info.structs.entry(uid_qid).or_default().insert(vec![]);
-        }
 
         env.set_extension(info);
     }
@@ -715,6 +690,16 @@ impl Analyzer<'_> {
 
     // Utility functions
     // -----------------
+
+    fn add_option_type(&mut self, inner_ty: &Type) {
+        self.info.vec_inst.insert(inner_ty.clone());
+        let option_qid = self.env.option_qid().unwrap();
+        self.add_type_root(&Type::Datatype(
+            option_qid.module_id,
+            option_qid.id,
+            vec![inner_ty.clone()],
+        ));
+    }
 
     fn add_types_in_borrow_edge(&mut self, edge: &BorrowEdge) {
         match edge {

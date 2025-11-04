@@ -4,7 +4,6 @@ use crate::lean_backend::bytecode_translator::LeanTranslator;
 use crate::lean_backend::lean_wrapper::LeanWrapper;
 use anyhow::anyhow;
 use bimap::BiBTreeMap;
-use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::term::termcolor::WriteColor;
 use log::info;
 use move_model::code_writer::CodeWriter;
