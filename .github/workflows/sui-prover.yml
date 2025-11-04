@@ -367,7 +367,7 @@ jobs:
     runs-on: macos-latest
 
     concurrency:
-      group: scallop-bpl-generation-${{ github.head_ref || github.ref_name }}
+      group: ika-bpl-generation-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
