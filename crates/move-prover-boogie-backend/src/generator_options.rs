@@ -96,7 +96,6 @@ impl Default for Options {
             experimental_pipeline: false,
             filter: TargetFilterOptions::default(),
             remote: None,
-            show_stats: false,
         }
     }
 }
