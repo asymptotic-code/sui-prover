@@ -1,6 +1,5 @@
 use crate::lean_backend::options::LeanOptions;
 use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
-use anyhow::anyhow;
 use bimap::BiBTreeMap;
 use itertools::Itertools;
 use log::{debug, info};
@@ -94,7 +93,7 @@ impl LeanWrapper<'_> {
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
         // TODO parse output
-        let mut errors = vec![];
+        let errors = vec![];
         Ok(LeanOutput {
             errors,
             all_output: out,

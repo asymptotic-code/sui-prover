@@ -7,7 +7,6 @@ use move_model::ty::PrimitiveType::{
     Address, Bool, EventStore, Num, Range, Signer, U128, U16, U256, U32, U64, U8,
 };
 use move_model::ty::Type;
-use move_model::ty::Type::Error;
 use move_stackless_bytecode::ast::MemoryLabel;
 
 /// This file is nearly identical to Boogie's boogie_helpers.rs, with minor var name changes.

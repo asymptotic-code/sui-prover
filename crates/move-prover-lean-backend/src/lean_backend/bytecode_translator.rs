@@ -1,7 +1,6 @@
 use crate::lean_backend::lean_helpers::{
-    lean_enum_name, lean_field_sel, lean_function_name, lean_modifies_memory_name,
-    lean_resource_memory_name, lean_struct_name, lean_temp_from_suffix, lean_type, lean_type_param,
-    lean_type_suffix, lean_type_suffix_bv, FunctionTranslationStyle,
+    lean_enum_name, lean_field_sel, lean_function_name, lean_resource_memory_name,
+    lean_struct_name, lean_type, lean_type_param, lean_type_suffix, FunctionTranslationStyle,
 };
 use crate::lean_backend::options::LeanOptions;
 use crate::lean_backend::spec_translator::SpecTranslator;
@@ -10,42 +9,29 @@ use bimap::BiBTreeMap;
 use codespan::LineIndex;
 use itertools::Itertools;
 use log::info;
-use move_binary_format::file_format::CodeOffset;
 use move_compiler::interface_generator::NATIVE_INTERFACE;
 use move_core_types::language_storage::StructTag;
 use move_model::ast::Attribute;
 use move_model::code_writer::CodeWriter;
+use move_model::emitln;
 use move_model::model::{
-    DatatypeId, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, RefType,
-    StructEnv,
+    EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, StructEnv,
 };
-use move_model::pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA;
-use move_model::ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE};
+use move_model::ty::{Type, TypeDisplayContext, BOOL_TYPE};
 use move_model::well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE};
-use move_model::{emit, emitln};
 use move_stackless_bytecode::ast::TempIndex;
 use move_stackless_bytecode::function_data_builder::FunctionDataBuilder;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::function_target_pipeline::{
     FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
 };
-use move_stackless_bytecode::graph::Graph;
 use move_stackless_bytecode::livevar_analysis::LiveVarAnalysisProcessor;
 use move_stackless_bytecode::number_operation::NumOperation::{Bitwise, Bottom};
 use move_stackless_bytecode::number_operation::{GlobalNumberOperationState, NumOperation};
-use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::reaching_def_analysis::ReachingDefProcessor;
-use move_stackless_bytecode::stackless_bytecode::Bytecode::{Call, Prop, Ret, SaveMem};
-use move_stackless_bytecode::stackless_bytecode::Label;
-use move_stackless_bytecode::stackless_bytecode::Operation::{
-    Add, And, BitAnd, BitOr, BorrowLoc, CastU128, CastU16, CastU256, CastU32, CastU64, CastU8,
-    Destroy, Div, EmitEvent, Eq, EventStoreDiverge, FreezeRef, Function, Ge, GetField, Gt, Le, Lt,
-    Mod, Mul, Neq, Not, Or, Pack, PackRef, PackRefDeep, ReadRef, Shl, Shr, Stop, Sub, TraceAbort,
-    TraceExp, TraceGhost, TraceLocal, TraceMessage, TraceReturn, Uninit, UnpackRef, UnpackRefDeep,
-    WriteRef, Xor,
-};
+use move_stackless_bytecode::stackless_bytecode::Bytecode::{Call, Prop, Ret};
 use move_stackless_bytecode::stackless_bytecode::{
-    AbortAction, BorrowEdge, BorrowNode, Bytecode, HavocKind, Operation, PropKind,
+    AbortAction, Bytecode, HavocKind, Operation, PropKind,
 };
 use move_stackless_bytecode::{
     mono_analysis, spec_global_variable_analysis, verification_analysis,
@@ -1538,7 +1524,7 @@ impl FunctionTranslator<'_> {
     }
 
     /// Translates the given function.
-    fn translate(mut self) {
+    fn translate(self) {
         self.translate_with_ensures_control(true);
     }
 
@@ -1633,7 +1619,7 @@ impl FunctionTranslator<'_> {
                         let module_env = env.get_module(*mid);
                         let callee_env = module_env.get_function(*fid);
 
-                        let mut args_str = srcs.iter().cloned().map(str_local).join(" ");
+                        let args_str = srcs.iter().cloned().map(str_local).join(" ");
                         let dest_vars: Vec<String> = dests
                             .iter()
                             .cloned()
@@ -1947,7 +1933,7 @@ impl FunctionTranslator<'_> {
                     GetField(mid, sid, inst, field_offset) => {
                         let inst = &self.inst_slice(inst);
                         let src = srcs[0];
-                        let mut src_str = str_local(src);
+                        let src_str = str_local(src);
                         let dest_str = str_local(dests[0]);
                         let struct_env = env.get_module(*mid).into_struct(*sid);
                         let field_env = &struct_env.get_field_by_offset(*field_offset);
