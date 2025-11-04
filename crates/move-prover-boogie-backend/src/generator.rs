@@ -181,11 +181,8 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
 ) -> anyhow::Result<bool> {
     let file_name = "spec_no_abort_check";
     if opt.prover.skip_spec_no_abort {
-        println!("⏭️  {file_name}");
         return Ok(false);
     }
-
-    println!("🔄 {file_name}");
 
     let mut options = opt.clone();
     options.backend.spec_no_abort_check_only = true;
@@ -197,6 +194,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
+    let start_time = Instant::now();
     verify_boogie(
         env,
         &options,
@@ -208,16 +206,14 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
         None,
     )
     .await?;
+    let elapsed = start_time.elapsed();
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
 
     if is_error {
-        println!("❌ {file_name}");
+        println!("❌ {} ({:.1}s)", file_name, elapsed.as_secs_f64());
         return Ok(true);
     }
-
-    print!("\x1B[1A\x1B[2K");
-    println!("✅ {file_name}");
 
     return Ok(false);
 }
@@ -244,6 +240,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
+    let start_time = Instant::now();
     verify_boogie(
         env,
         &options,
@@ -255,16 +252,21 @@ async fn run_prover_abort_check<W: WriteColor>(
         None,
     )
     .await?;
+    let elapsed = start_time.elapsed();
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
 
     if is_error {
-        println!("❌ {file_name}");
+        println!("❌ {} ({:.1}s)", file_name, elapsed.as_secs_f64());
         return Ok(true);
     }
 
     print!("\x1B[1A\x1B[2K");
-    println!("✅ {file_name}");
+    if elapsed.as_secs() >= 1 {
+        println!("✅ {} ({}s)", file_name, elapsed.as_secs());
+    } else {
+        println!("✅ {file_name}");
+    }
 
     return Ok(false);
 }
@@ -340,6 +342,7 @@ async fn verify_bpl<W: WriteColor>(
 ) -> anyhow::Result<bool> {
     println!("🔄 {}", file.file_name);
 
+    let start_time = Instant::now();
     verify_boogie(
         env,
         &options,
@@ -351,17 +354,22 @@ async fn verify_bpl<W: WriteColor>(
         file.boogie_options,
     )
     .await?;
+    let elapsed = start_time.elapsed();
 
     let is_error = env.has_errors();
     env.report_diag(error_writer, options.prover.report_severity);
 
     if is_error {
-        println!("❌ {}", file.file_name);
+        println!("❌ {} ({:.1}s)", file.file_name, elapsed.as_secs_f64());
     } else {
         if options.remote.is_none() {
             print!("\x1B[1A\x1B[2K");
         }
-        println!("✅ {}", file.file_name);
+        if elapsed.as_secs() >= 1 {
+            println!("✅ {} ({}s)", file.file_name, elapsed.as_secs());
+        } else {
+            println!("✅ {}", file.file_name);
+        }
     }
 
     Ok(is_error)
