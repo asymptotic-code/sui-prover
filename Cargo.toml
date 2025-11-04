@@ -8,6 +8,7 @@ members = [
   "crates/move-prover-lean-backend",
   "crates/lambda-boogie-handler",
 ]
+default-members = ["crates/sui-prover"]
 
 [profile.release]
 debug = 1
