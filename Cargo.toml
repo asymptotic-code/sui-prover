@@ -9,6 +9,7 @@ members = [
   "crates/lambda-boogie-handler",
 ]
 
+default-members = ["crates/sui-prover"]
 [profile.release]
 debug = 1
 split-debuginfo = 'packed'
