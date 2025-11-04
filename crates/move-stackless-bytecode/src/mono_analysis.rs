@@ -643,48 +643,6 @@ impl Analyzer<'_> {
                 }
             }
         }
-
-        let all_inv_functions: Vec<_> = self.targets.specs_with_invariants().cloned().collect();
-        for inv_fun_qid in all_inv_functions {
-            if let Some(struct_qid) = self.targets.get_datatype_by_inv(&inv_fun_qid) {
-                let inv_fun_env = self.env.get_function(inv_fun_qid);
-                if let Some(inv_target) = self
-                    .targets
-                    .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                {
-                    // For type invariant functions, we might need to add common instantiations
-                    // like bool, u64, etc. that could be used in expressions within the invariant
-                    let common_types = vec![
-                        Type::Primitive(move_model::ty::PrimitiveType::Bool),
-                        Type::Primitive(move_model::ty::PrimitiveType::U64),
-                        Type::Primitive(move_model::ty::PrimitiveType::U8),
-                        Type::Primitive(move_model::ty::PrimitiveType::U128),
-                    ];
-
-                    for common_type in common_types {
-                        let type_inst = vec![common_type.clone()];
-
-                        self.info
-                            .funs
-                            .entry((inv_fun_qid, FunctionVariant::Baseline))
-                            .or_default()
-                            .insert(type_inst.clone());
-
-                        let old_inst = std::mem::replace(&mut self.inst_opt, Some(type_inst));
-
-                        self.analyze_fun_types(&inv_target, self.inst_opt.clone());
-
-                        if !inv_fun_env.is_native() && !inv_fun_env.is_intrinsic() {
-                            for bc in inv_target.get_bytecode() {
-                                self.analyze_bytecode(&inv_target, bc);
-                            }
-                        }
-
-                        self.inst_opt = old_inst;
-                    }
-                }
-            }
-        }
     }
 
     // Expression and Spec Fun Analysis
