@@ -326,6 +326,8 @@ fn generate_module_bpl<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
+    // Note: Module-level boogie options are not supported yet
+
 
     // Note: Module-level boogie options / timeouts are not supported yet
     Ok(FileOptions {
