@@ -52,6 +52,10 @@ pub struct GeneralConfig {
     #[clap(name = "timeout", long, short = 't', global = true)]
     pub timeout: Option<usize>,
 
+    /// Force kill boogie process if boogie vc timeout is broken
+    #[clap(name = "force-timeout", long, global = true)]
+    pub force_timeout: bool,
+
     /// Don't delete temporary files after verification
     #[clap(name = "keep-temp", long, short = 'k', global = true)]
     pub keep_temp: bool,
@@ -249,6 +253,7 @@ async fn execute_backend_boogie(
         general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.backend.force_timeout = general_config.force_timeout;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

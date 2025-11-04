@@ -33,6 +33,14 @@ use move_stackless_bytecode::{
 };
 use std::{fs, path::Path, time::Instant};
 
+pub struct FileOptions {
+    pub file_name: String,
+    pub code_writer: CodeWriter,
+    pub types: BiBTreeMap<Type, String>,
+    pub boogie_options: Option<String>,
+    pub timeout: Option<u64>,
+}
+
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
     let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
     for module_env in env.get_modules() {
@@ -197,6 +205,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
         types,
         file_name.to_owned(),
         None,
+        None,
     )
     .await?;
     let is_error = env.has_errors();
@@ -243,6 +252,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         types,
         file_name.to_owned(),
         None,
+        None,
     )
     .await?;
     let is_error = env.has_errors();
@@ -264,7 +274,7 @@ fn generate_function_bpl<W: WriteColor>(
     options: &Options,
     error_writer: &mut W,
     qid: &QualifiedId<FunId>,
-) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)> {
+) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
     let file_name = env.get_function(*qid).get_full_name_str();
@@ -280,12 +290,13 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
-    Ok((
+    Ok(FileOptions {
         file_name,
         code_writer,
         types,
-        targets.get_spec_boogie_options(qid).cloned(),
-    ))
+        boogie_options: targets.get_spec_boogie_options(qid).cloned(),
+        timeout: targets.get_spec_timeout(qid).cloned(),
+    })
 }
 
 fn generate_module_bpl<W: WriteColor>(
@@ -293,7 +304,7 @@ fn generate_module_bpl<W: WriteColor>(
     options: &Options,
     error_writer: &mut W,
     mid: &ModuleId,
-) -> anyhow::Result<(String, CodeWriter, BiBTreeMap<Type, String>, Option<String>)> {
+) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
     let file_name = env.get_module(*mid).get_full_name_str();
@@ -309,8 +320,15 @@ fn generate_module_bpl<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-    // Note: Module-level boogie options are not supported yet
-    Ok((file_name, code_writer, types, None))
+
+    // Note: Module-level boogie options / timeouts are not supported yet
+    Ok(FileOptions {
+        file_name,
+        code_writer,
+        types,
+        boogie_options: None,
+        timeout: None,
+    })
 }
 
 async fn verify_bpl<W: WriteColor>(
@@ -318,19 +336,19 @@ async fn verify_bpl<W: WriteColor>(
     error_writer: &mut W,
     options: &Options,
     targets: &FunctionTargetsHolder,
-    file: (String, CodeWriter, BiBTreeMap<Type, String>, Option<String>),
+    file: FileOptions,
 ) -> anyhow::Result<bool> {
-    let (file_name, code_writer, types, boogie_options) = file;
-    println!("🔄 {file_name}");
+    println!("🔄 {}", file.file_name);
 
     verify_boogie(
         env,
         &options,
         targets,
-        code_writer,
-        types,
-        file_name.clone(),
-        boogie_options,
+        file.code_writer,
+        file.types,
+        file.file_name.clone(),
+        file.timeout,
+        file.boogie_options,
     )
     .await?;
 
@@ -338,12 +356,12 @@ async fn verify_bpl<W: WriteColor>(
     env.report_diag(error_writer, options.prover.report_severity);
 
     if is_error {
-        println!("❌ {file_name}");
+        println!("❌ {}", file.file_name);
     } else {
         if options.remote.is_none() {
             print!("\x1B[1A\x1B[2K");
         }
-        println!("✅ {file_name}");
+        println!("✅ {}", file.file_name);
     }
 
     Ok(is_error)
@@ -468,6 +486,7 @@ pub async fn run_prover_all_mode<W: WriteColor>(
         types,
         "output".to_string(),
         None,
+        None,
     )
     .await?;
 
@@ -527,6 +546,7 @@ pub async fn verify_boogie(
     writer: CodeWriter,
     types: BiBTreeMap<Type, String>,
     target_name: String,
+    timeout: Option<u64>,
     boogie_options: Option<String>,
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
@@ -548,11 +568,12 @@ pub async fn verify_boogie(
                 .call_remote_boogie_and_verify_output(
                     &file_name,
                     &options.remote.as_ref().unwrap(),
+                    timeout,
                     boogie_options,
                 )
                 .await?;
         } else {
-            boogie.call_boogie_and_verify_output(&file_name, boogie_options)?;
+            boogie.call_boogie_and_verify_output(&file_name, timeout, boogie_options)?;
         }
     }
 
