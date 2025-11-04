@@ -262,7 +262,7 @@ async fn run_prover_abort_check<W: WriteColor>(
     }
 
     print!("\x1B[1A\x1B[2K");
-    if elapsed.as_secs() >= 1 {
+    if elapsed.as_secs() > 1 {
         println!("✅ {} ({}s)", file_name, elapsed.as_secs());
     } else {
         println!("✅ {file_name}");
@@ -365,7 +365,7 @@ async fn verify_bpl<W: WriteColor>(
         if options.remote.is_none() {
             print!("\x1B[1A\x1B[2K");
         }
-        if elapsed.as_secs() >= 1 {
+        if elapsed.as_secs() > 1 {
             println!("✅ {} ({}s)", file.file_name, elapsed.as_secs());
         } else {
             println!("✅ {}", file.file_name);
