@@ -1,3 +1,4 @@
+use crate::build_model::build_model;
 use crate::llm_explain::explain_err;
 use clap::{Args, ValueEnum};
 use codespan_reporting::term::termcolor::Buffer;
@@ -6,9 +7,7 @@ use move_compiler::editions::{Edition, Flavor};
 use move_compiler::shared::known_attributes::ModeAttribute;
 use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
-use move_package::{
-    BuildConfig as MoveBuildConfig, LintFlag,
-};
+use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
 use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
@@ -17,7 +16,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use crate::build_model::build_model;
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -53,6 +51,10 @@ pub struct GeneralConfig {
     /// Set verification timeout in seconds (default: 3000)
     #[clap(name = "timeout", long, short = 't', global = true)]
     pub timeout: Option<usize>,
+
+    /// Force kill boogie process if boogie vc timeout is broken
+    #[clap(name = "force-timeout", long, global = true)]
+    pub force_timeout: bool,
 
     /// Don't delete temporary files after verification
     #[clap(name = "keep-temp", long, short = 'k', global = true)]
@@ -167,14 +169,17 @@ impl RemoteConfig {
         }
 
         if self.remote_url.is_none() || self.remote_api_key.is_none() {
-            return Err(anyhow::anyhow!("Both remote-url and remote-api-key must be provided for remote proving."));
+            return Err(anyhow::anyhow!(
+                "Both remote-url and remote-api-key must be provided for remote proving."
+            ));
         }
 
-        let concurrency = if self.remote_concurrency.is_none() || self.remote_concurrency.unwrap() == 0 {
-            10
-        } else {
-            self.remote_concurrency.unwrap()
-        };
+        let concurrency =
+            if self.remote_concurrency.is_none() || self.remote_concurrency.unwrap() == 0 {
+                10
+            } else {
+                self.remote_concurrency.unwrap()
+            };
 
         Ok(Some(RemoteOptions {
             url: self.remote_url.clone().unwrap(),
@@ -188,7 +193,7 @@ impl RemoteConfig {
 pub enum BackendOptions {
     #[default]
     Boogie,
-    Lean
+    Lean,
 }
 
 impl Display for BackendOptions {
@@ -222,7 +227,7 @@ async fn execute_backend_boogie(
     general_config: &GeneralConfig,
     remote_config: RemoteConfig,
     boogie_config: Option<String>,
-    filter: TargetFilterOptions
+    filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let mut options = move_prover_boogie_backend::generator_options::Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
@@ -234,19 +239,32 @@ async fn execute_backend_boogie(
     options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.backend.no_verify = general_config.generate_only;
     options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
-    options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
+    options.verbosity_level = if general_config.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
     options.backend.string_options = boogie_config;
     options.backend.boogie_file_mode = general_config.boogie_file_mode.clone();
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
-    options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
+    options.prover.enable_conditional_merge_insertion =
+        general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.backend.force_timeout = general_config.force_timeout;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
-        match move_prover_boogie_backend::generator::run_move_prover_with_model(&model, &mut error_writer, options, None).await {
+        match move_prover_boogie_backend::generator::run_move_prover_with_model(
+            &model,
+            &mut error_writer,
+            options,
+            None,
+        )
+        .await
+        {
             Ok(_) => {
                 let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
                 println!("Output: {}", output);
@@ -257,8 +275,8 @@ async fn execute_backend_boogie(
             }
         }
     } else {
-       let result_str = run_boogie_gen(&model, options).await?;
-       println!("{}", result_str)
+        let result_str = run_boogie_gen(&model, options).await?;
+        println!("{}", result_str)
     }
 
     Ok(())
@@ -266,7 +284,8 @@ async fn execute_backend_boogie(
 
 async fn execute_backend_lean(
     model: GlobalEnv,
-    general_config: &GeneralConfig) -> anyhow::Result<()> {
+    general_config: &GeneralConfig,
+) -> anyhow::Result<()> {
     let mut options = move_prover_lean_backend::generator_options::Options::default();
     options.verbosity_level = if general_config.verbose {
         LevelFilter::Trace
@@ -274,9 +293,16 @@ async fn execute_backend_lean(
         LevelFilter::Info
     };
     options.prover.dump_bytecode = general_config.dump_bytecode;
-    options.prover.enable_conditional_merge_insertion = general_config.enable_conditional_merge_insertion;
+    options.prover.enable_conditional_merge_insertion =
+        general_config.enable_conditional_merge_insertion;
     let mut error_writer = Buffer::no_color();
-    match move_prover_lean_backend::generator::run_move_prover_with_model(options, &model, &mut error_writer).await {
+    match move_prover_lean_backend::generator::run_move_prover_with_model(
+        options,
+        &model,
+        &mut error_writer,
+    )
+    .await
+    {
         Ok(_) => {
             let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
             println!("Output: {}", output);

@@ -1,20 +1,16 @@
+use std::{fs::create_dir_all, fs::remove_dir_all, process::Command};
 
-use std::{fs::remove_dir_all, fs::create_dir_all, process::Command};
-
+use crate::handler::ProverHandler;
 use anyhow::Result;
+use dotenv;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use rustls::crypto::CryptoProvider;
-use crate::handler::ProverHandler;
 use serde_json::{from_str, json, Value};
-use dotenv;
 
 pub mod handler;
 
 fn cleanup_processes() {
-    if let Ok(output) = Command::new("ps")
-        .args(["-ef"])
-        .output()
-    {
+    if let Ok(output) = Command::new("ps").args(["-ef"]).output() {
         println!("--- Process list before cleanup ---");
         if let Ok(process_list) = String::from_utf8(output.stdout) {
             println!("{}", process_list);
@@ -22,15 +18,11 @@ fn cleanup_processes() {
     }
 
     // Kill any orphaned Z3 processes
-    let _ = Command::new("pkill")
-        .args(["-9", "z3"])
-        .output();
-    
+    let _ = Command::new("pkill").args(["-9", "z3"]).output();
+
     // Kill any orphaned dotnet processes
-    let _ = Command::new("pkill")
-        .args(["-9", "dotnet"])
-        .output();
-    
+    let _ = Command::new("pkill").args(["-9", "dotnet"]).output();
+
     // Clean temp files
     remove_dir_all("/tmp").ok();
     create_dir_all("/tmp/lambda").ok();
@@ -63,12 +55,26 @@ fn security_check(event: Value) -> Option<Value> {
         return Some(make_error_response(400, "Headers are missing or invalid."));
     }
 
-    let auth_header: Option<&Value> = event.get("headers").unwrap().as_object().unwrap()
+    let auth_header: Option<&Value> = event
+        .get("headers")
+        .unwrap()
+        .as_object()
+        .unwrap()
         .get("Authorization")
-        .or_else(|| event.get("headers").unwrap().as_object().unwrap().get("authorization"));
+        .or_else(|| {
+            event
+                .get("headers")
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .get("authorization")
+        });
 
     if auth_header.is_none() || auth_header.unwrap().as_str().is_none() {
-        return Some(make_error_response(401, "Authorization header is missing or invalid."));
+        return Some(make_error_response(
+            401,
+            "Authorization header is missing or invalid.",
+        ));
     }
 
     let auth_value = auth_header.unwrap().as_str().unwrap();
@@ -122,13 +128,16 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     } else {
         None
     };
-    
+
     let prover = ProverHandler::new()?;
 
     let response = match prover.process(file_text, boogie_options).await {
         Ok(resp) => resp,
         Err(e) => {
-            return Ok(make_error_response(500, &format!("Prover processing failed: {}", e)));
+            return Ok(make_error_response(
+                500,
+                &format!("Prover processing failed: {}", e),
+            ));
         }
     };
 
@@ -142,7 +151,7 @@ async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
-    
+
     let func = service_fn(handler);
     lambda_runtime::run(func).await
 }

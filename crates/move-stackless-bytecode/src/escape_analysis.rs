@@ -15,9 +15,7 @@ use codespan::FileId;
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 
 use move_binary_format::file_format::CodeOffset;
-use move_model::{
-    model::{DatatypeId, FieldId, FunctionEnv, ModuleId, QualifiedId},
-};
+use move_model::model::{DatatypeId, FieldId, FunctionEnv, ModuleId, QualifiedId};
 
 use crate::{
     ast::{Operation as ASTOperation, TempIndex},
@@ -323,8 +321,7 @@ impl TransferFunctions for EscapeAnalysis<'_> {
                     }
                 }
             }
-            Abort(..) | SaveMem(..) | Prop(..) | Branch(..) | Jump(..)
-            | Label(..) | Nop(..) => {
+            Abort(..) | SaveMem(..) | Prop(..) | Branch(..) | Jump(..) | Label(..) | Nop(..) => {
                 // these operations do not assign any locals
             }
         }

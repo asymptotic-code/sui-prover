@@ -19,7 +19,6 @@ use crate::{
     ast::TempIndex,
     dataflow_analysis::{DataflowAnalysis, TransferFunctions},
     dataflow_domains::{AbstractDomain, JoinResult, MapDomain, SetDomain},
-    dynamic_field_analysis,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     livevar_analysis::LiveVarAnnotation,
