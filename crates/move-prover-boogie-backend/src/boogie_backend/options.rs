@@ -162,6 +162,8 @@ pub struct BoogieOptions {
     pub num_instances: usize,
     /// Whether to run Boogie instances sequentially.
     pub sequential_task: bool,
+    /// Whether to force timeout handling
+    pub force_timeout: bool,
     /// A hard timeout for boogie execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.
     pub hard_timeout_secs: u64,
@@ -219,6 +221,7 @@ impl Default for BoogieOptions {
             stable_test_output: false,
             num_instances: 1,
             sequential_task: false,
+            force_timeout: false,
             hard_timeout_secs: 0,
             vector_theory: VectorTheory::BoogieArray,
             z3_trace_file: None,
