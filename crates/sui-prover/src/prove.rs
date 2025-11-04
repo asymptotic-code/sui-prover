@@ -9,7 +9,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
-use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
+use move_stackless_bytecode::function_stats;
+use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -219,6 +221,15 @@ pub async fn execute(
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
 
+    if general_config.stats {
+        let mut options = move_prover_boogie_backend::generator_options::Options::default();
+        options.filter = filter.clone();
+        let (targets, _) =
+            create_and_process_bytecode(&options, &model, FunctionHolderTarget::None);
+        function_stats::display_function_stats(&model, &targets);
+        return Ok(());
+    }
+
     if matches!(general_config.backend, BackendOptions::Boogie) {
         execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
     } else {
@@ -300,6 +311,7 @@ async fn execute_backend_lean(
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion =
         general_config.enable_conditional_merge_insertion;
+
     let mut error_writer = Buffer::no_color();
     match move_prover_lean_backend::generator::run_move_prover_with_model(
         options,
