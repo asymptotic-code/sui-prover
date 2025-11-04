@@ -2,16 +2,15 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use move_package::{
-    compilation::compiled_package::{DependencyInfo, ModuleFormat, make_source_and_deps_for_compiler},
-    resolution::resolution_graph::ResolvedGraph,
-};
 use anyhow::Result;
 use itertools::Itertools;
 use move_compiler::Flags;
-use move_model::{
-    model::GlobalEnv,
-    run_model_builder_with_options_and_compilation_flags,
+use move_model::{model::GlobalEnv, run_model_builder_with_options_and_compilation_flags};
+use move_package::{
+    compilation::compiled_package::{
+        make_source_and_deps_for_compiler, DependencyInfo, ModuleFormat,
+    },
+    resolution::resolution_graph::ResolvedGraph,
 };
 
 #[derive(Debug, Clone)]
@@ -21,9 +20,7 @@ pub struct ModelBuilderLegacy {
 
 impl ModelBuilderLegacy {
     pub fn create(resolution_graph: ResolvedGraph) -> Self {
-        Self {
-            resolution_graph,
-        }
+        Self { resolution_graph }
     }
 
     // NOTE: If there are now renamings, then the root package has the global resolution of all named
@@ -89,11 +86,6 @@ impl ModelBuilderLegacy {
 
         let all_targets = vec![target];
         let all_deps = deps.into_iter().map(|(p, _)| p).collect_vec();
-        run_model_builder_with_options_and_compilation_flags(
-            all_targets,
-            all_deps,
-            flags,
-            None,
-        )
+        run_model_builder_with_options_and_compilation_flags(all_targets, all_deps, flags, None)
     }
 }

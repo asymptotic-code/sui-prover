@@ -4,8 +4,8 @@ use redis::{AsyncCommands, RedisError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::{BufReader, Read};
-use std::process::{Command, Stdio};
 use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 
 #[derive(Serialize, Debug)]
 pub struct ProverResponse {
@@ -37,21 +37,21 @@ pub struct ProverHandler {
 }
 
 impl ProverHandler {
-    pub fn new() -> Result<Self> {        
+    pub fn new() -> Result<Self> {
         let cache_lifetime_seconds = std::env::var("CACHE_LIFETIME_SECONDS")
             .unwrap_or_else(|_| "172800".to_string())
             .parse::<u64>()
             .context("Invalid CACHE_LIFETIME_SECONDS value")?;
 
         if std::env::var("REDIS_HOST").is_err() {
-            return Ok(Self { 
+            return Ok(Self {
                 redis_client: None,
                 cache_lifetime_seconds,
             });
         }
 
-        let redis_host = std::env::var("REDIS_HOST")
-            .context("REDIS_HOST environment variable not set")?;
+        let redis_host =
+            std::env::var("REDIS_HOST").context("REDIS_HOST environment variable not set")?;
         let redis_port = std::env::var("REDIS_PORT")
             .unwrap_or_else(|_| "6379".to_string())
             .parse::<u16>()
@@ -67,10 +67,10 @@ impl ProverHandler {
             redis: redis::RedisConnectionInfo::default(),
         };
 
-        let redis_client = Some(redis::Client::open(info)
-            .context("Failed to create Redis client")?);
+        let redis_client =
+            Some(redis::Client::open(info).context("Failed to create Redis client")?);
 
-        Ok(Self { 
+        Ok(Self {
             redis_client,
             cache_lifetime_seconds,
         })
@@ -84,7 +84,9 @@ impl ProverHandler {
 
     async fn check_cache(&self, hash: &str) -> Result<Option<(String, String, i32)>> {
         if let Some(redis_client) = &self.redis_client {
-            let mut conn = redis_client.get_multiplexed_async_connection().await
+            let mut conn = redis_client
+                .get_multiplexed_async_connection()
+                .await
                 .context("Failed to get Redis connection")?;
 
             let result: Option<String> = conn.get(hash).await?;
@@ -92,7 +94,7 @@ impl ProverHandler {
                 Some(data) => serde_json::from_str(&data).ok(),
                 None => None,
             };
-            
+
             Ok(deserialized)
         } else {
             Ok(None)
@@ -101,22 +103,29 @@ impl ProverHandler {
 
     async fn cache_result(&self, hash: &str, out: &str, err: &str, status: i32) -> Result<()> {
         if let Some(redis_client) = &self.redis_client {
-            let mut conn = redis_client.get_multiplexed_async_connection().await
+            let mut conn = redis_client
+                .get_multiplexed_async_connection()
+                .await
                 .context("Failed to get Redis connection")?;
 
             let serialized = serde_json::to_string(&(out, err, status))?;
-            let result: Result<(), RedisError> = conn.set_ex(hash, serialized, self.cache_lifetime_seconds).await;
+            let result: Result<(), RedisError> = conn
+                .set_ex(hash, serialized, self.cache_lifetime_seconds)
+                .await;
             result?;
         }
 
         Ok(())
     }
 
-    fn get_boogie_command(&self, boogie_file_name: &str, individual_options: Option<String>) -> Result<Vec<String>> {
-        let boogie_exe = std::env::var("BOOGIE_EXE")
-            .context("BOOGIE_EXE environment variable not set")?;
-        let z3_exe = std::env::var("Z3_EXE")
-            .context("Z3_EXE environment variable not set")?;
+    fn get_boogie_command(
+        &self,
+        boogie_file_name: &str,
+        individual_options: Option<String>,
+    ) -> Result<Vec<String>> {
+        let boogie_exe =
+            std::env::var("BOOGIE_EXE").context("BOOGIE_EXE environment variable not set")?;
+        let z3_exe = std::env::var("Z3_EXE").context("Z3_EXE environment variable not set")?;
 
         let mut result = vec![boogie_exe];
         result.extend(DEFAULT_BOOGIE_FLAGS.iter().map(|s| s.to_string()));
@@ -131,7 +140,11 @@ impl ProverHandler {
         Ok(result)
     }
 
-    async fn execute_boogie(&self, temp_file_path: &str, individual_options: Option<String>) -> Result<(String, String, i32)> {
+    async fn execute_boogie(
+        &self,
+        temp_file_path: &str,
+        individual_options: Option<String>,
+    ) -> Result<(String, String, i32)> {
         let args = self.get_boogie_command(temp_file_path, individual_options)?;
 
         let mut child = unsafe {
@@ -180,14 +193,14 @@ impl ProverHandler {
             }
         }
 
-        Ok((
-            stdout_buf,
-            stderr_buf,
-            status.code().unwrap_or(-1),
-        ))
+        Ok((stdout_buf, stderr_buf, status.code().unwrap_or(-1)))
     }
 
-    pub async fn process(&self, file_text: String, boogie_options: Option<String>) -> Result<ProverResponse> {
+    pub async fn process(
+        &self,
+        file_text: String,
+        boogie_options: Option<String>,
+    ) -> Result<ProverResponse> {
         let hash = Self::generate_hash(&file_text);
 
         if let Some((out, err, status)) = self.check_cache(&hash).await? {
@@ -205,14 +218,19 @@ impl ProverHandler {
             .context("Failed to create temporary file")?;
 
         use std::io::Write;
-        temp_file.write_all(file_text.as_bytes())
+        temp_file
+            .write_all(file_text.as_bytes())
             .context("Failed to write to temporary file")?;
 
         let temp_file_path = temp_file.path().to_string_lossy().to_string();
 
         let (out, err, status) = match self.execute_boogie(&temp_file_path, boogie_options).await {
             Ok(output) => output,
-            Err(e) => (String::new(), format!("Error executing boogie remotely: {}", e), -1),
+            Err(e) => (
+                String::new(),
+                format!("Error executing boogie remotely: {}", e),
+                -1,
+            ),
         };
 
         if let Err(e) = self.cache_result(&hash, &out, &err, status).await {

@@ -4,8 +4,8 @@
 
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
-use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
+use move_binary_format::file_format::FunctionHandleIndex;
 use std::{
     any::Any,
     collections::{BTreeMap, BTreeSet},
@@ -18,7 +18,10 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::known_attributes::{AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute}
+    expansion::ast::{ModuleAccess, ModuleAccess_},
+    shared::known_attributes::{
+        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
+    },
 };
 
 use move_model::{
@@ -27,7 +30,12 @@ use move_model::{
 };
 
 use crate::{
-    function_target::{FunctionData, FunctionTarget}, options::ProverOptions, print_targets_for_test, stackless_bytecode_generator::StacklessBytecodeGenerator, stackless_control_flow_graph::generate_cfg_in_dot_format, target_filter::TargetFilterOptions
+    function_target::{FunctionData, FunctionTarget},
+    options::ProverOptions,
+    print_targets_for_test,
+    stackless_bytecode_generator::StacklessBytecodeGenerator,
+    stackless_control_flow_graph::generate_cfg_in_dot_format,
+    target_filter::TargetFilterOptions,
 };
 
 #[derive(Debug, Clone)]
@@ -236,11 +244,19 @@ impl FunctionTargetsHolder {
         let system_address = &0u16.into(); // Address 0x0 used by system modules
 
         // Count function specs from system modules
-        for spec_id in self.function_specs.left_values().chain(self.scenario_specs.iter()) {
+        for spec_id in self
+            .function_specs
+            .left_values()
+            .chain(self.scenario_specs.iter())
+        {
             let func_env = env.get_function(*spec_id);
             let module_env = &func_env.module_env;
             if module_env.get_name().addr() == system_address {
-                let module_name = module_env.get_name().name().display(env.symbol_pool()).to_string();
+                let module_name = module_env
+                    .get_name()
+                    .name()
+                    .display(env.symbol_pool())
+                    .to_string();
                 if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
                     system_specs_count += 1;
                 }
@@ -441,19 +457,27 @@ impl FunctionTargetsHolder {
             .get_toplevel_attributes()
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
-         {
+        {
             let abort_check = attrs
                 .into_iter()
-                .any(|attr| 
-                    attr.2.value.name().value.as_str() == "no_abort".to_string()
-                );
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string());
             if abort_check {
-                self.abort_check_functions.insert(func_env.get_qualified_id());
+                self.abort_check_functions
+                    .insert(func_env.get_qualified_id());
                 self.target_modules.insert(func_env.module_env.get_id());
             }
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort, boogie_opt, timeout })) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
+            focus,
+            prove,
+            skip,
+            target,
+            no_opaque,
+            ignore_abort,
+            boogie_opt,
+            timeout,
+        })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
@@ -465,11 +489,13 @@ impl FunctionTargetsHolder {
             };
 
             if let Some(opt) = boogie_opt {
-                self.spec_boogie_options.insert(func_env.get_qualified_id(), opt.clone());
+                self.spec_boogie_options
+                    .insert(func_env.get_qualified_id(), opt.clone());
             }
 
             if let Some(timeout) = timeout {
-                self.spec_timeouts.insert(func_env.get_qualified_id(), *timeout);
+                self.spec_timeouts
+                    .insert(func_env.get_qualified_id(), *timeout);
             }
 
             if *no_opaque {
@@ -477,7 +503,8 @@ impl FunctionTargetsHolder {
             }
 
             if skip.is_some() {
-                self.skip_specs.insert(func_env.get_qualified_id(), skip.clone().unwrap());
+                self.skip_specs
+                    .insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
             if (!*prove && !*focus) || skip.is_some() || !targeted {
@@ -497,7 +524,8 @@ impl FunctionTargetsHolder {
             if target.is_some() {
                 let env = func_env.module_env.env;
 
-                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env) {
+                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env)
+                {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
                         Self::process_spec(
@@ -544,10 +572,11 @@ impl FunctionTargetsHolder {
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target })) =
+            func_env
+                .get_toplevel_attributes()
+                .get_(&AttributeKind_::SpecOnly)
+                .map(|attr| &attr.value)
         {
             if func_env.get_name_str().contains("type_inv") {
                 return;
@@ -556,7 +585,11 @@ impl FunctionTargetsHolder {
             let env = func_env.module_env.env;
 
             if inv_target.is_some() {
-                match Self::parse_module_access(inv_target.as_ref().unwrap(), env, &func_env.module_env) {
+                match Self::parse_module_access(
+                    inv_target.as_ref().unwrap(),
+                    env,
+                    &func_env.module_env,
+                ) {
                     Some((module_name, struct_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
 
@@ -606,17 +639,26 @@ impl FunctionTargetsHolder {
                 // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
                 let function_name = name.value.to_string();
                 let function_symbol = env.symbol_pool().make(&function_name);
-                
+
                 // First try to find the function in the current module
                 if current_module.find_function(function_symbol).is_some() {
                     return Some((current_module.get_name().clone(), function_name));
                 }
 
-                let handle_index = current_module.data.module.function_handles()
+                let handle_index = current_module
+                    .data
+                    .module
+                    .function_handles()
                     .iter()
                     .enumerate()
                     .find_map(|(h_index, handle)| {
-                        if function_name == current_module.data.module.identifier_at(handle.name).to_string() {
+                        if function_name
+                            == current_module
+                                .data
+                                .module
+                                .identifier_at(handle.name)
+                                .to_string()
+                        {
                             Some(FunctionHandleIndex(h_index.try_into().unwrap()))
                         } else {
                             None
@@ -624,7 +666,7 @@ impl FunctionTargetsHolder {
                     });
 
                 if handle_index.is_some() {
-                    let func_env= current_module.get_used_function(handle_index.unwrap());
+                    let func_env = current_module.get_used_function(handle_index.unwrap());
                     Some((func_env.module_env.get_name().clone(), function_name))
                 } else {
                     None
@@ -842,13 +884,13 @@ impl FunctionTargetsHolder {
         scc_opt: Option<&[FunctionEnv]>,
     ) {
         let id = func_env.get_qualified_id();
-        
+
         // Check if this function exists in targets before processing
         if !self.targets.contains_key(&id) {
             // Function was removed from targets, skip processing
             return;
         }
-        
+
         for variant in self.get_target_variants(func_env) {
             // Remove data so we can own it.
             let data = self.remove_target_data(&id, &variant);
@@ -959,7 +1001,7 @@ impl FunctionTargetPipeline {
                 let dst_qid = targets
                     .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
                     .unwrap_or(&callee);
-                
+
                 // Check if the callee exists in targets before trying to access it
                 if let Some(dst_idx) = nodes.get(dst_qid) {
                     graph.add_edge(*src_idx, *dst_idx, ());
@@ -1160,4 +1202,3 @@ impl FunctionTargetPipeline {
         }
     }
 }
-

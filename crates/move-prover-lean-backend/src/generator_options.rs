@@ -1,7 +1,7 @@
+use crate::lean_backend::options::LeanOptions;
 use log::LevelFilter;
 use move_stackless_bytecode::options::ProverOptions;
 use serde::{Deserialize, Serialize};
-use crate::lean_backend::options::LeanOptions;
 
 /// Represents options provided to the tool. Most of those options are configured via a toml
 /// source; some over the command line flags.

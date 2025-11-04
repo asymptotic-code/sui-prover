@@ -42,14 +42,12 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
 
         info.is_deterministic = false; // in case of early return
         for callee_id in fun_env.get_called_functions() {
-            let Some(callee_id_info) = targets
-                .get_data(&callee_id, &variant)
-            else {return data}; // TODO: handle recursive functions properly
-            let Some(callee_info) =
-                callee_id_info
-                .annotations
-                .get::<DeterministicInfo>()
-            else {return data};
+            let Some(callee_id_info) = targets.get_data(&callee_id, &variant) else {
+                return data;
+            }; // TODO: handle recursive functions properly
+            let Some(callee_info) = callee_id_info.annotations.get::<DeterministicInfo>() else {
+                return data;
+            };
             if !callee_info.is_deterministic {
                 return data;
             }
@@ -68,7 +66,10 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
     ) -> fmt::Result {
-        writeln!(f, "\n********* Result of deterministic analysis *********\n")?;
+        writeln!(
+            f,
+            "\n********* Result of deterministic analysis *********\n"
+        )?;
 
         writeln!(f, "deterministic analysis: [")?;
         for fun_id in targets.get_funs() {

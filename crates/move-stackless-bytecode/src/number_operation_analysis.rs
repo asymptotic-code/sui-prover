@@ -7,12 +7,20 @@
 // The result of this analysis will be used when generating the boogie code
 
 use crate::{
-    ast::TempIndex, dataflow_analysis::{DataflowAnalysis, TransferFunctions}, dataflow_domains::{AbstractDomain, JoinResult}, function_target::FunctionTarget, function_target_pipeline::{
+    ast::TempIndex,
+    dataflow_analysis::{DataflowAnalysis, TransferFunctions},
+    dataflow_domains::{AbstractDomain, JoinResult},
+    function_target::FunctionTarget,
+    function_target_pipeline::{
         FunctionTargetPipeline, FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant,
-    }, number_operation::{
+    },
+    number_operation::{
         GlobalNumberOperationState,
         NumOperation::{self, Arithmetic, Bitwise, Bottom},
-    }, options::ProverOptions, stackless_bytecode::{AttrId, Bytecode, Operation}, stackless_control_flow_graph::StacklessControlFlowGraph
+    },
+    options::ProverOptions,
+    stackless_bytecode::{AttrId, Bytecode, Operation},
+    stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 use itertools::Either;
 use move_binary_format::file_format::CodeOffset;
@@ -306,9 +314,8 @@ impl NumberOperationAnalysis<'_> {
                 .get_non_param_local_map(mid, fid, baseline_flag)
                 .contains_key(&i)
             {
-                let default_oper = global_state.get_default_operation_for_type(
-                    &self.func_target.get_local_type(i),
-                );
+                let default_oper = global_state
+                    .get_default_operation_for_type(&self.func_target.get_local_type(i));
 
                 global_state
                     .get_mut_non_param_local_map(mid, fid, baseline_flag)
@@ -454,8 +461,7 @@ impl TransferFunctions for NumberOperationAnalysis<'_> {
                             self.check_and_update_oper_dest(
                                 state,
                                 dests,
-                                if self.options.bv_int_encoding
-                                {
+                                if self.options.bv_int_encoding {
                                     Arithmetic
                                 } else {
                                     Bitwise

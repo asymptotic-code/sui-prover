@@ -162,6 +162,8 @@ pub struct BoogieOptions {
     pub num_instances: usize,
     /// Whether to run Boogie instances sequentially.
     pub sequential_task: bool,
+    /// Whether to force timeout handling
+    pub force_timeout: bool,
     /// A hard timeout for boogie execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.
     pub hard_timeout_secs: u64,
@@ -219,6 +221,7 @@ impl Default for BoogieOptions {
             stable_test_output: false,
             num_instances: 1,
             sequential_task: false,
+            force_timeout: false,
             hard_timeout_secs: 0,
             vector_theory: VectorTheory::BoogieArray,
             z3_trace_file: None,
@@ -248,7 +251,11 @@ impl BoogieOptions {
     }
 
     /// Returns command line to call boogie.
-    pub fn get_boogie_command(&self, boogie_file: &str, individual_options: Option<String>) -> anyhow::Result<Vec<String>> {
+    pub fn get_boogie_command(
+        &self,
+        boogie_file: &str,
+        individual_options: Option<String>,
+    ) -> anyhow::Result<Vec<String>> {
         let mut result = if self.use_exp_boogie {
             // This should have a better ux...
             vec![read_env_var("EXP_BOOGIE_EXE")]
@@ -346,19 +353,26 @@ impl BoogieOptions {
             add(&["-noVerify"]);
         }
 
-        let additional_options = self.string_options
+        let additional_options = self
+            .string_options
             .as_deref()
-            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect()) 
+            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect())
             .unwrap_or_else(Vec::new);
 
-        add(&additional_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+        add(&additional_options
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>());
 
         let individual_options = individual_options
             .as_deref()
-            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect()) 
+            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect())
             .unwrap_or_else(Vec::new);
 
-        add(&individual_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+        add(&individual_options
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>());
 
         add(&[boogie_file]);
 

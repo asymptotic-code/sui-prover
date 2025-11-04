@@ -1,10 +1,7 @@
-
 use std::{collections::BTreeMap, sync::LazyLock};
 
-use move_package::{
-    source_package::parsed_manifest::{
-        Dependencies, Dependency, DependencyKind, GitInfo, InternalDependency,
-    },
+use move_package::source_package::parsed_manifest::{
+    Dependencies, Dependency, DependencyKind, GitInfo, InternalDependency,
 };
 
 #[derive(Debug)]
@@ -22,8 +19,8 @@ pub struct SystemPackagesVersion {
 static SYSTEM_SUI_GIT_REPO: &str = "https://github.com/asymptotic-code/sui.git";
 static SYSTEM_PROVER_GIT_REPO: &str = "https://github.com/asymptotic-code/sui-prover.git";
 
-static LATEST_SYSTEM_PACKAGES: LazyLock<SystemPackagesVersion> = LazyLock::new(|| {
-    SystemPackagesVersion {
+static LATEST_SYSTEM_PACKAGES: LazyLock<SystemPackagesVersion> =
+    LazyLock::new(|| SystemPackagesVersion {
         git_revision: "next".to_owned(),
         packages: vec![
             SystemPackage {
@@ -43,14 +40,13 @@ static LATEST_SYSTEM_PACKAGES: LazyLock<SystemPackagesVersion> = LazyLock::new(|
                 repo_path: "crates/sui-framework/packages/deepbook".to_owned(),
             },
         ],
-    }
-});
+    });
 
 fn prover_deps() -> Dependencies {
     let mut deps: Dependencies = BTreeMap::new();
     deps.insert(
-    "SuiProver".to_string().into(),
-    Dependency::Internal(InternalDependency {
+        "SuiProver".to_string().into(),
+        Dependency::Internal(InternalDependency {
             kind: DependencyKind::Git(GitInfo {
                 git_url: SYSTEM_PROVER_GIT_REPO.into(),
                 git_rev: "main".to_string().into(),
