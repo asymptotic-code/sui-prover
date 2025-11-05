@@ -17,7 +17,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    loop_analysis::find_loops_headers,
+    helpers::loop_helpers::find_loops_headers,
     no_abort_analysis,
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
 };
@@ -321,17 +321,44 @@ impl MoveLoopInvariantsProcessor {
             builder.emit(bc);
 
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
-                let attr_id = builder.new_attr();
-                let ensures_attr_id = builder.new_attr();
-
-                let args = Self::match_invariant_arguments(
+                let mut args = Self::match_invariant_arguments(
                     &builder,
                     &func_env.module_env.env.get_function(*qid),
                 );
                 let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
+                let mut first_attr_id = None;
+
+                for i in 0..args.len() {
+                    if builder.get_local_type(args[i]).is_mutable_reference() {
+                        let attr = builder.new_attr();
+
+                        if first_attr_id.is_none() {
+                            first_attr_id = Some(attr);
+                        }
+
+                        let ty = builder
+                            .new_temp(builder.get_local_type(args[i]).skip_reference().clone());
+                        builder.emit(Bytecode::Call(
+                            attr,
+                            [ty].to_vec(),
+                            Operation::ReadRef,
+                            vec![args[i]],
+                            None,
+                        ));
+                        args[i] = ty;
+                    }
+                }
+
+                let call_attr_id = builder.new_attr();
+                let ensures_attr_id = builder.new_attr();
+
+                if first_attr_id.is_none() {
+                    first_attr_id = Some(call_attr_id);
+                }
+
                 builder.emit(Bytecode::Call(
-                    attr_id,
+                    call_attr_id,
                     [temp].to_vec(),
                     Operation::apply_fun_qid(qid, vec![]),
                     args,
@@ -346,7 +373,7 @@ impl MoveLoopInvariantsProcessor {
                     None,
                 ));
 
-                attrs.insert(vec![attr_id, ensures_attr_id]);
+                attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
             }
         }
 
