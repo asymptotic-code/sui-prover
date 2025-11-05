@@ -10,6 +10,7 @@ use regex::Regex;
 use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
+use sui_prover::prove::DEFAULT_EXECUTION_TIMEOUT_SECONDS;
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &Path) -> String {
@@ -91,7 +92,7 @@ integration-test = "0x9"
                 let mut options = Options::default();
                 options.backend.sequential_task = true;
                 options.backend.use_array_theory = false; // we are not using them by default
-                options.backend.vc_timeout = 30;
+                options.backend.vc_timeout = DEFAULT_EXECUTION_TIMEOUT_SECONDS;
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
 
