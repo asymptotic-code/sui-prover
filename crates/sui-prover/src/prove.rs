@@ -234,7 +234,7 @@ async fn execute_backend_boogie(
     options.backend.sequential_task = true;
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
-    options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
+    options.backend.vc_timeout = general_config.timeout.unwrap_or(30);
     options.backend.path_split = general_config.split_paths;
     options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.backend.no_verify = general_config.generate_only;

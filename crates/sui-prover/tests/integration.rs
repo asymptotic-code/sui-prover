@@ -91,7 +91,7 @@ integration-test = "0x9"
                 let mut options = Options::default();
                 options.backend.sequential_task = true;
                 options.backend.use_array_theory = false; // we are not using them by default
-                options.backend.vc_timeout = 3000;
+                options.backend.vc_timeout = 30;
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
 
