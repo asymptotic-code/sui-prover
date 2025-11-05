@@ -540,7 +540,7 @@ pub fn generate_boogie(
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
-    add_prelude(env, &options.backend, &writer)?;
+    add_prelude(env, targets, &options.backend, &writer)?;
     let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types);
     translator.translate();
     Ok((writer, types.into_inner()))
