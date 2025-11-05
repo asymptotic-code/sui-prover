@@ -118,6 +118,23 @@ impl ProverHandler {
         Ok(())
     }
 
+    fn get_option_key(option: &str) -> &str {
+        if let Some(eq_pos) = option.find('=') {
+            &option[..eq_pos]
+        } else if let Some(colon_pos) = option.rfind(':') {
+            let after_colon = &option[colon_pos + 1..];
+            if after_colon.chars().next().map_or(false, |c| {
+                c.is_ascii_digit() || after_colon.starts_with('/') || after_colon.starts_with('.')
+            }) {
+                &option[..colon_pos]
+            } else {
+                option
+            }
+        } else {
+            option
+        }
+    }
+
     fn get_boogie_command(
         &self,
         boogie_file_name: &str,
@@ -131,7 +148,11 @@ impl ProverHandler {
         result.extend(DEFAULT_BOOGIE_FLAGS.iter().map(|s| s.to_string()));
 
         if let Some(options) = individual_options {
-            result.extend(options.split_whitespace().map(|s| s.to_string()));
+            for option in options.split_whitespace().map(|s| format!("-{}", s)) {
+                let key = Self::get_option_key(&option);
+                result.retain(|existing: &String| Self::get_option_key(existing) != key);
+                result.push(option);
+            }
         }
 
         result.push(format!("-proverOpt:PROVER_PATH={z3_exe}"));
