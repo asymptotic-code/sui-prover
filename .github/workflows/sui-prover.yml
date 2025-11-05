@@ -186,6 +186,12 @@ jobs:
           cd ./crates/sui-prover
           cargo test
 
+      - name: Run conditional merge insertion tests
+        run: |
+          cargo test -p move-stackless-bytecode --test testsuite -- 'test_runner::conditional_merge_insertion'
+        env:
+          STACKLESS_TEST_IGNORE_DEPS: 1
+
   integer-mate-specs:
     needs: build-prover
     runs-on: macos-latest
