@@ -4539,6 +4539,9 @@ impl<'env> FunctionTranslator<'env> {
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }
                     }
+                    CopyReference() => {
+                        emitln!(self.writer(), "$t{} := $CopyMutation($t{});", dests[0], srcs[0]);
+                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {

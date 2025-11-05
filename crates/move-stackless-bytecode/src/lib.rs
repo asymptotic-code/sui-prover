@@ -61,6 +61,7 @@ pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
+pub mod replacement_analysis;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(

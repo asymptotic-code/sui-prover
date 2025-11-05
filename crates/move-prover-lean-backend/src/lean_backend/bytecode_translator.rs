@@ -2149,6 +2149,9 @@ impl FunctionTranslator<'_> {
                     TraceGlobalMem(mem) => {}
                     Quantifier(_, _, _, _) => {
                         unreachable!("Add support for quantifiers in lean backend")
+                    },
+                    CopyReference() => {
+                        unreachable!("Add support for cloning mutable references in lean backend")
                     }
                 }
                 match aa {
