@@ -574,9 +574,6 @@ impl<'env> BoogieTranslator<'env> {
         let da = deterministic_analysis::get_info(&builder.data);
         let skip_havok = da.is_deterministic && style == FunctionTranslationStyle::Opaque;
 
-        let omit_havoc = self
-            .targets
-            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
@@ -648,12 +645,20 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(if omit_havoc {
-                            bc
-                        } else {
-                            bc.update_abort_action(|_| None)
-                        });
-                        if !omit_havoc {
+                        builder.emit(
+                            if self
+                                .targets
+                                .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                            {
+                                bc
+                            } else {
+                                bc.update_abort_action(|_| None)
+                            },
+                        );
+                        if !self
+                            .targets
+                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                        {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                                 let havoc_kind = if callee_fun_env
@@ -700,8 +705,25 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
 
-                        builder.emit(bc);
-                        if !omit_havoc {
+                        builder.emit(
+                            if self
+                                .targets
+                                .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                                || !no_abort_analysis::does_not_abort(
+                                    self.targets,
+                                    &self.env.get_function(module_id.qualified(fun_id)),
+                                    None,
+                                )
+                            {
+                                bc
+                            } else {
+                                bc.update_abort_action(|_| None)
+                            },
+                        );
+                        if !self
+                            .targets
+                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                        {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                                 let havoc_kind = if callee_fun_env

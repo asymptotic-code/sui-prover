@@ -26,7 +26,7 @@ use crate::{
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::Graph,
     livevar_analysis::LiveVarAnnotation,
-    stackless_bytecode::{AssignKind, AttrId, Bytecode, Label, Operation},
+    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph},
 };
 use move_compiler::shared::known_attributes::AttributeKind_;
@@ -406,13 +406,6 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                                 )
                             });
 
-                            builder.set_next_debug_comment(format!(
-                                "conditional_merge_insertion: merge assign t{} := t{}",
-                                ins.dest_var, new_temp
-                            ));
-                            builder.emit_with(|id| {
-                                Bytecode::Assign(id, ins.dest_var, new_temp, AssignKind::Store)
-                            });
                             current_val.insert(ins.dest_var, new_temp);
                         }
                     }
@@ -473,8 +466,8 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         .get(&original_dst)
                         .copied()
                         .unwrap_or(original_dst);
-                    // Remap source operand through fresh variables
-                    let remapped_src = active_fresh_vars.get(&src).copied().unwrap_or(src);
+                    // Remap source operand through current_val to use SSA variable
+                    let remapped_src = current_val.get(&src).copied().unwrap_or(src);
                     current_val.insert(original_dst, remapped_src); // Track latest rhs value of original dst
                     builder.emit(Bytecode::Assign(attr, fresh_dst, remapped_src, kind))
                 }
@@ -484,12 +477,12 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         .get(&original_dest)
                         .copied()
                         .unwrap_or(original_dest);
-                    // Remap source operands through fresh variables
+                    // Remap source operands through current_val to use SSA variables
                     let remapped_srcs: Vec<usize> = srcs
                         .iter()
-                        .map(|&src| active_fresh_vars.get(&src).copied().unwrap_or(src))
+                        .map(|&s| current_val.get(&s).copied().unwrap_or(s))
                         .collect();
-                    current_val.insert(original_dest, original_dest);
+                    current_val.insert(original_dest, actual_dest);
                     builder.emit(Bytecode::Call(
                         attr,
                         vec![actual_dest],
@@ -497,6 +490,26 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
                         remapped_srcs,
                         abort,
                     ))
+                }
+                Bytecode::Call(attr, dests, op, srcs, abort) if dests.is_empty() => {
+                    // Handle calls with no destinations (e.g., TraceReturn, TraceLocal, TraceAbort)
+                    // Remap source operands through current_val to use SSA variables
+                    let remapped_srcs: Vec<usize> = srcs
+                        .iter()
+                        .map(|&s| current_val.get(&s).copied().unwrap_or(s))
+                        .collect();
+                    builder.emit(Bytecode::Call(attr, dests, op, remapped_srcs, abort))
+                }
+                Bytecode::Ret(attr, srcs) => {
+                    let remapped_srcs = srcs
+                        .iter()
+                        .map(|&s| current_val.get(&s).copied().unwrap_or(s))
+                        .collect();
+                    builder.emit(Bytecode::Ret(attr, remapped_srcs))
+                }
+                Bytecode::Abort(attr, src) => {
+                    let remapped_src = current_val.get(&src).copied().unwrap_or(src);
+                    builder.emit(Bytecode::Abort(attr, remapped_src))
                 }
                 bytecode => builder.emit(bytecode),
             }

@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use bimap::BiBTreeMap;
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
 use move_model::{model::FunctionEnv, ty::Type};
@@ -13,7 +14,8 @@ use crate::{
     function_data_builder::{FunctionDataBuilder, FunctionDataBuilderOptions},
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    graph::{Graph, NaturalLoop},
+    graph::NaturalLoop,
+    helpers::loop_helpers::find_loops_headers,
     move_loop_invariants, spec_global_variable_analysis,
     stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
@@ -415,54 +417,56 @@ impl LoopAnalysisProcessor {
         let func_target = FunctionTarget::new(func_env, data);
         let code = func_target.get_bytecode();
         let cfg = StacklessControlFlowGraph::new_forward(code);
-        let entry = cfg.entry_block();
-        let nodes = cfg.blocks();
-        let edges: Vec<(BlockId, BlockId)> = nodes
-            .iter()
-            .flat_map(|x| {
-                cfg.successors(*x)
-                    .iter()
-                    .map(|y| (*x, *y))
-                    .collect::<Vec<(BlockId, BlockId)>>()
-            })
-            .collect();
-        let graph = Graph::new(entry, nodes, edges);
-        let natural_loops = graph.compute_reducible().expect(
-            "A well-formed Move function is expected to have a reducible control-flow graph",
-        );
 
         // collect shared headers from loops
-        let mut fat_headers = BTreeMap::new();
-        for single_loop in natural_loops {
-            fat_headers
-                .entry(single_loop.loop_header)
-                .or_insert_with(Vec::new)
-                .push(single_loop);
+        let fat_headers = find_loops_headers(func_env, data);
+
+        if move_loop_invariants::get_info(&func_target)
+            .attrs
+            .is_empty()
+        {
+            return LoopAnnotation {
+                fat_loops: BTreeMap::new(),
+                invariant_offsets: vec![],
+            };
         }
 
-        let invariants =
-            move_loop_invariants::get_invariant_span_bimap(func_env.module_env.env, code);
-        let invariants_map: BTreeMap<_, _> = invariants
+        let invariants = move_loop_invariants::get_info(&func_target)
+            .attrs
             .iter()
-            .map(|(begin, end)| match &code[begin - 1] {
-                // TODO: check if the label is the header of a loop
-                Bytecode::Label(_, label) => (label, (*begin, *end)),
-                _ => panic!("A loop invariant should begin with a label"),
+            .filter_map(|vrange| {
+                let offsets: Vec<usize> = vrange
+                    .iter()
+                    .filter_map(|attr_id| {
+                        // Find the offset of the bytecode with the given attribute id
+                        code.iter()
+                            .find_position(|c| c.get_attr_id() == *attr_id)
+                            .map(|res| res.0)
+                    })
+                    .collect();
+
+                if offsets.is_empty() {
+                    panic!("A loop invariant should have at least 1 bytecode element")
+                } else {
+                    Some((*offsets.first().unwrap(), *offsets.last().unwrap()))
+                }
+            })
+            .collect::<BiBTreeMap<usize, usize>>();
+
+        let invariants_map: BTreeMap<Label, (usize, usize)> = invariants
+            .iter()
+            .map(|(begin, end)| {
+                match &code[begin - 1] {
+                    // TODO: check if the label is the header of a loop
+                    Bytecode::Label(_, label) => (*label, (*begin, *end)),
+                    _ => panic!("A loop invariant should begin with a label"),
+                }
             })
             .collect();
 
         // build fat loops by label
         let mut fat_loops = BTreeMap::new();
-        for (fat_root, sub_loops) in fat_headers {
-            // get the label of the scc root
-            let label = match cfg.content(fat_root) {
-                BlockContent::Dummy => panic!("A loop header should never be a dummy block"),
-                BlockContent::Basic { lower, upper: _ } => match code[*lower as usize] {
-                    Bytecode::Label(_, label) => label,
-                    _ => panic!("A loop header block is expected to start with a Label bytecode"),
-                },
-            };
-
+        for (label, sub_loops) in fat_headers {
             let (val_targets, mut_targets, spec_global_var_mut) =
                 Self::collect_loop_targets(targets, &cfg, &func_target, &sub_loops);
             let back_edges = Self::collect_loop_back_edges(code, &cfg, label, &sub_loops);

@@ -64,6 +64,7 @@ pub struct FunctionTargetsHolder {
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
@@ -220,6 +221,7 @@ impl FunctionTargetsHolder {
             prover_options,
             filter,
             target,
+            loop_invariants: BTreeMap::new(),
         }
     }
 
@@ -424,6 +426,27 @@ impl FunctionTargetsHolder {
         !matches!(self.target, FunctionHolderTarget::None)
     }
 
+    pub fn get_loop_invariants(
+        &self,
+        id: &QualifiedId<FunId>,
+    ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
+        self.loop_invariants.get(id)
+    }
+
+    pub fn get_loop_inv_with_targets(
+        &self,
+    ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
+        self.loop_invariants
+            .iter()
+            .map(|(target_fun_id, invs)| {
+                (
+                    target_fun_id.clone(),
+                    invs.iter().map(|el| el.0.clone()).collect(),
+                )
+            })
+            .collect()
+    }
+
     /// Return the specification of the callee function if the specification can
     /// be used instead of the callee by the caller. This is the case if and
     /// only if
@@ -568,17 +591,38 @@ impl FunctionTargetsHolder {
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target })) =
-            func_env
-                .get_toplevel_attributes()
-                .get_(&AttributeKind_::SpecOnly)
-                .map(|attr| &attr.value)
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
+            inv_target,
+            loop_inv,
+        })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::SpecOnly)
+            .map(|attr| &attr.value)
         {
             if func_env.get_name_str().contains("type_inv") {
                 return;
             }
 
             let env = func_env.module_env.env;
+
+            if let Some(loop_inv) = loop_inv {
+                match Self::parse_module_access(&loop_inv.target, env, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        let module_env = env.find_module(&module_name).unwrap();
+                        self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
+                    }
+                    None => {
+                        let module_name = func_env.module_env.get_full_name_str();
+
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!("Error parsing module path '{}'", module_name),
+                        );
+                    }
+                }
+                return;
+            }
 
             if inv_target.is_some() {
                 match Self::parse_module_access(
@@ -719,6 +763,74 @@ impl FunctionTargetsHolder {
                     func_name,
                     module_env.get_full_name_str()
                 ),
+            );
+        }
+    }
+
+    fn process_loop_inv(
+        &mut self,
+        func_env: &FunctionEnv<'_>,
+        module_env: &ModuleEnv<'_>,
+        fun_name: String,
+        label: usize,
+    ) {
+        let env = module_env.env;
+
+        if let Some(target_func_env) =
+            module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
+        {
+            if let Some(existing) = self
+                .loop_invariants
+                .get_mut(&target_func_env.get_qualified_id())
+            {
+                match existing.insert(func_env.get_qualified_id(), label) {
+                    bimap::Overwritten::Neither => {}
+                    bimap::Overwritten::Left(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!(
+                                "Duplicated Loop Invariant Function {} in {}",
+                                func_env.get_full_name_str(),
+                                fun_name
+                            ),
+                        );
+                        return;
+                    }
+                    bimap::Overwritten::Right(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
+                        );
+                        return;
+                    }
+                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!(
+                                "Duplicated Loop Invariant Function {} and Label {} in {}",
+                                func_env.get_full_name_str(),
+                                label,
+                                fun_name
+                            ),
+                        );
+                    }
+                }
+            } else {
+                self.loop_invariants
+                    .insert(target_func_env.get_qualified_id(), {
+                        let mut map = BiBTreeMap::new();
+                        map.insert(func_env.get_qualified_id(), label);
+                        map
+                    });
+            }
+        } else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!("Invalid Loop Invariant Function Provided: {}", fun_name),
             );
         }
     }
