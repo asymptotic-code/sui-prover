@@ -1,14 +1,16 @@
 use crate::function_target_pipeline::FunctionTargetsHolder;
+use move_binary_format::file_format::Visibility;
 use move_model::{
     ast::Attribute,
     model::{FunctionEnv, GlobalEnv},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofStatus {
     Skipped,
     NoSpec,
+    NoProve,
     SuccessfulProof,
     IgnoreAborts,
 }
@@ -17,14 +19,16 @@ impl std::fmt::Display for ProofStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProofStatus::SuccessfulProof => write!(f, "✅ has spec"),
-            ProofStatus::NoSpec => write!(f, "❌ no spec"),
             ProofStatus::IgnoreAborts => write!(f, "⚠️  spec but with ignore_abort"),
             ProofStatus::Skipped => write!(f, "⏭️  skipped spec"),
+            ProofStatus::NoProve => write!(f, "✖️ no prove"),
+            ProofStatus::NoSpec => write!(f, "❌ no spec"),
         }
     }
 }
 
-pub fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
+/// Checks if a function has a specific attribute (e.g., "spec_only", "test_only").
+fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
     func_env.get_attributes().iter().any(|attr| {
         matches!(
             attr,
@@ -34,11 +38,17 @@ pub fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
     })
 }
 
-pub fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> bool {
+/// Determines if a function should be included in statistics.
+/// 
+/// Filters out:
+/// - Non-public functions
+/// - Functions with `spec_only` attribute
+/// - Functions with `test_only` attribute
+/// - Spec functions themselves
+fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> bool {
     let func_id = func_env.get_qualified_id();
-    let func_name = func_env.get_name_str();
 
-    if func_env.visibility_str() != "public " {
+    if func_env.visibility() != Visibility::Public {
         return false;
     }
     if has_attribute(func_env, "spec_only") {
@@ -50,23 +60,34 @@ pub fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargets
     if targets.function_specs().contains_left(&func_id) {
         return false;
     }
-    if func_name.ends_with("_spec") {
+    if targets.is_spec(&func_id) {
         return false;
     }
 
     true
 }
 
-pub fn determine_spec_status(
+/// Determines the proof status of a function by checking if it has a spec
+/// and what verification properties are set.
+/// 
+/// Returns:
+/// - `Skipped` - Spec is marked to be skipped
+/// - `NoProve` - Spec exists but is not marked for verification
+/// - `IgnoreAborts` - Spec is verified but ignores abort conditions
+/// - `SuccessfulProof` - Spec is verified normally
+/// - `NoSpec` - No specification exists for this function
+fn determine_spec_status(
     func_env: &FunctionEnv,
     targets: &FunctionTargetsHolder,
 ) -> ProofStatus {
     let func_id = func_env.get_qualified_id();
-    let skip_specs_list: Vec<_> = targets.skip_specs().collect();
+    let skip_specs_set: BTreeSet<_> = targets.skip_specs().collect();
 
     if let Some(spec_id) = targets.get_spec_by_fun(&func_id) {
-        if skip_specs_list.contains(&spec_id) {
+        if skip_specs_set.contains(&spec_id) {
             ProofStatus::Skipped
+        } else if !targets.is_verified_spec(spec_id) {
+            ProofStatus::NoProve
         } else if targets.ignores_aborts(spec_id) {
             ProofStatus::IgnoreAborts
         } else {
@@ -77,15 +98,26 @@ pub fn determine_spec_status(
     }
 }
 
+/// Displays statistics for all public functions in the project.
+/// 
+/// Shows:
+/// - Functions grouped by module
+/// - Proof status for each function (has spec, no spec, skipped, etc.)
+/// - Summary with total counts
+/// 
+/// Excludes:
+/// - System/framework modules
+/// - Non-public functions
+/// - Test-only and spec-only functions
 pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) {
     println!("📊 Function Statistics\n");
 
     let excluded_addresses = [
-        0u16.into(),
-        1u16.into(),
-        2u16.into(),
-        3u16.into(),
-        0xdee9u16.into(),
+        0u16.into(),      // System address (core framework)
+        1u16.into(),      // Tests address
+        2u16.into(),      // Event address
+        3u16.into(),      // Stdlib address
+        0xdee9u16.into(), // DeepBook address
     ];
 
     let mut total_public_functions = 0;
