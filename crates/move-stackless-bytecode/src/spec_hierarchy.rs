@@ -29,11 +29,11 @@ pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, 
 
 fn get_excluded_addresses() -> [BigUint; 5] {
     [
-        0u16.into(),
-        1u16.into(),
-        2u16.into(),
-        3u16.into(),
-        0xdee9u16.into(),
+        0u16.into(),      // System address (core framework)
+        1u16.into(),      // Tests address
+        2u16.into(),      // Event address
+        3u16.into(),      // Stdlib address
+        0xdee9u16.into(), // DeepBook address
     ]
 }
 
@@ -53,23 +53,11 @@ fn write_spec_log_file(
 
     let mut content = String::new();
     let mut displayed = BTreeSet::new();
-
-    content.push_str(&format!(
-        "{}::{}_spec\n",
-        func_env.module_env.get_name().display(env.symbol_pool()),
-        func_env.get_name_str()
-    ));
-
-    build_implementation_tree(
-        env,
-        targets,
-        &func_env,
-        "",
-        excluded_addresses,
-        &mut displayed,
-        &mut content,
-    );
-
+    
+    content.push_str( &func_env.get_full_name_str());
+    
+    build_implementation_tree(env, targets, &func_env, "", excluded_addresses, &mut displayed, &mut content);
+    
     if let Err(e) = fs::write(&log_file_path, content) {
         eprintln!("Failed to write log file {:?}: {}", log_file_path, e);
     }
