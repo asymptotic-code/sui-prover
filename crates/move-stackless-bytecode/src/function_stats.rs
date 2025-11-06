@@ -39,7 +39,7 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 }
 
 /// Determines if a function should be included in statistics.
-/// 
+///
 /// Filters out:
 /// - Non-public functions
 /// - Functions with `spec_only` attribute
@@ -69,17 +69,14 @@ fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHold
 
 /// Determines the proof status of a function by checking if it has a spec
 /// and what verification properties are set.
-/// 
+///
 /// Returns:
 /// - `Skipped` - Spec is marked to be skipped
 /// - `NoProve` - Spec exists but is not marked for verification
 /// - `IgnoreAborts` - Spec is verified but ignores abort conditions
 /// - `SuccessfulProof` - Spec is verified normally
 /// - `NoSpec` - No specification exists for this function
-fn determine_spec_status(
-    func_env: &FunctionEnv,
-    targets: &FunctionTargetsHolder,
-) -> ProofStatus {
+fn determine_spec_status(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> ProofStatus {
     let func_id = func_env.get_qualified_id();
     let skip_specs_set: BTreeSet<_> = targets.skip_specs().collect();
 
@@ -99,12 +96,12 @@ fn determine_spec_status(
 }
 
 /// Displays statistics for all public functions in the project.
-/// 
+///
 /// Shows:
 /// - Functions grouped by module
 /// - Proof status for each function (has spec, no spec, skipped, etc.)
 /// - Summary with total counts
-/// 
+///
 /// Excludes:
 /// - System/framework modules
 /// - Non-public functions
@@ -156,19 +153,16 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) 
     for (module_name, func_ids) in functions_by_module {
         println!("📦 Module: {}", module_name);
 
-        if func_ids.is_empty() {
-            println!("  (no public functions)");
-        } else {
-            for func_id in func_ids {
-                let func_env = env.get_function(func_id);
-                total_public_functions += 1;
+        for func_id in func_ids {
+            let func_env = env.get_function(func_id);
+            total_public_functions += 1;
 
-                let status = determine_spec_status(&func_env, targets);
-                *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
+            let status = determine_spec_status(&func_env, targets);
+            *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
 
-                println!("  {} {}", status, func_env.get_name_str());
-            }
+            println!("  {} {}", status, func_env.get_name_str());
         }
+
         println!();
     }
 

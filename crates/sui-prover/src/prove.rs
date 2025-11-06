@@ -269,7 +269,6 @@ async fn execute_backend_boogie(
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
-    options.show_stats = general_config.stats;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
