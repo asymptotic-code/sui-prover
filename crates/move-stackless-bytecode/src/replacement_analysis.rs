@@ -8,7 +8,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::{FunctionData},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    stackless_bytecode::{Bytecode, Operation},
+    stackless_bytecode::{Bytecode, Operation, AssignKind},
 };
 
 pub struct ReplacementAnalysisProcessor();
@@ -50,15 +50,16 @@ impl ReplacementAnalysisProcessor {
             return data;
         }
 
-        let mut builder = FunctionDataBuilder::new(func_env, data);
-        let code = std::mem::take(&mut builder.data.code.clone());
+        let mut new_data = data.clone();
+        new_data.code = vec![];
 
-        for (offset, bc) in code.into_iter().enumerate() {
+        let mut builder = FunctionDataBuilder::new(func_env, new_data);
+        for (offset, bc) in data.code.into_iter().enumerate() {
             if patterns.contains_key(&offset) {
                 continue;
             } else if offset > 0 && patterns.contains_key(&(offset - 1)) {
                 let (dest, srcs) = patterns.get(&(offset - 1)).unwrap();
-                builder.emit(Bytecode::Call(bc.get_attr_id(), (*dest).clone(), Operation::CopyReference(), (*srcs).clone(), None));
+                builder.emit(Bytecode::Assign(bc.get_attr_id(), dest[0], srcs[0].clone(), AssignKind::Copy));
             } else {
                 builder.emit(bc);
             }

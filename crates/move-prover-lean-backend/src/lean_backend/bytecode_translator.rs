@@ -2150,9 +2150,6 @@ impl FunctionTranslator<'_> {
                     Quantifier(_, _, _, _) => {
                         unreachable!("Add support for quantifiers in lean backend")
                     },
-                    CopyReference() => {
-                        unreachable!("Add support for cloning mutable references in lean backend")
-                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}

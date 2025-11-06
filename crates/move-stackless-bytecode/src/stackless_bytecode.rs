@@ -252,9 +252,6 @@ pub enum Operation {
 
     // Quantifiers
     Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>, usize),
-
-    // Special operation to copy a mutable reference (used in replacement analysis) (!old pattern)
-    CopyReference(),
 }
 
 impl Operation {
@@ -325,7 +322,6 @@ impl Operation {
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
             Operation::Quantifier(qt, _, _, _) => qt.can_abort(),
-            Operation::CopyReference() => false,
         }
     }
 
@@ -1343,7 +1339,6 @@ impl fmt::Display for OperationDisplay<'_> {
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
             Quantifier(qt, _, _, _) => write!(f, "quantifier({})", qt.display())?,
-            CopyReference() => write!(f, "copy_reference")?,
         }
         Ok(())
     }

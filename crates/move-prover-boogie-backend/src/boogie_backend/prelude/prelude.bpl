@@ -737,10 +737,6 @@ function {:inline} $ChildMutation<T1, T2>(m: $Mutation T1, offset: int, v: T2): 
     $Mutation(m->l, ExtendVec(m->p, offset), v)
 }
 
-function {:inline} $CopyMutation<T>(m: $Mutation T): $Mutation T {
-    $Mutation(m->l, m->p, m->v)
-}
-
 // Return true if two mutations share the location and path
 function {:inline} $IsSameMutation<T1, T2>(parent: $Mutation T1, child: $Mutation T2 ): bool {
     parent->l == child->l && parent->p == child->p
