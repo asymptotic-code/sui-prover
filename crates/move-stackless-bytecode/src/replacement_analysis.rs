@@ -58,6 +58,7 @@ impl ReplacementAnalysisProcessor {
             if patterns.contains_key(&offset) {
                 continue;
             } else if offset > 0 && patterns.contains_key(&(offset - 1)) {
+                // NOTE: we replace call only with an Assign because it automatically dereferences var
                 let (dest, srcs) = patterns.get(&(offset - 1)).unwrap();
                 builder.emit(Bytecode::Assign(bc.get_attr_id(), dest[0], srcs[0].clone(), AssignKind::Copy));
             } else {

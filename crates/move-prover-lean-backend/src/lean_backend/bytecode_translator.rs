@@ -2149,7 +2149,7 @@ impl FunctionTranslator<'_> {
                     TraceGlobalMem(mem) => {}
                     Quantifier(_, _, _, _) => {
                         unreachable!("Add support for quantifiers in lean backend")
-                    },
+                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}
