@@ -14,15 +14,16 @@ pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, 
     let excluded_addresses = get_excluded_addresses();
 
     for spec_id in targets.specs() {
+        let spec_env = env.get_function(*spec_id);
+        let spec_name = spec_env.get_name_str();
+        
         if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
-            write_spec_log_file(
-                env,
-                targets,
-                fun_id,
-                spec_id,
-                output_dir,
-                &excluded_addresses,
-            );
+            let func_env = env.get_function(*fun_id);
+            let header = func_env.get_full_name_str();
+            write_spec_log_file(env, targets, &func_env, spec_name, &header, output_dir, &excluded_addresses);
+        } else if targets.is_scenario_spec(spec_id) {
+            let header = format!("{} [scenario]", spec_env.get_full_name_str());
+            write_spec_log_file(env, targets, &spec_env, spec_name, &header, output_dir, &excluded_addresses);
         }
     }
 }
@@ -40,23 +41,20 @@ fn get_excluded_addresses() -> [BigUint; 5] {
 fn write_spec_log_file(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
-    fun_id: &QualifiedId<FunId>,
-    spec_id: &QualifiedId<FunId>,
+    func_env: &FunctionEnv,
+    spec_name: String,
+    header: &str,
     output_dir: &Path,
     excluded_addresses: &[BigUint],
 ) {
-    let func_env = env.get_function(*fun_id);
-    let spec_env = env.get_function(*spec_id);
-
-    let spec_name = spec_env.get_name_str();
     let log_file_path = output_dir.join(format!("{}.log.txt", spec_name));
 
     let mut content = String::new();
     let mut displayed = BTreeSet::new();
     
-    content.push_str( &func_env.get_full_name_str());
+    content.push_str(&format!("{}\n", header));
     
-    build_implementation_tree(env, targets, &func_env, "", excluded_addresses, &mut displayed, &mut content);
+    build_implementation_tree(env, targets, func_env, "", excluded_addresses, &mut displayed, &mut content);
     
     if let Err(e) = fs::write(&log_file_path, content) {
         eprintln!("Failed to write log file {:?}: {}", log_file_path, e);
