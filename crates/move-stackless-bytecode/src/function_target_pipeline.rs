@@ -403,13 +403,6 @@ impl FunctionTargetsHolder {
         &self.datatype_invs
     }
 
-    pub fn specs_with_invariants(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
-        self.function_specs
-            .left_values()
-            .chain(self.scenario_specs.iter())
-            .chain(self.datatype_invs.right_values())
-    }
-
     pub fn get_spec_boogie_options(&self, id: &QualifiedId<FunId>) -> Option<&String> {
         self.spec_boogie_options.get(id)
     }
