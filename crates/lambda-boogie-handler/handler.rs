@@ -21,7 +21,7 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-printModel:1",
     "-enhancedErrorMessages:1",
     "-useArrayAxioms",
-    "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100",
+    "-proverOpt:O:smt.QI.EAGER_THRESHOLD=10",
     "-proverOpt:O:smt.QI.LAZY_THRESHOLD=100",
     "-proverOpt:O:model_validate=true",
     "-vcsCores:4",
