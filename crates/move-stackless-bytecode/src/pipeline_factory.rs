@@ -16,6 +16,8 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         // transformation and analysis
         EliminateImmRefsProcessor::new(),
         MutRefInstrumenter::new(),
+        NoAbortAnalysisProcessor::new(),
+        DeterministicAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
@@ -38,8 +40,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
-        NoAbortAnalysisProcessor::new(),
-        DeterministicAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
     ]);
 

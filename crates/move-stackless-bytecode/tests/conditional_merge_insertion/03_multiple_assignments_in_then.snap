@@ -51,7 +51,5 @@ fun ConditionalMergeInsertionTest::multiple_assignments_in_then($t0|cond: bool, 
   7: label L0
      # conditional_merge_insertion: t7 := if_then_else(t0, t6, t1)
   8: $t7 := if_then_else($t0, $t6, $t1)
-     # conditional_merge_insertion: merge assign t2 := t7
-  9: $t2 := $t7
- 10: return $t2
+  9: return $t7
 }
