@@ -50,6 +50,7 @@ pub mod packed_types_analysis;
 pub mod pipeline_factory;
 pub mod quantifier_iterator_analysis;
 pub mod reaching_def_analysis;
+pub mod replacement_analysis;
 pub mod spec_global_variable_analysis;
 pub mod spec_instrumentation;
 pub mod spec_purity_analysis;
@@ -63,7 +64,6 @@ pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod replacement_analysis;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(

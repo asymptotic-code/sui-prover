@@ -1,14 +1,12 @@
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
-use move_model::{
-    model::{FunId, FunctionEnv, QualifiedId},
-};
+use move_model::model::{FunId, FunctionEnv, QualifiedId};
 
 use crate::{
     function_data_builder::FunctionDataBuilder,
-    function_target::{FunctionData},
+    function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    stackless_bytecode::{Bytecode, Operation, AssignKind},
+    stackless_bytecode::{AssignKind, Bytecode, Operation},
 };
 
 pub struct ReplacementAnalysisProcessor();
@@ -20,21 +18,34 @@ impl ReplacementAnalysisProcessor {
 
     fn is_fn(code: &Bytecode, qid: QualifiedId<FunId>) -> Option<(&Vec<usize>, &Vec<usize>)> {
         match code {
-            Bytecode::Call(_, dest, Operation::Function(mid, fid, _), srcs, _) =>
+            Bytecode::Call(_, dest, Operation::Function(mid, fid, _), srcs, _) => {
                 if qid == mid.qualified(*fid) {
                     return Some((dest, srcs));
                 }
-            _ => {},
+            }
+            _ => {}
         }
 
         None
     }
 
-    pub fn find_ref_val_patterns(&self, func_env: &FunctionEnv, data: &FunctionData) -> BTreeMap<usize, (Vec<usize>, Vec<usize>)> {
+    pub fn find_ref_val_patterns(
+        &self,
+        func_env: &FunctionEnv,
+        data: &FunctionData,
+    ) -> BTreeMap<usize, (Vec<usize>, Vec<usize>)> {
+        if data.code.len() < 2 {
+            return BTreeMap::new();
+        }
+
         let mut matches = BTreeMap::new();
         for i in 0..data.code.len() - 1 {
-            if let Some((dest_val, srcs_val)) = Self::is_fn(&data.code[i], func_env.module_env.env.prover_val_qid()) {
-                if let Some((dest_ref, srcs_ref)) = Self::is_fn(&data.code[i + 1], func_env.module_env.env.prover_ref_qid()) {
+            if let Some((dest_val, srcs_val)) =
+                Self::is_fn(&data.code[i], func_env.module_env.env.prover_val_qid())
+            {
+                if let Some((dest_ref, srcs_ref)) =
+                    Self::is_fn(&data.code[i + 1], func_env.module_env.env.prover_ref_qid())
+                {
                     if dest_val == srcs_ref {
                         matches.insert(i, (dest_ref.clone(), srcs_val.clone()));
                     }
@@ -45,7 +56,12 @@ impl ReplacementAnalysisProcessor {
         matches
     }
 
-    pub fn replace_patterns(&self, patterns: BTreeMap<usize, (Vec<usize>, Vec<usize>)>, func_env: &FunctionEnv, data: FunctionData) -> FunctionData {
+    pub fn replace_patterns(
+        &self,
+        patterns: BTreeMap<usize, (Vec<usize>, Vec<usize>)>,
+        func_env: &FunctionEnv,
+        data: FunctionData,
+    ) -> FunctionData {
         if patterns.is_empty() {
             return data;
         }
@@ -60,7 +76,12 @@ impl ReplacementAnalysisProcessor {
             } else if offset > 0 && patterns.contains_key(&(offset - 1)) {
                 // NOTE: we replace call only with an Assign because it automatically dereferences var
                 let (dest, srcs) = patterns.get(&(offset - 1)).unwrap();
-                builder.emit(Bytecode::Assign(bc.get_attr_id(), dest[0], srcs[0].clone(), AssignKind::Copy));
+                builder.emit(Bytecode::Assign(
+                    bc.get_attr_id(),
+                    dest[0],
+                    srcs[0].clone(),
+                    AssignKind::Copy,
+                ));
             } else {
                 builder.emit(bc);
             }

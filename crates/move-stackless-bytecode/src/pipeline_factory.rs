@@ -3,7 +3,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    borrow_analysis::BorrowAnalysisProcessor, clean_and_optimize::CleanAndOptimizeProcessor, conditional_merge_insertion::ConditionalMergeInsertionProcessor, debug_instrumentation::DebugInstrumenter, deterministic_analysis::DeterministicAnalysisProcessor, dynamic_field_analysis::DynamicFieldAnalysisProcessor, eliminate_imm_refs::EliminateImmRefsProcessor, function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor}, inconsistency_check::InconsistencyCheckInstrumenter, livevar_analysis::LiveVarAnalysisProcessor, loop_analysis::LoopAnalysisProcessor, memory_instrumentation::MemoryInstrumentationProcessor, mono_analysis::MonoAnalysisProcessor, move_loop_invariants::MoveLoopInvariantsProcessor, mut_ref_instrumentation::MutRefInstrumenter, mutation_tester::MutationTester, no_abort_analysis::NoAbortAnalysisProcessor, number_operation_analysis::NumberOperationProcessor, options::ProverOptions, quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor, reaching_def_analysis::ReachingDefProcessor, replacement_analysis::ReplacementAnalysisProcessor, spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor, spec_instrumentation::SpecInstrumentationProcessor, spec_purity_analysis::SpecPurityAnalysis, spec_well_formed_analysis::SpecWellFormedAnalysisProcessor, type_invariant_analysis::TypeInvariantAnalysisProcessor, usage_analysis::UsageProcessor, verification_analysis::VerificationAnalysisProcessor, well_formed_instrumentation::WellFormedInstrumentationProcessor
+    borrow_analysis::BorrowAnalysisProcessor,
+    clean_and_optimize::CleanAndOptimizeProcessor,
+    conditional_merge_insertion::ConditionalMergeInsertionProcessor,
+    debug_instrumentation::DebugInstrumenter,
+    deterministic_analysis::DeterministicAnalysisProcessor,
+    dynamic_field_analysis::DynamicFieldAnalysisProcessor,
+    eliminate_imm_refs::EliminateImmRefsProcessor,
+    function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
+    inconsistency_check::InconsistencyCheckInstrumenter,
+    livevar_analysis::LiveVarAnalysisProcessor,
+    loop_analysis::LoopAnalysisProcessor,
+    memory_instrumentation::MemoryInstrumentationProcessor,
+    mono_analysis::MonoAnalysisProcessor,
+    move_loop_invariants::MoveLoopInvariantsProcessor,
+    mut_ref_instrumentation::MutRefInstrumenter,
+    mutation_tester::MutationTester,
+    no_abort_analysis::NoAbortAnalysisProcessor,
+    number_operation_analysis::NumberOperationProcessor,
+    options::ProverOptions,
+    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
+    reaching_def_analysis::ReachingDefProcessor,
+    replacement_analysis::ReplacementAnalysisProcessor,
+    spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
+    spec_instrumentation::SpecInstrumentationProcessor,
+    spec_purity_analysis::SpecPurityAnalysis,
+    spec_well_formed_analysis::SpecWellFormedAnalysisProcessor,
+    type_invariant_analysis::TypeInvariantAnalysisProcessor,
+    usage_analysis::UsageProcessor,
+    verification_analysis::VerificationAnalysisProcessor,
+    well_formed_instrumentation::WellFormedInstrumentationProcessor,
 };
 
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {
