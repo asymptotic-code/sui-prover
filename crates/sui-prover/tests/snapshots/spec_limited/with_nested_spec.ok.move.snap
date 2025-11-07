@@ -1,0 +1,21 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 270
+expression: output
+---
+Verification successful
+warning: DEPRECATED. will be removed
+  ┌─ tests/inputs/spec_limited/with_nested_spec.ok.move:6:5
+  │
+6 │     assert(x != 0, 1);
+  │     ^^^^^^^^^^^^^^^^^ 'assert' function syntax has been deprecated and will be removed
+  │
+  = Replace with 'assert!'. 'assert' has been replaced with a 'assert!' built-in macro so that arguments are no longer eagerly evaluated
+
+warning: unused function
+   ┌─ tests/inputs/spec_limited/with_nested_spec.ok.move:17:5
+   │
+17 │ fun sna(x: u8): u8 {
+   │     ^^^ The non-'public', non-'entry' function 'sna' is never called. Consider removing it.
+   │
+   = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

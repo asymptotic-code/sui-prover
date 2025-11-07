@@ -572,11 +572,16 @@ impl<'a> Instrumenter<'a> {
 
         // From here on code differs depending on whether the callee is opaque or not.
         if !callee_opaque || self.options.for_interpretation {
-            let abort_action = if !no_abort_analysis::does_not_abort(
-                self.targets,
-                &callee_env,
-                Some(&self.builder.fun_env),
-            ) {
+            // TODO: RECURSIVE FIX REQUIRED Baseline function not found
+            let abort_action = if self
+                .targets
+                .get_data(&callee_env.get_qualified_id(), &FunctionVariant::Baseline)
+                .is_none()
+                || !no_abort_analysis::does_not_abort(
+                    self.targets,
+                    &callee_env,
+                    Some(&self.builder.fun_env),
+                ) {
                 self.can_abort = true;
                 Some(AbortAction::Jump(self.abort_label, self.abort_local))
             } else {

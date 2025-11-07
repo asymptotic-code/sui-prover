@@ -6,14 +6,11 @@ use crate::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
-    // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
     deterministic_analysis::DeterministicAnalysisProcessor,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
-    // global_invariant_analysis::GlobalInvariantAnalysisProcessor,
-    // global_invariant_instrumentation::GlobalInvariantInstrumentationProcessor,
     inconsistency_check::InconsistencyCheckInstrumenter,
     livevar_analysis::LiveVarAnalysisProcessor,
     loop_analysis::LoopAnalysisProcessor,
@@ -27,6 +24,7 @@ use crate::{
     options::ProverOptions,
     quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
+    replacement_analysis::ReplacementAnalysisProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
     spec_purity_analysis::SpecPurityAnalysis,
@@ -71,6 +69,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
+        ReplacementAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
