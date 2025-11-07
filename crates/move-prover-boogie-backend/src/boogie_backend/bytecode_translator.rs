@@ -334,6 +334,7 @@ impl<'env> BoogieTranslator<'env> {
                 if self.options.func_abort_check_only
                     && self.targets.is_spec(&fun_env.get_qualified_id())
                 {
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                     continue;
                 }

@@ -9,7 +9,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
-use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
+use move_stackless_bytecode::function_stats;
+use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -107,6 +109,10 @@ pub struct GeneralConfig {
     /// Skip checking spec functions that do not abort
     #[clap(name = "skip-spec-no-abort", long, global = true)]
     pub skip_spec_no_abort: bool,
+
+    /// Dump control-flow graphs to file
+    #[clap(name = "stats", long, global = false)]
+    pub stats: bool,
 }
 
 #[derive(Args, Default)]
@@ -205,6 +211,8 @@ impl Display for BackendOptions {
     }
 }
 
+pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: usize = 45;
+
 pub async fn execute(
     path: Option<&Path>,
     general_config: GeneralConfig,
@@ -214,6 +222,15 @@ pub async fn execute(
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
+
+    if general_config.stats {
+        let mut options = move_prover_boogie_backend::generator_options::Options::default();
+        options.filter = filter.clone();
+        let (targets, _) =
+            create_and_process_bytecode(&options, &model, FunctionHolderTarget::None);
+        function_stats::display_function_stats(&model, &targets);
+        return Ok(());
+    }
 
     if matches!(general_config.backend, BackendOptions::Boogie) {
         execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
@@ -234,7 +251,9 @@ async fn execute_backend_boogie(
     options.backend.sequential_task = true;
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
-    options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
+    options.backend.vc_timeout = general_config
+        .timeout
+        .unwrap_or(DEFAULT_EXECUTION_TIMEOUT_SECONDS);
     options.backend.path_split = general_config.split_paths;
     options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
     options.backend.no_verify = general_config.generate_only;
@@ -295,6 +314,7 @@ async fn execute_backend_lean(
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion =
         general_config.enable_conditional_merge_insertion;
+
     let mut error_writer = Buffer::no_color();
     match move_prover_lean_backend::generator::run_move_prover_with_model(
         options,
