@@ -519,18 +519,20 @@ impl FunctionTargetsHolder {
                     .insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
-            if (!*prove && !*focus) || skip.is_some() || !targeted {
-                self.no_verify_specs.insert(func_env.get_qualified_id());
-            }
-
-            if *focus {
-                self.focus_specs.insert(func_env.get_qualified_id());
-            } else {
-                self.no_focus_specs.insert(func_env.get_qualified_id());
-            }
-
             if *ignore_abort {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
+            }
+
+            if skip.is_some() || !targeted {
+                self.no_verify_specs.insert(func_env.get_qualified_id());
+            } else {
+                if *focus {
+                    self.focus_specs.insert(func_env.get_qualified_id());
+                } else if *prove {
+                    self.no_focus_specs.insert(func_env.get_qualified_id());
+                } else {
+                    self.no_verify_specs.insert(func_env.get_qualified_id());
+                }
             }
 
             if target.is_some() {
