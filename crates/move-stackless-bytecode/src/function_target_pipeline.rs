@@ -524,6 +524,14 @@ impl FunctionTargetsHolder {
             }
 
             if *focus {
+                if self.prover_options.ci {
+                    func_env.module_env.env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "The 'focus' attribute is restricted in CI mode.",
+                    );
+                    return;
+                }
                 self.focus_specs.insert(func_env.get_qualified_id());
             } else {
                 self.no_focus_specs.insert(func_env.get_qualified_id());
