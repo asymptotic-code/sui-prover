@@ -67,7 +67,7 @@ impl ReplacementAnalysisProcessor {
         }
 
         let mut new_data = data.clone();
-        new_data.code = vec![];
+        new_data.code = vec![]; // NOTE: for some reason it doesnt work properly without copy + erase
 
         let mut builder = FunctionDataBuilder::new(func_env, new_data);
         for (offset, bc) in data.code.into_iter().enumerate() {
@@ -79,7 +79,7 @@ impl ReplacementAnalysisProcessor {
                 builder.emit(Bytecode::Assign(
                     bc.get_attr_id(),
                     dest[0],
-                    srcs[0].clone(),
+                    srcs[0],
                     AssignKind::Copy,
                 ));
             } else {
@@ -99,8 +99,7 @@ impl FunctionTargetProcessor for ReplacementAnalysisProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if !targets.is_spec(&func_env.get_qualified_id()) {
-            // only need to do this for spec functions
+        if func_env.is_native() {
             return data;
         }
 
