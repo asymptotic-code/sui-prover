@@ -616,30 +616,7 @@ impl Analyzer<'_> {
         for (struct_qid, type_instantiations) in struct_instantiations {
             if let Some(inv_fun_qid) = self.targets.get_inv_by_datatype(&struct_qid) {
                 for type_inst in type_instantiations {
-                    self.info
-                        .funs
-                        .entry((*inv_fun_qid, FunctionVariant::Baseline))
-                        .or_default()
-                        .insert(type_inst.clone());
-
-                    let inv_fun_env = self.env.get_function(*inv_fun_qid);
-                    if let Some(inv_target) = self
-                        .targets
-                        .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                    {
-                        let old_inst =
-                            std::mem::replace(&mut self.inst_opt, Some(type_inst.clone()));
-
-                        self.analyze_fun_types(&inv_target, self.inst_opt.clone());
-
-                        if !inv_fun_env.is_native() && !inv_fun_env.is_intrinsic() {
-                            for bc in inv_target.get_bytecode() {
-                                self.analyze_bytecode(&inv_target, bc);
-                            }
-                        }
-
-                        self.inst_opt = old_inst;
-                    }
+                    self.push_todo_fun(*inv_fun_qid, type_inst.clone());
                 }
             }
         }
