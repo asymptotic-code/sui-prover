@@ -216,7 +216,7 @@ impl Default for BoogieOptions {
             proc_cores: 4,
             vc_timeout: 40,
             keep_artifacts: true,
-            eager_threshold: 100,
+            eager_threshold: 10,
             lazy_threshold: 100,
             stable_test_output: false,
             num_instances: 1,
@@ -250,6 +250,26 @@ impl BoogieOptions {
         }
     }
 
+    /// Extracts the key part of a boogie option (everything except the value).
+    /// For "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100", returns "-proverOpt:O:smt.QI.EAGER_THRESHOLD"
+    /// For "-vcsCores:4", returns "-vcsCores"
+    fn get_option_key(option: &str) -> &str {
+        if let Some(eq_pos) = option.find('=') {
+            &option[..eq_pos]
+        } else if let Some(colon_pos) = option.rfind(':') {
+            let after_colon = &option[colon_pos + 1..];
+            if after_colon.chars().next().map_or(false, |c| {
+                c.is_ascii_digit() || after_colon.starts_with('/') || after_colon.starts_with('.')
+            }) {
+                &option[..colon_pos]
+            } else {
+                option
+            }
+        } else {
+            option
+        }
+    }
+
     /// Returns command line to call boogie.
     pub fn get_boogie_command(
         &self,
@@ -272,6 +292,8 @@ impl BoogieOptions {
         let mut seen_options = HashSet::new();
         let mut add = |sl: &[&str]| {
             for s in sl {
+                let key = Self::get_option_key(s);
+                seen_options.retain(|existing: &String| Self::get_option_key(existing) != key);
                 seen_options.insert(s.to_string());
             }
         };
