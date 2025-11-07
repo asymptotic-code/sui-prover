@@ -113,6 +113,10 @@ pub struct GeneralConfig {
     /// Dump control-flow graphs to file
     #[clap(name = "stats", long, global = false)]
     pub stats: bool,
+
+    /// Whether to enable CI mode for continuous integration environments
+    #[clap(name = "ci", long, global = false)]
+    pub ci: bool,
 }
 
 #[derive(Args, Default)]
@@ -273,6 +277,8 @@ async fn execute_backend_boogie(
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
+    options.backend.ci = general_config.ci;
+    options.prover.ci = general_config.ci;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
