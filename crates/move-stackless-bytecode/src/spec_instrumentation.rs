@@ -572,7 +572,7 @@ impl<'a> Instrumenter<'a> {
 
         // From here on code differs depending on whether the callee is opaque or not.
         if !callee_opaque || self.options.for_interpretation {
-            // TODO: RECURCIVE FIX REQUIRED Baseline function not found
+            // TODO: RECURSIVE FIX REQUIRED Baseline function not found
             let abort_action = if self
                 .targets
                 .get_data(&callee_env.get_qualified_id(), &FunctionVariant::Baseline)
