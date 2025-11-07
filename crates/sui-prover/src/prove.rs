@@ -114,7 +114,7 @@ pub struct GeneralConfig {
     #[clap(name = "stats", long, global = false)]
     pub stats: bool,
 
-    /// Additional ci related test
+    /// Whether to enable CI mode for continuous integration environments
     #[clap(name = "ci", long, global = false)]
     pub ci: bool,
 }

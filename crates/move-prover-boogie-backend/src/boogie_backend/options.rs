@@ -164,7 +164,7 @@ pub struct BoogieOptions {
     pub sequential_task: bool,
     /// Whether to force timeout handling
     pub force_timeout: bool,
-    /// ci print mode
+    /// Whether to enable CI mode for continuous integration environments
     pub ci: bool,
     /// A hard timeout for boogie execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.

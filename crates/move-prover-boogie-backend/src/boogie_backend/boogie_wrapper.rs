@@ -236,7 +236,10 @@ impl<'env> BoogieWrapper<'env> {
                 println!("Individual Timeout: {:?}", individual_timeout.unwrap());
             }
             if individual_options.is_some() {
-                println!("Individual Boogie Options: {:?}", individual_options.clone().unwrap());
+                println!(
+                    "Individual Boogie Options: {:?}",
+                    individual_options.clone().unwrap()
+                );
             }
         }
         let res = self
@@ -268,7 +271,10 @@ impl<'env> BoogieWrapper<'env> {
                 println!("Individual Timeout: {:?}", individual_timeout.unwrap());
             }
             if individual_options.is_some() {
-                println!("Individual Boogie Options: {:?}", individual_options.unwrap());
+                println!(
+                    "Individual Boogie Options: {:?}",
+                    individual_options.unwrap()
+                );
             }
         }
         info!("running solver");
