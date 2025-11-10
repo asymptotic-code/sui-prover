@@ -611,15 +611,17 @@ impl Analyzer<'_> {
     }
 
     fn analyze_type_invariant_functions(&mut self) {
-        let items_to_process: Vec<_> = self.info.structs
+        let items_to_process: Vec<_> = self
+            .info
+            .structs
             .iter()
             .filter_map(|(struct_qid, type_instantiations)| {
-                self.targets.get_inv_by_datatype(struct_qid).map(|inv_fun_qid| {
-                    (*inv_fun_qid, type_instantiations.clone())
-                })
+                self.targets
+                    .get_inv_by_datatype(struct_qid)
+                    .map(|inv_fun_qid| (*inv_fun_qid, type_instantiations.clone()))
             })
             .collect();
-        
+
         for (inv_fun_qid, type_instantiations) in items_to_process {
             for type_inst in type_instantiations.iter() {
                 self.push_todo_fun(inv_fun_qid, type_inst.clone());
