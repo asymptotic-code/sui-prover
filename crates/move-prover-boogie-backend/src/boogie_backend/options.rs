@@ -164,6 +164,8 @@ pub struct BoogieOptions {
     pub sequential_task: bool,
     /// Whether to force timeout handling
     pub force_timeout: bool,
+    /// Whether to enable CI mode for continuous integration environments
+    pub ci: bool,
     /// A hard timeout for boogie execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.
     pub hard_timeout_secs: u64,
@@ -236,6 +238,7 @@ impl Default for BoogieOptions {
             spec_no_abort_check_only: false,
             func_abort_check_only: false,
             no_verify: false,
+            ci: false,
         }
     }
 }

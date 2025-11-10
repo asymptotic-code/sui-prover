@@ -231,6 +231,17 @@ impl<'env> BoogieWrapper<'env> {
         individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<BoogieOutput> {
+        if self.options.ci {
+            if individual_timeout.is_some() {
+                println!("Individual Timeout: {:?}", individual_timeout.unwrap());
+            }
+            if individual_options.is_some() {
+                println!(
+                    "Individual Boogie Options: {:?}",
+                    individual_options.clone().unwrap()
+                );
+            }
+        }
         let res = self
             .call_remote(
                 boogie_file,
@@ -252,7 +263,20 @@ impl<'env> BoogieWrapper<'env> {
     ) -> anyhow::Result<BoogieOutput> {
         let args = self
             .options
-            .get_boogie_command(boogie_file, individual_options)?;
+            .get_boogie_command(boogie_file, individual_options.clone())?;
+
+        if self.options.ci {
+            println!("Boogie Execution Command: {}", args.iter().join(" "));
+            if individual_timeout.is_some() {
+                println!("Individual Timeout: {:?}", individual_timeout.unwrap());
+            }
+            if individual_options.is_some() {
+                println!(
+                    "Individual Boogie Options: {:?}",
+                    individual_options.unwrap()
+                );
+            }
+        }
         info!("running solver");
         debug!("command line: {}", args.iter().join(" "));
 
