@@ -88,14 +88,12 @@ impl RemoteConfig {
     pub fn create(&self) -> anyhow::Result<()> {
         println!("=== Cloud Configuration Setup ===\n");
 
-        // Try to load existing config
         let existing_config = load_cloud_config(self.cloud_config_path.as_deref()).ok();
 
         if existing_config.is_some() {
             println!("Found existing configuration. Press Enter to keep current values.\n");
         }
 
-        // Prompt for URL
         let url = if let Some(ref config) = existing_config {
             print!("Enter remote URL [{}]: ", config.url);
             io::stdout().flush()?;
@@ -121,7 +119,6 @@ impl RemoteConfig {
             input.to_string()
         };
 
-        // Prompt for API key
         let key = if let Some(ref config) = existing_config {
             print!("Enter API key [***hidden***]: ");
             io::stdout().flush()?;
@@ -147,7 +144,6 @@ impl RemoteConfig {
             input.to_string()
         };
 
-        // Prompt for concurrency
         let concurrency = if let Some(ref config) = existing_config {
             print!("Enter concurrency [{}]: ", config.concurrency);
             io::stdout().flush()?;
@@ -155,13 +151,17 @@ impl RemoteConfig {
             io::stdin().read_line(&mut input)?;
             let input = input.trim();
 
-            if input.is_empty() {
+            let res = if input.is_empty() {
                 config.concurrency
             } else {
                 input.parse::<usize>().map_err(|_| {
                     anyhow::anyhow!("Invalid concurrency value. Must be a positive integer.")
                 })?
+            };
+            if res == 0 {
+                return Err(anyhow::anyhow!("Concurrency must be a positive integer."));
             }
+            res
         } else {
             print!("Enter concurrency (default: 10): ");
             io::stdout().flush()?;
@@ -169,13 +169,17 @@ impl RemoteConfig {
             io::stdin().read_line(&mut input)?;
             let input = input.trim();
 
-            if input.is_empty() {
+            let res = if input.is_empty() {
                 10
             } else {
                 input.parse::<usize>().map_err(|_| {
                     anyhow::anyhow!("Invalid concurrency value. Must be a positive integer.")
                 })?
+            };
+            if res == 0 {
+                return Err(anyhow::anyhow!("Concurrency must be a positive integer."));
             }
+            res
         };
 
         let path = save_cloud_config(&url, &key, concurrency, self.cloud_config_path.as_deref())?;
@@ -183,7 +187,7 @@ impl RemoteConfig {
         println!("\n✓ Cloud configuration saved successfully!");
         println!("  Config file: {}", path.display());
         println!("\nYou can now use --cloud to load these settings.");
-        std::process::exit(0);
+        Ok(())
     }
 
     pub fn to_config(&self) -> anyhow::Result<Option<RemoteOptions>> {
