@@ -52,7 +52,6 @@ pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
-    no_focus_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     skip_specs: BTreeMap<QualifiedId<FunId>, String>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
@@ -207,7 +206,6 @@ impl FunctionTargetsHolder {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
-            no_focus_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
             skip_specs: BTreeMap::new(),
             focus_specs: BTreeSet::new(),
@@ -294,16 +292,12 @@ impl FunctionTargetsHolder {
         self.function_specs.get_by_right(id)
     }
 
-    pub fn no_verify_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
+    pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
         if self.focus_specs.is_empty() {
-            &self.no_verify_specs
+            Box::new(self.no_verify_specs.iter())
         } else {
-            &self.no_focus_specs
+            Box::new(self.specs().filter(|s| !self.focus_specs.contains(s)))
         }
-    }
-
-    pub fn no_focus_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.no_focus_specs
     }
 
     pub fn focus_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
@@ -346,10 +340,6 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_verify_specs().contains(id)
     }
 
-    pub fn is_focus_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.is_spec(id) && !self.no_focus_specs.contains(id)
-    }
-
     pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.scenario_specs.contains(id)
     }
@@ -377,7 +367,7 @@ impl FunctionTargetsHolder {
     }
 
     pub fn verify_specs_count(&self) -> usize {
-        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().len()
+        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().count()
     }
 
     pub fn abort_checks_count(&self) -> usize {
@@ -536,9 +526,7 @@ impl FunctionTargetsHolder {
                         return;
                     }
                     self.focus_specs.insert(func_env.get_qualified_id());
-                } else if *prove {
-                    self.no_focus_specs.insert(func_env.get_qualified_id());
-                } else {
+                } else if !*prove {
                     self.no_verify_specs.insert(func_env.get_qualified_id());
                 }
             }
