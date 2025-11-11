@@ -374,6 +374,39 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
 
 function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
 
+{%- if instance.is_bv -%}
+{# Different axioms for bit vectors #}
+
+// the sum of a slice is the sum in the original vector
+axiom (forall v: Vec ({{T}}), start1: int, end1: int, start2: int, end2: int ::
+  0 <= start1 && start1 <= end1 && end1 <= LenVec(v) && 
+  0 <= start2 && start2 <= end2 && start1+end2 <= end1  ==>
+  $0_vec_$sum{{S}}(SliceVec(v, start1, end1), start2, end2) == $0_vec_$sum{{S}}(v, start1+start2, start1+end2));
+
+// the sum over an empty range is zero
+axiom (forall v: Vec ({{T}}), start: int, end: int ::
+      { $0_vec_$sum{{S}}(v, start, end)}
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv8));
+
+// the sum of a range can be split in two
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
+  0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
+    $Add'Bv8'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
+
+// the sum over a singleton range is the vector element there
+axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+  { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
+  0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
+
+// for vectors nested ranges have sums bounded by the larger
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+    $Le'Bv8'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+
+{%- else -%}
+
 // the sum of a slice is the sum in the original vector
 axiom (forall v: Vec ({{T}}), start1: int, end1: int, start2: int, end2: int ::
   0 <= start1 && start1 <= end1 && end1 <= LenVec(v) && 
@@ -400,12 +433,9 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
-    $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d)) ;
+    $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
 
-// for vectors of u32, vector sums are non-negative
-// axiom (forall v: Vec ({{T}}), a: int, b: int ::
-//   { $0_vec_$sum{{S}}(v, a, b) }
-//   $IsValid{{S}}(v) && 0 <= a && a <= b && b <= LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, b) >= 0);
+{%- endif %}
 
 procedure {:inline 1} $0_vec_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
     res := $0_vec_$sum{{S}}(v, 0, LenVec(v));

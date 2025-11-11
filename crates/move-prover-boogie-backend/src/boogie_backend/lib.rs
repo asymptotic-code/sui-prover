@@ -50,6 +50,7 @@ struct TypeInfo {
     name: String,
     suffix: String,
     has_native_equality: bool,
+    is_bv: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -453,6 +454,7 @@ impl TypeInfo {
             name: name_fun(env, ty),
             suffix: boogie_type_suffix_bv(env, ty, bv_flag),
             has_native_equality: has_native_equality(env, options, ty),
+            is_bv: bv_flag,
         }
     }
 }
