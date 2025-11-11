@@ -376,8 +376,9 @@ function {:inline} $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}}
 
 // the sum of a slice is the sum in the original vector
 axiom (forall v: Vec ({{T}}), start1: int, end1: int, start2: int, end2: int ::
-  0 <= start1 && start1 <= start2 && start2 <= end2 && end2 <= end1 && end1 <= LenVec(v) ==>
-  $0_vec_$sum{{S}}(SliceVec(v, start1, end1), start2, end2) == $0_vec_$sum{{S}}(v, start2, end2));
+  0 <= start1 && start1 <= end1 && end1 <= LenVec(v) && 
+  0 <= start2 && start2 <= end2 && start1+end2 <= end1  ==>
+  $0_vec_$sum{{S}}(SliceVec(v, start1, end1), start2, end2) == $0_vec_$sum{{S}}(v, start1+start2, start1+end2));
 
 // the sum over an empty range is zero
 axiom (forall v: Vec ({{T}}), start: int, end: int ::
@@ -413,11 +414,11 @@ procedure {:inline 1} $0_vec_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
 procedure {:inline 1} $0_vec_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
     var len: int;
     len := LenVec(v);
-    if (start > len || end < start) {
+    if (start >= len || end <= start) {
         res := EmptyVec();
         return;
     }
-    res := SliceVec(v, start, end - start + 1);
+    res := SliceVec(v, start, end);
 }
 
 {% endmacro vector_module %}
