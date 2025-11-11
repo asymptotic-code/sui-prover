@@ -110,6 +110,9 @@ jobs:
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
+          
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
@@ -130,13 +133,13 @@ jobs:
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 
           cd sui-kit/examples/amm
-          sui-prover --ci
+          sui-prover --ci --cloud
 
           cd ../showcase
-          sui-prover --ci
+          sui-prover --ci --cloud
 
           cd ../guide
-          sui-prover --ci
+          sui-prover --ci --cloud
 
   internal-tests:
     # check if prover needed
@@ -194,7 +197,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-latest-xlarge
+    runs-on: macos-latest
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
@@ -210,6 +213,9 @@ jobs:
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
+
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
@@ -229,10 +235,10 @@ jobs:
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover --ci
+          sui-prover --ci --cloud
 
           cd ../specs-bv
-          sui-prover --no-bv-int-encoding --ci
+          sui-prover --no-bv-int-encoding --ci --cloud
 
   token-distribution-specs:
     needs: build-prover
@@ -253,6 +259,9 @@ jobs:
         run: |
           mkdir -p ~/.local/bin
 
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
+
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
 
@@ -270,7 +279,7 @@ jobs:
         run: |
           git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
           cd sui-smart-contracts/token-distribution-specs 
-          sui-prover --ci
+          sui-prover --ci --cloud
 
   scallop-bpl-generation:
     needs: build-prover
