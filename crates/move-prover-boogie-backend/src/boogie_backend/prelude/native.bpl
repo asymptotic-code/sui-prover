@@ -372,7 +372,7 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
 
-function {:inline} $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
+function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
 
 // the sum of a slice is the sum in the original vector
 axiom (forall v: Vec ({{T}}), start1: int, end1: int, start2: int, end2: int ::
@@ -399,7 +399,7 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
 // for vectors nested ranges have sums bounded by the larger
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
-  $IsValid{{S}}(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d)) ;
 
 // for vectors of u32, vector sums are non-negative
