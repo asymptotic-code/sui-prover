@@ -465,7 +465,9 @@ impl TypeInfo {
 
 impl PartialEq for TypeInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.suffix == other.suffix && self.has_native_equality == other.has_native_equality
+        self.name == other.name
+            && self.suffix == other.suffix
+            && self.has_native_equality == other.has_native_equality
     }
 }
 
