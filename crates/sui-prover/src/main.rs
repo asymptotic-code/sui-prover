@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use clap::*;
 use colored::Colorize;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use prove::{execute, BuildConfig, GeneralConfig, RemoteConfig};
+use prove::{execute, BuildConfig, GeneralConfig};
+use remote_config::RemoteConfig;
 use tracing::debug;
 
 mod build_model;
@@ -11,6 +12,7 @@ mod legacy_builder;
 mod llm_explain;
 mod prompts;
 mod prove;
+mod remote_config;
 mod system_dependencies;
 
 #[derive(Parser)]
@@ -63,15 +65,19 @@ async fn main() {
 
     debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
-    let result = execute(
-        args.package_path.as_deref(),
-        args.general_config,
-        args.remote_config,
-        args.build_config,
-        args.boogie_config,
-        args.filter_config,
-    )
-    .await;
+    let result = if args.remote_config.cloud_config_create {
+        args.remote_config.create()
+    } else {
+        execute(
+            args.package_path.as_deref(),
+            args.general_config,
+            args.remote_config,
+            args.build_config,
+            args.boogie_config,
+            args.filter_config,
+        )
+        .await
+    };
 
     match result {
         Ok(_) => (),

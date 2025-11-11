@@ -290,8 +290,11 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
-                        is_opaque: !mono_info
-                            .is_used_datatype(self.env, &struct_env.get_qualified_id()),
+                        is_opaque: !mono_info.is_used_datatype(
+                            self.env,
+                            self.targets,
+                            &struct_env.get_qualified_id(),
+                        ),
                     }
                     .translate();
                 }
@@ -311,8 +314,11 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         enum_env,
                         type_inst: type_inst.as_slice(),
-                        is_opaque: !mono_info
-                            .is_used_datatype(self.env, &enum_env.get_qualified_id()),
+                        is_opaque: !mono_info.is_used_datatype(
+                            self.env,
+                            self.targets,
+                            &enum_env.get_qualified_id(),
+                        ),
                     }
                     .translate();
                 }
@@ -1043,7 +1049,7 @@ impl<'env> StructTranslator<'env> {
         let struct_env = self.struct_env;
         let env = struct_env.module_env.env;
 
-        if struct_env.is_native() || struct_env.is_intrinsic() {
+        if struct_env.is_native() || (struct_env.is_intrinsic() && !self.is_opaque) {
             return;
         }
 

@@ -4229,6 +4229,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "tokio",
+ "toml 0.7.8",
  "tracing",
 ]
 
