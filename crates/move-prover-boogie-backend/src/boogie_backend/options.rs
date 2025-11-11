@@ -17,7 +17,7 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-printModel:1",
     "-enhancedErrorMessages:1",
     //"-monomorphize",
-    "-proverOpt:O:model_validate=true",
+    "-proverOpt:model_validate=true",
     "-infer:j",
 ];
 
@@ -254,7 +254,7 @@ impl BoogieOptions {
     }
 
     /// Extracts the key part of a boogie option (everything except the value).
-    /// For "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100", returns "-proverOpt:O:smt.QI.EAGER_THRESHOLD"
+    /// For "-proverOpt:smt.QI.EAGER_THRESHOLD=100", returns "-proverOpt:smt.QI.EAGER_THRESHOLD"
     /// For "-vcsCores:4", returns "-vcsCores"
     fn get_option_key(option: &str) -> &str {
         if let Some(eq_pos) = option.find('=') {
@@ -321,15 +321,15 @@ impl BoogieOptions {
         if self.use_array_theory {
             add(&["-useArrayAxioms"]);
             if matches!(self.vector_theory, VectorTheory::SmtArray) {
-                add(&["/proverOpt:O:smt.array.extensional=false"])
+                add(&["/proverOpt:smt.array.extensional=false"])
             }
         } else {
             add(&[&format!(
-                "-proverOpt:O:smt.QI.EAGER_THRESHOLD={}",
+                "-proverOpt:smt.QI.EAGER_THRESHOLD={}",
                 self.eager_threshold
             )]);
             add(&[&format!(
-                "-proverOpt:O:smt.QI.LAZY_THRESHOLD={}",
+                "-proverOpt:smt.QI.LAZY_THRESHOLD={}",
                 self.lazy_threshold
             )]);
         }
@@ -348,15 +348,15 @@ impl BoogieOptions {
         )]);
 
         // TODO: see what we can make out of these flags.
-        //add(&["-proverOpt:O:smt.QI.PROFILE=true"]);
-        //add(&["-proverOpt:O:trace=true"]);
+        //add(&["-proverOpt:smt.QI.PROFILE=true"]);
+        //add(&["-proverOpt:trace=true"]);
         //add(&["-proverOpt:VERBOSITY=3"]);
         //add(&["-proverOpt:C:-st"]);
 
         if let Some(file) = &self.z3_trace_file {
             add(&[
-                "-proverOpt:O:trace=true",
-                &format!("-proverOpt:O:trace_file_name={}", file),
+                "-proverOptZ:trace=true",
+                &format!("-proverOpt:trace_file_name={}", file),
             ]);
         }
         if self.generate_smt {
