@@ -245,10 +245,7 @@ impl GlobalNumberOperationState {
                 // If not appearing in the pragma, mark it as Arithmetic or Bottom
                 // Similar logic when populating ret_operation_map below
                 let local_ty = func_env.get_local_type(i);
-                default_map.insert(
-                    i,
-                    self.get_default_operation_for_type(&local_ty),
-                );
+                default_map.insert(i, self.get_default_operation_for_type(&local_ty));
             }
         }
 
@@ -258,10 +255,7 @@ impl GlobalNumberOperationState {
                 default_ret_operation_map.insert(i, Bitwise);
             } else {
                 let ret_ty = func_env.get_return_type(i);
-                default_ret_operation_map.insert(
-                    i,
-                    self.get_default_operation_for_type(&ret_ty),
-                );
+                default_ret_operation_map.insert(i, self.get_default_operation_for_type(&ret_ty));
             }
         }
 

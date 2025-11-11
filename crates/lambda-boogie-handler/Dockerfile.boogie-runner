@@ -1,0 +1,76 @@
+FROM --platform=linux/arm64 ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+ENV DOTNET_INSTALL_DIR="/opt/dotnet"
+ENV Z3_VERSION="4.15.3"
+ENV DOTNET_VERSION="8.0"
+ENV PATH="/opt/bin:${DOTNET_INSTALL_DIR}:${DOTNET_INSTALL_DIR}/tools:${PATH}"
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        unzip \
+        libicu70 \
+        zlib1g \
+        libssl3 \
+        ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p "${DOTNET_INSTALL_DIR}" /opt/bin /workspace
+
+# Install .NET
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- \
+    --channel ${DOTNET_VERSION} \
+    --install-dir "${DOTNET_INSTALL_DIR}" \
+    --version latest
+
+# Install Z3
+RUN Z3_PKG="z3-${Z3_VERSION}-arm64-glibc-2.34" && \
+    curl -LO "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_PKG}.zip" && \
+    unzip -q "${Z3_PKG}.zip" && \
+    cp "${Z3_PKG}/bin/z3" /opt/bin/z3 && \
+    chmod +x /opt/bin/z3 && \
+    rm -rf "${Z3_PKG}.zip" "${Z3_PKG}"
+
+# Install Boogie
+RUN mkdir -p "${DOTNET_INSTALL_DIR}/tools" && \
+    "${DOTNET_INSTALL_DIR}/dotnet" tool install --tool-path "${DOTNET_INSTALL_DIR}/tools" Boogie
+
+ENV DOTNET_ROOT="${DOTNET_INSTALL_DIR}"
+ENV BOOGIE_EXE="${DOTNET_INSTALL_DIR}/tools/boogie"
+ENV Z3_EXE="/opt/bin/z3"
+
+# .NET GC settings to prevent memory bloat, 6GB
+ENV DOTNET_GCHeapHardLimit=6442450944
+ENV DOTNET_GCServer=0
+ENV DOTNET_GCRetainVM=0
+ENV DOTNET_GCConserveMemory=9
+
+# Set working directory
+WORKDIR /workspace
+
+# Default Boogie flags (can be overridden)
+ENV BOOGIE_FLAGS="\
+    /proverOpt:PROVER_PATH=/opt/bin/z3 \
+    /inferModifies \
+    /vcsMaxKeepGoingSplits:2 \
+    /vcsSplitOnEveryAssert \
+    /verifySeparately \
+    /proverOpt:O:smt.QI.EAGER_THRESHOLD=100 \
+    /proverOpt:O:smt.QI.LAZY_THRESHOLD=100 \
+    /proverOpt:O:model_validate=true \
+    /vcsFinalAssertTimeout:600 \
+    /vcsCores:4 \
+    /printVerifiedProceduresCount:0 \
+    /printModel:1 \
+    /enhancedErrorMessages:1 \
+"
+# Entrypoint that runs Boogie with custom flags
+ENTRYPOINT ["/bin/sh", "-c", "exec ${BOOGIE_EXE} ${BOOGIE_FLAGS} \"$@\"", "--"]
+
+# Default command (example file, can be overridden)
+CMD ["input.bpl"]
+

@@ -22,13 +22,14 @@ use simplelog::{
     CombinedLogger, Config, ConfigBuilder, LevelPadding, SimpleLogger, TermLogger, TerminalMode,
 };
 
+use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use codespan_reporting::diagnostic::Severity;
 use move_docgen::DocgenOptions;
-use move_model::{
-    model::VerificationScope,
+use move_model::model::VerificationScope;
+use move_stackless_bytecode::{
+    options::{AutoTraceLevel, ProverOptions},
+    target_filter::TargetFilterOptions,
 };
-use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
-use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
 static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
@@ -75,7 +76,7 @@ pub struct Options {
     /// Filtering options
     pub filter: TargetFilterOptions,
     /// Whether to run in remote mode
-    pub remote: Option<RemoteOptions>
+    pub remote: Option<RemoteOptions>,
 }
 
 impl Default for Options {
@@ -706,9 +707,6 @@ impl Options {
                 .unwrap()
                 .parse::<usize>()?;
             options.backend.num_instances = std::cmp::max(num_instances, 1); // at least one instance
-        }
-        if matches.get_flag("sequential") {
-            options.prover.sequential_task = true;
         }
         if matches.get_flag("stable-test-output") {
             //options.prover.stable_test_output = true;

@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 262
+expression: output
+---
+exiting with bytecode transformation errors
+error: Loop invariant functions must have exactly one return value
+  ┌─ tests/inputs/loop_invariant/external_returns.fail.move:7:1
+  │  
+7 │ ╭ fun loop_inv(i: u64, n: u64, s: u128): (bool, bool) {
+8 │ │     (i <= n, (s == (i as u128) * ((i as u128) + 1) / 2))
+9 │ │ }
+  │ ╰─^
