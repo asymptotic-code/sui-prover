@@ -4,7 +4,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{collections::BTreeSet, fs};
+use std::{cmp::Ordering, collections::BTreeSet, fs};
 
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -45,12 +45,14 @@ const TABLE_ARRAY_THEORY: &[u8] = include_bytes!("prelude/table-array-theory.bpl
 const BCS_MODULE: &str = "0x1::bcs";
 const EVENT_MODULE: &str = "0x1::event";
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct TypeInfo {
     name: String,
     suffix: String,
     has_native_equality: bool,
     is_bv: bool,
+    is_number: bool,
+    bit_width: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -455,9 +457,37 @@ impl TypeInfo {
             suffix: boogie_type_suffix_bv(env, ty, bv_flag),
             has_native_equality: has_native_equality(env, options, ty),
             is_bv: bv_flag,
+            bit_width: ty.get_bit_width().unwrap_or(8).to_string(),
+            is_number: ty.is_number(),
         }
     }
 }
+
+impl PartialEq for TypeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.suffix == other.suffix && self.has_native_equality == other.has_native_equality
+    }
+}
+
+impl PartialOrd for TypeInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TypeInfo {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.name.cmp(&other.name) {
+            Ordering::Equal => match self.suffix.cmp(&other.suffix) {
+                Ordering::Equal => self.has_native_equality.cmp(&other.has_native_equality),
+                other => other,
+            },
+            other => other,
+        }
+    }
+}
+
+impl Eq for TypeInfo {}
 
 impl TableImpl {
     fn table(

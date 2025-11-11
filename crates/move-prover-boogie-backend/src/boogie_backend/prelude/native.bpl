@@ -372,6 +372,7 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
 
+{%- if instance.is_number -%}
 function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
 
 {%- if instance.is_bv -%}
@@ -386,13 +387,13 @@ axiom (forall v: Vec ({{T}}), start1: int, end1: int, start2: int, end2: int ::
 // the sum over an empty range is zero
 axiom (forall v: Vec ({{T}}), start: int, end: int ::
       { $0_vec_$sum{{S}}(v, start, end)}
-   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv8));
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv{{instance.bit_width}}));
 
 // the sum of a range can be split in two
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
   0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
-    $Add'Bv8'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
+    $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
 
 // the sum over a singleton range is the vector element there
 axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
@@ -403,7 +404,7 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
-    $Le'Bv8'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+    $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
 
 {%- else -%}
 
@@ -437,11 +438,13 @@ axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
 
 {%- endif %}
 
-procedure {:inline 1} $0_vec_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
+procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
     res := $0_vec_$sum{{S}}(v, 0, LenVec(v));
 }
 
-procedure {:inline 1} $0_vec_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
+{%- endif %}
+
+procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
     var len: int;
     len := LenVec(v);
     if (start >= len || end <= start) {
