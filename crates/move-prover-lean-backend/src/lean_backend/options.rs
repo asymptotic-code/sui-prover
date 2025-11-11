@@ -96,7 +96,7 @@ impl Default for LeanOptions {
             serialize_bound: 0,
             vector_using_sequences: false,
             random_seed: 1,
-            proc_cores: 2,
+            proc_cores: 4,
             vc_timeout: 40,
             keep_artifacts: true,
             eager_threshold: 100,
