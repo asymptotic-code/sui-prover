@@ -361,3 +361,48 @@ jobs:
         run: |
           cd cetus/cetus_clmm_specs
           sui-prover -g --ci
+
+  ika-bpl-generation:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: ika-bpl-generation-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Clone ika repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/ika-fv
+          ref: specs
+          token: ${{ secrets.PAT_TOKEN }}
+          path: ika
+
+      - name: Run
+        run: |
+          cd ika/contracts/specs
+          sui-prover -g --ci
