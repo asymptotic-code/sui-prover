@@ -24,6 +24,7 @@ use move_model::{
 
 use crate::{
     ast::ExpData,
+    borrow_analysis::WriteBackDatatypeInfo,
     dynamic_field_analysis::{self, NameValueInfo},
     function_target::FunctionTarget,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
@@ -46,19 +47,44 @@ pub struct MonoInfo {
 }
 
 impl MonoInfo {
-    pub fn is_used_datatype(&self, env: &GlobalEnv, dt_qid: &QualifiedId<DatatypeId>) -> bool {
+    pub fn is_used_datatype(
+        &self,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+        dt_qid: &QualifiedId<DatatypeId>,
+    ) -> bool {
+        if env
+            .get_extension::<WriteBackDatatypeInfo>()
+            .unwrap()
+            .datatypes
+            .contains(dt_qid)
+        {
+            return true;
+        }
+
         if dt_qid == &env.option_qid().unwrap() {
-            return self.is_used_datatype_helper(dt_qid)
-                || self.is_used_datatype_helper(&env.vec_set_qid().unwrap())
-                || self.is_used_datatype_helper(&env.vec_map_qid().unwrap());
+            return self.is_used_datatype_helper(env, targets, dt_qid)
+                || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
+                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap());
         } else {
-            return self.is_used_datatype_helper(dt_qid);
+            return self.is_used_datatype_helper(env, targets, dt_qid);
         }
     }
 
-    fn is_used_datatype_helper(&self, dt_qid: &QualifiedId<DatatypeId>) -> bool {
+    fn is_used_datatype_helper(
+        &self,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+        dt_qid: &QualifiedId<DatatypeId>,
+    ) -> bool {
         self.funs
             .keys()
+            .filter(|(fun_qid, _)| {
+                verification_analysis::get_info(
+                    &targets.get_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline),
+                )
+                .inlined
+            })
             .map(|(fun_qid, _)| fun_qid.module_id)
             .contains(&dt_qid.module_id)
     }
