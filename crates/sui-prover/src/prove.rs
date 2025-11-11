@@ -1,5 +1,6 @@
 use crate::build_model::build_model;
 use crate::llm_explain::explain_err;
+use crate::remote_config::RemoteConfig;
 use clap::{Args, ValueEnum};
 use codespan_reporting::term::termcolor::Buffer;
 use log::LevelFilter;
@@ -8,7 +9,7 @@ use move_compiler::shared::known_attributes::ModeAttribute;
 use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
-use move_prover_boogie_backend::boogie_backend::options::{BoogieFileMode, RemoteOptions};
+use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
 use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
 use move_stackless_bytecode::function_stats;
 use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
@@ -154,49 +155,6 @@ pub struct BuildConfig {
     /// Additional named address mapping. Useful for tools in rust
     #[clap(skip)]
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
-}
-
-#[derive(Args, Default)]
-#[clap(next_help_heading = "Remote Options (concurrent remote boogie execution)")]
-pub struct RemoteConfig {
-    /// Remote URL for the server
-    #[clap(long = "remote-url", global = true)]
-    pub remote_url: Option<String>,
-
-    /// Remote API key for authentication
-    #[clap(long = "remote-api-key", global = true)]
-    pub remote_api_key: Option<String>,
-
-    /// Remote calls concurrency value
-    #[clap(long = "remote-concurrency", global = true)]
-    pub remote_concurrency: Option<usize>,
-}
-
-impl RemoteConfig {
-    fn to_config(&self) -> anyhow::Result<Option<RemoteOptions>> {
-        if self.remote_url.is_none() && self.remote_api_key.is_none() {
-            return Ok(None);
-        }
-
-        if self.remote_url.is_none() || self.remote_api_key.is_none() {
-            return Err(anyhow::anyhow!(
-                "Both remote-url and remote-api-key must be provided for remote proving."
-            ));
-        }
-
-        let concurrency =
-            if self.remote_concurrency.is_none() || self.remote_concurrency.unwrap() == 0 {
-                10
-            } else {
-                self.remote_concurrency.unwrap()
-            };
-
-        Ok(Some(RemoteOptions {
-            url: self.remote_url.clone().unwrap(),
-            api_key: self.remote_api_key.clone().unwrap(),
-            concurrency,
-        }))
-    }
 }
 
 #[derive(ValueEnum, Default, Clone)]
