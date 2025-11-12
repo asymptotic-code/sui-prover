@@ -141,13 +141,13 @@ jobs:
           cd ../guide
           sui-prover --ci --cloud
 
-  internal-tests:
+  internal-tests-prover:
     # check if prover needed
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: internal-tests-${{ github.head_ref || github.ref_name }}
+      group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
@@ -189,7 +189,27 @@ jobs:
           cd ./crates/sui-prover
           cargo test
 
-      - name: Run conditional merge insertion tests
+  internal-tests-stackless-bytecode:
+    # check if prover needed
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: internal-tests-stackless-bytecode-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sui-prover"
+          save-if: false
+
+      - name: Run
         run: |
           cargo test -p move-stackless-bytecode --test testsuite -- 'test_runner::conditional_merge_insertion'
         env:
