@@ -7,8 +7,7 @@ use std::{
 };
 
 use move_model::{
-    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
-    ty::{PrimitiveType, Type},
+    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, symbol::Symbol, ty::{PrimitiveType, Type}
 };
 
 use crate::{
@@ -170,6 +169,15 @@ impl MoveLoopInvariantsProcessor {
         !env.has_errors()
     }
 
+    fn parse_var_name(name: &Symbol, builder: &FunctionDataBuilder) -> String {
+        let name_str = builder.fun_env.symbol_pool().string(*name);
+        if name_str.contains("#") {
+            name_str.split('#').next().unwrap().to_string()
+        } else {
+            name_str.to_string()
+        }
+    }
+
     fn match_invariant_arguments(
         builder: &FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
@@ -187,12 +195,9 @@ impl MoveLoopInvariantsProcessor {
                 // Note: builder.data.name_to_index usually looks like
                 // n -> 0, i#1#0 -> 1, s#1#0 -> 2
                 for (name, &idx) in &builder.data.name_to_index {
-                    let name_str = builder.fun_env.symbol_pool().string(*name);
-                    if let Some(base_name) = name_str.split('#').next() {
-                        if base_name == param_name_str.as_ref() {
-                            found_idx = Some(idx);
-                            break;
-                        }
+                    if Self::parse_var_name(name, builder) == *param_name_str {
+                        found_idx = Some(idx);
+                        break;
                     }
                 }
             }
@@ -217,10 +222,11 @@ impl MoveLoopInvariantsProcessor {
                     Severity::Error,
                     &builder.fun_env.get_loc(),
                     &format!(
-                        "Loop invariant function {} expects parameter '{}' which is not found in function {}",
+                        "Loop invariant function {} expects parameter '{}' which is not found in function {}.\nAvailable variables: ( {} )",
                         loop_inv_env.get_full_name_str(),
                         param_name_str,
-                        builder.fun_env.get_full_name_str()
+                        builder.fun_env.get_full_name_str(),
+                        builder.data.name_to_index.keys().map(|name| Self::parse_var_name(name, builder)).join(", ")
                     ),
                 );
             }
