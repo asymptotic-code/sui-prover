@@ -7,7 +7,9 @@ use std::{
 };
 
 use move_model::{
-    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId}, symbol::Symbol, ty::{PrimitiveType, Type}
+    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
+    symbol::Symbol,
+    ty::{PrimitiveType, Type},
 };
 
 use crate::{
