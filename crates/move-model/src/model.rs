@@ -1688,7 +1688,7 @@ impl GlobalEnv {
 
     // std::type_name native function names (with fun constants)
     const TYPE_NAME_GETTER_FUNCTION_NAME: &'static str = "get";
-    const TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME: &'static str = "get_with_original_ids";
+    const TYPE_NAME_WITH_ORIGINAL_ID_FUNCTION_NAME: &'static str = "with_original_ids";
 
     // std::string native function names (with fun constants)
     const STRING_CHECK_UTF8_FUNCTION_NAME: &'static str = "internal_check_utf8";
@@ -2628,10 +2628,10 @@ impl GlobalEnv {
             Self::TYPE_NAME_GETTER_FUNCTION_NAME,
         )
     }
-    pub fn std_type_name_get_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
+    pub fn std_type_name_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::STD_TYPE_NAME_MODULE_NAME,
-            Self::TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME,
+            Self::TYPE_NAME_WITH_ORIGINAL_ID_FUNCTION_NAME,
         )
     }
 
@@ -3336,7 +3336,7 @@ impl GlobalEnv {
                 self.std_debug_print_stack_trace_qid(),
                 // std::type_name native functions
                 self.std_type_name_get_qid(),
-                self.std_type_name_get_with_original_ids_qid(),
+                self.std_type_name_with_original_ids_qid(),
                 // std::string native functions
                 self.std_string_internal_check_utf8_qid(),
                 self.std_string_internal_is_char_boundary_qid(),
@@ -3515,7 +3515,7 @@ impl GlobalEnv {
                 self.std_debug_print_stack_trace_qid(),
                 // std::type_name native functions
                 self.std_type_name_get_qid(),
-                self.std_type_name_get_with_original_ids_qid(),
+                self.std_type_name_with_original_ids_qid(),
                 // std::string native functions
                 self.std_string_internal_check_utf8_qid(),
                 self.std_string_internal_is_char_boundary_qid(),
