@@ -207,6 +207,12 @@ pub enum FunctionTranslationStyle {
     Pure,
 }
 
+impl FunctionTranslationStyle {
+    pub fn is_asserts_style(&self) -> bool {
+        self == &FunctionTranslationStyle::Asserts || self == &FunctionTranslationStyle::Aborts
+    }
+}
+
 /// Return boogie name of given global spec variable.
 pub fn boogie_spec_global_var_name(env: &GlobalEnv, inst: &[Type]) -> String {
     format!("$global_var__{}", boogie_inst_suffix(env, inst))
