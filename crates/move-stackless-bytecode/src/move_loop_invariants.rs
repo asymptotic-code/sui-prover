@@ -173,7 +173,7 @@ impl MoveLoopInvariantsProcessor {
 
     fn parse_var_name(name: &Symbol, builder: &FunctionDataBuilder) -> String {
         let name_str = builder.fun_env.symbol_pool().string(*name);
-        if name_str.contains("#") {
+        if name_str.contains('#') {
             name_str.split('#').next().unwrap().to_string()
         } else {
             name_str.to_string()
