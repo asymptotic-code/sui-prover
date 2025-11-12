@@ -5,7 +5,7 @@ expression: output
 ---
 exiting with bytecode transformation errors
 error: Loop invariant function loop_invariant_external_invalid_arg_name_fail::loop_inv expects parameter 'compare' which is not found in function loop_invariant_external_invalid_arg_name_fail::test_spec.
-Available variables: ( n, i, s )
+Available variables: ( n: u64, i: u64, s: u128 )
    ┌─ tests/inputs/loop_invariant/external_invalid_arg_name.move:12:1
    │  
 12 │ ╭ fun test_spec(n: u64): u128 {

@@ -228,7 +228,18 @@ impl MoveLoopInvariantsProcessor {
                         loop_inv_env.get_full_name_str(),
                         param_name_str,
                         builder.fun_env.get_full_name_str(),
-                        builder.data.name_to_index.keys().map(|name| Self::parse_var_name(name, builder)).join(", ")
+                        builder.data.name_to_index
+                        .iter()
+                        .map(|(name, idx)|
+                            format!(
+                                "{}: {}",
+                                Self::parse_var_name(name, builder),
+                                builder
+                                    .get_local_type(*idx)
+                                    .display(&builder.fun_env.module_env.env.get_type_display_ctx())
+                                    .to_string()
+                            )
+                        ).join(", ")
                     ),
                 );
             }
