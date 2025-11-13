@@ -8,7 +8,6 @@ use std::{
 
 use move_model::{
     model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
-    symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 
@@ -171,38 +170,64 @@ impl MoveLoopInvariantsProcessor {
         !env.has_errors()
     }
 
-    fn parse_var_name(name: &Symbol, builder: &FunctionDataBuilder) -> String {
-        let name_str = builder.fun_env.symbol_pool().string(*name);
-        if name_str.contains('#') {
-            name_str.split('#').next().unwrap().to_string()
-        } else {
-            name_str.to_string()
+    fn is_assignment_before(offset: usize, var_idx: usize, code: &[Bytecode]) -> bool {
+        for i in 0..offset {
+            match &code[i] {
+                Bytecode::Assign(_, dest, _, _) if *dest == var_idx => {
+                    return true;
+                }
+                _ => {}
+            }
         }
+        false
+    }
+
+    fn vars_in_scope(offset: usize, builder: &FunctionDataBuilder) -> Vec<(String, usize)> {
+        builder
+            .data
+            .name_to_index
+            .iter()
+            .filter_map(|(name, &local_idx)| {
+                if !Self::is_assignment_before(offset, local_idx, &builder.data.code)
+                    && local_idx > builder.fun_env.get_parameter_count()
+                // !is_parameter
+                {
+                    return None;
+                }
+
+                // Note: builder.data.name_to_index usually looks like
+                // n -> 0, i#1#0 -> 1, s#1#0 -> 2
+                let name_str = builder.fun_env.symbol_pool().string(*name);
+                let final_name = if name_str.contains('#') {
+                    name_str.split('#').next().unwrap().to_string()
+                } else {
+                    name_str.to_string()
+                };
+
+                Some((final_name, local_idx))
+            })
+            .collect::<Vec<(String, usize)>>()
     }
 
     fn match_invariant_arguments(
         builder: &FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
+        offset: usize,
     ) -> Vec<usize> {
         let mut args = vec![];
+        let scope_vars = Self::vars_in_scope(offset, builder);
 
         for param in loop_inv_env.get_parameters() {
-            let param_name = param.0;
-            let param_name_str = builder.fun_env.symbol_pool().string(param_name);
+            let param_name_str = builder.fun_env.symbol_pool().string(param.0);
 
-            let mut found_idx = None;
-            if let Some(&local_idx) = builder.data.name_to_index.get(&param_name) {
-                found_idx = Some(local_idx);
+            let found_idx = if let Some(&local_idx) = builder.data.name_to_index.get(&param.0) {
+                Some(local_idx)
             } else {
-                // Note: builder.data.name_to_index usually looks like
-                // n -> 0, i#1#0 -> 1, s#1#0 -> 2
-                for (name, &idx) in &builder.data.name_to_index {
-                    if Self::parse_var_name(name, builder) == *param_name_str {
-                        found_idx = Some(idx);
-                        break;
-                    }
-                }
-            }
+                scope_vars
+                    .iter()
+                    .find(|(name, _)| param_name_str.as_ref() == name)
+                    .map(|(_, idx)| *idx)
+            };
 
             if let Some(idx) = found_idx {
                 if param.1.skip_reference() != builder.get_local_type(idx).skip_reference() {
@@ -228,12 +253,12 @@ impl MoveLoopInvariantsProcessor {
                         loop_inv_env.get_full_name_str(),
                         param_name_str,
                         builder.fun_env.get_full_name_str(),
-                        builder.data.name_to_index
+                        scope_vars
                         .iter()
                         .map(|(name, idx)|
                             format!(
                                 "{}: {}",
-                                Self::parse_var_name(name, builder),
+                                name,
                                 builder
                                     .get_local_type(*idx)
                                     .display(&builder.fun_env.module_env.env.get_type_display_ctx())
@@ -343,6 +368,7 @@ impl MoveLoopInvariantsProcessor {
                 let mut args = Self::match_invariant_arguments(
                     &builder,
                     &func_env.module_env.env.get_function(*qid),
+                    offset,
                 );
                 let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
