@@ -3627,7 +3627,7 @@ impl GlobalEnv {
             self.prover_begin_find_range_lambda_qid(),
             self.prover_end_find_lambda_qid(),
             self.prover_begin_find_index_lambda_qid(),
-            self.prover_begin_find_index_range_lambda_qid(),            
+            self.prover_begin_find_index_range_lambda_qid(),
             self.prover_end_find_index_lambda_qid(),
             self.prover_begin_find_indices_lambda_qid(),
             self.prover_begin_find_indices_range_lambda_qid(),
