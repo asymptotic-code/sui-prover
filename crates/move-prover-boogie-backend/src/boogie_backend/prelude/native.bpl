@@ -445,12 +445,6 @@ procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}
 {%- endif %}
 
 procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
-    var len: int;
-    len := LenVec(v);
-    if (start >= len || end <= start) {
-        res := EmptyVec();
-        return;
-    }
     res := SliceVec(v, start, end);
 }
 
