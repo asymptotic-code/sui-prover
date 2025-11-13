@@ -32,7 +32,7 @@ impl QuantifierPattern {
         }
     }
 
-    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 11] {
+    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 20] {
         [
             QuantifierPattern::new(
                 env.prover_begin_forall_lambda_qid(),
@@ -50,7 +50,17 @@ impl QuantifierPattern {
                 QuantifierType::Map,
             ),
             QuantifierPattern::new(
+                env.prover_begin_map_range_lambda_qid(),
+                env.prover_end_map_lambda_qid(),
+                QuantifierType::Map,
+            ),
+            QuantifierPattern::new(
                 env.prover_begin_filter_lambda_qid(),
+                env.prover_end_filter_lambda_qid(),
+                QuantifierType::Filter,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_filter_range_lambda_qid(),
                 env.prover_end_filter_lambda_qid(),
                 QuantifierType::Filter,
             ),
@@ -60,7 +70,17 @@ impl QuantifierPattern {
                 QuantifierType::Find,
             ),
             QuantifierPattern::new(
+                env.prover_begin_find_range_lambda_qid(),
+                env.prover_end_find_lambda_qid(),
+                QuantifierType::Find,
+            ),
+            QuantifierPattern::new(
                 env.prover_begin_find_index_lambda_qid(),
+                env.prover_end_find_index_lambda_qid(),
+                QuantifierType::FindIndex,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_find_index_range_lambda_qid(),
                 env.prover_end_find_index_lambda_qid(),
                 QuantifierType::FindIndex,
             ),
@@ -70,7 +90,17 @@ impl QuantifierPattern {
                 QuantifierType::FindIndices,
             ),
             QuantifierPattern::new(
+                env.prover_begin_find_indices_range_lambda_qid(),
+                env.prover_end_find_indices_lambda_qid(),
+                QuantifierType::FindIndices,
+            ),
+            QuantifierPattern::new(
                 env.prover_begin_sum_map_lambda_qid(),
+                env.prover_end_sum_map_lambda_qid(),
+                QuantifierType::SumMap,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_sum_map_range_lambda_qid(),
                 env.prover_end_sum_map_lambda_qid(),
                 QuantifierType::SumMap,
             ),
@@ -80,12 +110,27 @@ impl QuantifierPattern {
                 QuantifierType::Count,
             ),
             QuantifierPattern::new(
+                env.prover_begin_count_range_lambda_qid(),
+                env.prover_end_count_lambda_qid(),
+                QuantifierType::Count,
+            ),
+            QuantifierPattern::new(
                 env.prover_begin_any_lambda_qid(),
                 env.prover_end_any_lambda_qid(),
                 QuantifierType::Any,
             ),
             QuantifierPattern::new(
+                env.prover_begin_any_range_lambda_qid(),
+                env.prover_end_any_lambda_qid(),
+                QuantifierType::Any,
+            ),
+            QuantifierPattern::new(
                 env.prover_begin_all_lambda_qid(),
+                env.prover_end_all_lambda_qid(),
+                QuantifierType::All,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_all_range_lambda_qid(),
                 env.prover_end_all_lambda_qid(),
                 QuantifierType::All,
             ),
@@ -263,7 +308,7 @@ impl QuantifierIteratorAnalysisProcessor {
         target: &FunctionTarget,
         pattern: &QuantifierPattern,
         all_bc: &Vec<Bytecode>,
-    ) -> Vec<Bytecode> {
+    ) -> (Vec<Bytecode>, bool) {
         let chain_len = 4;
 
         let bc = all_bc
@@ -272,7 +317,7 @@ impl QuantifierIteratorAnalysisProcessor {
             .collect::<Vec<&Bytecode>>();
 
         if bc.len() < chain_len {
-            return all_bc.to_vec();
+            return (all_bc.to_vec(), false);
         }
 
         for i in 0..bc.len() - 2 {
@@ -304,7 +349,7 @@ impl QuantifierIteratorAnalysisProcessor {
                 }
 
                 if !restricted_usages.is_empty() {
-                    return all_bc.clone();
+                    return (all_bc.clone(), true);
                 }
 
                 let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
@@ -316,12 +361,12 @@ impl QuantifierIteratorAnalysisProcessor {
                             &callee_env.get_loc(),
                             "Invalid quantifier macro pattern: lambda parameter not found in function call arguments",
                         );
-                        return all_bc.to_vec();
+                        return (all_bc.to_vec(), true);
                     }
                 };
 
                 if self.validate_function_pattern_requirements(env, targets, callee_id) {
-                    return all_bc.to_vec();
+                    return (all_bc.to_vec(), true);
                 }
 
                 let mut new_bc = all_bc.clone();
@@ -333,6 +378,7 @@ impl QuantifierIteratorAnalysisProcessor {
                         callee_id,
                         type_params,
                         lambda_index,
+                        srcs_vec.len() > 1,
                     ),
                     // for forall and exists it will be [] otherwise [v]
                     srcs_vec.into_iter().chain(srcs_funcs.into_iter()).collect(),
@@ -362,30 +408,37 @@ impl QuantifierIteratorAnalysisProcessor {
             }
         }
 
-        for i in 0..bc.len() {
-            if self.is_searched_fn(&bc[i], pattern.start_qid) {
-                let callee_env = env.get_function(pattern.start_qid);
-                env.diag(
-                    Severity::Error,
-                    &callee_env.get_loc(),
-                    "Invalid quantifier macro pattern: Invalid standalone usage of start function",
-                );
+        (all_bc.to_vec(), false)
+    }
 
-                return all_bc.to_vec();
-            } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
-                let callee_env = env.get_function(pattern.end_qid);
+    fn scan_for_broken_patterns(
+        &self,
+        patterns: &Vec<QuantifierPattern>,
+        env: &GlobalEnv,
+        bc: &Vec<Bytecode>,
+    ) {
+        for pattern in patterns {
+            for i in 0..bc.len() {
+                if self.is_searched_fn(&bc[i], pattern.start_qid) {
+                    let callee_env = env.get_function(pattern.start_qid);
+                    env.diag(
+                        Severity::Error,
+                        &callee_env.get_loc(),
+                        "Invalid quantifier macro pattern: Invalid standalone usage of start function",
+                    );
+                    return;
+                } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
+                    let callee_env = env.get_function(pattern.end_qid);
 
-                env.diag(
-                    Severity::Error,
-                    &callee_env.get_loc(),
-                    "Invalid quantifier macro pattern: Invalid standalone usage of end function",
-                );
-
-                return all_bc.to_vec();
+                    env.diag(
+                        Severity::Error,
+                        &callee_env.get_loc(),
+                        "Invalid quantifier macro pattern: Invalid standalone usage of end function",
+                    );
+                    return;
+                }
             }
         }
-
-        all_bc.to_vec()
     }
 }
 
@@ -410,8 +463,15 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
         let mut bc = code.to_vec();
 
         for pattern in &patterns {
-            bc = self.find_macro_patterns(env, &targets, &func_target, pattern, &bc);
+            let (new_bc, is_error) =
+                self.find_macro_patterns(env, &targets, &func_target, pattern, &bc);
+            bc = new_bc;
+            if is_error {
+                return data;
+            }
         }
+
+        self.scan_for_broken_patterns(&patterns.to_vec(), env, &bc);
 
         let mut data = data.clone();
         data.code = bc;

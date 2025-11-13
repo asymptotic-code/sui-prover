@@ -150,6 +150,10 @@ impl QuantifierType {
     pub fn can_abort(&self) -> bool {
         false
     }
+
+    pub fn vector_based(&self) -> bool {
+        *self != QuantifierType::Forall && *self != QuantifierType::Exists
+    }
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
@@ -251,7 +255,7 @@ pub enum Operation {
     EventStoreDiverge,
 
     // Quantifiers
-    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>, usize),
+    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>, usize, bool),
 }
 
 impl Operation {
@@ -321,7 +325,7 @@ impl Operation {
             Operation::TraceGlobalMem(..) => false,
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
-            Operation::Quantifier(qt, _, _, _) => qt.can_abort(),
+            Operation::Quantifier(qt, _, _, _, _) => qt.can_abort(),
         }
     }
 
@@ -1338,7 +1342,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
-            Quantifier(qt, _, _, _) => write!(f, "quantifier({})", qt.display())?,
+            Quantifier(qt, _, _, _, _) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
     }

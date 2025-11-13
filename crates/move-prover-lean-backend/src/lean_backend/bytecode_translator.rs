@@ -2147,7 +2147,7 @@ impl FunctionTranslator<'_> {
                     EmitEvent => wip!("EmitEvent"),
                     EventStoreDiverge => wip!("EventStoreDiverge"),
                     TraceGlobalMem(mem) => {}
-                    Quantifier(_, _, _, _) => {
+                    Quantifier(_, _, _, _, _) => {
                         unreachable!("Add support for quantifiers in lean backend")
                     }
                 }
