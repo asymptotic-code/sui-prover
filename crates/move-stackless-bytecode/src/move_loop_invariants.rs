@@ -189,7 +189,7 @@ impl MoveLoopInvariantsProcessor {
             .iter()
             .filter_map(|(name, &local_idx)| {
                 if !Self::is_assignment_before(offset, local_idx, &builder.data.code)
-                    && local_idx > builder.fun_env.get_parameter_count()
+                    && local_idx >= builder.fun_env.get_parameter_count()
                 // !is_parameter
                 {
                     return None;
