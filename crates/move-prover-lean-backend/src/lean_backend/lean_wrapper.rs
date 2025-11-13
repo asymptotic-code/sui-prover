@@ -1,5 +1,5 @@
 use crate::lean_backend::options::LeanOptions;
-use anyhow::anyhow;
+use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
 use bimap::BiBTreeMap;
 use itertools::Itertools;
 use log::{debug, info};
@@ -8,7 +8,6 @@ use move_model::model::{GlobalEnv, Loc};
 use move_model::ty::Type;
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 use std::fs;
-use crate::lean_backend::prover_task_runner::{ProverTaskRunner, RunLeanWithSeeds};
 
 /// This file is nearly identical to Boogie's boogie_wrapper.rs, with minor var name changes.
 
@@ -63,7 +62,8 @@ impl LeanWrapper<'_> {
                 self.options.num_instances,
                 self.options.sequential_task,
                 self.options.hard_timeout_secs,
-            ).await
+            )
+            .await
         };
         let output = match output_res {
             Err(err) => {
@@ -93,7 +93,7 @@ impl LeanWrapper<'_> {
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
         // TODO parse output
-        let mut errors = vec![];
+        let errors = vec![];
         Ok(LeanOutput {
             errors,
             all_output: out,

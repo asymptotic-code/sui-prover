@@ -17,38 +17,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Homebrew
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /opt/homebrew
-          key: brew-${{ runner.os }}-dotnet8-z3-rust-${{ hashFiles('**/Brewfile') }}
-          restore-keys: |
-            brew-${{ runner.os }}-
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      - name: Cache Boogie
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/libexec/sui-prover
-          key: boogie-${{ runner.os }}-
-          restore-keys: |
-            boogie-${{ runner.os }}
+          shared-key: "sui-prover"
+          cache-on-failure: true
 
       - name: Install dependencies and build prover
         run: |
-          sh ./crates/sui-prover/tests/sui-prover.sh
+          INSTALL_DIR="$HOME/.local/temp/sui-prover"
+          BIN_DIR="$HOME/.local/bin"
+
+          mkdir -p "$INSTALL_DIR" "$BIN_DIR"
+
+          brew install z3
+
+          cargo install --locked --path ./crates/sui-prover --root "$INSTALL_DIR"
+
+          git clone --branch master https://github.com/boogie-org/boogie.git boogie-src
+          cd boogie-src
+          dotnet build Source/Boogie.sln -c Release
+          cp -r Source/BoogieDriver/bin/Release/net8.0/* "$INSTALL_DIR"
+          ln -sf "$INSTALL_DIR/BoogieDriver" "$BIN_DIR/boogie"
+          chmod +x "$BIN_DIR/boogie"
+          cd ..
+          rm -rf boogie-src
+
+          cat <<EOF > "$BIN_DIR/sui-prover"
+          #!/bin/bash
+          export BOOGIE_EXE="$BIN_DIR/boogie"
+          export Z3_EXE="$(brew --prefix z3)/bin/z3"
+          exec "$INSTALL_DIR/bin/sui-prover" "\$@"
+          EOF
+
+          chmod +x "$BIN_DIR/sui-prover"
+
+          echo "export PATH=$BIN_DIR:\$PATH" >> ~/.bashrc
 
       - name: Set artifact name
         id: set-artifact
@@ -57,19 +62,15 @@ jobs:
       - name: Prepare artifact bundle
         run: |
           mkdir -p ~/artifact-bundle/bin
-          mkdir -p ~/artifact-bundle/dotnet
           mkdir -p ~/artifact-bundle/z3
           mkdir -p ~/artifact-bundle/boogie
 
           # Copy sui-prover binary
           cp target/release/sui-prover ~/artifact-bundle/bin/
-          
-          # Copy boogie executable and all its dependencies
-          cp -r ~/.local/libexec/sui-prover/* ~/artifact-bundle/boogie/
-          ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
-          # Copy .NET runtime
-          cp -r "$(brew --prefix dotnet@8)/libexec" ~/artifact-bundle/dotnet/
+          # Copy boogie executable and all its dependencies
+          cp -r $HOME/.local/temp/sui-prover/* ~/artifact-bundle/boogie/
+          ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
           # Copy Z3 (just the bin directory is needed)
           cp -r "$(brew --prefix z3)/bin" ~/artifact-bundle/z3/
@@ -87,11 +88,9 @@ jobs:
         run: |
           chmod +x ~/artifact-bundle/bin/sui-prover
           chmod +x ~/artifact-bundle/bin/boogie
-          chmod +x ~/artifact-bundle/dotnet/libexec/dotnet
 
           ~/artifact-bundle/bin/sui-prover --version
           ~/artifact-bundle/bin/boogie /version
-          ~/artifact-bundle/dotnet/libexec/dotnet --version
 
   kit-specs:
     needs: build-prover
@@ -111,6 +110,9 @@ jobs:
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
+          
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
@@ -118,13 +120,11 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           # Add to PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -133,26 +133,33 @@ jobs:
           git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
 
           cd sui-kit/examples/amm
-          sui-prover -s 2
+          sui-prover --ci --cloud
 
           cd ../showcase
-          sui-prover -s 2
+          sui-prover --ci --cloud
 
           cd ../guide
-          sui-prover -s 2
+          sui-prover --ci --cloud
 
-  internal-tests:
+  internal-tests-prover:
     # check if prover needed
     needs: build-prover
     runs-on: macos-latest
 
     concurrency:
-      group: internal-tests-${{ github.head_ref || github.ref_name }}
+      group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
       cancel-in-progress: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sui-prover"
+          save-if: false
 
       - name: Download
         uses: actions/download-artifact@v4
@@ -170,12 +177,10 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -183,6 +188,32 @@ jobs:
         run: |
           cd ./crates/sui-prover
           cargo test
+
+  internal-tests-stackless-bytecode:
+    # check if prover needed
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: internal-tests-stackless-bytecode-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sui-prover"
+          save-if: false
+
+      - name: Run
+        run: |
+          cargo test -p move-stackless-bytecode --test testsuite -- 'test_runner::conditional_merge_insertion'
+        env:
+          STACKLESS_TEST_IGNORE_DEPS: 1
 
   integer-mate-specs:
     needs: build-prover
@@ -203,18 +234,19 @@ jobs:
         run: |
           mkdir -p ~/.local/bin
 
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
+
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -223,10 +255,10 @@ jobs:
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover -s 2
+          sui-prover --ci --cloud
 
           cd ../specs-bv
-          sui-prover -s 2 --no-bv-int-encoding
+          sui-prover --no-bv-int-encoding --ci --cloud
 
   token-distribution-specs:
     needs: build-prover
@@ -247,18 +279,19 @@ jobs:
         run: |
           mkdir -p ~/.local/bin
 
+          mkdir -p "$HOME/.asymptotic" 
+          echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
+
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
           ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -266,7 +299,7 @@ jobs:
         run: |
           git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
           cd sui-smart-contracts/token-distribution-specs 
-          sui-prover -s 2
+          sui-prover --ci --cloud
 
   scallop-bpl-generation:
     needs: build-prover
@@ -293,12 +326,10 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -313,7 +344,7 @@ jobs:
       - name: Run
         run: |
           cd scallop/contracts/specs
-          sui-prover -g
+          sui-prover -g --ci
 
   cetus-bpl-generation:
     needs: build-prover
@@ -340,12 +371,10 @@ jobs:
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
           chmod +x ~/prover-bundle/z3/bin/z3
-          chmod +x ~/prover-bundle/dotnet/libexec
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
 
-          echo "DOTNET_ROOT=$HOME/prover-bundle/dotnet/libexec" >> $GITHUB_ENV
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
@@ -360,4 +389,49 @@ jobs:
       - name: Run
         run: |
           cd cetus/cetus_clmm_specs
-          sui-prover -g
+          sui-prover -g --ci
+
+  ika-bpl-generation:
+    needs: build-prover
+    runs-on: macos-latest
+
+    concurrency:
+      group: ika-bpl-generation-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-prover.outputs.artifact-name }}
+          path: ~/prover-bundle
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          chmod +x ~/.local/bin/boogie
+          chmod +x ~/.local/bin/sui-prover
+          chmod +x ~/prover-bundle/z3/bin/z3
+
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+      - name: Clone ika repo
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/ika-fv
+          ref: specs
+          token: ${{ secrets.PAT_TOKEN }}
+          path: ika
+
+      - name: Run
+        run: |
+          cd ika/contracts/specs
+          sui-prover -g --ci

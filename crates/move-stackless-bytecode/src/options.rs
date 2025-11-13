@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use codespan_reporting::diagnostic::Severity;
-use move_model::model::{GlobalEnv, VerificationScope};
+use move_model::model::VerificationScope;
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
 pub enum AutoTraceLevel {
     Off,
     VerifiedFunction,
@@ -29,7 +28,7 @@ impl AutoTraceLevel {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
 #[serde(default, deny_unknown_fields)]
 pub struct ProverOptions {
     /// Whether to only generate backend code.
@@ -95,6 +94,8 @@ pub struct ProverOptions {
     pub bv_int_encoding: bool,
     /// Skip checking spec functions that do not abort
     pub skip_spec_no_abort: bool,
+    /// CI mode
+    pub ci: bool,
 }
 
 // add custom struct for mutation options
@@ -132,16 +133,7 @@ impl Default for ProverOptions {
             ban_int_2_bv: false,
             bv_int_encoding: true,
             skip_spec_no_abort: false,
+            ci: false,
         }
-    }
-}
-
-impl ProverOptions {
-    pub fn get(env: &GlobalEnv) -> Rc<ProverOptions> {
-        env.get_extension::<ProverOptions>().unwrap()
-    }
-
-    pub fn set(env: &GlobalEnv, options: ProverOptions) {
-        env.set_extension::<ProverOptions>(options);
     }
 }

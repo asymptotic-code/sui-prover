@@ -1,6 +1,10 @@
-use crate::lean_backend::lean_helpers::{lean_enum_name, lean_field_sel, lean_function_name, lean_modifies_memory_name, lean_resource_memory_name, lean_struct_name, lean_temp_from_suffix, lean_type, lean_type_param, lean_type_suffix, lean_type_suffix_bv, FunctionTranslationStyle};
+use crate::lean_backend::lean_helpers::{
+    lean_enum_name, lean_field_sel, lean_function_name, lean_resource_memory_name,
+    lean_struct_name, lean_type, lean_type_param, lean_type_suffix, FunctionTranslationStyle,
+};
 use crate::lean_backend::options::LeanOptions;
 use crate::lean_backend::spec_translator::SpecTranslator;
+use crate::wip;
 use bimap::BiBTreeMap;
 use codespan::LineIndex;
 use itertools::Itertools;
@@ -9,13 +13,12 @@ use move_compiler::interface_generator::NATIVE_INTERFACE;
 use move_core_types::language_storage::StructTag;
 use move_model::ast::Attribute;
 use move_model::code_writer::CodeWriter;
+use move_model::emitln;
 use move_model::model::{
-    DatatypeId, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, RefType, StructEnv,
+    EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId, StructEnv,
 };
-use move_model::pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA;
-use move_model::ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE};
+use move_model::ty::{Type, TypeDisplayContext, BOOL_TYPE};
 use move_model::well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE};
-use move_model::{emit, emitln};
 use move_stackless_bytecode::ast::TempIndex;
 use move_stackless_bytecode::function_data_builder::FunctionDataBuilder;
 use move_stackless_bytecode::function_target::FunctionTarget;
@@ -25,29 +28,17 @@ use move_stackless_bytecode::function_target_pipeline::{
 use move_stackless_bytecode::livevar_analysis::LiveVarAnalysisProcessor;
 use move_stackless_bytecode::number_operation::NumOperation::{Bitwise, Bottom};
 use move_stackless_bytecode::number_operation::{GlobalNumberOperationState, NumOperation};
-use move_stackless_bytecode::options::ProverOptions;
 use move_stackless_bytecode::reaching_def_analysis::ReachingDefProcessor;
-use move_stackless_bytecode::stackless_bytecode::Bytecode::{Call, Prop, Ret, SaveMem};
-use move_stackless_bytecode::stackless_bytecode::Label;
-use move_stackless_bytecode::stackless_bytecode::Operation::{
-    Add, And, BitAnd, BitOr, BorrowLoc, CastU128, CastU16, CastU256, CastU32, CastU64, CastU8,
-    Destroy, Div, EmitEvent, Eq, EventStoreDiverge, FreezeRef, Ge, GetField, Gt, Le, Lt, Mod, Mul, Neq, Not,
-    Or, Pack, PackRef, PackRefDeep, ReadRef, Shl, Shr, Stop, Sub, TraceAbort, TraceExp, TraceGhost, TraceLocal, TraceMessage, TraceReturn, Uninit, UnpackRef,
-    UnpackRefDeep, WriteRef, Xor, Function,
-};
+use move_stackless_bytecode::stackless_bytecode::Bytecode::{Call, Prop, Ret};
 use move_stackless_bytecode::stackless_bytecode::{
-    AbortAction, BorrowEdge, BorrowNode, Bytecode, HavocKind, Operation, PropKind,
+    AbortAction, Bytecode, HavocKind, Operation, PropKind,
 };
 use move_stackless_bytecode::{
     mono_analysis, spec_global_variable_analysis, verification_analysis,
 };
-use move_binary_format::file_format::CodeOffset;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use move_stackless_bytecode::graph::Graph;
 use std::str::FromStr;
-use crate::wip;
-use move_stackless_bytecode::control_flow_reconstruction::{reconstruct_control_flow, StructuredBlock};
 
 pub struct LeanTranslator<'env> {
     env: &'env GlobalEnv,
@@ -64,7 +55,6 @@ pub struct FunctionTranslator<'env> {
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
     ensures_info: RefCell<Vec<(usize, TempIndex)>>,
-    transformed_code: Vec<Bytecode>,
 }
 
 pub struct StructTranslator<'env> {
@@ -78,8 +68,6 @@ pub struct EnumTranslator<'env> {
     enum_env: &'env EnumEnv<'env>,
     type_inst: &'env [Type],
 }
-
-
 
 impl<'env> LeanTranslator<'env> {
     pub fn new(
@@ -122,30 +110,7 @@ impl<'env> LeanTranslator<'env> {
                 .and_then(|uid_qid| mono_info.structs.get(&uid_qid))
                 .is_some();
             if is_uid {
-                // Sui-specific: allow unresolved type params to be treated as Sui objects in Lean
-                // Emit a Lean structure with a uid field of type object::UID, and a borrow_uid helper.
-                // Determine the Lean name for the UID struct type.
-                let uid_qid = self
-                    .env
-                    .find_datatype_by_tag(&StructTag::from_str("0x2::object::UID").unwrap())
-                    .expect("object::UID type must exist when is_uid is true");
-                let uid_struct_env = self.env.get_struct_qid(uid_qid);
-                let uid_type_name = lean_struct_name(&uid_struct_env, &[]);
-
-                emitln!(writer, "structure {} where", param_type);
-                writer.indent();
-                emitln!(writer, "    uid : {}", uid_type_name);
-                writer.unindent();
-                emitln!(
-                    writer,
-                    "def {}_borrow_uid (obj : {}) : {} := obj.uid",
-                    param_type,
-                    param_type,
-                    uid_type_name
-                );
-            } else {
-                // Declare an abstract Lean type for the type parameter.
-                emitln!(writer, "constant {} : Type", param_type);
+                todo!()
             }
         }
         emitln!(writer);
@@ -158,7 +123,7 @@ impl<'env> LeanTranslator<'env> {
             "generating verification conditions for {:?} module(s)",
             self.env.get_module_count()
         );
-        
+
         // First pass: translate structs and enums for all modules
         for module_env in self.env.get_modules() {
             self.writer.set_location(&module_env.env.internal_loc());
@@ -181,7 +146,7 @@ impl<'env> LeanTranslator<'env> {
                         struct_env,
                         type_inst: type_inst.as_slice(),
                     }
-                        .translate();
+                    .translate();
                 }
             }
 
@@ -200,20 +165,24 @@ impl<'env> LeanTranslator<'env> {
                         enum_env,
                         type_inst: type_inst.as_slice(),
                     }
-                        .translate();
+                    .translate();
                 }
             }
         }
 
         // Second pass: collect functions that need to be processed for dependency ordering
         let mut all_function_qids = Vec::new();
-        
+
         for module_env in self.env.get_modules() {
             for fun_env in module_env.get_functions().collect_vec().iter().rev() {
                 if self.targets.is_spec(&fun_env.get_qualified_id()) {
                     verified_functions_count += 1;
                     // Include spec functions that need to be verified
-                    if self.targets.scenario_specs().contains(&fun_env.get_qualified_id()) {
+                    if self
+                        .targets
+                        .scenario_specs()
+                        .contains(&fun_env.get_qualified_id())
+                    {
                         if self.targets.has_target(
                             &fun_env,
                             &FunctionVariant::Verification(VerificationFlavor::Regular),
@@ -263,9 +232,8 @@ impl<'env> LeanTranslator<'env> {
                             type_inst,
                             style: FunctionTranslationStyle::Default,
                             ensures_info: RefCell::new(Vec::new()),
-                            transformed_code: Vec::new(),
                         }
-                            .translate();
+                        .translate();
                     }
                 }
             }
@@ -274,10 +242,10 @@ impl<'env> LeanTranslator<'env> {
         // Fourth pass: process all functions in global dependency order
         if !all_function_qids.is_empty() {
             let ordered_qids = self.order_functions_by_dependencies_qids(&all_function_qids);
-            
+
             // Build a set of functions that are actually needed
             let mut needed_functions = std::collections::HashSet::new();
-            
+
             // First, identify spec functions that need to be verified
             for (qid, is_spec) in &ordered_qids {
                 if *is_spec {
@@ -289,48 +257,86 @@ impl<'env> LeanTranslator<'env> {
                         ) {
                             needed_functions.insert(*qid);
                         }
-                    } else if self.should_generate_style(&fun_env, FunctionTranslationStyle::Default) {
+                    } else if self
+                        .should_generate_style(&fun_env, FunctionTranslationStyle::Default)
+                    {
                         needed_functions.insert(*qid);
                     }
                 }
             }
-            
+
             // Then, find all dependencies of needed functions
             let mut to_process = needed_functions.clone();
             while !to_process.is_empty() {
                 let current = to_process.iter().next().unwrap().clone();
                 to_process.remove(&current);
-                
+
                 let fun_env = self.env.get_function(current);
                 let dependencies = self.get_function_dependencies(&fun_env);
-                
+
                 for dep_qid in dependencies {
                     let dep_fun_env = self.env.get_function(dep_qid);
                     // Skip native and intrinsic functions
                     if dep_fun_env.is_native() || intrinsic_fun_ids.contains(&dep_qid) {
                         continue;
                     }
-                    
+
                     if !needed_functions.contains(&dep_qid) {
                         needed_functions.insert(dep_qid);
                         to_process.insert(dep_qid);
                     }
                 }
             }
-            
+
+            // Debug: Print the ordering for overflowing_mul related functions
+            eprintln!("=== FUNCTION ORDERING ===");
+            for (i, (qid, is_spec)) in ordered_qids.iter().enumerate() {
+                let fun_env = self.env.get_function(*qid);
+                let fun_name = fun_env.get_name_str();
+                if fun_name.contains("overflowing_mul") || fun_name.contains("mul_spec") {
+                    eprintln!(
+                        "  {}: {} (is_spec: {}, needed: {})",
+                        i,
+                        fun_name,
+                        is_spec,
+                        needed_functions.contains(qid)
+                    );
+                }
+            }
+            eprintln!("=========================");
+
             for (qid, is_spec) in ordered_qids {
                 let fun_env = self.env.get_function(qid);
-                
+
                 // Filter out native and intrinsic functions during processing
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&qid) {
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!(
+                            "FILTERED OUT: {} (native: {}, intrinsic: {})",
+                            fun_env.get_name_str(),
+                            fun_env.is_native(),
+                            intrinsic_fun_ids.contains(&qid)
+                        );
+                    }
                     continue;
                 }
-                
+
                 // Only process functions that are actually needed
                 if !needed_functions.contains(&qid) {
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!("SKIPPED: {} (not needed)", fun_env.get_name_str());
+                    }
                     continue;
                 }
-                
+
+                if fun_env.get_name_str().contains("overflowing_mul") {
+                    eprintln!(
+                        "PROCESSING: {} (is_spec: {})",
+                        fun_env.get_name_str(),
+                        is_spec
+                    );
+                }
+
                 if is_spec {
                     // Handle scenario spec functions
                     if self.targets.scenario_specs().contains(&qid) {
@@ -348,44 +354,84 @@ impl<'env> LeanTranslator<'env> {
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
-                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
-                                .translate();
+                            .translate();
                         }
                     } else {
                         // Handle regular spec functions
                         self.translate_function_styles_mutual(&fun_env);
                     }
                 } else {
-                    let fun_target = self.targets.get_target(&fun_env, &FunctionVariant::Baseline);
-                    
+                    let fun_target = self
+                        .targets
+                        .get_target(&fun_env, &FunctionVariant::Baseline);
+
+                    if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!(
+                            "  Regular function processing for: {}",
+                            fun_env.get_name_str()
+                        );
+                        let spec_qid = self.targets.get_spec_by_fun(&fun_env.get_qualified_id());
+                        eprintln!("    Has spec counterpart: {:?}", spec_qid.is_some());
+                        if let Some(spec_qid) = spec_qid {
+                            eprintln!(
+                                "    Spec function: {}",
+                                self.env.get_function(*spec_qid).get_name_str()
+                            );
+                            eprintln!(
+                                "    No verify specs contains: {}",
+                                self.targets.no_verify_specs().contains(spec_qid)
+                            );
+                        } else {
+                            eprintln!(
+                                "    Inlined: {}",
+                                verification_analysis::get_info(&fun_target).inlined
+                            );
+                        }
+                    }
+
                     // Process functions that have spec counterparts
-                    if let Some(spec_qid) = self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
+                    if let Some(spec_qid) =
+                        self.targets.get_spec_by_fun(&fun_env.get_qualified_id())
+                    {
                         if !self.targets.no_verify_specs().contains(spec_qid) {
+                            if fun_env.get_name_str().contains("overflowing_mul") {
+                                eprintln!(
+                                    "    -> Translating {} (has spec counterpart)",
+                                    fun_env.get_name_str()
+                                );
+                            }
                             FunctionTranslator {
                                 parent: self,
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
-                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
-                                .translate();
+                            .translate();
                         } else {
                             // Only translate if this function is actually needed as a dependency
                             // Since we're processing in dependency order, if we reach here, it means
                             // this function is needed by something else
+                            if fun_env.get_name_str().contains("overflowing_mul") {
+                                eprintln!("    -> Translating {} (spec in no_verify_specs but function is needed as dependency)", fun_env.get_name_str());
+                            }
                             FunctionTranslator {
                                 parent: self,
                                 fun_target: &fun_target,
                                 type_inst: &[],
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
-                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
-                                .translate();
+                            .translate();
                         }
                     } else if verification_analysis::get_info(&fun_target).inlined {
+                        if fun_env.get_name_str().contains("overflowing_mul") {
+                            eprintln!(
+                                "    -> Translating {} (inlined, no spec counterpart)",
+                                fun_env.get_name_str()
+                            );
+                        }
                         // This variant is inlined, so translate for all type instantiations.
                         for type_inst in mono_info
                             .funs
@@ -401,15 +447,19 @@ impl<'env> LeanTranslator<'env> {
                                 type_inst,
                                 style: FunctionTranslationStyle::Default,
                                 ensures_info: RefCell::new(Vec::new()),
-                                transformed_code: fun_target.get_bytecode().to_vec(),
                             }
-                                .translate();
+                            .translate();
                         }
+                    } else if fun_env.get_name_str().contains("overflowing_mul") {
+                        eprintln!(
+                            "    -> NOT translating {} (not inlined, no spec counterpart)",
+                            fun_env.get_name_str()
+                        );
                     }
                 }
             }
         }
-        
+
         // Emit any finalization items required by spec translation.
         self.spec_translator.finalize();
         info!("{} verification conditions", verified_functions_count);
@@ -418,7 +468,7 @@ impl<'env> LeanTranslator<'env> {
     /// Generate all function styles for a function together in a mutual block
     fn translate_function_styles_mutual(&self, fun_env: &FunctionEnv) {
         let writer = self.writer;
-        
+
         // Collect which styles need to be generated
         let styles = vec![
             FunctionTranslationStyle::Opaque,
@@ -427,7 +477,7 @@ impl<'env> LeanTranslator<'env> {
             FunctionTranslationStyle::Aborts,
             FunctionTranslationStyle::SpecNoAbortCheck,
         ];
-        
+
         // Filter out styles that won't generate functions
         let mut active_styles = Vec::new();
         for style in styles {
@@ -435,14 +485,14 @@ impl<'env> LeanTranslator<'env> {
                 active_styles.push(style);
             }
         }
-        
+
         if active_styles.is_empty() {
             return;
         }
-        
+
         // Collect ensures info for generating theorems later
         let mut all_ensures_info = Vec::new();
-        
+
         // Generate each function style (functions only, not theorems)
         for style in &active_styles {
             let ensures_info = self.translate_function_style_no_theorems(fun_env, *style);
@@ -453,7 +503,7 @@ impl<'env> LeanTranslator<'env> {
 
         if !all_ensures_info.is_empty() {
             emitln!(writer, "\n-- Theorems proving ensures conditions");
-            
+
             // We need to create a FunctionTranslator to generate the theorem
             let variant = FunctionVariant::Verification(VerificationFlavor::Regular);
             if self.targets.has_target(fun_env, &variant) {
@@ -464,9 +514,8 @@ impl<'env> LeanTranslator<'env> {
                     type_inst: &[],
                     style: FunctionTranslationStyle::Default,
                     ensures_info: RefCell::new(all_ensures_info.clone()),
-                    transformed_code: fun_target.get_bytecode().to_vec(),
                 };
-                
+
                 for (idx, _) in all_ensures_info.iter().enumerate() {
                     translator.generate_ensures_impl_function(idx);
                 }
@@ -475,7 +524,11 @@ impl<'env> LeanTranslator<'env> {
     }
 
     /// Check if a function style should be generated for the given function
-    fn should_generate_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) -> bool {
+    fn should_generate_style(
+        &self,
+        fun_env: &FunctionEnv,
+        style: FunctionTranslationStyle,
+    ) -> bool {
         if style == FunctionTranslationStyle::Default
             && (self
                 .get_verification_target_fun_env(&fun_env.get_qualified_id())
@@ -497,21 +550,25 @@ impl<'env> LeanTranslator<'env> {
             | FunctionTranslationStyle::Aborts
             | FunctionTranslationStyle::Opaque => FunctionVariant::Baseline,
         };
-        
+
         if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
             return false;
         }
-        
+
         let spec_fun_target = self.targets.get_target(&fun_env, &variant);
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return false;
         }
-        
+
         true
     }
 
     /// Translate a function style and return ensures info for theorem generation later
-    fn translate_function_style_no_theorems(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) -> Vec<(usize, TempIndex)> {
+    fn translate_function_style_no_theorems(
+        &self,
+        fun_env: &FunctionEnv,
+        style: FunctionTranslationStyle,
+    ) -> Vec<(usize, TempIndex)> {
         let ensures_info = self.translate_function_style_internal(fun_env, style, false);
         ensures_info
     }
@@ -520,16 +577,21 @@ impl<'env> LeanTranslator<'env> {
         self.translate_function_style_internal(fun_env, style, true);
     }
 
-    fn translate_function_style_internal(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle, generate_theorems: bool) -> Vec<(usize, TempIndex)> {
+    fn translate_function_style_internal(
+        &self,
+        fun_env: &FunctionEnv,
+        style: FunctionTranslationStyle,
+        generate_theorems: bool,
+    ) -> Vec<(usize, TempIndex)> {
         if style == FunctionTranslationStyle::Default
             && (self
-            .get_verification_target_fun_env(&fun_env.get_qualified_id())
-            .unwrap()
-            .is_native()
-            || self
-            .targets
-            .no_verify_specs()
-            .contains(&fun_env.get_qualified_id()))
+                .get_verification_target_fun_env(&fun_env.get_qualified_id())
+                .unwrap()
+                .is_native()
+                || self
+                    .targets
+                    .no_verify_specs()
+                    .contains(&fun_env.get_qualified_id()))
         {
             return Vec::new();
         }
@@ -573,22 +635,22 @@ impl<'env> LeanTranslator<'env> {
                 FunctionTranslationStyle::Default => match bc {
                     Call(_, _, op, _, _) if op == asserts_function => {}
                     Call(_, _, Operation::Function(module_id, fun_id, _), _, _)
-                    if self
-                        .targets
-                        .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
-                        == Some(&QualifiedId {
-                        module_id,
-                        id: fun_id,
-                    }) =>
-                        {
-                            builder.emit(bc)
-                        }
+                        if self
+                            .targets
+                            .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
+                            == Some(&QualifiedId {
+                                module_id,
+                                id: fun_id,
+                            }) =>
+                    {
+                        builder.emit(bc)
+                    }
                     _ => builder.emit(bc.update_abort_action(|_| None)),
                 },
                 FunctionTranslationStyle::Asserts | FunctionTranslationStyle::Aborts => match bc {
                     Call(_, _, op, _, _) if op == requires_function || op == ensures_function => {}
                     Call(_, _, op, _, _)
-                    if matches!(
+                        if matches!(
                             op,
                             Operation::TraceLocal { .. }
                                 | Operation::TraceReturn { .. }
@@ -600,38 +662,38 @@ impl<'env> LeanTranslator<'env> {
                 },
                 FunctionTranslationStyle::SpecNoAbortCheck => match bc {
                     Call(_, ref dests, Operation::Function(module_id, fun_id, _), ref srcs, _)
-                    if self
-                        .targets
-                        .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
-                        == Some(&QualifiedId {
-                        module_id,
-                        id: fun_id,
-                    }) =>
-                        {
-                            let dests_clone = dests.clone();
-                            let srcs_clone = srcs.clone();
-                            builder.emit(bc.update_abort_action(|_| None));
-                            let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
-                            for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
-                                let havoc_kind = if callee_fun_env
-                                    .get_return_type(ret_idx)
-                                    .is_mutable_reference()
-                                {
-                                    HavocKind::MutationAll
-                                } else {
-                                    HavocKind::Value
-                                };
-                                builder.emit_havoc(*temp_idx, havoc_kind);
-                            }
-                            for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
-                                if callee_fun_env
-                                    .get_local_type(param_idx)
-                                    .is_mutable_reference()
-                                {
-                                    builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
-                                };
-                            }
+                        if self
+                            .targets
+                            .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
+                            == Some(&QualifiedId {
+                                module_id,
+                                id: fun_id,
+                            }) =>
+                    {
+                        let dests_clone = dests.clone();
+                        let srcs_clone = srcs.clone();
+                        builder.emit(bc.update_abort_action(|_| None));
+                        let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                        for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
+                            let havoc_kind = if callee_fun_env
+                                .get_return_type(ret_idx)
+                                .is_mutable_reference()
+                            {
+                                HavocKind::MutationAll
+                            } else {
+                                HavocKind::Value
+                            };
+                            builder.emit_havoc(*temp_idx, havoc_kind);
                         }
+                        for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
+                            if callee_fun_env
+                                .get_local_type(param_idx)
+                                .is_mutable_reference()
+                            {
+                                builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                            };
+                        }
+                    }
                     Ret(..) => {}
                     _ => builder.emit(
                         bc.substitute_operations(&ensures_asserts_to_requires_subst)
@@ -645,38 +707,38 @@ impl<'env> LeanTranslator<'env> {
                 FunctionTranslationStyle::Opaque => match bc {
                     Call(_, _, op, _, _) if op == asserts_function => {}
                     Call(_, ref dests, Operation::Function(module_id, fun_id, _), ref srcs, _)
-                    if self
-                        .targets
-                        .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
-                        == Some(&QualifiedId {
-                        module_id,
-                        id: fun_id,
-                    }) =>
-                        {
-                            let dests_clone = dests.clone();
-                            let srcs_clone = srcs.clone();
-                            builder.emit(bc);
-                            let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
-                            for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
-                                let havoc_kind = if callee_fun_env
-                                    .get_return_type(ret_idx)
-                                    .is_mutable_reference()
-                                {
-                                    HavocKind::MutationValue
-                                } else {
-                                    HavocKind::Value
-                                };
-                                builder.emit_havoc(*temp_idx, havoc_kind);
-                            }
-                            for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
-                                if callee_fun_env
-                                    .get_local_type(param_idx)
-                                    .is_mutable_reference()
-                                {
-                                    builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
-                                };
-                            }
+                        if self
+                            .targets
+                            .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
+                            == Some(&QualifiedId {
+                                module_id,
+                                id: fun_id,
+                            }) =>
+                    {
+                        let dests_clone = dests.clone();
+                        let srcs_clone = srcs.clone();
+                        builder.emit(bc);
+                        let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                        for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
+                            let havoc_kind = if callee_fun_env
+                                .get_return_type(ret_idx)
+                                .is_mutable_reference()
+                            {
+                                HavocKind::MutationValue
+                            } else {
+                                HavocKind::Value
+                            };
+                            builder.emit_havoc(*temp_idx, havoc_kind);
                         }
+                        for (param_idx, temp_idx) in srcs_clone.iter().enumerate() {
+                            if callee_fun_env
+                                .get_local_type(param_idx)
+                                .is_mutable_reference()
+                            {
+                                builder.emit_havoc(*temp_idx, HavocKind::MutationValue);
+                            };
+                        }
+                    }
                     _ => builder.emit(
                         bc.substitute_operations(&ensures_requires_swap_subst)
                             .update_abort_action(|_| None),
@@ -685,12 +747,10 @@ impl<'env> LeanTranslator<'env> {
             }
         }
 
-        // Keep a copy of the transformed code for CFG/emission (before dataflow rewrites)
-        let transformed_for_cfg = builder.data.code.clone();
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_no_annotate();
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
@@ -708,10 +768,9 @@ impl<'env> LeanTranslator<'env> {
                 type_inst: &[],
                 style,
                 ensures_info: RefCell::new(Vec::new()),
-                transformed_code: transformed_for_cfg.clone(),
             };
             let ensures_info = translator.translate_with_ensures_control(generate_theorems);
-            
+
             if style == FunctionTranslationStyle::Default {
                 return ensures_info;
             }
@@ -747,21 +806,23 @@ impl<'env> LeanTranslator<'env> {
                         type_inst,
                         style,
                         ensures_info: RefCell::new(Vec::new()),
-                        transformed_code: transformed_for_cfg.clone(),
                     }
-                        .translate_with_ensures_control(generate_theorems);
+                    .translate_with_ensures_control(generate_theorems);
                 });
         }
-        
+
         Vec::new() // Return empty ensures info for non-Default styles
     }
 
     /// Order functions by their dependencies using topological sorting
-    fn order_functions_by_dependencies_qids(&self, functions: &[(QualifiedId<FunId>, bool)]) -> Vec<(QualifiedId<FunId>, bool)> {
+    fn order_functions_by_dependencies_qids(
+        &self,
+        functions: &[(QualifiedId<FunId>, bool)],
+    ) -> Vec<(QualifiedId<FunId>, bool)> {
         use std::collections::{HashMap, HashSet, VecDeque};
-        
+
         let intrinsic_fun_ids = self.env.intrinsic_fun_ids();
-        
+
         // Build function ID to index mapping
         let mut func_to_idx = HashMap::new();
         let mut idx_to_func = HashMap::new();
@@ -769,23 +830,23 @@ impl<'env> LeanTranslator<'env> {
             func_to_idx.insert(*qid, i);
             idx_to_func.insert(i, (*qid, *is_spec));
         }
-        
+
         // Build dependency graph
         let mut graph = vec![Vec::new(); functions.len()];
         let mut in_degree = vec![0; functions.len()];
-        
+
         for (i, (qid, _)) in functions.iter().enumerate() {
             // Get function dependencies by analyzing bytecode calls
             let fun_env = self.env.get_function(*qid);
             let dependencies = self.get_function_dependencies(&fun_env);
-            
+
             for dep_qid in dependencies {
                 // Filter out native and intrinsic functions from dependency graph
                 let dep_fun_env = self.env.get_function(dep_qid);
                 if dep_fun_env.is_native() || intrinsic_fun_ids.contains(&dep_qid) {
                     continue;
                 }
-                
+
                 if let Some(&dep_idx) = func_to_idx.get(&dep_qid) {
                     // Add edge from dependency to current function
                     graph[dep_idx].push(i);
@@ -793,21 +854,21 @@ impl<'env> LeanTranslator<'env> {
                 }
             }
         }
-        
+
         // Topological sort using Kahn's algorithm
         let mut queue = VecDeque::new();
         let mut result = Vec::new();
-        
+
         // Start with functions that have no dependencies
         for i in 0..functions.len() {
             if in_degree[i] == 0 {
                 queue.push_back(i);
             }
         }
-        
+
         while let Some(current) = queue.pop_front() {
             result.push(idx_to_func[&current]);
-            
+
             // Remove edges from current node
             for &neighbor in &graph[current] {
                 in_degree[neighbor] -= 1;
@@ -816,7 +877,7 @@ impl<'env> LeanTranslator<'env> {
                 }
             }
         }
-        
+
         // If we couldn't order all functions, there might be circular dependencies
         // In that case, append remaining functions in original order
         if result.len() < functions.len() {
@@ -827,7 +888,7 @@ impl<'env> LeanTranslator<'env> {
                 }
             }
         }
-        
+
         result
     }
 
@@ -835,30 +896,40 @@ impl<'env> LeanTranslator<'env> {
     fn get_function_dependencies(&self, fun_env: &FunctionEnv) -> Vec<QualifiedId<FunId>> {
         use move_stackless_bytecode::stackless_bytecode::Bytecode;
         use move_stackless_bytecode::stackless_bytecode::Operation;
-        
+
         let mut dependencies = Vec::new();
         let is_spec_function = self.targets.is_spec(&fun_env.get_qualified_id());
         let fun_name = fun_env.get_name_str();
-        
+
         let should_debug = fun_name.contains("math_u128") || fun_name.contains("math_u64");
-        
+
         if should_debug {
-            eprintln!("DEPENDENCY ANALYSIS: Analyzing function: {} (is_spec: {})", fun_name, is_spec_function);
+            eprintln!(
+                "DEPENDENCY ANALYSIS: Analyzing function: {} (is_spec: {})",
+                fun_name, is_spec_function
+            );
         }
-        
+
         // Try to get function target for analysis - more comprehensive approach for spec functions
         let mut targets_to_analyze = Vec::new();
-        
+
         if is_spec_function {
             // For spec functions, analyze all available variants
-            if self.targets.has_target(fun_env, &FunctionVariant::Verification(VerificationFlavor::Regular)) {
-                targets_to_analyze.push(self.targets.get_target(fun_env, &FunctionVariant::Verification(VerificationFlavor::Regular)));
+            if self.targets.has_target(
+                fun_env,
+                &FunctionVariant::Verification(VerificationFlavor::Regular),
+            ) {
+                targets_to_analyze.push(self.targets.get_target(
+                    fun_env,
+                    &FunctionVariant::Verification(VerificationFlavor::Regular),
+                ));
                 if should_debug {
                     eprintln!("  Added Verification(Regular) target");
                 }
             }
             if self.targets.has_target(fun_env, &FunctionVariant::Baseline) {
-                targets_to_analyze.push(self.targets.get_target(fun_env, &FunctionVariant::Baseline));
+                targets_to_analyze
+                    .push(self.targets.get_target(fun_env, &FunctionVariant::Baseline));
                 if should_debug {
                     eprintln!("  Added Baseline target");
                 }
@@ -867,25 +938,33 @@ impl<'env> LeanTranslator<'env> {
         } else {
             // For regular functions, use baseline variant
             if self.targets.has_target(fun_env, &FunctionVariant::Baseline) {
-                targets_to_analyze.push(self.targets.get_target(fun_env, &FunctionVariant::Baseline));
+                targets_to_analyze
+                    .push(self.targets.get_target(fun_env, &FunctionVariant::Baseline));
                 if should_debug {
                     eprintln!("  Added Baseline target");
                 }
             } else if should_debug {
-                eprintln!("  WARNING: No Baseline target available for regular function {}", fun_name);
+                eprintln!(
+                    "  WARNING: No Baseline target available for regular function {}",
+                    fun_name
+                );
             }
         }
-        
+
         if should_debug {
             eprintln!("  Total targets to analyze: {}", targets_to_analyze.len());
         }
-        
+
         // Analyze all relevant targets for dependencies
         for (target_idx, target) in targets_to_analyze.iter().enumerate() {
             if should_debug {
-                eprintln!("  Analyzing target {}: {} bytecode instructions", target_idx, target.get_bytecode().len());
+                eprintln!(
+                    "  Analyzing target {}: {} bytecode instructions",
+                    target_idx,
+                    target.get_bytecode().len()
+                );
             }
-            
+
             // Analyze bytecode for function calls
             for (bc_idx, bytecode) in target.get_bytecode().iter().enumerate() {
                 match bytecode {
@@ -899,42 +978,50 @@ impl<'env> LeanTranslator<'env> {
                                 id: *fun_id,
                             };
                             let callee_name = self.env.get_function(callee_qid).get_name_str();
-                            let is_math_call = callee_name.contains("math_u128") || callee_name.contains("math_u64") || callee_name.contains("overflowing_mul");
-                            
+                            let is_math_call = callee_name.contains("math_u128")
+                                || callee_name.contains("math_u64")
+                                || callee_name.contains("overflowing_mul");
+
                             // Include dependencies from the same module and cross-module dependencies
                             // Don't filter out based on native/intrinsic here - let the processing phase handle that
                             dependencies.push(callee_qid);
                         } else if should_debug {
                             eprintln!("      Non-function operation: {:?}", operation);
                         }
-                    },
+                    }
                     // TODO: Could also check Prop expressions for function calls if needed
                     _ => {}
                 }
             }
-            
+
             // Also analyze pre/post conditions and other specifications
             if is_spec_function {
                 // TODO: Add analysis of specification expressions if needed
             }
         }
-        
+
         dependencies.sort();
         dependencies.dedup();
-        
+
         // Debug output to help diagnose dependency issues
         if should_debug && !dependencies.is_empty() {
-            let dep_names: Vec<_> = dependencies.iter()
+            let dep_names: Vec<_> = dependencies
+                .iter()
                 .map(|qid| self.env.get_function(*qid).get_name_str())
                 .collect();
             eprintln!("DEPENDENCY DEBUG: {} depends on: {:?}", fun_name, dep_names);
         }
-        
+
         dependencies
     }
 
     /// Helper method to collect function calls from expressions (for spec analysis)
-    fn collect_function_calls_from_exp(&self, _exp: &move_stackless_bytecode::ast::Exp, _module_id: move_model::model::ModuleId, _dependencies: &mut Vec<QualifiedId<FunId>>) {
+    fn collect_function_calls_from_exp(
+        &self,
+        _exp: &move_stackless_bytecode::ast::Exp,
+        _module_id: move_model::model::ModuleId,
+        _dependencies: &mut Vec<QualifiedId<FunId>>,
+    ) {
         // TODO: Implement proper expression analysis if needed
         // For now, this is a placeholder since the expression analysis is complex
         // and the main dependency detection is handled by bytecode analysis
@@ -1022,22 +1109,21 @@ impl<'env> StructTranslator<'env> {
         writer.unindent();
         emitln!(writer);
 
-        let suffix = lean_type_suffix(env, &Type::Datatype(
-            struct_env.module_env.get_id(),
-            struct_env.get_id(),
-            self.type_inst.to_vec(),
-        ));
+        let suffix = lean_type_suffix(
+            env,
+            &Type::Datatype(
+                struct_env.module_env.get_id(),
+                struct_env.get_id(),
+                self.type_inst.to_vec(),
+            ),
+        );
 
         // Emit field update functions
         let fields = struct_env.get_fields().collect_vec();
         for field_env in fields.iter() {
             let field_name = field_env.get_name().display(env.symbol_pool()).to_string();
             self.emit_function(
-                &format!(
-                    "update_{}_{}",
-                    suffix,
-                    field_name
-                ),
+                &format!("update_{}_{}", suffix, field_name),
                 &format!(
                     "(s : {}) (x : {}) : {}",
                     struct_name,
@@ -1066,7 +1152,11 @@ impl<'env> StructTranslator<'env> {
                     for field in struct_env.get_fields() {
                         let field_name = field.get_name().display(env.symbol_pool()).to_string();
                         let ty = &field.get_type().instantiate(self.type_inst);
-                        checks.push(format!("is_valid_{} s.{}", lean_type_suffix(env, ty), field_name));
+                        checks.push(format!(
+                            "is_valid_{} s.{}",
+                            lean_type_suffix(env, ty),
+                            field_name
+                        ));
                     }
                     if checks.is_empty() {
                         emitln!(writer, "true");
@@ -1087,7 +1177,10 @@ impl<'env> StructTranslator<'env> {
                     let field_name = field.get_name().display(env.symbol_pool()).to_string();
                     let field_type = &self.inst(&field.get_type());
                     let field_suffix = lean_type_suffix(env, field_type);
-                    checks.push(format!("is_equal_{} s1.{} s2.{}", field_suffix, field_name, field_name));
+                    checks.push(format!(
+                        "is_equal_{} s1.{} s2.{}",
+                        field_suffix, field_name, field_name
+                    ));
                 }
                 if checks.is_empty() {
                     emitln!(writer, "true");
@@ -1218,11 +1311,14 @@ impl<'env> EnumTranslator<'env> {
         writer.unindent();
         emitln!(writer);
 
-        let suffix = lean_type_suffix(env, &Type::Datatype(
-            enum_env.module_env.get_id(),
-            enum_env.get_id(),
-            self.type_inst.to_vec(),
-        ));
+        let suffix = lean_type_suffix(
+            env,
+            &Type::Datatype(
+                enum_env.module_env.get_id(),
+                enum_env.get_id(),
+                self.type_inst.to_vec(),
+            ),
+        );
 
         // Emit validity check function
         self.emit_function(
@@ -1253,7 +1349,13 @@ impl<'env> EnumTranslator<'env> {
                         if field_checks.is_empty() {
                             emitln!(writer, "| {} {} => true", variant_name, field_patterns);
                         } else {
-                            emitln!(writer, "| {} {} => {}", variant_name, field_patterns, field_checks.join(" ∧ "));
+                            emitln!(
+                                writer,
+                                "| {} {} => {}",
+                                variant_name,
+                                field_patterns,
+                                field_checks.join(" ∧ ")
+                            );
                         }
                     }
                 }
@@ -1288,14 +1390,34 @@ impl<'env> EnumTranslator<'env> {
                             .enumerate()
                             .map(|(i, field)| {
                                 let field_type = &self.inst(&field.get_type());
-                                format!("is_equal_{} f1_{} f2_{}", lean_type_suffix(env, field_type), i, i)
+                                format!(
+                                    "is_equal_{} f1_{} f2_{}",
+                                    lean_type_suffix(env, field_type),
+                                    i,
+                                    i
+                                )
                             })
                             .collect::<Vec<_>>();
 
                         if field_checks.is_empty() {
-                            emitln!(writer, "| {} {}, {} {} => true", variant_name, field_patterns1, variant_name, field_patterns2);
+                            emitln!(
+                                writer,
+                                "| {} {}, {} {} => true",
+                                variant_name,
+                                field_patterns1,
+                                variant_name,
+                                field_patterns2
+                            );
                         } else {
-                            emitln!(writer, "| {} {}, {} {} => {}", variant_name, field_patterns1, variant_name, field_patterns2, field_checks.join(" ∧ "));
+                            emitln!(
+                                writer,
+                                "| {} {}, {} {} => {}",
+                                variant_name,
+                                field_patterns1,
+                                variant_name,
+                                field_patterns2,
+                                field_checks.join(" ∧ ")
+                            );
                         }
                     }
                 }
@@ -1345,7 +1467,10 @@ impl<'env> EnumTranslator<'env> {
 
 impl FunctionTranslator<'_> {
     /// Translates the function with control over ensures theorem generation.
-    fn translate_with_ensures_control(mut self, generate_theorems: bool) -> Vec<(usize, TempIndex)> {
+    fn translate_with_ensures_control(
+        mut self,
+        generate_theorems: bool,
+    ) -> Vec<(usize, TempIndex)> {
         let writer = self.parent.writer;
         let fun_target = self.fun_target;
         let env = fun_target.global_env();
@@ -1361,14 +1486,6 @@ impl FunctionTranslator<'_> {
             fun_target.get_loc().display(env)
         );
 
-        let label_offsets = Bytecode::label_offsets(&fun_target.data.code);
-        println!("Function {}:\n{}", env.display(&qid), fun_target.data.code
-            .iter()
-            .enumerate()
-            .map(|(i, bytecode)| format!("  {}: {}", i, bytecode.display(fun_target, &label_offsets)))
-            .collect::<Vec<_>>()
-            .join("\n"));
-
         // Special handling for SpecNoAbortCheck: generate a theorem instead of a function
         if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
             self.generate_no_abort_check_theorem();
@@ -1379,7 +1496,8 @@ impl FunctionTranslator<'_> {
 
             if self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() {
                 todo!()
-            } else if self.fun_target.func_env.get_qualified_id() == self.parent.env.havoc_global_qid()
+            } else if self.fun_target.func_env.get_qualified_id()
+                == self.parent.env.havoc_global_qid()
             {
                 todo!()
             } else {
@@ -1401,12 +1519,12 @@ impl FunctionTranslator<'_> {
                 }
             }
         }
-        
+
         ensures_info
     }
 
     /// Translates the given function.
-    fn translate(mut self) {
+    fn translate(self) {
         self.translate_with_ensures_control(true);
     }
 
@@ -1415,7 +1533,6 @@ impl FunctionTranslator<'_> {
         &mut self,
         last_tracked_loc: &mut Option<(Loc, LineIndex)>,
         bytecode: &Bytecode,
-        cur_index: Option<usize>,
     ) {
         use Bytecode::*;
 
@@ -1463,6 +1580,8 @@ impl FunctionTranslator<'_> {
             .global_env()
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number operation state");
+        let mid = self.fun_target.func_env.module_env.get_id();
+        let fid = self.fun_target.func_env.get_id();
 
         // Translate the bytecode instruction.
         match bytecode {
@@ -1494,13 +1613,13 @@ impl FunctionTranslator<'_> {
                             true_expr_str,
                             false_expr_str
                         )
-                    },
+                    }
                     Function(mid, fid, inst) => {
                         let inst = &self.inst_slice(inst);
                         let module_env = env.get_module(*mid);
                         let callee_env = module_env.get_function(*fid);
 
-                        let mut args_str = srcs.iter().cloned().map(str_local).join(" ");
+                        let args_str = srcs.iter().cloned().map(str_local).join(" ");
                         let dest_vars: Vec<String> = dests
                             .iter()
                             .cloned()
@@ -1559,9 +1678,13 @@ impl FunctionTranslator<'_> {
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
                             // Track this ensures call
                             if !srcs.is_empty() {
-                                if let Some(idx) = cur_index {
-                                    self.ensures_info.borrow_mut().push((idx, srcs[0]));
-                                }
+                                let bytecode_idx = self
+                                    .fun_target
+                                    .get_bytecode()
+                                    .iter()
+                                    .position(|bc| std::ptr::eq(bc, bytecode))
+                                    .unwrap();
+                                self.ensures_info.borrow_mut().push((bytecode_idx, srcs[0]));
                             }
 
                             emitln!(
@@ -1660,7 +1783,7 @@ impl FunctionTranslator<'_> {
                             let caller_fid = self.fun_target.get_id();
                             let fun_verified =
                                 !self.fun_target.func_env.is_explicitly_not_verified(
-                                    &ProverOptions::get(self.fun_target.global_env()).verify_scope,
+                                    &self.parent.targets.prover_options().verify_scope,
                                 );
                             let mut fun_name = lean_function_name(
                                 &callee_env,
@@ -1673,7 +1796,8 @@ impl FunctionTranslator<'_> {
                                 module_id: *mid,
                                 id: *fid,
                             };
-                            if let Some(spec_qid) = self.parent.targets.get_spec_by_fun(&callee_qid) {
+                            if let Some(spec_qid) = self.parent.targets.get_spec_by_fun(&callee_qid)
+                            {
                                 // The callee function has a spec counterpart, so we need to call the _impl version
                                 fun_name = format!("{}_impl", fun_name);
                             } else if self
@@ -1685,9 +1809,9 @@ impl FunctionTranslator<'_> {
                                 // This is the case where we're calling the spec function from the implementation
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
-                                    == FunctionVariant::Verification(
-                                    VerificationFlavor::Regular,
-                                )
+                                        == FunctionVariant::Verification(
+                                            VerificationFlavor::Regular,
+                                        )
                                 {
                                     fun_name = format!("{}_impl", fun_name);
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
@@ -1702,14 +1826,14 @@ impl FunctionTranslator<'_> {
                                 targeted
                                     && fun_verified
                                     && *global_state
-                                    .get_temp_index_oper(
-                                        caller_mid,
-                                        caller_fid,
-                                        idx,
-                                        baseline_flag,
-                                    )
-                                    .unwrap()
-                                    == Bitwise
+                                        .get_temp_index_oper(
+                                            caller_mid,
+                                            caller_fid,
+                                            idx,
+                                            baseline_flag,
+                                        )
+                                        .unwrap()
+                                        == Bitwise
                             };
                             let callee_name = callee_env.get_name_str();
                             if dest_str.is_empty() {
@@ -1746,7 +1870,7 @@ impl FunctionTranslator<'_> {
                             .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
                             == Some(&mid.qualified(*fid))
                             && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
-                            || self.style == FunctionTranslationStyle::Opaque)
+                                || self.style == FunctionTranslationStyle::Opaque)
                         {
                             for type_inst in
                                 spec_global_variable_analysis::get_info(&self.fun_target.data)
@@ -1782,7 +1906,13 @@ impl FunctionTranslator<'_> {
                         for (i, field_env) in struct_env.get_fields().enumerate() {
                             let dest_str = str_local(dests[i]);
                             let sel_fun = lean_field_sel(&field_env, inst);
-                            emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
+                            emitln!(
+                                self.writer(),
+                                "let {} := {}.{};",
+                                dest_str,
+                                src_str,
+                                sel_fun
+                            );
                         }
                     }
                     PackVariant(mid, eid, vid, inst) => wip!("PackVariant"),
@@ -1803,12 +1933,18 @@ impl FunctionTranslator<'_> {
                     GetField(mid, sid, inst, field_offset) => {
                         let inst = &self.inst_slice(inst);
                         let src = srcs[0];
-                        let mut src_str = str_local(src);
+                        let src_str = str_local(src);
                         let dest_str = str_local(dests[0]);
                         let struct_env = env.get_module(*mid).into_struct(*sid);
                         let field_env = &struct_env.get_field_by_offset(*field_offset);
                         let sel_fun = lean_field_sel(field_env, inst);
-                        emitln!(self.writer(), "let {} := {}.{};", dest_str, src_str, sel_fun);
+                        emitln!(
+                            self.writer(),
+                            "let {} := {}.{};",
+                            dest_str,
+                            src_str,
+                            sel_fun
+                        );
                     }
                     Exists(mid, sid, inst) => wip!("Exists"),
                     BorrowGlobal(mid, sid, inst) => wip!("BorrowGlobal"),
@@ -2001,7 +2137,7 @@ impl FunctionTranslator<'_> {
                         );
                     }
                     Uninit => wip!("Uninit"),
-                    Destroy => {},
+                    Destroy => {}
                     TraceLocal(idx) => wip!("TraceLocal"),
                     TraceReturn(i) => wip!("TraceReturn"),
                     TraceAbort => wip!("TraceAbort"),
@@ -2010,8 +2146,10 @@ impl FunctionTranslator<'_> {
                     TraceGhost(ghost_type, value_type) => wip!("TraceGhost"),
                     EmitEvent => wip!("EmitEvent"),
                     EventStoreDiverge => wip!("EventStoreDiverge"),
-                    TraceGlobalMem(mem) => {},
-                    Quantifier(_,_,_) => unreachable!("Add support for quantifiers in lean backend"),
+                    TraceGlobalMem(mem) => {}
+                    Quantifier(_, _, _, _) => {
+                        unreachable!("Add support for quantifiers in lean backend")
+                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {}
@@ -2039,19 +2177,33 @@ impl FunctionTranslator<'_> {
             }
             Jump(_, _) => {
                 // Jumps are control flow, not directly translated in functional style
-                emitln!(self.writer(), "-- Jump (control flow not implemented in simple mode)");
+                emitln!(
+                    self.writer(),
+                    "-- Jump (control flow not implemented in simple mode)"
+                );
             }
             Branch(_, _, _, _) => {
                 // Branches are control flow, not directly translated in functional style
-                emitln!(self.writer(), "-- Branch (control flow not implemented in simple mode)");
+                emitln!(
+                    self.writer(),
+                    "-- Branch (control flow not implemented in simple mode)"
+                );
             }
             VariantSwitch(_, _, _) => {
                 // Variant switch is control flow, not directly translated in functional style
-                emitln!(self.writer(), "-- VariantSwitch (control flow not implemented in simple mode)");
+                emitln!(
+                    self.writer(),
+                    "-- VariantSwitch (control flow not implemented in simple mode)"
+                );
             }
             Assign(_, dest, src, _) => {
                 // Simple assignment - in functional style this would be a let binding
-                emitln!(self.writer(), "let {} := {} -- (assignment)", str_local(*dest), str_local(*src));
+                emitln!(
+                    self.writer(),
+                    "let {} := {} -- (assignment)",
+                    str_local(*dest),
+                    str_local(*src)
+                );
             }
             Load(_, dest, c) => {
                 // Load constant
@@ -2064,849 +2216,807 @@ impl FunctionTranslator<'_> {
         }
     }
 
-fn writer(&self) -> &CodeWriter {
-    self.parent.writer
-}
+    fn writer(&self) -> &CodeWriter {
+        self.parent.writer
+    }
 
-/// Track location for execution trace, avoiding to track the same line multiple times.
-fn track_loc(&self, last_tracked_loc: &mut Option<(Loc, LineIndex)>, loc: &Loc) {
-    let env = self.fun_target.global_env();
-    if let Some(l) = env.get_location(loc) {
-        if let Some((last_loc, last_line)) = last_tracked_loc {
-            if *last_line == l.line {
-                // This line already tracked.
-                return;
+    /// Track location for execution trace, avoiding to track the same line multiple times.
+    fn track_loc(&self, last_tracked_loc: &mut Option<(Loc, LineIndex)>, loc: &Loc) {
+        let env = self.fun_target.global_env();
+        if let Some(l) = env.get_location(loc) {
+            if let Some((last_loc, last_line)) = last_tracked_loc {
+                if *last_line == l.line {
+                    // This line already tracked.
+                    return;
+                }
+                *last_loc = loc.clone();
+                *last_line = l.line;
+            } else {
+                *last_tracked_loc = Some((loc.clone(), l.line));
             }
-            *last_loc = loc.clone();
-            *last_line = l.line;
-        } else {
-            *last_tracked_loc = Some((loc.clone(), l.line));
         }
     }
-}
 
-fn loc_str(&self, loc: &Loc) -> String {
-    let file_idx = self.fun_target.global_env().file_id_to_idx(loc.file_id());
-    format!("({},{},{})", file_idx, loc.span().start(), loc.span().end())
-}
+    fn loc_str(&self, loc: &Loc) -> String {
+        let file_idx = self.fun_target.global_env().file_id_to_idx(loc.file_id());
+        format!("({},{},{})", file_idx, loc.span().start(), loc.span().end())
+    }
 
-/// Return a string for a lean procedure header. Use inline attribute and name
-/// suffix as indicated by `entry_point`.
-fn generate_function_sig(&self) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let (args, prerets) = self.generate_function_args_and_returns();
+    /// Return a string for a lean procedure header. Use inline attribute and name
+    /// suffix as indicated by `entry_point`.
+    fn generate_function_sig(&self) {
+        let writer = self.parent.writer;
+        let options = self.parent.options;
+        let fun_target = self.fun_target;
+        let (args, prerets) = self.generate_function_args_and_returns();
 
-    let rets = match self.style {
-        FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => prerets,
-        FunctionTranslationStyle::Asserts => "Unit".to_string(),
-        FunctionTranslationStyle::Aborts => "ProgramState Nat".to_string(),
-        FunctionTranslationStyle::SpecNoAbortCheck => "Unit".to_string(),
-    };
+        let rets = match self.style {
+            FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => prerets,
+            FunctionTranslationStyle::Asserts => "Unit".to_string(),
+            FunctionTranslationStyle::Aborts => "ProgramState Nat".to_string(),
+            FunctionTranslationStyle::SpecNoAbortCheck => "Unit".to_string(),
+        };
 
-    writer.set_location(&fun_target.get_loc());
-    if self.style == FunctionTranslationStyle::Opaque {
-        emitln!(
+        writer.set_location(&fun_target.get_loc());
+        if self.style == FunctionTranslationStyle::Opaque {
+            emitln!(
                 writer,
                 "def {}_opaque {} : {} :=",
                 self.function_variant_name(FunctionTranslationStyle::Opaque),
                 args,
                 rets,
             );
-        emitln!(writer, "  sorry");
-        emitln!(writer, "");
-    }
-    emitln!(
+            emitln!(writer, "  sorry");
+            emitln!(writer, "");
+        }
+        emitln!(
             writer,
             "def {} {} : {} :=",
             self.function_variant_name(self.style),
             args,
             rets,
         )
-}
+    }
 
-/// Generate lean representation of function args and return args.
-fn generate_function_args_and_returns(&self) -> (String, String) {
-    let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-    let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
-    let global_state = &self
-        .fun_target
-        .global_env()
-        .get_extension::<GlobalNumberOperationState>()
-        .expect("global number operation state");
-    let mid = fun_target.func_env.module_env.get_id();
-    let fid = fun_target.func_env.get_id();
-    let args = (0..fun_target.get_parameter_count())
-        .map(|i| {
-            let ty = self.get_local_type(i);
-            let num_oper = global_state
-                .get_temp_index_oper(mid, fid, i, baseline_flag)
-                .unwrap_or(&Bottom);
-            format!("(t{}: {})", i, self.lean_type_for_fun(env, &ty, num_oper))
-        })
-        .join(" ");
-    let mut_ref_inputs = (0..fun_target.get_parameter_count())
-        .enumerate()
-        .filter_map(|(i, idx)| {
-            let ty = self.get_local_type(idx);
-            if ty.is_mutable_reference() {
-                Some((i, ty))
-            } else {
-                None
-            }
-        })
-        .collect_vec();
-    let rets = if fun_target.get_return_count() == 0 && mut_ref_inputs.is_empty() {
-        "Unit".to_string()
-    } else if fun_target.get_return_count() == 1 && mut_ref_inputs.is_empty() {
-        let ret_type = self.inst(&fun_target.get_return_types()[0]);
-        let operation_map = global_state.get_ret_map();
-        let num_oper = operation_map.get(&(mid, fid)).unwrap().get(&0).unwrap();
-        self.lean_type_for_fun(env, &ret_type, num_oper)
-    } else {
-        // Multiple returns or mutable references - use product type
-        let return_types = fun_target
-            .get_return_types()
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let s = self.inst(s);
-                let operation_map = global_state.get_ret_map();
-                let num_oper = operation_map.get(&(mid, fid)).unwrap().get(&i).unwrap();
-                self.lean_type_for_fun(env, &s, num_oper)
-            })
-            // Add implicit return parameters for &mut
-            .chain(mut_ref_inputs.into_iter().enumerate().map(|(i, (_, ty))| {
-                let num_oper = &global_state
+    /// Generate lean representation of function args and return args.
+    fn generate_function_args_and_returns(&self) -> (String, String) {
+        let fun_target = self.fun_target;
+        let env = fun_target.global_env();
+        let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
+        let global_state = &self
+            .fun_target
+            .global_env()
+            .get_extension::<GlobalNumberOperationState>()
+            .expect("global number operation state");
+        let mid = fun_target.func_env.module_env.get_id();
+        let fid = fun_target.func_env.get_id();
+        let args = (0..fun_target.get_parameter_count())
+            .map(|i| {
+                let ty = self.get_local_type(i);
+                let num_oper = global_state
                     .get_temp_index_oper(mid, fid, i, baseline_flag)
-                    .unwrap();
-                self.lean_type_for_fun(env, &ty, num_oper)
-            }))
+                    .unwrap_or(&Bottom);
+                format!("(t{}: {})", i, self.lean_type_for_fun(env, &ty, num_oper))
+            })
+            .join(" ");
+        let mut_ref_inputs = (0..fun_target.get_parameter_count())
+            .enumerate()
+            .filter_map(|(i, idx)| {
+                let ty = self.get_local_type(idx);
+                if ty.is_mutable_reference() {
+                    Some((i, ty))
+                } else {
+                    None
+                }
+            })
             .collect_vec();
-
-        if return_types.len() == 1 {
-            return_types[0].clone()
+        let rets = if fun_target.get_return_count() == 0 && mut_ref_inputs.is_empty() {
+            "Unit".to_string()
+        } else if fun_target.get_return_count() == 1 && mut_ref_inputs.is_empty() {
+            let ret_type = self.inst(&fun_target.get_return_types()[0]);
+            let operation_map = global_state.get_ret_map();
+            let num_oper = operation_map.get(&(mid, fid)).unwrap().get(&0).unwrap();
+            self.lean_type_for_fun(env, &ret_type, num_oper)
         } else {
-            format!("({})", return_types.join(" × "))
-        }
-    };
-    (args, rets)
-}
+            // Multiple returns or mutable references - use product type
+            let return_types = fun_target
+                .get_return_types()
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let s = self.inst(s);
+                    let operation_map = global_state.get_ret_map();
+                    let num_oper = operation_map.get(&(mid, fid)).unwrap().get(&i).unwrap();
+                    self.lean_type_for_fun(env, &s, num_oper)
+                })
+                // Add implicit return parameters for &mut
+                .chain(mut_ref_inputs.into_iter().enumerate().map(|(i, (_, ty))| {
+                    let num_oper = &global_state
+                        .get_temp_index_oper(mid, fid, i, baseline_flag)
+                        .unwrap();
+                    self.lean_type_for_fun(env, &ty, num_oper)
+                }))
+                .collect_vec();
 
-/// Return lean type for a local with given signature token.
-pub fn lean_type_for_fun(&self, env: &GlobalEnv, ty: &Type, num_oper: &NumOperation) -> String {
-    lean_type(env, ty)
-}
-
-fn inst(&self, ty: &Type) -> Type {
-    ty.instantiate(self.type_inst)
-}
-
-fn inst_slice(&self, tys: &[Type]) -> Vec<Type> {
-    tys.iter().map(|ty| self.inst(ty)).collect()
-}
-
-fn get_local_type(&self, idx: TempIndex) -> Type {
-    self.fun_target
-        .get_local_type(idx)
-        .instantiate(self.type_inst)
-}
-
-/// Generates lean implementation body.
-fn generate_function_body(&mut self) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let variant = &fun_target.data.variant;
-    let env = fun_target.global_env();
-
-    // Be sure to set back location to the whole function definition as a default.
-    writer.set_location(&fun_target.get_loc().at_start());
-
-    writer.indent();
-
-    // Print instantiation information
-    if !fun_target.data.type_args.is_empty() {
-        let display_ctxt = TypeDisplayContext::WithEnv {
-            env,
-            type_param_names: None,
+            if return_types.len() == 1 {
+                return_types[0].clone()
+            } else {
+                format!("({})", return_types.join(" × "))
+            }
         };
-        emitln!(
+        (args, rets)
+    }
+
+    /// Return lean type for a local with given signature token.
+    pub fn lean_type_for_fun(&self, env: &GlobalEnv, ty: &Type, num_oper: &NumOperation) -> String {
+        lean_type(env, ty)
+    }
+
+    fn inst(&self, ty: &Type) -> Type {
+        ty.instantiate(self.type_inst)
+    }
+
+    fn inst_slice(&self, tys: &[Type]) -> Vec<Type> {
+        tys.iter().map(|ty| self.inst(ty)).collect()
+    }
+
+    fn get_local_type(&self, idx: TempIndex) -> Type {
+        self.fun_target
+            .get_local_type(idx)
+            .instantiate(self.type_inst)
+    }
+
+    /// Generates lean implementation body.
+    fn generate_function_body(&mut self) {
+        let writer = self.parent.writer;
+        let fun_target = self.fun_target;
+        let variant = &fun_target.data.variant;
+        let env = fun_target.global_env();
+
+        // Be sure to set back location to the whole function definition as a default.
+        writer.set_location(&fun_target.get_loc().at_start());
+
+        writer.indent();
+
+        // Print instantiation information
+        if !fun_target.data.type_args.is_empty() {
+            let display_ctxt = TypeDisplayContext::WithEnv {
+                env,
+                type_param_names: None,
+            };
+            emitln!(
                 writer,
                 "-- function instantiation <{}>",
-                fun_target.data.type_args
+                fun_target
+                    .data
+                    .type_args
                     .iter()
                     .map(|ty| ty.display(&display_ctxt))
                     .join(", ")
             );
-        emitln!(writer, "");
-    }
-
-    // Generate function body using reconstructed control flow
-    let code = self.transformed_code.clone();
-    eprintln!("[lean] Translating {}", self.fun_target.func_env.get_full_name_str());
-    let blocks = reconstruct_control_flow(&code);
-    eprintln!("[lean] Reconstructed {} top-level blocks", blocks.len());
-    for (idx, block) in blocks.iter().enumerate() {
-        eprintln!("[lean] Block {}: {:?}", idx, match block {
-            StructuredBlock::Basic { lower, upper } => format!("Basic[{}..{}]", lower, upper),
-            StructuredBlock::Seq(v) => format!("Seq({} blocks)", v.len()),
-            StructuredBlock::IfThenElse { .. } => "IfThenElse".to_string(),
-            StructuredBlock::IfElseChain { branches, .. } => format!("IfElseChain({} branches)", branches.len()),
-        });
-    }
-    let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
-
-    // Recursive translator for structured blocks
-    fn translate_structured_block(
-        this: &mut FunctionTranslator<'_>,
-        block: &StructuredBlock,
-        code: &[Bytecode],
-        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
-    ) {
-        match block {
-            StructuredBlock::Basic { .. } => {
-                for offset in block.iter_offsets() {
-                    let bytecode = &code[offset as usize];
-                    // Skip branches and explicit merge jumps: the structured builder accounted for them
-                    match bytecode {
-                        Bytecode::Branch(..) => continue,
-                        _ => {}
-                    }
-                    this.translate_bytecode(last_tracked_loc, bytecode, Some(offset as usize));
-                }
-            }
-            StructuredBlock::Seq(blocks) => {
-                for b in blocks {
-                    translate_structured_block(this, b, code, last_tracked_loc);
-                }
-            }
-            StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } => {
-                // Extract condition temp from the Branch at cond_at
-                if let Bytecode::Branch(_, _tlabel, _elabel, cond_tmp) = &code[*cond_at as usize] {
-                    let cond_str = format!("t{}", *cond_tmp as usize);
-                    emitln!(this.writer(), "if {} then", cond_str);
-                    this.writer().indent();
-                    translate_structured_block(this, then_branch, code, last_tracked_loc);
-                    this.writer().unindent();
-                    if let Some(eb) = else_branch.as_ref() {
-                        emitln!(this.writer(), "else");
-                        this.writer().indent();
-                        translate_structured_block(this, eb, code, last_tracked_loc);
-                        this.writer().unindent();
-                    }
-                    emitln!(this.writer(), "end");
-                } else {
-                    // Fallback: no recognizable branch at cond_at, just translate bodies
-                    translate_structured_block(this, then_branch, code, last_tracked_loc);
-                    if let Some(eb) = else_branch.as_ref() {
-                        translate_structured_block(this, eb, code, last_tracked_loc);
-                    }
-                }
-            }
-            StructuredBlock::IfElseChain { branches, else_branch } => {
-                if branches.is_empty() {
-                    if let Some(eb) = else_branch.as_ref() {
-                        translate_structured_block(this, eb, code, last_tracked_loc);
-                    }
-                    return;
-                }
-
-                let mut cond_strings: Vec<Option<String>> = Vec::with_capacity(branches.len());
-                for (cond_at, _) in branches.iter() {
-                    let cond_string = match code.get(*cond_at as usize) {
-                        Some(Bytecode::Branch(_, _tlabel, _elabel, cond_tmp)) => {
-                            Some(format!("t{}", *cond_tmp as usize))
-                        }
-                        _ => None,
-                    };
-                    cond_strings.push(cond_string);
-                }
-
-                if cond_strings.iter().any(|c| c.is_none()) {
-                    // Fallback to sequential translation if any condition is not recognizable
-                    for (_, body) in branches {
-                        translate_structured_block(this, body, code, last_tracked_loc);
-                    }
-                    if let Some(eb) = else_branch.as_ref() {
-                        translate_structured_block(this, eb, code, last_tracked_loc);
-                    }
-                    return;
-                }
-
-                let resolved_conditions: Vec<String> = cond_strings
-                    .into_iter()
-                    .map(|c| c.expect("condition should be present"))
-                    .collect();
-
-                emitln!(
-                    this.writer(),
-                    "if {} then",
-                    resolved_conditions[0]
-                );
-                this.writer().indent();
-                translate_structured_block(
-                    this,
-                    &branches[0].1,
-                    code,
-                    last_tracked_loc,
-                );
-                this.writer().unindent();
-
-                for (idx, cond_str) in resolved_conditions.iter().enumerate().skip(1) {
-                    emitln!(this.writer(), "else if {} then", cond_str);
-                    this.writer().indent();
-                    translate_structured_block(
-                        this,
-                        &branches[idx].1,
-                        code,
-                        last_tracked_loc,
-                    );
-                    this.writer().unindent();
-                }
-
-                if let Some(eb) = else_branch.as_ref() {
-                    emitln!(this.writer(), "else");
-                    this.writer().indent();
-                    translate_structured_block(this, eb, code, last_tracked_loc);
-                    this.writer().unindent();
-                }
-                emitln!(this.writer(), "end");
-            }
+            emitln!(writer, "");
         }
-    }
 
-    if !blocks.is_empty() {
-        for block in &blocks {
-            translate_structured_block(self, block, &code, &mut last_tracked_loc);
+        // Generate function body using direct bytecode translation with ternary operators
+        let fun_target = self.fun_target;
+        let code = fun_target.get_bytecode();
+        let mut last_tracked_loc: Option<(Loc, LineIndex)> = None;
+
+        // Translate each bytecode instruction directly
+        for bytecode in code {
+            self.translate_bytecode(&mut last_tracked_loc, bytecode);
         }
+
+        writer.unindent();
     }
 
-    writer.unindent();
-}
-
-fn translate_verify_entry_assumptions(&self, fun_target: &FunctionTarget<'_>) {
-    let writer = self.parent.writer;
-    emitln!(writer, "\n-- verification entrypoint assumptions");
-
-    // Prelude initialization
-    //emitln!(writer, "call $InitVerification();");
-
-    // Assume reference parameters to be based on the Param(i) Location, ensuring
-    // they are disjoint from all other references. This prevents aliasing and is justified as
-    // follows:
-    // - for mutual references, by their exclusive access in Move.
-    // - for immutable references because we have eliminated them
-    for i in 0..fun_target.get_parameter_count() {
-        let ty = fun_target.get_local_type(i);
-        if ty.is_reference() {
-            // TODO
-            //emitln!(writer, "assume $t{}->l == $Param({});", i, i);
-        }
-    }
-}
-
-fn compute_needed_temps(&self) -> BTreeMap<(String, bool), (Type, bool, usize)> {
-    use Operation::*;
-
-    let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-
-    let mut res: BTreeMap<(String, bool), (Type, bool, usize)> = BTreeMap::new();
-    let mut need = |ty: &Type, bv_flag: bool, n: usize| {
-        // Index by type suffix, which is more coarse grained then type.
-        let ty = ty.skip_reference();
-        let suffix = lean_type_suffix(env, ty);
-        let cnt = res
-            .entry((suffix, bv_flag))
-            .or_insert_with(|| (ty.to_owned(), bv_flag, 0));
-        cnt.2 = cnt.2.max(n);
-    };
-    let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
-    let global_state = &self
-        .fun_target
-        .global_env()
-        .get_extension::<GlobalNumberOperationState>()
-        .expect("global number operation state");
-    let ret_oper_map = &global_state.get_ret_map();
-    let mid = fun_target.func_env.module_env.get_id();
-    let fid = fun_target.func_env.get_id();
-
-    for bc in &fun_target.data.code {
-        match bc {
-            Call(_, dests, oper, srcs, ..) => match oper {
-                TraceExp(_, id) => {
-                    let ty = &self.inst(&env.get_node_type(*id));
-                    let bv_flag = global_state.get_node_num_oper(*id) == Bitwise;
-                    need(ty, bv_flag, 1)
-                }
-                TraceReturn(idx) => {
-                    let ty = &self.inst(fun_target.get_return_type(*idx));
-                    need(ty, false, 1)
-                }
-                TraceLocal(_) => {
-                    let ty = &self.get_local_type(srcs[0]);
-                    need(ty, false, 1)
-                }
-                Havoc(HavocKind::MutationValue) => {
-                    let ty = &self.get_local_type(dests[0]);
-                    need(ty, false, 1)
-                }
-                _ => {}
-            },
-            Prop(_, PropKind::Modifies, exp) => {
-                // global_state.exp_operation_map.get(exp.node_id()) == Bitwise;
-                //let bv_flag = env.get_node_num_oper(exp.node_id()) == Bitwise;
-                let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
-                need(&BOOL_TYPE, false, 1);
-                need(&self.inst(&env.get_node_type(exp.node_id())), bv_flag, 1)
-            }
-            _ => {}
-        }
-    }
-    res
-}
-
-fn function_variant_name(&self, style: FunctionTranslationStyle) -> String {
-    let variant = match style {
-        FunctionTranslationStyle::Default => &self.fun_target.data.variant,
-        FunctionTranslationStyle::Asserts
-        | FunctionTranslationStyle::Aborts
-        | FunctionTranslationStyle::Opaque => &FunctionVariant::Baseline,
-        FunctionTranslationStyle::SpecNoAbortCheck => {
-            &FunctionVariant::Verification(VerificationFlavor::Regular)
-        }
-    };
-    let suffix = match variant {
-        FunctionVariant::Baseline => "".to_string(),
-        FunctionVariant::Verification(flavor) => match flavor {
-            VerificationFlavor::Regular => "_verify".to_string(),
-            VerificationFlavor::Instantiated(_) => {
-                format!("_verify_{}", flavor)
-            }
-            VerificationFlavor::Inconsistency(_) => {
-                format!("_verify_{}", flavor)
-            }
-        },
-    };
-    if self
-        .parent
-        .targets
-        .get_spec_by_fun(&self.fun_target.func_env.get_qualified_id())
-        .is_some()
-        && style == FunctionTranslationStyle::Default
-    {
-        return format!(
-            "{}_impl",
-            lean_function_name(self.fun_target.func_env, self.type_inst, style)
-        );
-    }
-    let fun_name = self
-        .parent
-        .targets
-        .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
-        .map_or(
-            lean_function_name(self.fun_target.func_env, self.type_inst, style),
-            |fun_id| {
-                lean_function_name(
-                    &self.parent.env.get_function(*fun_id),
-                    self.type_inst,
-                    style,
-                )
-            },
-        );
-    format!("{}{}", fun_name, suffix)
-}
-
-fn get_mutable_parameters(&self) -> Vec<(TempIndex, Type)> {
-    let fun_target = self.fun_target;
-    (0..fun_target.get_parameter_count())
-        .filter_map(|i| Some((i, fun_target.get_local_type(i).clone())))
-        .collect_vec()
-}
-
-/// Emit a per-function Locals frame type and a State monad alias.
-fn generate_locals_frame_type_and_monad(&self) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-
-    let fun_name = self.function_variant_name(self.style);
-    let locals_name = format!("{}_Locals", fun_name);
-    let monad_name = format!("{}_CF", fun_name);
-
-    emitln!(writer, "\n-- Locals frame type (state) and State monad alias for {}", fun_name);
-    emitln!(writer, "structure {} where", locals_name);
-    writer.indent();
-    let num_args = fun_target.get_parameter_count();
-    for i in num_args..fun_target.get_local_count() {
-        let local_type = &self.get_local_type(i);
-        emitln!(writer, "t{} : {}", i, lean_type(env, local_type));
-    }
-    writer.unindent();
-    emitln!(writer, "");
-    emitln!(writer, "abbrev {} := StateT {} Id", monad_name, locals_name);
-    emitln!(writer, "");
-}
-
-/// Generate a function that executes up to the ensures and returns the condition
-fn generate_ensures_check_function(&self, ensures_idx: usize, bytecode_idx: usize, ensures_temp: TempIndex) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-
-    // Generate function signature
-    let fun_name = format!("{}_ensures_check_{}", self.function_variant_name(self.style), ensures_idx);
-    let (args, _) = self.generate_function_args_and_returns();
-
-    emitln!(writer, "\n-- Ensures check function {}", ensures_idx);
-    emitln!(writer, "def {} {} : Bool :=", fun_name, args);
-    writer.indent();
-
-    // Generate local variable declarations (same as main function)
-    emitln!(writer, "-- declare local variables");
-    let num_args = fun_target.get_parameter_count();
-    
-    // Declare all local variables with sorry - they'll be computed during bytecode execution
-    for i in num_args..fun_target.get_local_count() {
-        let local_type = &self.get_local_type(i);
-        emitln!(writer, "let t{} : {} := sorry;", i, lean_type(env, local_type));
-    }
-    
-    // Add verification entry assumptions (like main function)
-    if fun_target.data.variant.is_verified() {
+    fn translate_verify_entry_assumptions(&self, fun_target: &FunctionTarget<'_>) {
+        let writer = self.parent.writer;
         emitln!(writer, "\n-- verification entrypoint assumptions");
+
+        // Prelude initialization
+        //emitln!(writer, "call $InitVerification();");
+
+        // Assume reference parameters to be based on the Param(i) Location, ensuring
+        // they are disjoint from all other references. This prevents aliasing and is justified as
+        // follows:
+        // - for mutual references, by their exclusive access in Move.
+        // - for immutable references because we have eliminated them
         for i in 0..fun_target.get_parameter_count() {
             let ty = fun_target.get_local_type(i);
             if ty.is_reference() {
-                // Reference parameters assumptions would go here
-                // Currently skipped like in main function
+                // TODO
+                //emitln!(writer, "assume $t{}->l == $Param({});", i, i);
             }
         }
     }
-    
-    let mid = fun_target.func_env.module_env.get_id();
-    let fid = fun_target.func_env.get_id();
-    let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
-    let global_state = &self
-        .fun_target
-        .global_env()
-        .get_extension::<GlobalNumberOperationState>()
-        .expect("global number operation state");
 
-    // Create a new FunctionTranslator for translating the bytecode
-    let mut translator = FunctionTranslator {
-        parent: self.parent,
-        fun_target: self.fun_target,
-        type_inst: self.type_inst,
-        style: self.style,
-        ensures_info: RefCell::new(Vec::new()),
-        transformed_code: self.transformed_code.clone(),
-    };
+    fn compute_needed_temps(&self) -> BTreeMap<(String, bool), (Type, bool, usize)> {
+        use Operation::*;
 
-    // Generate bytecode up to the ensures
-    emitln!(writer, "\n-- bytecode translation up to ensures");
-    let code = fun_target.get_bytecode();
-    let mut last_tracked_loc = None;
-    for (idx, bytecode) in code.iter().enumerate() {
-        if idx >= bytecode_idx {
-            break;
-        }
-        // Skip the ensures itself
-        match bytecode {
-            Bytecode::Call(_, _, oper, _, _) => {
-                use Operation::*;
-                match oper {
-                    Function(mid, fid, _) => {
-                        let module_env = env.get_module(*mid);
-                        let callee_env = module_env.get_function(*fid);
-                        if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
-                            continue;
-                        }
+        let fun_target = self.fun_target;
+        let env = fun_target.global_env();
+
+        let mut res: BTreeMap<(String, bool), (Type, bool, usize)> = BTreeMap::new();
+        let mut need = |ty: &Type, bv_flag: bool, n: usize| {
+            // Index by type suffix, which is more coarse grained then type.
+            let ty = ty.skip_reference();
+            let suffix = lean_type_suffix(env, ty);
+            let cnt = res
+                .entry((suffix, bv_flag))
+                .or_insert_with(|| (ty.to_owned(), bv_flag, 0));
+            cnt.2 = cnt.2.max(n);
+        };
+        let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
+        let global_state = &self
+            .fun_target
+            .global_env()
+            .get_extension::<GlobalNumberOperationState>()
+            .expect("global number operation state");
+        let ret_oper_map = &global_state.get_ret_map();
+        let mid = fun_target.func_env.module_env.get_id();
+        let fid = fun_target.func_env.get_id();
+
+        for bc in &fun_target.data.code {
+            match bc {
+                Call(_, dests, oper, srcs, ..) => match oper {
+                    TraceExp(_, id) => {
+                        let ty = &self.inst(&env.get_node_type(*id));
+                        let bv_flag = global_state.get_node_num_oper(*id) == Bitwise;
+                        need(ty, bv_flag, 1)
+                    }
+                    TraceReturn(idx) => {
+                        let ty = &self.inst(fun_target.get_return_type(*idx));
+                        need(ty, false, 1)
+                    }
+                    TraceLocal(_) => {
+                        let ty = &self.get_local_type(srcs[0]);
+                        need(ty, false, 1)
+                    }
+                    Havoc(HavocKind::MutationValue) => {
+                        let ty = &self.get_local_type(dests[0]);
+                        need(ty, false, 1)
                     }
                     _ => {}
+                },
+                Prop(_, PropKind::Modifies, exp) => {
+                    // global_state.exp_operation_map.get(exp.node_id()) == Bitwise;
+                    //let bv_flag = env.get_node_num_oper(exp.node_id()) == Bitwise;
+                    let bv_flag = global_state.get_node_num_oper(exp.node_id()) == Bitwise;
+                    need(&BOOL_TYPE, false, 1);
+                    need(&self.inst(&env.get_node_type(exp.node_id())), bv_flag, 1)
                 }
+                _ => {}
             }
-            _ => {}
         }
-        translator.translate_bytecode(&mut last_tracked_loc, bytecode, Some(idx));
+        res
     }
 
-    // Return the ensures condition
-    emitln!(writer, "\n-- return ensures condition");
-    let ensures_type = &self.get_local_type(ensures_temp);
-    if ensures_type == &BOOL_TYPE {
-        emitln!(writer, "t{}", ensures_temp);
-    } else {
-        emitln!(writer, "-- Warning: ensures temp t{} has type {}, expected Bool", ensures_temp, lean_type(env, ensures_type));
-        emitln!(writer, "true  -- fallback to true for now");
+    fn function_variant_name(&self, style: FunctionTranslationStyle) -> String {
+        let variant = match style {
+            FunctionTranslationStyle::Default => &self.fun_target.data.variant,
+            FunctionTranslationStyle::Asserts
+            | FunctionTranslationStyle::Aborts
+            | FunctionTranslationStyle::Opaque => &FunctionVariant::Baseline,
+            FunctionTranslationStyle::SpecNoAbortCheck => {
+                &FunctionVariant::Verification(VerificationFlavor::Regular)
+            }
+        };
+        let suffix = match variant {
+            FunctionVariant::Baseline => "".to_string(),
+            FunctionVariant::Verification(flavor) => match flavor {
+                VerificationFlavor::Regular => "_verify".to_string(),
+                VerificationFlavor::Instantiated(_) => {
+                    format!("_verify_{}", flavor)
+                }
+                VerificationFlavor::Inconsistency(_) => {
+                    format!("_verify_{}", flavor)
+                }
+            },
+        };
+        if self
+            .parent
+            .targets
+            .get_spec_by_fun(&self.fun_target.func_env.get_qualified_id())
+            .is_some()
+            && style == FunctionTranslationStyle::Default
+        {
+            return format!(
+                "{}_impl",
+                lean_function_name(self.fun_target.func_env, self.type_inst, style)
+            );
+        }
+        let fun_name = self
+            .parent
+            .targets
+            .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
+            .map_or(
+                lean_function_name(self.fun_target.func_env, self.type_inst, style),
+                |fun_id| {
+                    lean_function_name(
+                        &self.parent.env.get_function(*fun_id),
+                        self.type_inst,
+                        style,
+                    )
+                },
+            );
+        format!("{}{}", fun_name, suffix)
     }
 
-    writer.unindent();
-}
+    fn get_mutable_parameters(&self) -> Vec<(TempIndex, Type)> {
+        let fun_target = self.fun_target;
+        (0..fun_target.get_parameter_count())
+            .filter_map(|i| Some((i, fun_target.get_local_type(i).clone())))
+            .collect_vec()
+    }
 
-/// Generate a theorem that proves the ensures check returns true
-fn generate_ensures_impl_function(&self, ensures_idx: usize) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
+    /// Emit a per-function Locals frame type and a State monad alias.
+    fn generate_locals_frame_type_and_monad(&self) {
+        let writer = self.parent.writer;
+        let fun_target = self.fun_target;
+        let env = fun_target.global_env();
 
-    let theorem_name = format!("{}_ensures_impl_{}", self.function_variant_name(self.style), ensures_idx);
-    let check_fun_name = format!("{}_ensures_check_{}", self.function_variant_name(self.style), ensures_idx);
-    let (args, _) = self.generate_function_args_and_returns();
+        let fun_name = self.function_variant_name(self.style);
+        let locals_name = format!("{}_Locals", fun_name);
+        let monad_name = format!("{}_CF", fun_name);
 
-    // Extract parameter names from args for the theorem statement
-    let param_names = (0..fun_target.get_parameter_count())
-        .map(|i| format!("t{}", i))
-        .join(" ");
-
-    emitln!(writer, "\n-- Ensures implementation theorem {}", ensures_idx);
-    emitln!(writer, "theorem {} {} : {} {} = true := by", theorem_name, args, check_fun_name, param_names);
-    writer.indent();
-    emitln!(writer, "simp [{}]", check_fun_name);
-    emitln!(writer, "sorry -- TODO: Prove that the ensures condition holds");
-    writer.unindent();
-}
-
-
-
-/// Generates local variable declarations for the control flow function
-fn generate_local_declarations(&self) {
-    let writer = self.writer();
-    let fun_target = self.fun_target;
-
-    // Emit initial locals frame construction instead of separate let-bindings
-    emitln!(writer, "-- Initial locals frame (record)");
-    let num_args = fun_target.get_parameter_count();
-    let fun_name = self.function_variant_name(self.style);
-    let locals_name = format!("{}_Locals", fun_name);
-
-    if fun_target.get_local_count() <= num_args {
-        // No non-parameter locals; empty struct
-        emitln!(writer, "let frame0 : {} := {{}}", locals_name);
+        emitln!(
+            writer,
+            "\n-- Locals frame type (state) and State monad alias for {}",
+            fun_name
+        );
+        emitln!(writer, "structure {} where", locals_name);
+        writer.indent();
+        let num_args = fun_target.get_parameter_count();
+        for i in num_args..fun_target.get_local_count() {
+            let local_type = &self.get_local_type(i);
+            emitln!(writer, "t{} : {}", i, lean_type(env, local_type));
+        }
+        writer.unindent();
         emitln!(writer, "");
-        return;
+        emitln!(writer, "abbrev {} := StateT {} Id", monad_name, locals_name);
+        emitln!(writer, "");
     }
 
-    emitln!(writer, "let frame0 : {} := {{", locals_name);
-    // Initialize each field with a placeholder; later instructions will assign real values
-    let last = fun_target.get_local_count() - 1;
-    for i in num_args..fun_target.get_local_count() {
-        let sep = if i == last { "" } else { "," };
-        emitln!(writer, "  t{} := sorry{}", i, sep);
-    }
-    emitln!(writer, "}");
-    emitln!(writer, "");
-}
+    /// Generate a function that executes up to the ensures and returns the condition
+    fn generate_ensures_check_function(
+        &self,
+        ensures_idx: usize,
+        bytecode_idx: usize,
+        ensures_temp: TempIndex,
+    ) {
+        let writer = self.parent.writer;
+        let fun_target = self.fun_target;
+        let env = fun_target.global_env();
 
+        // Generate function signature
+        let fun_name = format!(
+            "{}_ensures_check_{}",
+            self.function_variant_name(self.style),
+            ensures_idx
+        );
+        let (args, _) = self.generate_function_args_and_returns();
 
+        emitln!(writer, "\n-- Ensures check function {}", ensures_idx);
+        emitln!(writer, "def {} {} : Bool :=", fun_name, args);
+        writer.indent();
 
-/// Core bytecode translation logic shared between different contexts
-fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
-    // Helpers to read/write locals via frame when appropriate
-    let num_args = self.fun_target.get_parameter_count();
-    let read_local = |idx: usize| if idx < num_args { format!("t{}", idx) } else { format!("frame.t{}", idx) };
-    let write_nonparam = |dest: usize, expr: String| -> String {
-        format!("let frame := {{ frame with t{} := {} }};", dest, expr)
-    };
+        // Generate local variable declarations (same as main function)
+        emitln!(writer, "-- declare local variables");
+        let num_args = fun_target.get_parameter_count();
 
-    match bytecode {
-        Bytecode::Load(_, dest, c) => {
-            if *dest < num_args {
-                emitln!(writer, "let t{} := {};", dest, c);
-            } else {
-                emitln!(writer, "{}", write_nonparam(*dest as usize, format!("{}", c)));
-            }
-        },
-        Bytecode::Call(_, dests, oper, srcs, _) => {
-            use Operation::*;
-            match oper {
-                Add | Sub | Mul | Mod | Div | BitAnd | BitOr | Xor | Shl | Shr => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let a = read_local(srcs[0] as usize);
-                        let b = read_local(srcs[1] as usize);
-                        let op = match oper { Add => "+", Sub => "-", Mul => "*", Mod => "%", Div => "/", BitAnd => "&&&", BitOr => "|||", Xor => "^^^", Shl => "<<<", Shr => ">>>", _ => "?" };
-                        let expr = format!("{} {} {}", a, op, b);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                Eq | Neq | Lt | Le | Gt | Ge => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let a = read_local(srcs[0] as usize);
-                        let b = read_local(srcs[1] as usize);
-                        let op = match oper { Eq => "==", Neq => "!=", Lt => "<", Le => "<=", Gt => ">", Ge => ">=", _ => "?" };
-                        let expr = format!("{} {} {}", a, op, b);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
-                    if dests.len() == 1 && srcs.len() == 1 {
-                        let cast_type = match oper { CastU8 => "UInt8.ofNat", CastU16 => "UInt16.ofNat", CastU32 => "UInt32.ofNat", CastU64 => "UInt64.ofNat", CastU128 => "UInt128.ofNat", CastU256 => "UInt256.ofNat", _ => "sorry" };
-                        let s = read_local(srcs[0] as usize);
-                        let expr = format!("{} {}.toNat", cast_type, s);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                GetField(mid, sid, _type_args, field_idx) => {
-                    if dests.len() == 1 && srcs.len() == 1 {
-                        let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
-                        let field_env = struct_env.get_field_by_offset(*field_idx);
-                        let field_name = field_env.get_name();
-                        let s = read_local(srcs[0] as usize);
-                        let expr = format!("{}.{}", s, field_name.display(self.parent.env.symbol_pool()));
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                Pack(mid, sid, type_args) => {
-                    if dests.len() == 1 {
-                        let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
-                        let struct_name = lean_struct_name(&struct_env, type_args);
-                        let field_values = srcs.iter().map(|&idx| read_local(idx as usize)).join(" ");
-                        let expr = format!("{}.mk {}", struct_name, field_values);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                And => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let a = read_local(srcs[0] as usize);
-                        let b = read_local(srcs[1] as usize);
-                        let expr = format!("{} && {}", a, b);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                Or => {
-                    if dests.len() == 1 && srcs.len() == 2 {
-                        let a = read_local(srcs[0] as usize);
-                        let b = read_local(srcs[1] as usize);
-                        let expr = format!("{} || {}", a, b);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                Not => {
-                    if dests.len() == 1 && srcs.len() == 1 {
-                        let a = read_local(srcs[0] as usize);
-                        let expr = format!("!{}", a);
-                        let d = dests[0] as usize;
-                        if d < num_args {
-                            emitln!(writer, "let t{} := {};", d, expr);
-                        } else {
-                            emitln!(writer, "{}", write_nonparam(d, expr));
-                        }
-                    }
-                },
-                TraceLocal(_) | TraceExp(_, _) | TraceMessage(_) | TraceGhost(..) | TraceReturn(_) | TraceAbort => {
-                    // Tracing operations are no-ops in Lean output
-                    emitln!(writer, "-- trace op skipped");
-                },
-                Function(mid, fid, _type_args) => {
-                    // Spec helper or general function call without return handling: skip for now if no dests
-                    if dests.is_empty() {
-                        let module_env = self.parent.env.get_module(*mid);
-                        let callee_env = module_env.get_function(*fid);
-                        emitln!(writer, "-- call {} skipped", callee_env.get_full_name_str());
-                    } else {
-                        emitln!(writer, "-- call with returns not yet handled in CFG translator");
-                    }
-                },
-                Havoc(_) | Uninit => {
-                    // Havoc/uninit are treated as no-ops for now
-                    emitln!(writer, "-- havoc/uninit skipped");
-                },
-                _ => {
-                    // For operations not handled in the simple version, emit a comment
-                    emitln!(writer, "-- Unhandled operation: {:?}", oper);
+        // Declare all local variables with sorry - they'll be computed during bytecode execution
+        for i in num_args..fun_target.get_local_count() {
+            let local_type = &self.get_local_type(i);
+            emitln!(
+                writer,
+                "let t{} : {} := sorry;",
+                i,
+                lean_type(env, local_type)
+            );
+        }
+
+        // Add verification entry assumptions (like main function)
+        if fun_target.data.variant.is_verified() {
+            emitln!(writer, "\n-- verification entrypoint assumptions");
+            for i in 0..fun_target.get_parameter_count() {
+                let ty = fun_target.get_local_type(i);
+                if ty.is_reference() {
+                    // Reference parameters assumptions would go here
+                    // Currently skipped like in main function
                 }
             }
-        },
-        _ => {
-            // For bytecode types not handled in the simple version, emit a comment
-            emitln!(writer, "-- Unhandled bytecode: {:?}", bytecode);
+        }
+
+        let mid = fun_target.func_env.module_env.get_id();
+        let fid = fun_target.func_env.get_id();
+        let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
+        let global_state = &self
+            .fun_target
+            .global_env()
+            .get_extension::<GlobalNumberOperationState>()
+            .expect("global number operation state");
+
+        // Create a new FunctionTranslator for translating the bytecode
+        let mut translator = FunctionTranslator {
+            parent: self.parent,
+            fun_target: self.fun_target,
+            type_inst: self.type_inst,
+            style: self.style,
+            ensures_info: RefCell::new(Vec::new()),
+        };
+
+        // Generate bytecode up to the ensures
+        emitln!(writer, "\n-- bytecode translation up to ensures");
+        let code = fun_target.get_bytecode();
+        let mut last_tracked_loc = None;
+        for (idx, bytecode) in code.iter().enumerate() {
+            if idx >= bytecode_idx {
+                break;
+            }
+            // Skip the ensures itself
+            match bytecode {
+                Bytecode::Call(_, _, oper, _, _) => {
+                    use Operation::*;
+                    match oper {
+                        Function(mid, fid, _) => {
+                            let module_env = env.get_module(*mid);
+                            let callee_env = module_env.get_function(*fid);
+                            if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            translator.translate_bytecode(&mut last_tracked_loc, bytecode);
+        }
+
+        // Return the ensures condition
+        emitln!(writer, "\n-- return ensures condition");
+        let ensures_type = &self.get_local_type(ensures_temp);
+        if ensures_type == &BOOL_TYPE {
+            emitln!(writer, "t{}", ensures_temp);
+        } else {
+            emitln!(
+                writer,
+                "-- Warning: ensures temp t{} has type {}, expected Bool",
+                ensures_temp,
+                lean_type(env, ensures_type)
+            );
+            emitln!(writer, "true  -- fallback to true for now");
+        }
+
+        writer.unindent();
+    }
+
+    /// Generate a theorem that proves the ensures check returns true
+    fn generate_ensures_impl_function(&self, ensures_idx: usize) {
+        let writer = self.parent.writer;
+        let fun_target = self.fun_target;
+
+        let theorem_name = format!(
+            "{}_ensures_impl_{}",
+            self.function_variant_name(self.style),
+            ensures_idx
+        );
+        let check_fun_name = format!(
+            "{}_ensures_check_{}",
+            self.function_variant_name(self.style),
+            ensures_idx
+        );
+        let (args, _) = self.generate_function_args_and_returns();
+
+        // Extract parameter names from args for the theorem statement
+        let param_names = (0..fun_target.get_parameter_count())
+            .map(|i| format!("t{}", i))
+            .join(" ");
+
+        emitln!(
+            writer,
+            "\n-- Ensures implementation theorem {}",
+            ensures_idx
+        );
+        emitln!(
+            writer,
+            "theorem {} {} : {} {} = true := by",
+            theorem_name,
+            args,
+            check_fun_name,
+            param_names
+        );
+        writer.indent();
+        emitln!(writer, "simp [{}]", check_fun_name);
+        emitln!(
+            writer,
+            "sorry -- TODO: Prove that the ensures condition holds"
+        );
+        writer.unindent();
+    }
+
+    /// Generates local variable declarations for the control flow function
+    fn generate_local_declarations(&self) {
+        let writer = self.writer();
+        let fun_target = self.fun_target;
+
+        // Emit initial locals frame construction instead of separate let-bindings
+        emitln!(writer, "-- Initial locals frame (record)");
+        let num_args = fun_target.get_parameter_count();
+        let fun_name = self.function_variant_name(self.style);
+        let locals_name = format!("{}_Locals", fun_name);
+
+        if fun_target.get_local_count() <= num_args {
+            // No non-parameter locals; empty struct
+            emitln!(writer, "let frame0 : {} := {{}}", locals_name);
+            emitln!(writer, "");
+            return;
+        }
+
+        emitln!(writer, "let frame0 : {} := {{", locals_name);
+        // Initialize each field with a placeholder; later instructions will assign real values
+        let last = fun_target.get_local_count() - 1;
+        for i in num_args..fun_target.get_local_count() {
+            let sep = if i == last { "" } else { "," };
+            emitln!(writer, "  t{} := sorry{}", i, sep);
+        }
+        emitln!(writer, "}");
+        emitln!(writer, "");
+    }
+
+    /// Core bytecode translation logic shared between different contexts
+    fn translate_bytecode_core(&self, bytecode: &Bytecode, writer: &CodeWriter) {
+        // Helpers to read/write locals via frame when appropriate
+        let num_args = self.fun_target.get_parameter_count();
+        let read_local = |idx: usize| {
+            if idx < num_args {
+                format!("t{}", idx)
+            } else {
+                format!("frame.t{}", idx)
+            }
+        };
+        let write_nonparam = |dest: usize, expr: String| -> String {
+            format!("let frame := {{ frame with t{} := {} }};", dest, expr)
+        };
+
+        match bytecode {
+            Bytecode::Load(_, dest, c) => {
+                if *dest < num_args {
+                    emitln!(writer, "let t{} := {};", dest, c);
+                } else {
+                    emitln!(
+                        writer,
+                        "{}",
+                        write_nonparam(*dest as usize, format!("{}", c))
+                    );
+                }
+            }
+            Bytecode::Call(_, dests, oper, srcs, _) => {
+                use Operation::*;
+                match oper {
+                    Add | Sub | Mul | Mod | Div | BitAnd | BitOr | Xor | Shl | Shr => {
+                        if dests.len() == 1 && srcs.len() == 2 {
+                            let a = read_local(srcs[0] as usize);
+                            let b = read_local(srcs[1] as usize);
+                            let op = match oper {
+                                Add => "+",
+                                Sub => "-",
+                                Mul => "*",
+                                Mod => "%",
+                                Div => "/",
+                                BitAnd => "&&&",
+                                BitOr => "|||",
+                                Xor => "^^^",
+                                Shl => "<<<",
+                                Shr => ">>>",
+                                _ => "?",
+                            };
+                            let expr = format!("{} {} {}", a, op, b);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    Eq | Neq | Lt | Le | Gt | Ge => {
+                        if dests.len() == 1 && srcs.len() == 2 {
+                            let a = read_local(srcs[0] as usize);
+                            let b = read_local(srcs[1] as usize);
+                            let op = match oper {
+                                Eq => "==",
+                                Neq => "!=",
+                                Lt => "<",
+                                Le => "<=",
+                                Gt => ">",
+                                Ge => ">=",
+                                _ => "?",
+                            };
+                            let expr = format!("{} {} {}", a, op, b);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256 => {
+                        if dests.len() == 1 && srcs.len() == 1 {
+                            let cast_type = match oper {
+                                CastU8 => "UInt8.ofNat",
+                                CastU16 => "UInt16.ofNat",
+                                CastU32 => "UInt32.ofNat",
+                                CastU64 => "UInt64.ofNat",
+                                CastU128 => "UInt128.ofNat",
+                                CastU256 => "UInt256.ofNat",
+                                _ => "sorry",
+                            };
+                            let s = read_local(srcs[0] as usize);
+                            let expr = format!("{} {}.toNat", cast_type, s);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    GetField(mid, sid, _type_args, field_idx) => {
+                        if dests.len() == 1 && srcs.len() == 1 {
+                            let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
+                            let field_env = struct_env.get_field_by_offset(*field_idx);
+                            let field_name = field_env.get_name();
+                            let s = read_local(srcs[0] as usize);
+                            let expr = format!(
+                                "{}.{}",
+                                s,
+                                field_name.display(self.parent.env.symbol_pool())
+                            );
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    Pack(mid, sid, type_args) => {
+                        if dests.len() == 1 {
+                            let struct_env = &self.parent.env.get_module(*mid).into_struct(*sid);
+                            let struct_name = lean_struct_name(&struct_env, type_args);
+                            let field_values =
+                                srcs.iter().map(|&idx| read_local(idx as usize)).join(" ");
+                            let expr = format!("{}.mk {}", struct_name, field_values);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    And => {
+                        if dests.len() == 1 && srcs.len() == 2 {
+                            let a = read_local(srcs[0] as usize);
+                            let b = read_local(srcs[1] as usize);
+                            let expr = format!("{} && {}", a, b);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    Or => {
+                        if dests.len() == 1 && srcs.len() == 2 {
+                            let a = read_local(srcs[0] as usize);
+                            let b = read_local(srcs[1] as usize);
+                            let expr = format!("{} || {}", a, b);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    Not => {
+                        if dests.len() == 1 && srcs.len() == 1 {
+                            let a = read_local(srcs[0] as usize);
+                            let expr = format!("!{}", a);
+                            let d = dests[0] as usize;
+                            if d < num_args {
+                                emitln!(writer, "let t{} := {};", d, expr);
+                            } else {
+                                emitln!(writer, "{}", write_nonparam(d, expr));
+                            }
+                        }
+                    }
+                    TraceLocal(_)
+                    | TraceExp(_, _)
+                    | TraceMessage(_)
+                    | TraceGhost(..)
+                    | TraceReturn(_)
+                    | TraceAbort => {
+                        // Tracing operations are no-ops in Lean output
+                        emitln!(writer, "-- trace op skipped");
+                    }
+                    Function(mid, fid, _type_args) => {
+                        // Spec helper or general function call without return handling: skip for now if no dests
+                        if dests.is_empty() {
+                            let module_env = self.parent.env.get_module(*mid);
+                            let callee_env = module_env.get_function(*fid);
+                            emitln!(writer, "-- call {} skipped", callee_env.get_full_name_str());
+                        } else {
+                            emitln!(
+                                writer,
+                                "-- call with returns not yet handled in CFG translator"
+                            );
+                        }
+                    }
+                    Havoc(_) | Uninit => {
+                        // Havoc/uninit are treated as no-ops for now
+                        emitln!(writer, "-- havoc/uninit skipped");
+                    }
+                    _ => {
+                        // For operations not handled in the simple version, emit a comment
+                        emitln!(writer, "-- Unhandled operation: {:?}", oper);
+                    }
+                }
+            }
+            _ => {
+                // For bytecode types not handled in the simple version, emit a comment
+                emitln!(writer, "-- Unhandled bytecode: {:?}", bytecode);
+            }
         }
     }
-}
 
+    /// Gets the return type string for the current function
+    fn get_return_type_string(&self) -> String {
+        let fun_target = self.fun_target;
+        let env = fun_target.global_env();
 
+        let inner_type = if fun_target.get_return_count() == 0 {
+            "Unit".to_string()
+        } else if fun_target.get_return_count() == 1 {
+            let ret_type = self.inst(&fun_target.get_return_types()[0]);
+            lean_type(env, &ret_type)
+        } else {
+            let return_types = fun_target
+                .get_return_types()
+                .iter()
+                .map(|s| {
+                    let s = self.inst(s);
+                    lean_type(env, &s)
+                })
+                .collect::<Vec<_>>();
+            format!("({})", return_types.join(" × "))
+        };
 
-/// Gets the return type string for the current function
-fn get_return_type_string(&self) -> String {
-    let fun_target = self.fun_target;
-    let env = fun_target.global_env();
-    
-    let inner_type = if fun_target.get_return_count() == 0 {
-        "Unit".to_string()
-    } else if fun_target.get_return_count() == 1 {
-        let ret_type = self.inst(&fun_target.get_return_types()[0]);
-        lean_type(env, &ret_type)
-    } else {
-        let return_types = fun_target
-            .get_return_types()
-            .iter()
-            .map(|s| {
-                let s = self.inst(s);
-                lean_type(env, &s)
-            })
-            .collect::<Vec<_>>();
-        format!("({})", return_types.join(" × "))
-    };
-    
-    format!("ProgramState {}", inner_type)
-}
+        format!("ProgramState {}", inner_type)
+    }
 
-/// Generate a theorem that asserts the _aborts variant is false
-fn generate_no_abort_check_theorem(&self) {
-    let writer = self.parent.writer;
-    let fun_target = self.fun_target;
-    let (args, _) = self.generate_function_args_and_returns();
-    
-    // Get the name of the current function (no_abort_check variant)
-    let no_abort_check_name = self.function_variant_name(FunctionTranslationStyle::SpecNoAbortCheck);
-    
-    // Get the name of the corresponding _aborts variant
-    let aborts_name = self.function_variant_name(FunctionTranslationStyle::Aborts);
-    
-    writer.set_location(&fun_target.get_loc());
-    emitln!(
-        writer,
-        "theorem {} {} : True :=",
-        no_abort_check_name,
-        args
-    );
-    writer.indent();
-    emitln!(writer, "trivial");
-    writer.unindent();
-}
+    /// Generate a theorem that asserts the _aborts variant is false
+    fn generate_no_abort_check_theorem(&self) {
+        let writer = self.parent.writer;
+        let fun_target = self.fun_target;
+        let (args, _) = self.generate_function_args_and_returns();
+
+        // Get the name of the current function (no_abort_check variant)
+        let no_abort_check_name =
+            self.function_variant_name(FunctionTranslationStyle::SpecNoAbortCheck);
+
+        // Get the name of the corresponding _aborts variant
+        let aborts_name = self.function_variant_name(FunctionTranslationStyle::Aborts);
+
+        writer.set_location(&fun_target.get_loc());
+        emitln!(writer, "theorem {} {} : True :=", no_abort_check_name, args);
+        writer.indent();
+        emitln!(writer, "trivial");
+        writer.unindent();
+    }
 }

@@ -10,6 +10,7 @@ use regex::Regex;
 use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
 use sui_prover::build_model::move_model_for_package_legacy;
+use sui_prover::prove::DEFAULT_EXECUTION_TIMEOUT_SECONDS;
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &Path) -> String {
@@ -53,7 +54,11 @@ integration-test = "0x9"
 
     let extra_bpl_path = file_path
         .strip_prefix(Path::new("tests/inputs"))
-        .map(|p| Path::new("tests/extra_prelude").join(p).with_extension("bpl"))
+        .map(|p| {
+            Path::new("tests/extra_prelude")
+                .join(p)
+                .with_extension("bpl")
+        })
         .unwrap_or(PathBuf::from("prelude_extra.bpl"));
 
     // Join it to the sources directory
@@ -86,8 +91,8 @@ integration-test = "0x9"
                 // Create prover options
                 let mut options = Options::default();
                 options.backend.sequential_task = true;
-                options.backend.use_array_theory = true;
-                options.backend.vc_timeout = 3000;
+                options.backend.use_array_theory = false; // we are not using them by default
+                options.backend.vc_timeout = DEFAULT_EXECUTION_TIMEOUT_SECONDS;
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
 
@@ -108,7 +113,9 @@ integration-test = "0x9"
                         &mut error_buffer,
                         options.clone(),
                         None,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(output) => {
                             let error_output =
                                 String::from_utf8_lossy(&error_buffer.into_inner()).to_string();
@@ -147,8 +154,6 @@ integration-test = "0x9"
         post_process_output(result, sources_dir)
     });
 
-    tmp.close().unwrap();
-
     // Now handle the result of our operation
     match result {
         Ok(output) => output,
@@ -186,9 +191,10 @@ fn extract_boogie_function(output_dir: &str) -> String {
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "bpl") {
                 if let Ok(content) = read_to_string(&path) {
-                    // Look for the $impl function which contains the actual implementation
-                    if let Some(impl_function) = extract_impl_function(&content) {
-                        return impl_function;
+                    // Look for both $impl and $pure functions
+                    let functions = extract_impl_and_pure_functions(&content);
+                    if !functions.is_empty() {
+                        return functions.join("\n");
                     }
                 }
             }
@@ -198,18 +204,21 @@ fn extract_boogie_function(output_dir: &str) -> String {
     String::new()
 }
 
-/// Helper for extracting boogie .bpl source: get function body
-fn extract_impl_function(bpl_content: &str) -> Option<String> {
+/// Helper for extracting boogie .bpl source: get $impl and $pure function bodies
+fn extract_impl_and_pure_functions(bpl_content: &str) -> Vec<String> {
     let lines: Vec<&str> = bpl_content.lines().collect();
-    let mut in_impl_function = false;
+    let mut results = Vec::new();
+    let mut in_target_function = false;
     let mut brace_count = 0;
     let mut function_lines = Vec::new();
 
     for line in lines {
-        if line.contains("$impl") && (line.contains("procedure") || line.contains("function")) {
-            in_impl_function = true;
+        if (line.contains("$impl") || line.contains("$pure"))
+            && (line.contains("procedure") || line.contains("function"))
+        {
+            in_target_function = true;
             function_lines.push(line);
-        } else if in_impl_function {
+        } else if in_target_function {
             function_lines.push(line);
 
             // Count braces :3
@@ -219,7 +228,9 @@ fn extract_impl_function(bpl_content: &str) -> Option<String> {
                     '}' => {
                         brace_count -= 1;
                         if brace_count == 0 && !function_lines.is_empty() {
-                            return Some(function_lines.join("\n"));
+                            results.push(function_lines.join("\n"));
+                            function_lines.clear();
+                            in_target_function = false;
                         }
                     }
                     _ => {}
@@ -228,7 +239,7 @@ fn extract_impl_function(bpl_content: &str) -> Option<String> {
         }
     }
 
-    None
+    results
 }
 
 #[dir_test(

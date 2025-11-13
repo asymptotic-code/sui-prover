@@ -5,7 +5,10 @@
 //! This module translates the bytecode of a module to Boogie code.
 
 use std::{
-    cell::RefCell, collections::{BTreeMap, BTreeSet}, iter, str::FromStr
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    iter,
+    str::FromStr,
 };
 
 use bimap::btree::BiBTreeMap;
@@ -24,20 +27,31 @@ use move_model::{
         DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
         QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
     },
-    pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
+    pragmas::{ADDITION_OVERFLOW_UNCHECKED_PRAGMA, PURE_PRAGMA},
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
-    well_known::{TYPE_INFO_MOVE, TYPE_NAME_GET_MOVE, TYPE_NAME_MOVE},
 };
 use move_stackless_bytecode::{
-    ast::{TempIndex, TraceKind}, deterministic_analysis, dynamic_field_analysis, function_data_builder::FunctionDataBuilder, function_target::FunctionTarget, function_target_pipeline::{
+    ast::{TempIndex, TraceKind},
+    deterministic_analysis, dynamic_field_analysis,
+    function_data_builder::FunctionDataBuilder,
+    function_target::FunctionTarget,
+    function_target_pipeline::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
-    }, livevar_analysis::LiveVarAnalysisProcessor, mono_analysis::{self, MonoInfo}, no_abort_analysis, number_operation::{
+    },
+    livevar_analysis::LiveVarAnalysisProcessor,
+    mono_analysis::{self, MonoInfo},
+    no_abort_analysis,
+    number_operation::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
-    }, options::ProverOptions, reaching_def_analysis::ReachingDefProcessor, spec_global_variable_analysis::{self}, stackless_bytecode::{
+    },
+    reaching_def_analysis::ReachingDefProcessor,
+    spec_global_variable_analysis::{self},
+    stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind, QuantifierType,
-    }, verification_analysis
+    },
+    verification_analysis,
 };
 
 use crate::boogie_backend::{
@@ -49,12 +63,11 @@ use crate::boogie_backend::{
         boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
         boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
         boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_info,
-        boogie_reflection_type_name, boogie_resource_memory_name, boogie_spec_global_var_name,
-        boogie_struct_name, boogie_temp, boogie_temp_from_suffix, boogie_type, boogie_type_param,
-        boogie_type_suffix, boogie_type_suffix_bv, boogie_type_suffix_for_struct,
-        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
-        TypeIdentToken,
+        boogie_num_type_base, boogie_num_type_string_capital, boogie_resource_memory_name,
+        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
+        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
+        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
+        FunctionTranslationStyle, TypeIdentToken,
     },
     options::{BoogieFileMode, BoogieOptions},
     spec_translator::SpecTranslator,
@@ -82,12 +95,14 @@ pub struct StructTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     struct_env: &'env StructEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 pub struct EnumTranslator<'env> {
     parent: &'env BoogieTranslator<'env>,
     enum_env: &'env EnumEnv<'env>,
     type_inst: &'env [Type],
+    is_opaque: bool,
 }
 
 impl<'env> BoogieTranslator<'env> {
@@ -275,6 +290,11 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info.is_used_datatype(
+                            self.env,
+                            self.targets,
+                            &struct_env.get_qualified_id(),
+                        ),
                     }
                     .translate();
                 }
@@ -294,6 +314,11 @@ impl<'env> BoogieTranslator<'env> {
                         parent: self,
                         enum_env,
                         type_inst: type_inst.as_slice(),
+                        is_opaque: !mono_info.is_used_datatype(
+                            self.env,
+                            self.targets,
+                            &enum_env.get_qualified_id(),
+                        ),
                     }
                     .translate();
                 }
@@ -304,18 +329,25 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                if self.options.func_abort_check_only && self.targets.is_abort_check_fun(&fun_env.get_qualified_id()) {
+                if self.options.func_abort_check_only
+                    && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                {
                     self.translate_function_no_abort(fun_env);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                     continue;
                 }
 
-                if self.options.func_abort_check_only && self.targets.is_spec(&fun_env.get_qualified_id()) {
+                if self.options.func_abort_check_only
+                    && self.targets.is_spec(&fun_env.get_qualified_id())
+                {
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
                     continue;
                 }
 
-                if !self.options.func_abort_check_only && self.targets.is_spec(&fun_env.get_qualified_id()) {
+                if !self.options.func_abort_check_only
+                    && self.targets.is_spec(&fun_env.get_qualified_id())
+                {
                     self.translate_spec(&fun_env);
                     verified_functions_count += 1;
                     continue;
@@ -336,13 +368,22 @@ impl<'env> BoogieTranslator<'env> {
 
                 match self.targets.get_spec_by_fun(&fun_env.get_qualified_id()) {
                     Some(spec_qid) if !self.targets.omits_opaque(spec_qid) => {
-                        FunctionTranslator::new(
-                            self,
-                            &fun_target,
-                            &[],
-                            FunctionTranslationStyle::Default,
-                        )
-                        .translate();
+                        if self.targets.is_verified_spec(spec_qid) {
+                            FunctionTranslator::new(
+                                self,
+                                &fun_target,
+                                &[],
+                                FunctionTranslationStyle::Default,
+                            )
+                            .translate();
+                        }
+                        // Attempt to emit Pure variant if eligible
+                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+                        if !self.options.spec_no_abort_check_only
+                            && self.options.boogie_file_mode != BoogieFileMode::All
+                        {
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                        }
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -361,6 +402,13 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
+                        }
+                        // Attempt to emit Pure variant if eligible
+                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+                        if !self.options.spec_no_abort_check_only
+                            && self.options.boogie_file_mode != BoogieFileMode::All
+                        {
+                            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
                 }
@@ -409,8 +457,10 @@ impl<'env> BoogieTranslator<'env> {
 
     fn translate_spec(&self, fun_env: &FunctionEnv<'env>) {
         if self.options.spec_no_abort_check_only {
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            if !self.targets.is_scenario_spec(&fun_env.get_qualified_id()) {
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
+            }
             if !self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
                 self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
             }
@@ -422,10 +472,12 @@ impl<'env> BoogieTranslator<'env> {
             .scenario_specs()
             .contains(&fun_env.get_qualified_id())
         {
-            if self.targets.has_target(
-                fun_env,
-                &FunctionVariant::Verification(VerificationFlavor::Regular),
-            ) {
+            if self.targets.is_verified_spec(&fun_env.get_qualified_id())
+                && self.targets.has_target(
+                    fun_env,
+                    &FunctionVariant::Verification(VerificationFlavor::Regular),
+                )
+            {
                 let fun_target = self.targets.get_target(
                     fun_env,
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
@@ -438,15 +490,22 @@ impl<'env> BoogieTranslator<'env> {
             return;
         }
 
-        self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
         if self.options.boogie_file_mode == BoogieFileMode::All
             || self.targets.is_verified_spec(&fun_env.get_qualified_id())
         {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
+        }
+        // Emit Pure variant if eligible (gated inside)
+        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
+        if !self.options.spec_no_abort_check_only
+            && self.options.boogie_file_mode != BoogieFileMode::All
+        {
+            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }
 
@@ -487,7 +546,8 @@ impl<'env> BoogieTranslator<'env> {
             }
             FunctionTranslationStyle::Asserts
             | FunctionTranslationStyle::Aborts
-            | FunctionTranslationStyle::Opaque => FunctionVariant::Baseline,
+            | FunctionTranslationStyle::Opaque
+            | FunctionTranslationStyle::Pure => FunctionVariant::Baseline,
         };
         if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
             return;
@@ -500,7 +560,10 @@ impl<'env> BoogieTranslator<'env> {
         if style == FunctionTranslationStyle::Aborts {
             if let Some(fid) = self.targets.get_fun_by_spec(&fun_env.get_qualified_id()) {
                 let fenv: &FunctionEnv<'_> = &self.env.get_function(*fid);
-                let data = self.targets.get_target(fenv, &FunctionVariant::Baseline).data;
+                let data = self
+                    .targets
+                    .get_target(fenv, &FunctionVariant::Baseline)
+                    .data;
                 if no_abort_analysis::get_info(&data).does_not_abort {
                     return;
                 }
@@ -515,17 +578,14 @@ impl<'env> BoogieTranslator<'env> {
             FunctionDataBuilder::new(spec_fun_target.func_env, spec_fun_target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
-       let da = deterministic_analysis::get_info(&builder.data);
-       let skip_havok = da.is_deterministic && style == FunctionTranslationStyle::Opaque;
+        let da = deterministic_analysis::get_info(&builder.data);
+        let skip_havok = da.is_deterministic && style == FunctionTranslationStyle::Opaque;
 
-        let omit_havoc = self
-            .targets
-            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
         for bc in code.into_iter() {
             match style {
                 FunctionTranslationStyle::Default => match bc {
                     Call(_, _, op, _, _) if op == asserts_function => {}
-                    Call(_, _, Operation::Function(module_id, fun_id, _), _, _)
+                    Call(_, _, Operation::Function(module_id, fun_id, ref inst), _, _)
                         if self
                             .targets
                             .get_fun_by_spec(&spec_fun_target.func_env.get_qualified_id())
@@ -534,7 +594,28 @@ impl<'env> BoogieTranslator<'env> {
                                 id: fun_id,
                             }) =>
                     {
-                        builder.emit(bc)
+                        // Check if this call will use $pure
+                        let callee_env = self.env.get_function(module_id.qualified(fun_id));
+                        let callee_has_pure = {
+                            let baseline_target = self
+                                .targets
+                                .get_target(&callee_env, &FunctionVariant::Baseline);
+                            let translator = FunctionTranslator::new(
+                                self,
+                                &baseline_target,
+                                inst,
+                                FunctionTranslationStyle::Pure,
+                            );
+                            translator.is_pure_function()
+                        };
+
+                        if callee_has_pure {
+                            // No abort checking needed - $pure functions have abort-freedom proven separately
+                            builder.emit(bc.update_abort_action(|_| None))
+                        } else {
+                            // Keep abort action for $impl calls
+                            builder.emit(bc)
+                        }
                     }
                     _ => builder.emit(bc.update_abort_action(|_| None)),
                 },
@@ -571,8 +652,20 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
-                        builder.emit(bc.update_abort_action(|_| None));
-                        if !omit_havoc {
+                        builder.emit(
+                            if self
+                                .targets
+                                .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                            {
+                                bc
+                            } else {
+                                bc.update_abort_action(|_| None)
+                            },
+                        );
+                        if !self
+                            .targets
+                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                        {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                                 let havoc_kind = if callee_fun_env
@@ -619,8 +712,25 @@ impl<'env> BoogieTranslator<'env> {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
 
-                        builder.emit(bc);
-                        if !omit_havoc {
+                        builder.emit(
+                            if self
+                                .targets
+                                .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                                || !no_abort_analysis::does_not_abort(
+                                    self.targets,
+                                    &self.env.get_function(module_id.qualified(fun_id)),
+                                    None,
+                                )
+                            {
+                                bc
+                            } else {
+                                bc.update_abort_action(|_| None)
+                            },
+                        );
+                        if !self
+                            .targets
+                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
+                        {
                             let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                                 let havoc_kind = if callee_fun_env
@@ -656,23 +766,30 @@ impl<'env> BoogieTranslator<'env> {
                             .update_abort_action(|_| None),
                     ),
                 },
+                FunctionTranslationStyle::Pure => {
+                    builder.emit(bc);
+                }
             }
         }
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
+        if matches!(style, FunctionTranslationStyle::Pure) {
+            let translator = FunctionTranslator::new(self, &fun_target, &[], style);
+            if !translator.is_pure_function() {
+                return; // Only emit if #[ext(pure)] is present
+            }
+        }
         if style == FunctionTranslationStyle::Default
             || style == FunctionTranslationStyle::Asserts
-            || style == FunctionTranslationStyle::Aborts
             || style == FunctionTranslationStyle::SpecNoAbortCheck
-            || style == FunctionTranslationStyle::Opaque
-        // this is for the $opaque signature
+            || style == FunctionTranslationStyle::Pure
         {
             FunctionTranslator::new(self, &fun_target, &[], style).translate();
         }
@@ -680,13 +797,38 @@ impl<'env> BoogieTranslator<'env> {
         if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
             if self
                 .targets
-                .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
-                .is_none()
+                .scenario_specs()
+                .contains(&fun_target.func_env.get_qualified_id())
             {
-                // is scenario spec
+                if self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+                    && style == FunctionTranslationStyle::Aborts
+                {
+                    FunctionTranslator::new(self, &fun_target, &[], style).translate();
+                }
                 return;
             }
-            mono_analysis::get_info(self.env)
+
+            if self.options.func_abort_check_only
+                && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                && style == FunctionTranslationStyle::Opaque
+            {
+                mono_analysis::get_info(self.env)
+                    .funs
+                    .get(&(
+                        fun_target.func_env.get_qualified_id(),
+                        FunctionVariant::Baseline,
+                    ))
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .for_each(|type_inst| {
+                        FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                    });
+                return;
+            }
+
+            let mut type_insts = mono_analysis::get_info(self.env)
                 .funs
                 .get(&(
                     *self
@@ -696,21 +838,22 @@ impl<'env> BoogieTranslator<'env> {
                     FunctionVariant::Baseline,
                 ))
                 .unwrap_or(&BTreeSet::new())
-                .iter()
-                .for_each(|type_inst| {
-                    // Skip the none instantiation (i.e., each type parameter is
-                    // instantiated to itself as a concrete type). This has the same
-                    // effect as `type_inst: &[]` and is already captured above.
-                    let is_none_inst = type_inst
-                        .iter()
-                        .enumerate()
-                        .all(|(i, t)| matches!(t, Type::TypeParameter(idx) if *idx == i as u16));
-                    if is_none_inst {
-                        return;
-                    }
-
-                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
-                });
+                .clone();
+            if self.options.spec_no_abort_check_only
+                && !self
+                    .targets
+                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
+            {
+                // add the identity type instance, if it's not already in the set
+                type_insts.insert(
+                    (0..fun_target.func_env.get_type_parameter_count())
+                        .map(|i| Type::TypeParameter(i as u16))
+                        .collect(),
+                );
+            }
+            for type_inst in type_insts {
+                FunctionTranslator::new(self, &fun_target, &type_inst, style).translate();
+            }
         }
     }
 
@@ -726,25 +869,23 @@ impl<'env> BoogieTranslator<'env> {
         for bc in code.into_iter() {
             match bc {
                 Bytecode::Ret(..) => {}
-                _ => builder.emit(
-                    bc.update_abort_action(|aa| match aa {
-                        Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
-                        Some(AbortAction::Check) => Some(AbortAction::Check),
-                        None => None,
-                    })
-                )
+                _ => builder.emit(bc.update_abort_action(|aa| match aa {
+                    Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
+                    Some(AbortAction::Check) => Some(AbortAction::Check),
+                    None => None,
+                })),
             }
         }
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
-        let mut dummy_targets = FunctionTargetsHolder::new(None);
+        let mut dummy_targets = self.targets.new_dummy();
         data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
         data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
-        
+
         FunctionTranslator::new(self, &fun_target, &[], style).translate();
     }
 
@@ -908,7 +1049,7 @@ impl<'env> StructTranslator<'env> {
         let struct_env = self.struct_env;
         let env = struct_env.module_env.env;
 
-        if struct_env.is_native() || struct_env.is_intrinsic() {
+        if struct_env.is_native() || (struct_env.is_intrinsic() && !self.is_opaque) {
             return;
         }
 
@@ -924,6 +1065,11 @@ impl<'env> StructTranslator<'env> {
 
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
+
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
 
         let struct_type = Type::Datatype(
             struct_env.module_env.get_id(),
@@ -1035,8 +1181,9 @@ impl<'env> StructTranslator<'env> {
         }
 
         // Skip for table_vec and option as it's handled by native templates
-        let skip_is_valid = self.parent.env.table_vec_qid().unwrap() == struct_env.get_qualified_id() ||
-            self.parent.env.option_qid().unwrap() == struct_env.get_qualified_id();
+        let skip_is_valid = self.parent.env.table_vec_qid().unwrap()
+            == struct_env.get_qualified_id()
+            || self.parent.env.option_qid().unwrap() == struct_env.get_qualified_id();
 
         // Emit $IsValid function.
         if !skip_is_valid {
@@ -1115,31 +1262,8 @@ impl<'env> StructTranslator<'env> {
             },
         );
 
-        // Generate object::borrow_uid function for structs with key ability
-        if struct_env.get_abilities().has_key() {
-            let object_borrow_uid_fun_name = format!(
-                "$2_object_borrow_uid'{}'",
-                boogie_type_suffix(
-                    env,
-                    &Type::Datatype(
-                        struct_env.module_env.get_id(),
-                        struct_env.get_id(),
-                        self.type_inst.to_vec()
-                    )
-                )
-            );
-            let writer = self.parent.writer;
-            emitln!(
-                writer,
-                "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
-                object_borrow_uid_fun_name,
-                struct_name
-            );
-            writer.indent();
-            emitln!(writer, "res := obj->$id;");
-            writer.unindent();
-            emitln!(writer, "}");
-        }
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
 
         if struct_env.has_memory() {
             // Emit memory variable.
@@ -1181,6 +1305,89 @@ impl<'env> StructTranslator<'env> {
         writer.unindent();
         emitln!(writer, "}");
         emitln!(writer);
+    }
+
+    // Generate object::borrow_uid function for structs with key ability
+    fn translate_object_borrow_uid(&self) {
+        if !self.struct_env.get_abilities().has_key() {
+            return;
+        }
+
+        let object_borrow_uid_fun_name = format!(
+            "$2_object_borrow_uid'{}'",
+            boogie_type_suffix(
+                self.parent.env,
+                &Type::Datatype(
+                    self.struct_env.module_env.get_id(),
+                    self.struct_env.get_id(),
+                    self.type_inst.to_vec()
+                )
+            )
+        );
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+            object_borrow_uid_fun_name,
+            boogie_struct_name(self.struct_env, self.type_inst),
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := obj->$id;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+    }
+
+    fn translate_opaque(&self) {
+        let struct_name = boogie_struct_name(self.struct_env, self.type_inst);
+        let suffix = boogie_type_suffix_for_struct(self.struct_env, self.type_inst, false);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", struct_name);
+        self.parent.writer.indent();
+        let content = if self.struct_env.get_abilities().has_key() {
+            "$id: $2_object_UID"
+        } else {
+            "$content: int"
+        };
+        emitln!(self.parent.writer, "{}({})", struct_name, content);
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, struct_name),
+            || {
+                if self.struct_env.get_abilities().has_key() {
+                    emitln!(self.parent.writer, "$IsValid'$2_object_UID'(s->$id)")
+                } else {
+                    emitln!(self.parent.writer, "true")
+                }
+            },
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, struct_name, struct_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        // emit object::borrow_uid function
+        self.translate_object_borrow_uid();
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            struct_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
@@ -1253,6 +1460,11 @@ impl<'env> EnumTranslator<'env> {
 
         // Set the location to internal as default.
         writer.set_location(&env.internal_loc());
+
+        if self.is_opaque {
+            self.translate_opaque();
+            return;
+        }
 
         // Emit data type
         let enum_name = boogie_enum_name(enum_env, self.type_inst);
@@ -1466,6 +1678,46 @@ impl<'env> EnumTranslator<'env> {
         emitln!(writer);
     }
 
+    fn translate_opaque(&self) {
+        let enum_name = boogie_enum_name(self.enum_env, self.type_inst);
+        let suffix = boogie_enum_name(self.enum_env, self.type_inst);
+
+        // Emit data type
+        emitln!(self.parent.writer, "datatype {} {{", enum_name);
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "{}({})", enum_name, "$content: int");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+
+        // emit IsValid function
+        self.emit_function(
+            &format!("$IsValid'{}'(s: {}): bool", suffix, enum_name),
+            || emitln!(self.parent.writer, "true"),
+        );
+
+        // emit IsEqual function
+        self.emit_function(
+            &format!(
+                "$IsEqual'{}'(s1: {}, s2: {}): bool",
+                suffix, enum_name, enum_name
+            ),
+            || emitln!(self.parent.writer, "s1 == s2"),
+        );
+
+        emitln!(
+            self.parent.writer,
+            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
+            suffix,
+            enum_name
+        );
+        self.parent.writer.indent();
+        emitln!(self.parent.writer, "res := true;");
+        emitln!(self.parent.writer, "return;");
+        self.parent.writer.unindent();
+        emitln!(self.parent.writer, "}");
+        emitln!(self.parent.writer);
+    }
+
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
         self.emit_function_with_attr("{:inline} ", signature, body_fn)
     }
@@ -1626,7 +1878,8 @@ impl<'env> FunctionTranslator<'env> {
             FunctionTranslationStyle::Default => &self.fun_target.data.variant,
             FunctionTranslationStyle::Asserts
             | FunctionTranslationStyle::Aborts
-            | FunctionTranslationStyle::Opaque => &FunctionVariant::Baseline,
+            | FunctionTranslationStyle::Opaque
+            | FunctionTranslationStyle::Pure => &FunctionVariant::Baseline,
             FunctionTranslationStyle::SpecNoAbortCheck => {
                 &FunctionVariant::Verification(VerificationFlavor::Regular)
             }
@@ -1671,8 +1924,10 @@ impl<'env> FunctionTranslator<'env> {
             );
         let result = format!("{}{}", fun_name, suffix);
 
-        if self.parent.options.func_abort_check_only && style == FunctionTranslationStyle::SpecNoAbortCheck {
-            result.replace("$spec_no_abort_check", "$abort_check")
+        if self.parent.options.func_abort_check_only
+            && style == FunctionTranslationStyle::SpecNoAbortCheck
+        {
+            result.replace("$spec_no_abort_check", "$no_abort_check")
         } else {
             result
         }
@@ -1686,20 +1941,24 @@ impl<'env> FunctionTranslator<'env> {
         let fun_target = self.fun_target;
         let (args, prerets) = self.generate_function_args_and_returns(false);
 
+        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
+
         let attribs = match &fun_target.data.variant {
-            FunctionVariant::Baseline => "{:inline 1} ".to_string(),
+            FunctionVariant::Baseline => {
+                if emit_pure_in_place {
+                    "{:inline} ".to_string()
+                } else {
+                    "{:inline 1} ".to_string()
+                }
+            }
             FunctionVariant::Verification(flavor) => {
-                // let timeout = fun_target
-                //     .func_env
-                //     .get_num_pragma(TIMEOUT_PRAGMA, || options.vc_timeout);
-                // let mut attribs = vec![format!("{{:timeLimit {}}} ", timeout)];
-                // if fun_target.func_env.is_num_pragma_set(SEED_PRAGMA) {
-                //     let seed = fun_target
-                //         .func_env
-                //         .get_num_pragma(SEED_PRAGMA, || options.random_seed);
-                //     attribs.push(format!("{{:random_seed {}}} ", seed));
-                // };
-                let mut attribs = vec![format!("{{:timeLimit {}}} ", options.vc_timeout)];
+                let mut attribs = vec![format!(
+                    "{{:timeLimit {}}} ",
+                    self.parent
+                        .targets
+                        .get_spec_timeout(&self.fun_target.func_env.get_qualified_id())
+                        .unwrap_or(&(options.vc_timeout as u64)),
+                )];
                 match flavor {
                     VerificationFlavor::Regular => "".to_string(),
                     VerificationFlavor::Instantiated(_) => "".to_string(),
@@ -1716,7 +1975,9 @@ impl<'env> FunctionTranslator<'env> {
         };
 
         let rets = match self.style {
-            FunctionTranslationStyle::Default | FunctionTranslationStyle::Opaque => prerets,
+            FunctionTranslationStyle::Default
+            | FunctionTranslationStyle::Opaque
+            | FunctionTranslationStyle::Pure => prerets,
             FunctionTranslationStyle::Asserts => "".to_string(),
             FunctionTranslationStyle::Aborts => "res: bool".to_string(),
             FunctionTranslationStyle::SpecNoAbortCheck => "".to_string(),
@@ -1724,8 +1985,13 @@ impl<'env> FunctionTranslator<'env> {
 
         writer.set_location(&fun_target.get_loc());
         if self.style == FunctionTranslationStyle::Opaque {
-            let (args, orets) = self.generate_function_args_and_returns(self.should_use_temp_datatypes());
-            let prefix = if self.should_use_opaque_as_function(true) { "function" } else { "procedure" };
+            let (args, orets) =
+                self.generate_function_args_and_returns(self.should_use_temp_datatypes());
+            let prefix = if self.should_use_opaque_as_function(true) {
+                "function"
+            } else {
+                "procedure"
+            };
             emitln!(
                 writer,
                 "{} {}$opaque({}) returns ({});",
@@ -1737,9 +2003,15 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "");
         }
 
+        let prefix = if emit_pure_in_place {
+            "function"
+        } else {
+            "procedure"
+        };
         emitln!(
             writer,
-            "procedure {}{}({}) returns ({})",
+            "{} {}{}({}) returns ({})",
+            prefix,
             attribs,
             self.function_variant_name(self.style),
             args,
@@ -1748,7 +2020,10 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn wrap_return_datatype_name(&self) -> String {
-        format!("{}_opaque_return_type", self.function_variant_name(FunctionTranslationStyle::Opaque))
+        format!(
+            "{}_opaque_return_type",
+            self.function_variant_name(FunctionTranslationStyle::Opaque)
+        )
     }
 
     fn wrap_return_arg_in_tuple_datatype(&self, args: String) -> String {
@@ -1761,7 +2036,10 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     /// Generate boogie representation of function args and return args.
-    fn generate_function_args_and_returns(&self, generate_custom_datatype: bool) -> (String, String) {
+    fn generate_function_args_and_returns(
+        &self,
+        generate_custom_datatype: bool,
+    ) -> (String, String) {
         let fun_target = self.fun_target;
         let env = fun_target.global_env();
         let baseline_flag = self.fun_target.data.variant == FunctionVariant::Baseline;
@@ -1843,20 +2121,16 @@ impl<'env> FunctionTranslator<'env> {
                 format!("$ret{}: {}", i, self.boogie_type_for_fun(env, &s, num_oper))
             })
             // Add implicit return parameters for &mut
-            .chain(mut_ref_inputs
-                .into_iter()
-                .enumerate()
-                .map(|(i, (_, ty))| {
-                    let num_oper = &global_state
-                        .get_temp_index_oper(mid, fid, i, baseline_flag)
-                        .unwrap();
-                    format!(
-                        "$ret{}: {}",
-                        usize::saturating_add(fun_target.get_return_count(), i),
-                        self.boogie_type_for_fun(env, &ty, num_oper)
-                    )
-                })
-            )
+            .chain(mut_ref_inputs.into_iter().enumerate().map(|(i, (_, ty))| {
+                let num_oper = &global_state
+                    .get_temp_index_oper(mid, fid, i, baseline_flag)
+                    .unwrap();
+                format!(
+                    "$ret{}: {}",
+                    usize::saturating_add(fun_target.get_return_count(), i),
+                    self.boogie_type_for_fun(env, &ty, num_oper)
+                )
+            }))
             .join(", ");
 
         if !generate_custom_datatype {
@@ -1882,6 +2156,8 @@ impl<'env> FunctionTranslator<'env> {
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number operation state");
 
+        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
+
         // Be sure to set back location to the whole function definition as a default.
         writer.set_location(&fun_target.get_loc().at_start());
 
@@ -1905,158 +2181,179 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "");
         }
 
-        // Generate local variable declarations. They need to appear first in boogie.
-        emitln!(writer, "// declare local variables");
-        let num_args = fun_target.get_parameter_count();
-        let mid = fun_target.func_env.module_env.get_id();
-        let fid = fun_target.func_env.get_id();
-        for i in num_args..fun_target.get_local_count() {
-            let num_oper = global_state
-                .get_temp_index_oper(mid, fid, i, baseline_flag)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing number operation info for function={}, temp {}",
-                        self.fun_target.func_env.get_full_name_str(),
-                        i
-                    )
-                });
-            let local_type = &self.get_local_type(i);
-            emitln!(
-                writer,
-                "var $t{}: {};",
-                i,
-                self.boogie_type_for_fun(env, local_type, num_oper)
-            );
-        }
-        // Generate declarations for renamed parameters.
-        let proxied_parameters = self.get_mutable_parameters();
-        for (idx, ty) in &proxied_parameters {
-            let num_oper = &global_state
-                .get_temp_index_oper(mid, fid, *idx, baseline_flag)
-                .unwrap();
-            emitln!(
-                writer,
-                "var $t{}: {};",
-                idx,
-                self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
-            );
-        }
-
-        // Add global ghost variables that can be used in this function
-        if self.style == FunctionTranslationStyle::Default
-            || self.style == FunctionTranslationStyle::Opaque
-        {
-            let ghost_vars = self.get_ghost_vars();
-            for type_inst in ghost_vars {
+        // Skip variable declarations and imperative setup for Boogie functions
+        if !emit_pure_in_place {
+            // Generate local variable declarations. They need to appear first in boogie.
+            emitln!(writer, "// declare local variables");
+            let num_args = fun_target.get_parameter_count();
+            let mid = fun_target.func_env.module_env.get_id();
+            let fid = fun_target.func_env.get_id();
+            for i in num_args..fun_target.get_local_count() {
+                let num_oper = global_state
+                    .get_temp_index_oper(mid, fid, i, baseline_flag)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing number operation info for function={}, temp {}",
+                            self.fun_target.func_env.get_full_name_str(),
+                            i
+                        )
+                    });
+                let local_type = &self.get_local_type(i);
                 emitln!(
                     writer,
-                    "var {}: {};",
-                    self.ghost_var_name(&type_inst),
-                    boogie_type(env, &type_inst[1])
+                    "var $t{}: {};",
+                    i,
+                    self.boogie_type_for_fun(env, local_type, num_oper)
                 );
             }
-        }
-
-        if self.should_use_temp_datatypes() {
-            emitln!(
-                writer,
-                "var $temp_opaque_res_var: {};",
-                self.wrap_return_datatype_name(),
-            );
-        }
-
-        // Generate declarations for modifies condition.
-        let mut mem_inst_seen = BTreeSet::new();
-        for qid in fun_target.get_modify_ids() {
-            let memory = qid.instantiate(self.type_inst);
-            if !mem_inst_seen.contains(&memory) {
+            // Generate declarations for renamed parameters.
+            let proxied_parameters = self.get_mutable_parameters();
+            for (idx, ty) in &proxied_parameters {
+                let num_oper = &global_state
+                    .get_temp_index_oper(mid, fid, *idx, baseline_flag)
+                    .unwrap();
                 emitln!(
                     writer,
-                    "var {}: {}",
-                    boogie_modifies_memory_name(fun_target.global_env(), &memory),
-                    "[int]bool;"
+                    "var $t{}: {};",
+                    idx,
+                    self.boogie_type_for_fun(env, &ty.instantiate(self.type_inst), num_oper)
                 );
-                mem_inst_seen.insert(memory);
             }
-        }
-        let mut dup: Vec<String> = vec![];
-        // Declare temporaries for debug tracing and other purposes.
-        for (_, (ty, ref bv_flag, cnt)) in self.compute_needed_temps() {
-            for i in 0..cnt {
-                let bv_type = if *bv_flag {
-                    boogie_bv_type
-                } else {
-                    boogie_type
-                };
-                let temp_name =
-                    boogie_temp_from_suffix(env, &boogie_type_suffix_bv(env, &ty, *bv_flag), i);
-                if !dup.contains(&temp_name) {
-                    emitln!(writer, "var {}: {};", temp_name.clone(), bv_type(env, &ty));
-                    dup.push(temp_name);
+
+            // Add global ghost variables that can be used in this function
+            if self.style == FunctionTranslationStyle::Default
+                || self.style == FunctionTranslationStyle::Opaque
+            {
+                let ghost_vars = self.get_ghost_vars();
+                for type_inst in ghost_vars {
+                    emitln!(
+                        writer,
+                        "var {}: {};",
+                        self.ghost_var_name(&type_inst),
+                        boogie_type(env, &type_inst[1])
+                    );
                 }
             }
-        }
 
-        emitln!(writer, "var $abort_if_cond: bool;");
-
-        // Generate memory snapshot variable declarations.
-        let code = fun_target.get_bytecode();
-        let labels = code
-            .iter()
-            .filter_map(|bc| {
-                use Bytecode::*;
-                match bc {
-                    SaveMem(_, lab, mem) => Some((lab, mem)),
-                    _ => None,
-                }
-            })
-            .collect::<BTreeSet<_>>();
-        for (lab, mem) in labels {
-            let mem = &mem.to_owned().instantiate(self.type_inst);
-            let name = boogie_resource_memory_name(env, mem, &Some(*lab));
-            emitln!(
-                writer,
-                "var {}: $Memory {};",
-                name,
-                boogie_struct_name(&env.get_struct_qid(mem.to_qualified_id()), &mem.inst)
-            );
-        }
-
-        // Initialize renamed parameters.
-        for (idx, _) in proxied_parameters {
-            emitln!(writer, "$t{} := _$t{};", idx, idx);
-        }
-
-        // Initialize ghost variables
-        if self.style == FunctionTranslationStyle::Default
-            || self.style == FunctionTranslationStyle::Opaque
-        {
-            let ghost_vars = self.get_ghost_vars();
-            for type_inst in ghost_vars {
+            if self.should_use_temp_datatypes() {
                 emitln!(
                     writer,
-                    "{} := {};",
-                    self.ghost_var_name(&type_inst),
-                    boogie_spec_global_var_name(self.parent.env, &type_inst)
+                    "var $temp_opaque_res_var: {};",
+                    self.wrap_return_datatype_name(),
                 );
             }
-        }
 
-        // Initial assumptions
-        if variant.is_verified() {
-            self.translate_verify_entry_assumptions(fun_target);
-        }
+            self.create_quantifiers_temp_vars();
 
-        // Initial value of res when generating abort condition
-        if FunctionTranslationStyle::Aborts == self.style {
-            emitln!(writer, "res := true;");
-        }
+            // Generate declarations for modifies condition.
+            let mut mem_inst_seen = BTreeSet::new();
+            for qid in fun_target.get_modify_ids() {
+                let memory = qid.instantiate(self.type_inst);
+                if !mem_inst_seen.contains(&memory) {
+                    emitln!(
+                        writer,
+                        "var {}: {}",
+                        boogie_modifies_memory_name(fun_target.global_env(), &memory),
+                        "[int]bool;"
+                    );
+                    mem_inst_seen.insert(memory);
+                }
+            }
+            let mut dup: Vec<String> = vec![];
+            // Declare temporaries for debug tracing and other purposes.
+            for (_, (ty, ref bv_flag, cnt)) in self.compute_needed_temps() {
+                for i in 0..cnt {
+                    let bv_type = if *bv_flag {
+                        boogie_bv_type
+                    } else {
+                        boogie_type
+                    };
+                    let temp_name =
+                        boogie_temp_from_suffix(env, &boogie_type_suffix_bv(env, &ty, *bv_flag), i);
+                    if !dup.contains(&temp_name) {
+                        emitln!(writer, "var {}: {};", temp_name.clone(), bv_type(env, &ty));
+                        dup.push(temp_name);
+                    }
+                }
+            }
+
+            emitln!(writer, "var $abort_if_cond: bool;");
+
+            // Generate memory snapshot variable declarations.
+            let labels = fun_target
+                .get_bytecode()
+                .iter()
+                .filter_map(|bc| {
+                    use Bytecode::*;
+                    match bc {
+                        SaveMem(_, lab, mem) => Some((lab, mem)),
+                        _ => None,
+                    }
+                })
+                .collect::<BTreeSet<_>>();
+            for (lab, mem) in labels {
+                let mem = &mem.to_owned().instantiate(self.type_inst);
+                let name = boogie_resource_memory_name(env, mem, &Some(*lab));
+                emitln!(
+                    writer,
+                    "var {}: $Memory {};",
+                    name,
+                    boogie_struct_name(&env.get_struct_qid(mem.to_qualified_id()), &mem.inst)
+                );
+            }
+
+            // Initialize renamed parameters.
+            for (idx, _) in proxied_parameters {
+                emitln!(writer, "$t{} := _$t{};", idx, idx);
+            }
+
+            // Initialize ghost variables
+            if self.style == FunctionTranslationStyle::Default
+                || self.style == FunctionTranslationStyle::Opaque
+            {
+                let ghost_vars = self.get_ghost_vars();
+                for type_inst in ghost_vars {
+                    emitln!(
+                        writer,
+                        "{} := {};",
+                        self.ghost_var_name(&type_inst),
+                        boogie_spec_global_var_name(self.parent.env, &type_inst)
+                    );
+                }
+            }
+
+            // Initial assumptions
+            if variant.is_verified() {
+                self.translate_verify_entry_assumptions(fun_target);
+            }
+
+            // Initial value of res when generating abort condition
+            if FunctionTranslationStyle::Aborts == self.style {
+                emitln!(writer, "res := true;");
+            }
+        } // end of if !self.should_emit_as_function() block
 
         // Generate bytecode
-        emitln!(writer, "\n// bytecode translation starts here");
+        if !emit_pure_in_place {
+            emitln!(writer, "\n// bytecode translation starts here");
+        }
         let mut last_tracked_loc = None;
-        for bytecode in code.iter() {
-            self.translate_bytecode(&mut last_tracked_loc, bytecode);
+        let code = fun_target.get_bytecode();
+
+        if emit_pure_in_place {
+            // First validate all bytecode is compatible with function generation
+            for bytecode in code.iter() {
+                // Check for disallowed operations that should panic
+                self.check_disallowed_for_function(bytecode);
+            }
+
+            // Generate function body using let expressions instead of statements
+            self.generate_pure_expression(code);
+        } else {
+            // For procedures: emit all bytecodes as normal
+            for bytecode in code.iter() {
+                self.translate_bytecode(&mut last_tracked_loc, bytecode);
+            }
         }
 
         writer.unindent();
@@ -2137,7 +2434,26 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
+    fn create_quantifiers_temp_vars(&self) {
+        for bc in self.fun_target.get_bytecode() {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
+                if matches!(qt, QuantifierType::Find | QuantifierType::FindIndex) {
+                    emitln!(self.parent.writer, "var $find_i: int;");
+                    emitln!(self.parent.writer, "var $find_exists: bool;");
+                    return;
+                }
+            }
+        }
+    }
+
     fn should_use_temp_datatypes(&self) -> bool {
+        if self
+            .parent
+            .targets
+            .is_scenario_spec(&self.fun_target.func_env.get_qualified_id())
+        {
+            return false;
+        }
         let mut_ref_inputs_count = (0..self.fun_target.get_parameter_count())
             .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
             .count();
@@ -2148,10 +2464,315 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn should_use_opaque_as_function(&self, write: bool) -> bool {
-        let dinfo: &deterministic_analysis::DeterministicInfo = deterministic_analysis::get_info(self.fun_target.data);
-        let correct_style = self.style == FunctionTranslationStyle::Opaque || (if write { false } else { self.style == FunctionTranslationStyle::SpecNoAbortCheck });
+        let dinfo: &deterministic_analysis::DeterministicInfo =
+            deterministic_analysis::get_info(self.fun_target.data);
+        let correct_style = self.style == FunctionTranslationStyle::Opaque
+            || (if write {
+                false
+            } else {
+                self.style == FunctionTranslationStyle::SpecNoAbortCheck
+            });
 
         dinfo.is_deterministic && correct_style
+    }
+
+    fn is_pure_function(&self) -> bool {
+        self.check_ext_attribute(&self.fun_target.func_env, PURE_PRAGMA)
+    }
+
+    /// Check if a function has an #[ext(...)] attribute with the given name.
+    fn check_ext_attribute(&self, func_env: &FunctionEnv, attr_name: &str) -> bool {
+        let toplevel_attrs = func_env.get_toplevel_attributes();
+        for (_loc, _kind, known_attr) in toplevel_attrs.iter() {
+            if let move_compiler::shared::known_attributes::KnownAttribute::External(ext_attr) =
+                &known_attr.value
+            {
+                for (_entry_loc, entry_name, _entry) in ext_attr.attrs.iter() {
+                    if entry_name.as_str() == attr_name {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
+    /// Control flow instructions (jumps, branches, labels) are silently skipped since
+    /// if_then_else expressions have already summarized their effects.
+    fn is_straightline_bytecode(&self, bytecode: &Bytecode) -> bool {
+        use Bytecode::*;
+        match bytecode {
+            // Allowed: assignments, loads, pure calls, returns
+            Assign(_, _, _, _) => true,
+            Load(_, _, _) => true,
+            Call(_, _, op, _, _) => {
+                match op {
+                    Operation::IfThenElse => true,
+                    Operation::Function(mid, fid, _) => {
+                        // Allow function calls if they're marked as pure
+                        self.can_callee_be_function(*mid, *fid)
+                    }
+                    _ => !op.can_abort(), // Allow non-aborting operations
+                }
+            }
+            Ret(_, _) => true,
+            Nop(_) => true,
+
+            // Silently skip: control flow (summarized in if_then_else)
+            Jump(_, _) => false,
+            Branch(_, _, _, _) => false,
+            Label(_, _) => false,
+            VariantSwitch(_, _, _) => false,
+
+            // Skip: other operations
+            Abort(_, _) => false,
+            SaveMem(_, _, _) => false,
+            Prop(_, _, _) => false,
+        }
+    }
+
+    /// Check if a callee function can be used as a Boogie function (not procedure)
+    fn can_callee_be_function(
+        &self,
+        mid: move_model::model::ModuleId,
+        fid: move_model::model::FunId,
+    ) -> bool {
+        let env = self.fun_target.global_env();
+        let module_env = env.get_module(mid);
+        let callee_env = module_env.get_function(fid);
+
+        // Check if callee is marked with #[ext(pure)]
+        self.check_ext_attribute(&callee_env, PURE_PRAGMA)
+    }
+
+    /// Panic if we encounter bytecode operations that should have been filtered out
+    /// but could compromise translation fidelity if silently ignored.
+    fn check_disallowed_for_function(&self, bytecode: &Bytecode) {
+        use Bytecode::*;
+        match bytecode {
+            Call(_, _, op, _, _) => {
+                if let Operation::Function(mid, fid, _) = op {
+                    // Allow function calls if the callee can be emitted as a Boogie function
+                    if !self.can_callee_be_function(*mid, *fid) {
+                        panic!(
+                            "Function calls should be filtered out before function emission: {}",
+                            bytecode
+                                .display(self.fun_target, &std::collections::BTreeMap::default())
+                        );
+                    }
+                }
+            }
+            Abort(_, _) => {
+                // Skip abort operations - they will be ignored in function body generation
+            }
+            _ => {} // Other operations are fine to skip or translate
+        }
+    }
+
+    fn format_constant(&self, constant: &Constant) -> String {
+        match constant {
+            Constant::Bool(true) => "true".to_string(),
+            Constant::Bool(false) => "false".to_string(),
+            Constant::U8(num) => num.to_string(),
+            Constant::U16(num) => num.to_string(),
+            Constant::U32(num) => num.to_string(),
+            Constant::U64(num) => num.to_string(),
+            Constant::U128(num) => num.to_string(),
+            Constant::U256(num) => num.to_string(),
+            Constant::Address(val) => val.to_string(),
+            Constant::ByteArray(val) => boogie_byte_blob(self.parent.options, val, false),
+            Constant::AddressArray(val) => boogie_address_blob(self.parent.options, val),
+            Constant::Vector(val) => boogie_constant_blob(self.parent.options, val),
+        }
+    }
+
+    /// Generate Boogie pure function body using let/var expression nesting
+    fn generate_pure_expression(&mut self, code: &[Bytecode]) {
+        use Bytecode::*;
+        use Operation::*;
+
+        let writer = self.writer();
+        let fun_target = self.fun_target;
+
+        // Helper to format a temp reference
+        let fmt_temp = |idx: usize| -> String {
+            if idx < fun_target.get_parameter_count() {
+                format!("_$t{}", idx)
+            } else {
+                format!("$t{}", idx)
+            }
+        };
+
+        // Collect straightline assignments and operations
+        let mut bindings = Vec::new();
+        let mut final_return_temp = None;
+
+        // Small helper for infix mapping (arity-checked)
+        let op_symbol = |op: &Operation| -> Option<(&'static str, usize)> {
+            match op {
+                Add => Some(("+", 2)),
+                Sub => Some(("-", 2)),
+                Mul => Some(("*", 2)),
+                Div => Some(("div", 2)),
+                Mod => Some(("mod", 2)),
+                Lt => Some(("<", 2)),
+                Le => Some(("<=", 2)),
+                Gt => Some((">", 2)),
+                Ge => Some((">=", 2)),
+                Eq => Some(("==", 2)),
+                Neq => Some(("!=", 2)),
+                And => Some(("&&", 2)),
+                Or => Some(("||", 2)),
+                Not => Some(("!", 1)),
+                BitAnd => Some(("$And", 2)),
+                BitOr => Some(("$Or", 2)),
+                Shl => Some(("$shl", 2)),
+                Shr => Some(("$shr", 2)),
+                _ => None,
+            }
+        };
+
+        for bytecode in code.iter() {
+            match bytecode {
+                Assign(_, dest, src, _) => {
+                    bindings.push((*dest, fmt_temp(*src)));
+                }
+                Load(_, dest, constant) => {
+                    bindings.push((*dest, self.format_constant(constant)));
+                }
+                Call(_, dests, op, srcs, _) if self.is_straightline_bytecode(bytecode) => {
+                    if let [dest] = dests.as_slice() {
+                        let expr = if let IfThenElse = op {
+                            if let [cond, then_val, else_val] = srcs.as_slice() {
+                                format!(
+                                    "(if {} then {} else {})",
+                                    fmt_temp(*cond),
+                                    fmt_temp(*then_val),
+                                    fmt_temp(*else_val)
+                                )
+                            } else {
+                                panic!("unreachable: expected values for IfThenElse expressions")
+                            }
+                        } else if let Function(mid, fid, inst) = op {
+                            // Handle function calls for functions that can be emitted as Boogie functions
+                            if self.can_callee_be_function(*mid, *fid) {
+                                let env = fun_target.global_env();
+                                let module_env = env.get_module(*mid);
+                                let callee_env = module_env.get_function(*fid);
+                                let inst = &self.inst_slice(inst);
+                                let fun_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                format!("{}({})", fun_name, args)
+                            } else {
+                                continue;
+                            }
+                        } else if let Operation::GetField(mid, sid, inst, field_offset) = op {
+                            // Handle field access
+                            if let [src] = srcs.as_slice() {
+                                let inst = &self.inst_slice(inst);
+                                let mut src_str = fmt_temp(*src);
+                                let struct_env =
+                                    fun_target.global_env().get_module(*mid).into_struct(*sid);
+                                let field_env = &struct_env.get_field_by_offset(*field_offset);
+                                let sel_fun = boogie_field_sel(field_env, inst);
+                                if fun_target.get_local_type(*src).is_reference() {
+                                    src_str = format!("$Dereference({})", src_str);
+                                }
+                                format!("{}->{}", src_str, sel_fun)
+                            } else {
+                                continue;
+                            }
+                        } else if let Some((sym, arity)) = op_symbol(op) {
+                            if srcs.len() == arity {
+                                // Bitwise operations and shifts are functions, not operators
+                                let is_func_op = matches!(
+                                    op,
+                                    Operation::BitAnd
+                                        | Operation::BitOr
+                                        | Operation::Shl
+                                        | Operation::Shr
+                                );
+                                if is_func_op {
+                                    let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                    // For bitwise operations, we need to add type suffix
+                                    if matches!(op, Operation::BitAnd | Operation::BitOr) {
+                                        let type_suffix = match &fun_target.get_local_type(*dest) {
+                                            Type::Primitive(PrimitiveType::U8) => "'Bv8'",
+                                            Type::Primitive(PrimitiveType::U16) => "'Bv16'",
+                                            Type::Primitive(PrimitiveType::U32) => "'Bv32'",
+                                            Type::Primitive(PrimitiveType::U64) => "'Bv64'",
+                                            Type::Primitive(PrimitiveType::U128) => "'Bv128'",
+                                            Type::Primitive(PrimitiveType::U256) => "'Bv256'",
+                                            _ => "",
+                                        };
+                                        format!("{}{}({})", sym, type_suffix, args)
+                                    } else {
+                                        format!("{}({})", sym, args)
+                                    }
+                                } else if arity == 1 {
+                                    format!("({}{})", sym, fmt_temp(srcs[0]))
+                                } else {
+                                    format!("({} {} {})", fmt_temp(srcs[0]), sym, fmt_temp(srcs[1]))
+                                }
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        };
+                        bindings.push((*dest, expr));
+                    }
+                }
+                Ret(_, srcs) => {
+                    if let [src] = srcs.as_slice() {
+                        final_return_temp = Some(*src);
+                    }
+                }
+                Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
+                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) | Call(..) => {
+                    panic!(
+                        "Unsupported bytecode for #[ext(pure)] target: {:?}",
+                        bytecode
+                    )
+                }
+            }
+        }
+
+        // Emit using Boogie's var syntax: (var x := expr; body)
+        if bindings.is_empty() {
+            // No bindings, just return the value
+            if let Some(return_temp) = final_return_temp {
+                emitln!(writer, "{}", fmt_temp(return_temp));
+            } else {
+                panic!("expected Some return value");
+            }
+        } else {
+            // Emit nested var bindings: (var x := e; (var y := f; body))
+            for (dest, expr) in &bindings {
+                emitln!(writer, "(var $t{} := {};", dest, expr);
+            }
+
+            // Emit return value
+            if let Some(return_temp) = final_return_temp {
+                emit!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some((last_dest, _)) = bindings.last() {
+                emit!(writer, "$t{}", last_dest);
+            } else {
+                panic!("expected Some return value");
+            }
+
+            // Close all the nested parens
+            for _ in 0..bindings.len() {
+                emit!(writer, ")");
+            }
+            emitln!(writer, "");
+        }
     }
 
     /// Translates one bytecode instruction.
@@ -2495,9 +3116,15 @@ impl<'env> FunctionTranslator<'env> {
                         let mut use_func_datatypes = false;
 
                         let is_spec_call = self.parent.targets.get_fun_by_spec(id)
-                            == Some(&QualifiedId { module_id: *mid, id: *fid });
+                            == Some(&QualifiedId {
+                                module_id: *mid,
+                                id: *fid,
+                            });
 
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
+
+                        // Check if callee is marked as pure
+                        let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
@@ -2505,6 +3132,15 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if !use_func && env.should_be_used_as_func(&callee_env.get_qualified_id()) {
+                            use_func = true;
+                        }
+
+                        // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
+                        if callee_is_pure
+                            && !use_func
+                            && (self.style == FunctionTranslationStyle::Default
+                                || self.style == FunctionTranslationStyle::Pure)
+                        {
                             use_func = true;
                         }
 
@@ -2519,7 +3155,9 @@ impl<'env> FunctionTranslator<'env> {
                                 //  f(x) --> x := f(x)  if type(x) = &mut_
                                 .chain(
                                     srcs.iter()
-                                        .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
+                                        .filter(|idx| {
+                                            self.get_local_type(**idx).is_mutable_reference()
+                                        })
                                         .cloned()
                                         .map(str_local),
                                 )
@@ -2528,75 +3166,6 @@ impl<'env> FunctionTranslator<'env> {
 
                         // special casing for type reflection
                         let mut processed = false;
-
-                        // TODO(mengxu): change it to a better address name instead of extlib
-                        if env.get_extlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], false)
-                                    );
-                                }
-                                processed = true;
-                            } else if qualified_name == TYPE_INFO_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                let (flag, info) = boogie_reflection_type_info(env, &inst[0]);
-                                emitln!(self.writer(), "if (!{}) {{", flag);
-                                self.writer().with_indent(|| {
-                                    emitln!(self.writer(), "call $ExecFailureAbort();")
-                                });
-                                emitln!(self.writer(), "}");
-                                if !dest_str.is_empty() {
-                                    emitln!(self.writer(), "else {");
-                                    self.writer().with_indent(|| {
-                                        emitln!(self.writer(), "{} := {};", dest_str, info)
-                                    });
-                                    emitln!(self.writer(), "}");
-                                }
-                                processed = true;
-                            }
-                        }
-
-                        if env.get_stdlib_address() == *module_env.get_name().addr() {
-                            let qualified_name = format!(
-                                "{}::{}",
-                                module_env.get_name().name().display(env.symbol_pool()),
-                                callee_env.get_name().display(env.symbol_pool()),
-                            );
-                            if qualified_name == TYPE_NAME_GET_MOVE {
-                                assert_eq!(inst.len(), 1);
-                                if dest_str.is_empty() {
-                                    emitln!(
-                                        self.writer(),
-                                        "{}",
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                } else {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {};",
-                                        dest_str,
-                                        boogie_reflection_type_name(env, &inst[0], true)
-                                    );
-                                }
-                                processed = true;
-                            }
-                        }
 
                         if callee_env.get_qualified_id() == self.parent.env.global_borrow_mut_qid()
                         {
@@ -2683,8 +3252,7 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if is_spec_call && self.style == FunctionTranslationStyle::Opaque
-                        {
+                        if is_spec_call && self.style == FunctionTranslationStyle::Opaque {
                             if self
                                 .parent
                                 .targets
@@ -2709,15 +3277,18 @@ impl<'env> FunctionTranslator<'env> {
                                     .chain(ghost_args)
                                     .collect::<Vec<_>>();
                                 let args_str = all_args.join(", ");
-                                
-                                let fenv = &self.parent.env.get_function(mid.qualified(*fid));
-                                let data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
-                                let info = no_abort_analysis::get_info(data);
-                                if !info.does_not_abort && !self.parent.options.func_abort_check_only {
+
+                                if !no_abort_analysis::does_not_abort(
+                                    &self.parent.targets,
+                                    &self.parent.env.get_function(mid.qualified(*fid)),
+                                    None,
+                                ) {
                                     emitln!(
                                         self.writer(),
                                         "call $abort_if_cond := {}({});",
-                                        self.function_variant_name(FunctionTranslationStyle::Aborts),
+                                        self.function_variant_name(
+                                            FunctionTranslationStyle::Aborts
+                                        ),
                                         args_str,
                                     );
                                     emitln!(self.writer(), "$abort_flag := !$abort_if_cond;");
@@ -2752,7 +3323,7 @@ impl<'env> FunctionTranslator<'env> {
                             let caller_fid = self.fun_target.get_id();
                             let fun_verified =
                                 !self.fun_target.func_env.is_explicitly_not_verified(
-                                    &ProverOptions::get(self.fun_target.global_env()).verify_scope,
+                                    &self.parent.targets.prover_options().verify_scope,
                                 );
                             let mut fun_name = boogie_function_name(
                                 &callee_env,
@@ -2767,13 +3338,37 @@ impl<'env> FunctionTranslator<'env> {
                                             VerificationFlavor::Regular,
                                         )
                                 {
-                                    fun_name = format!("{}{}", fun_name, "$impl");
+                                    // Check if callee has $pure variant available
+                                    let callee_has_pure = {
+                                        let baseline_target = self
+                                            .parent
+                                            .targets
+                                            .get_target(&callee_env, &FunctionVariant::Baseline);
+                                        let translator = FunctionTranslator::new(
+                                            self.parent,
+                                            &baseline_target,
+                                            inst,
+                                            FunctionTranslationStyle::Pure,
+                                        );
+                                        translator.is_pure_function()
+                                    };
+
+                                    if callee_has_pure {
+                                        fun_name = format!("{}{}", fun_name, "$pure");
+                                    } else {
+                                        // Fallback to $impl if no $pure available
+                                        fun_name = format!("{}{}", fun_name, "$impl");
+                                    }
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
                                     || self.style == FunctionTranslationStyle::Opaque
                                 {
                                     let suffix = if use_impl { "$impl" } else { "$opaque" };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
+                            } else if !is_spec_call && use_func && callee_is_pure {
+                                // For non-spec calls using function syntax to pure functions,
+                                // add $pure suffix (regardless of current style)
+                                fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
                             // Helper function to check whether the idx corresponds to a bitwise operation
@@ -2929,14 +3524,25 @@ impl<'env> FunctionTranslator<'env> {
                         };
 
                         if use_func_datatypes {
-                            dests
-                                .iter()
-                                .enumerate()
-                                .for_each(|(idx, val)| emitln!(self.writer(), "{} := $temp_opaque_res_var -> $ret{};", str_local(*val), idx));
+                            dests.iter().enumerate().for_each(|(idx, val)| {
+                                emitln!(
+                                    self.writer(),
+                                    "{} := $temp_opaque_res_var -> $ret{};",
+                                    str_local(*val),
+                                    idx
+                                )
+                            });
                             srcs.iter()
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
-                                .for_each(|(idx, val)| emitln!(self.writer(), "{} := $temp_opaque_res_var -> $ret{};", str_local(*val), dests.len() + idx));
+                                .for_each(|(idx, val)| {
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $temp_opaque_res_var -> $ret{};",
+                                        str_local(*val),
+                                        dests.len() + idx
+                                    )
+                                });
                         }
 
                         // Clear the last track location after function call, as the call inserted
@@ -3774,7 +4380,7 @@ impl<'env> FunctionTranslator<'env> {
                             BitAnd => "$And",
                             _ => unreachable!(),
                         };
-                        if ProverOptions::get(env).bv_int_encoding {
+                        if self.parent.targets.prover_options().bv_int_encoding {
                             emitln!(
                                 self.writer(),
                                 "call {} := {}Int'u{}'({}, {});",
@@ -3874,11 +4480,12 @@ impl<'env> FunctionTranslator<'env> {
                             true_expr_str,
                             false_expr_str
                         );
-                    },
-                    Quantifier(qt, qid, inst) => {
+                    }
+                    Quantifier(qt, qid, inst, li) => {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
-                        let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
+                        let fun_name =
+                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
 
                         let param_types = fun_env.get_parameter_types();
                         let loc_type = param_types[0].skip_reference().instantiate(inst);
@@ -3886,20 +4493,81 @@ impl<'env> FunctionTranslator<'env> {
                         let suffix = boogie_type_suffix(env, &loc_type);
                         let b_type = boogie_type(env, &loc_type);
 
+                        let cr_args = |local_name: &str| {
+                            if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                                srcs.iter()
+                                    .enumerate()
+                                    .map(|(index, vidx)| {
+                                        if index == *li {
+                                            local_name.to_string()
+                                        } else {
+                                            format!("$t{}", vidx)
+                                        }
+                                    })
+                                    .join(", ")
+                            } else {
+                                let lambda_arg = format!("ReadVec($t{}, {})", srcs[0], local_name);
+                                srcs.iter()
+                                    .skip(1)
+                                    .enumerate()
+                                    .map(|(index, vidx)| {
+                                        if index == *li {
+                                            lambda_arg.clone()
+                                        } else {
+                                            format!("$t{}", vidx)
+                                        }
+                                    })
+                                    .join(", ")
+                            }
+                        };
+
                         match qt {
                             QuantifierType::Forall => {
-                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));", dests[0], b_type, suffix, fun_name, cr_args("x"));
                             },
                             QuantifierType::Exists => {
-                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}(x));", dests[0], b_type, suffix, fun_name);
+                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));", dests[0], b_type, suffix, fun_name, cr_args("x"));
                             },
                             QuantifierType::Map => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
                                 emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}(ReadVec($t{}, i)));", srcs[0], dests[0], fun_name, srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, cr_args("i"));
+                            }
+                            QuantifierType::Any => {
+                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
+                            }
+                            QuantifierType::All => {
+                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
+                            }
+                            QuantifierType::Find => {
+                                emitln!(self.writer(), "havoc $find_exists;");
+                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "if ($find_exists) {");
+                                emitln!(self.writer(), "    havoc $find_i;");
+                                emitln!(self.writer(), "    assume 0 <= $find_i && $find_i < LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'{}'(MakeVec1(ReadVec($t{}, $find_i)));", dests[0], suffix, srcs[0]);
+                                emitln!(self.writer(), "} else {");
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'{}'(EmptyVec());", dests[0], suffix);
+                                emitln!(self.writer(), "}");
+                            }
+                            QuantifierType::FindIndex => {
+                                emitln!(self.writer(), "havoc $find_exists;");
+                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "if ($find_exists) {");
+                                emitln!(self.writer(), "    havoc $find_i;");
+                                emitln!(self.writer(), "    assume 0 <= $find_i && $find_i < LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));", dests[0]);
+                                emitln!(self.writer(), "} else {");
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
+                                emitln!(self.writer(), "}");
                             }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }
-                    },
+                    }
                 }
                 match aa {
                     Some(AbortAction::Jump(target, code)) => {
@@ -3908,7 +4576,7 @@ impl<'env> FunctionTranslator<'env> {
                         *last_tracked_loc = None;
                         self.track_loc(last_tracked_loc, &loc);
                         let code_str = str_local(*code);
-                        let code_val = if ProverOptions::get(env).bv_int_encoding {
+                        let code_val = if self.parent.targets.prover_options().bv_int_encoding {
                             "$abort_code"
                         } else {
                             "$int2bv.64($abort_code)"
@@ -3937,10 +4605,19 @@ impl<'env> FunctionTranslator<'env> {
             }
             Abort(_, src) => {
                 let mut underlying_aborts = true;
-                if let Some(fid) = self.parent.targets.get_fun_by_spec(&self.fun_target.func_env.get_qualified_id()) {
+                if let Some(fid) = self
+                    .parent
+                    .targets
+                    .get_fun_by_spec(&self.fun_target.func_env.get_qualified_id())
+                {
                     let fenv = &self.parent.env.get_function(*fid);
-                    let underlying_data = self.parent.targets.get_target(fenv, &FunctionVariant::Baseline).data;
-                    underlying_aborts = !no_abort_analysis::get_info(&underlying_data).does_not_abort;
+                    let underlying_data = self
+                        .parent
+                        .targets
+                        .get_target(fenv, &FunctionVariant::Baseline)
+                        .data;
+                    underlying_aborts =
+                        !no_abort_analysis::get_info(&underlying_data).does_not_abort;
                 }
 
                 if FunctionTranslationStyle::Default == self.style
@@ -3999,7 +4676,7 @@ impl<'env> FunctionTranslator<'env> {
                     );
                 }
                 let src_str = str_local(*src);
-                let src_val = if ProverOptions::get(env).bv_int_encoding {
+                let src_val = if self.parent.targets.prover_options().bv_int_encoding {
                     src_str
                 } else {
                     format!("$bv2int.64({})", src_str)

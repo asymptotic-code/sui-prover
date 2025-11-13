@@ -14,7 +14,6 @@ use std::fmt::{self, Formatter};
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    options::ProverOptions,
 };
 use move_model::model::{FunId, QualifiedId};
 
@@ -83,7 +82,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         // This function implements the logic to decide whether to verify this function
-        let fun_name = fun_env.get_full_name_str();
 
         // Rule 0a: mark essential functions that are needed for the verification pipeline
         let info = data
@@ -133,8 +131,9 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
-            if targets.is_spec(&fun_env.get_qualified_id())
-                && Self::is_within_verification_scope(fun_env)
+            if (targets.is_verified_spec(&fun_env.get_qualified_id())
+                || targets.is_spec(&fun_env.get_qualified_id()) && !targets.has_target_mode())
+                && Self::is_within_verification_scope(fun_env, &targets)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
                 // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
@@ -179,7 +178,8 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Remove functions that aren't used for verification
-        // Keep: verified functions, inlined functions, essential functions, reachable functions, datatype invariant functions
+        // Keep: verified functions, inlined functions, essential functions, reachable functions,
+        // datatype invariant functions, loop invariant functions
 
         let mut functions_to_keep = BTreeSet::new();
 
@@ -201,6 +201,23 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 }
             }
         }
+
+        // Mark loop invariant functions as inlined
+        targets
+            .get_loop_inv_with_targets()
+            .iter()
+            .for_each(|(target_qid, invs)| {
+                let target_data = targets.get_data(&target_qid, &FunctionVariant::Baseline);
+
+                if let Some(target_data) = target_data {
+                    let target_info = target_data.annotations.get::<VerificationInfo>();
+                    if let Some(target_info) = target_info {
+                        if target_info.inlined {
+                            functions_to_keep.extend(invs);
+                        }
+                    }
+                }
+            });
 
         // Mark functions reachable from verified/inlined/essential functions and collect them
         let reachable_functions = Self::mark_reachable(env, targets, &functions_to_keep);
@@ -310,8 +327,8 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         writeln!(f, "]")
     }
 
-    fn initialize(&self, env: &GlobalEnv, _targets: &mut FunctionTargetsHolder) {
-        let options = ProverOptions::get(env);
+    fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        let options = targets.prover_options();
 
         // If we are verifying only one function or module, check that this indeed exists.
         match &options.verify_scope {
@@ -461,10 +478,11 @@ impl VerificationAnalysisProcessor {
     }
 
     /// Check whether the function falls within the verification scope given in the options
-    fn is_within_verification_scope(fun_env: &FunctionEnv) -> bool {
-        let env = fun_env.module_env.env;
-        let options = ProverOptions::get(env);
-        match &options.verify_scope {
+    fn is_within_verification_scope(
+        fun_env: &FunctionEnv,
+        targets: &FunctionTargetsHolder,
+    ) -> bool {
+        match &targets.prover_options().verify_scope {
             VerificationScope::Public => fun_env.is_exposed(),
             VerificationScope::All => true,
             VerificationScope::Only(name) => fun_env.matches_name(name),
@@ -560,7 +578,7 @@ impl VerificationAnalysisProcessor {
                 continue;
             }
             processed.insert(fun_id);
-            
+
             let fun_env = env.get_function(fun_id);
 
             // Mark all callees as reachable
@@ -568,30 +586,32 @@ impl VerificationAnalysisProcessor {
                 if processed.contains(&callee) {
                     continue;
                 }
-                
+
                 let callee_env = env.get_function(callee);
                 let mut should_mark_reachable = false;
-                
+
                 // Check if this function needs to be marked as reachable
                 for variant in targets.get_target_variants(&callee_env) {
                     if let Some(data) = targets.get_data(&callee, &variant) {
                         let info = get_info(&FunctionTarget::new(&callee_env, data));
-                        
+
                         // Skip if already processed (verified, inlined, essential, or reachable)
                         if info.verified || info.inlined || info.essential || info.reachable {
                             break;
                         }
-                        
+
                         should_mark_reachable = true;
                         break;
                     }
                 }
-                
+
                 if should_mark_reachable {
                     // Mark as reachable across all variants
                     for variant in targets.get_target_variants(&callee_env) {
                         if let Some(data) = targets.get_data_mut(&callee, &variant) {
-                            let info = data.annotations.get_or_default_mut::<VerificationInfo>(true);
+                            let info = data
+                                .annotations
+                                .get_or_default_mut::<VerificationInfo>(true);
                             info.reachable = true;
                         }
                     }
@@ -600,7 +620,7 @@ impl VerificationAnalysisProcessor {
                 }
             }
         }
-        
+
         reachable_functions
     }
 

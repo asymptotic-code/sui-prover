@@ -4,10 +4,13 @@
 
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
-use move_binary_format::file_format::FunctionHandleIndex;
 use core::fmt;
+use move_binary_format::file_format::FunctionHandleIndex;
 use std::{
-    collections::{BTreeMap, BTreeSet}, fmt::Formatter, fs
+    any::Any,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Formatter,
+    fs,
 };
 
 use itertools::{Either, Itertools};
@@ -15,7 +18,10 @@ use log::debug;
 use petgraph::graph::DiGraph;
 
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_}, shared::known_attributes::{AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute}
+    expansion::ast::{ModuleAccess, ModuleAccess_},
+    shared::known_attributes::{
+        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
+    },
 };
 
 use move_model::{
@@ -25,11 +31,19 @@ use move_model::{
 
 use crate::{
     function_target::{FunctionData, FunctionTarget},
+    options::ProverOptions,
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
-    stackless_control_flow_graph::generate_cfg_in_dot_format, 
+    stackless_control_flow_graph::generate_cfg_in_dot_format,
     target_filter::TargetFilterOptions,
 };
+
+#[derive(Debug, Clone)]
+pub enum FunctionHolderTarget {
+    None,
+    Function(QualifiedId<FunId>),
+    Module(ModuleId),
+}
 
 /// A data structure which holds data for multiple function targets, and allows to
 /// manipulate them as part of a transformation pipeline.
@@ -38,16 +52,20 @@ pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
-    no_focus_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     skip_specs: BTreeMap<QualifiedId<FunId>, String>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
+    spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
+    spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target_modules: BTreeSet<ModuleId>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
+    target: FunctionHolderTarget,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     filter: TargetFilterOptions,
+    prover_options: ProverOptions,
 }
 
 /// Describes a function verification flavor.
@@ -179,22 +197,42 @@ pub struct FunctionTargetPipeline {
 }
 
 impl FunctionTargetsHolder {
-    pub fn new(filter: Option<TargetFilterOptions>) -> Self {
+    pub fn new(
+        prover_options: ProverOptions,
+        filter: TargetFilterOptions,
+        target: FunctionHolderTarget,
+    ) -> Self {
         Self {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
-            no_focus_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
             skip_specs: BTreeMap::new(),
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
+            spec_boogie_options: BTreeMap::new(),
+            spec_timeouts: BTreeMap::new(),
             datatype_invs: BiBTreeMap::new(),
             target_modules: BTreeSet::new(),
-            filter: filter.unwrap_or_default(),
             abort_check_functions: BTreeSet::new(),
+            prover_options,
+            filter,
+            target,
+            loop_invariants: BTreeMap::new(),
         }
+    }
+
+    pub fn new_dummy(&self) -> Self {
+        Self::new(
+            self.prover_options.clone(),
+            TargetFilterOptions::default(),
+            FunctionHolderTarget::None,
+        )
+    }
+
+    pub fn prover_options(&self) -> &ProverOptions {
+        &self.prover_options
     }
 
     /// Counts system specs dynamically based on their module addresses.
@@ -206,11 +244,19 @@ impl FunctionTargetsHolder {
         let system_address = &0u16.into(); // Address 0x0 used by system modules
 
         // Count function specs from system modules
-        for spec_id in self.function_specs.left_values().chain(self.scenario_specs.iter()) {
+        for spec_id in self
+            .function_specs
+            .left_values()
+            .chain(self.scenario_specs.iter())
+        {
             let func_env = env.get_function(*spec_id);
             let module_env = &func_env.module_env;
             if module_env.get_name().addr() == system_address {
-                let module_name = module_env.get_name().name().display(env.symbol_pool()).to_string();
+                let module_name = module_env
+                    .get_name()
+                    .name()
+                    .display(env.symbol_pool())
+                    .to_string();
                 if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
                     system_specs_count += 1;
                 }
@@ -218,74 +264,6 @@ impl FunctionTargetsHolder {
         }
 
         system_specs_count
-    }
-
-    pub fn for_one_spec(target: &QualifiedId<FunId>, instance: FunctionTargetsHolder) -> Self {
-        let mut focus_specs = BTreeSet::new();
-        focus_specs.insert(*target);
-
-        let mut no_specs = instance.no_focus_specs.clone();
-        no_specs.append(&mut instance.no_verify_specs.clone());
-        no_specs.remove(target);
-
-        Self {
-            targets: instance.targets,
-            function_specs: instance.function_specs,
-            no_verify_specs: no_specs.clone(),
-            no_focus_specs: no_specs.clone(),
-            focus_specs: focus_specs,
-            ignore_aborts: instance.ignore_aborts,
-            scenario_specs: instance.scenario_specs,
-            datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules,
-            omit_opaque_specs: instance.omit_opaque_specs,
-            skip_specs: instance.skip_specs,
-            filter: instance.filter,
-            abort_check_functions: instance.abort_check_functions,
-        }
-    }
-
-    pub fn for_one_module(
-        target: &ModuleId,
-        instance: FunctionTargetsHolder,
-        env: &GlobalEnv,
-    ) -> Self {
-        let mut focus_specs = BTreeSet::new();
-        let mut no_focus_specs = BTreeSet::new();
-        no_focus_specs.append(&mut instance.no_focus_specs.clone());
-
-        let mut no_verify_specs: BTreeSet<QualifiedId<FunId>> = BTreeSet::new();
-        no_verify_specs.append(&mut instance.no_verify_specs.clone());
-
-        for id in instance.focus_specs() {
-            if env.get_function(*id).module_env.get_id() == *target {
-                focus_specs.insert(*id);
-            } else {
-                no_focus_specs.insert(*id);
-            }
-        }
-
-        for (id, _) in instance.function_specs() {
-            if env.get_function(*id).module_env.get_id() != *target {
-                no_verify_specs.insert(*id);
-            }
-        }
-
-        Self {
-            focus_specs,
-            no_focus_specs,
-            no_verify_specs,
-            targets: instance.targets,
-            function_specs: instance.function_specs,
-            ignore_aborts: instance.ignore_aborts,
-            scenario_specs: instance.scenario_specs,
-            datatype_invs: instance.datatype_invs,
-            target_modules: instance.target_modules,
-            omit_opaque_specs: instance.omit_opaque_specs,
-            skip_specs: instance.skip_specs,
-            filter: instance.filter,
-            abort_check_functions: instance.abort_check_functions,
-        }
     }
 
     /// Get an iterator for all functions this holder.
@@ -314,16 +292,12 @@ impl FunctionTargetsHolder {
         self.function_specs.get_by_right(id)
     }
 
-    pub fn no_verify_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
+    pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
         if self.focus_specs.is_empty() {
-            &self.no_verify_specs
+            Box::new(self.no_verify_specs.iter())
         } else {
-            &self.no_focus_specs
+            Box::new(self.specs().filter(|s| !self.focus_specs.contains(s)))
         }
-    }
-
-    pub fn no_focus_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.no_focus_specs
     }
 
     pub fn focus_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
@@ -366,8 +340,8 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_verify_specs().contains(id)
     }
 
-    pub fn is_focus_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.is_spec(id) && !self.no_focus_specs.contains(id)
+    pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
+        self.scenario_specs.contains(id)
     }
 
     pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
@@ -393,7 +367,7 @@ impl FunctionTargetsHolder {
     }
 
     pub fn verify_specs_count(&self) -> usize {
-        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().len()
+        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().count()
     }
 
     pub fn abort_checks_count(&self) -> usize {
@@ -417,6 +391,43 @@ impl FunctionTargetsHolder {
 
     pub fn get_datatype_invs(&self) -> &BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>> {
         &self.datatype_invs
+    }
+
+    pub fn get_spec_boogie_options(&self, id: &QualifiedId<FunId>) -> Option<&String> {
+        self.spec_boogie_options.get(id)
+    }
+
+    pub fn has_spec_boogie_options(&self) -> bool {
+        !self.spec_boogie_options.is_empty()
+    }
+
+    pub fn get_spec_timeout(&self, id: &QualifiedId<FunId>) -> Option<&u64> {
+        self.spec_timeouts.get(id)
+    }
+
+    pub fn has_target_mode(&self) -> bool {
+        !matches!(self.target, FunctionHolderTarget::None)
+    }
+
+    pub fn get_loop_invariants(
+        &self,
+        id: &QualifiedId<FunId>,
+    ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
+        self.loop_invariants.get(id)
+    }
+
+    pub fn get_loop_inv_with_targets(
+        &self,
+    ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
+        self.loop_invariants
+            .iter()
+            .map(|(target_fun_id, invs)| {
+                (
+                    target_fun_id.clone(),
+                    invs.iter().map(|el| el.0.clone()).collect(),
+                )
+            })
+            .collect()
     }
 
     /// Return the specification of the callee function if the specification can
@@ -448,51 +459,83 @@ impl FunctionTargetsHolder {
             .get_toplevel_attributes()
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
-         {
+        {
             let abort_check = attrs
                 .into_iter()
-                .any(|attr| 
-                    attr.2.value.name().value.as_str() == "no_abort".to_string()
-                );
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string());
             if abort_check {
-                self.abort_check_functions.insert(func_env.get_qualified_id());
+                self.abort_check_functions
+                    .insert(func_env.get_qualified_id());
                 self.target_modules.insert(func_env.module_env.get_id());
             }
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec { focus, prove, skip, target, no_opaque, ignore_abort })) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
+            focus,
+            prove,
+            skip,
+            target,
+            no_opaque,
+            ignore_abort,
+            boogie_opt,
+            timeout,
+        })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
-            let targeted = self.filter.is_targeted(func_env);
+            let targeted = match self.target {
+                FunctionHolderTarget::None => self.filter.is_targeted(func_env),
+                FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
+                FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
+            };
+
+            if let Some(opt) = boogie_opt {
+                self.spec_boogie_options
+                    .insert(func_env.get_qualified_id(), opt.clone());
+            }
+
+            if let Some(timeout) = timeout {
+                self.spec_timeouts
+                    .insert(func_env.get_qualified_id(), *timeout);
+            }
 
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 
             if skip.is_some() {
-                self.skip_specs.insert(func_env.get_qualified_id(), skip.clone().unwrap());
-            }
-
-            if (!*prove && !*focus) || skip.is_some() || !targeted {
-                self.no_verify_specs.insert(func_env.get_qualified_id());
-            }
-
-            if *focus {
-                self.focus_specs.insert(func_env.get_qualified_id());
-            } else {
-                self.no_focus_specs.insert(func_env.get_qualified_id());
+                self.skip_specs
+                    .insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
             if *ignore_abort {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
+            if skip.is_some() || !targeted {
+                self.no_verify_specs.insert(func_env.get_qualified_id());
+            } else {
+                if *focus {
+                    if self.prover_options.ci {
+                        func_env.module_env.env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "The 'focus' attribute is restricted in CI mode.",
+                        );
+                        return;
+                    }
+                    self.focus_specs.insert(func_env.get_qualified_id());
+                } else if !*prove {
+                    self.no_verify_specs.insert(func_env.get_qualified_id());
+                }
+            }
+
             if target.is_some() {
                 let env = func_env.module_env.env;
 
-                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env) {
+                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env)
+                {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
                         Self::process_spec(
@@ -539,7 +582,10 @@ impl FunctionTargetsHolder {
             self.target_modules.insert(func_env.module_env.get_id());
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly { inv_target })) = func_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
+            inv_target,
+            loop_inv,
+        })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
             .map(|attr| &attr.value)
@@ -550,8 +596,31 @@ impl FunctionTargetsHolder {
 
             let env = func_env.module_env.env;
 
+            if let Some(loop_inv) = loop_inv {
+                match Self::parse_module_access(&loop_inv.target, env, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        let module_env = env.find_module(&module_name).unwrap();
+                        self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
+                    }
+                    None => {
+                        let module_name = func_env.module_env.get_full_name_str();
+
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!("Error parsing module path '{}'", module_name),
+                        );
+                    }
+                }
+                return;
+            }
+
             if inv_target.is_some() {
-                match Self::parse_module_access(inv_target.as_ref().unwrap(), env, &func_env.module_env) {
+                match Self::parse_module_access(
+                    inv_target.as_ref().unwrap(),
+                    env,
+                    &func_env.module_env,
+                ) {
                     Some((module_name, struct_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
 
@@ -601,17 +670,26 @@ impl FunctionTargetsHolder {
                 // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
                 let function_name = name.value.to_string();
                 let function_symbol = env.symbol_pool().make(&function_name);
-                
+
                 // First try to find the function in the current module
                 if current_module.find_function(function_symbol).is_some() {
                     return Some((current_module.get_name().clone(), function_name));
                 }
 
-                let handle_index = current_module.data.module.function_handles()
+                let handle_index = current_module
+                    .data
+                    .module
+                    .function_handles()
                     .iter()
                     .enumerate()
                     .find_map(|(h_index, handle)| {
-                        if function_name == current_module.data.module.identifier_at(handle.name).to_string() {
+                        if function_name
+                            == current_module
+                                .data
+                                .module
+                                .identifier_at(handle.name)
+                                .to_string()
+                        {
                             Some(FunctionHandleIndex(h_index.try_into().unwrap()))
                         } else {
                             None
@@ -619,7 +697,7 @@ impl FunctionTargetsHolder {
                     });
 
                 if handle_index.is_some() {
-                    let func_env= current_module.get_used_function(handle_index.unwrap());
+                    let func_env = current_module.get_used_function(handle_index.unwrap());
                     Some((func_env.module_env.get_name().clone(), function_name))
                 } else {
                     None
@@ -676,6 +754,74 @@ impl FunctionTargetsHolder {
                     func_name,
                     module_env.get_full_name_str()
                 ),
+            );
+        }
+    }
+
+    fn process_loop_inv(
+        &mut self,
+        func_env: &FunctionEnv<'_>,
+        module_env: &ModuleEnv<'_>,
+        fun_name: String,
+        label: usize,
+    ) {
+        let env = module_env.env;
+
+        if let Some(target_func_env) =
+            module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
+        {
+            if let Some(existing) = self
+                .loop_invariants
+                .get_mut(&target_func_env.get_qualified_id())
+            {
+                match existing.insert(func_env.get_qualified_id(), label) {
+                    bimap::Overwritten::Neither => {}
+                    bimap::Overwritten::Left(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!(
+                                "Duplicated Loop Invariant Function {} in {}",
+                                func_env.get_full_name_str(),
+                                fun_name
+                            ),
+                        );
+                        return;
+                    }
+                    bimap::Overwritten::Right(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
+                        );
+                        return;
+                    }
+                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            &format!(
+                                "Duplicated Loop Invariant Function {} and Label {} in {}",
+                                func_env.get_full_name_str(),
+                                label,
+                                fun_name
+                            ),
+                        );
+                    }
+                }
+            } else {
+                self.loop_invariants
+                    .insert(target_func_env.get_qualified_id(), {
+                        let mut map = BiBTreeMap::new();
+                        map.insert(func_env.get_qualified_id(), label);
+                        map
+                    });
+            }
+        } else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!("Invalid Loop Invariant Function Provided: {}", fun_name),
             );
         }
     }
@@ -818,6 +964,17 @@ impl FunctionTargetsHolder {
             .insert(variant, data);
     }
 
+    pub fn get_annotation<T: Any>(&self, id: &QualifiedId<FunId>, variant: &FunctionVariant) -> &T {
+        self.get_data(id, variant)
+            .expect("function data not found")
+            .annotations
+            .get::<T>()
+            .expect(&format!(
+                "annotation {} not found",
+                std::any::type_name::<T>()
+            ))
+    }
+
     /// Processes the function target data for given function.
     fn process(
         &mut self,
@@ -826,13 +983,13 @@ impl FunctionTargetsHolder {
         scc_opt: Option<&[FunctionEnv]>,
     ) {
         let id = func_env.get_qualified_id();
-        
+
         // Check if this function exists in targets before processing
         if !self.targets.contains_key(&id) {
             // Function was removed from targets, skip processing
             return;
         }
-        
+
         for variant in self.get_target_variants(func_env) {
             // Remove data so we can own it.
             let data = self.remove_target_data(&id, &variant);
@@ -943,7 +1100,7 @@ impl FunctionTargetPipeline {
                 let dst_qid = targets
                     .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
                     .unwrap_or(&callee);
-                
+
                 // Check if the callee exists in targets before trying to access it
                 if let Some(dst_idx) = nodes.get(dst_qid) {
                     graph.add_edge(*src_idx, *dst_idx, ());
@@ -1144,4 +1301,3 @@ impl FunctionTargetPipeline {
         }
     }
 }
-

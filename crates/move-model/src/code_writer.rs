@@ -8,7 +8,7 @@
 //!   so its on the bottom of the dependency relation, and there is no `utility` crate
 //!   where it could belong to.
 
-use std::{collections::BTreeMap, ops::Bound};
+use std::{collections::BTreeMap, fmt::Debug, ops::Bound};
 
 use codespan::{ByteIndex, ByteOffset, ColumnIndex, Files, LineIndex, RawIndex, RawOffset};
 
