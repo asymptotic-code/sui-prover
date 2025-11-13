@@ -2436,22 +2436,28 @@ impl<'env> FunctionTranslator<'env> {
 
     fn create_quantifiers_temp_vars(&self) {
         let mut find_emited = false;
-        let mut range_emited = false;
+        let mut rvs = BTreeSet::new();
         for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _, rv), _, _) = bc {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _, rv), _, _) = bc {
                 if !find_emited && matches!(qt, QuantifierType::Find | QuantifierType::FindIndex) {
                     emitln!(self.parent.writer, "var $find_i: int;");
                     emitln!(self.parent.writer, "var $find_exists: bool;");
                     find_emited = true;
                 }
+                if *rv {
+                    let loc_type = self.parent.env.get_function(*qid).get_parameter_types()[0]
+                        .skip_reference()
+                        .instantiate(&self.inst_slice(inst));
+                    let suffix = boogie_type_suffix(self.parent.env, &loc_type);
 
-                if !range_emited && *rv {
-                    emitln!(self.parent.writer, "var $range_v: Vec int;");
-                    range_emited = true;
-                }
-
-                if range_emited && find_emited {
-                    break;
+                    if rvs.insert(suffix.clone()) {
+                        emitln!(
+                            self.parent.writer,
+                            "var $range_v_{}: Vec {};",
+                            suffix,
+                            boogie_type(self.parent.env, &loc_type)
+                        );
+                    }
                 }
             }
         }
@@ -4519,7 +4525,7 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 let (lambda_arg, args) = if *vranges {
                                     (
-                                        format!("ReadVec($range_v, {})", local_name),
+                                        format!("ReadVec($range_v_{}, {})", suffix, local_name),
                                         srcs.iter().skip(3),
                                     )
                                 } else {
@@ -4542,10 +4548,11 @@ impl<'env> FunctionTranslator<'env> {
                         };
 
                         if qt.vector_based() && *vranges {
-                            emitln!(self.writer(), "havoc $range_v;");
+                            emitln!(self.writer(), "havoc $range_v_{};", suffix);
                             emitln!(
                                 self.writer(),
-                                "assume $range_v == SliceVec($t{}, $t{}, $t{});",
+                                "assume $range_v_{} == SliceVec($t{}, $t{}, $t{});",
+                                suffix,
                                 srcs[0],
                                 srcs[1],
                                 srcs[2]
@@ -4553,7 +4560,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         let source_vec = if *vranges {
-                            "$range_v"
+                            &format!("$range_v_{}", suffix)
                         } else if qt.vector_based() {
                             &format!("$t{}", srcs[0])
                         } else {
