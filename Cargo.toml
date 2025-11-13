@@ -9,6 +9,7 @@ members = [
   "crates/lambda-boogie-handler",
 ]
 
+default-members = ["crates/sui-prover"]
 [profile.release]
 debug = 1
 split-debuginfo = 'packed'
@@ -25,6 +26,11 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(msim)',
   'cfg(fail_points)',
 ] }
+dead_code = "allow"
+unused_variables = "allow"
+unused_imports = "deny"
+unused_mut = "deny"
+mismatched_lifetime_syntaxes = "allow"
 
 [workspace.dependencies]
 move-model = { path = "crates/move-model" }

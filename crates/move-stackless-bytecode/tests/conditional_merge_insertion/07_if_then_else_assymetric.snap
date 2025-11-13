@@ -75,12 +75,8 @@ public fun test::f($t0|a: u64): u64 {
  14: label L2
      # conditional_merge_insertion: t13 := if_then_else(t5, t3, t10)
  15: $t13 := if_then_else($t5, $t3, $t10)
-     # conditional_merge_insertion: merge assign t1 := t13
- 16: $t1 := $t13
      # conditional_merge_insertion: t14 := if_then_else(t5, t11, t12)
- 17: $t14 := if_then_else($t5, $t11, $t12)
-     # conditional_merge_insertion: merge assign t2 := t14
- 18: $t2 := $t14
- 19: $t9 := *($t1, $t2)
- 20: return $t9
+ 16: $t14 := if_then_else($t5, $t11, $t12)
+ 17: $t9 := *($t13, $t14)
+ 18: return $t9
 }

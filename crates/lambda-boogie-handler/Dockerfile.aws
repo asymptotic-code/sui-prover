@@ -1,0 +1,100 @@
+FROM --platform=linux/arm64 public.ecr.aws/amazonlinux/amazonlinux:latest AS builder
+
+ENV DOTNET_INSTALL_DIR="/opt/dotnet/"
+ENV INSTALL_DIR="/opt/bin/"
+ENV Z3_VERSION="4.15.3"
+ENV DOTNET_VERSION="8.0"
+ENV PATH="/opt/bin:/opt/dotnet:$PATH"
+
+RUN yum update -y && \
+    yum groupinstall -y "Development Tools" && \
+    yum install -y --allowerasing \
+        curl \
+        unzip \
+        git \
+        tar \
+        icu \
+        zlib \
+        openssl-devel \
+        libicu-devel \
+        zlib-devel && \
+    yum clean all
+
+RUN mkdir -p "${DOTNET_INSTALL_DIR}" "${INSTALL_DIR}" /app
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:$PATH"
+
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh | \
+    TERM=linux /bin/bash -s -- --channel ${DOTNET_VERSION} --install-dir "${DOTNET_INSTALL_DIR}" --version latest
+
+RUN Z3_PKG="z3-${Z3_VERSION}-arm64-glibc-2.34" && \
+    curl -LOs "https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_PKG}.zip" && \
+    unzip -q "${Z3_PKG}.zip" && \
+    cp "${Z3_PKG}/bin/z3" "${INSTALL_DIR}" && \
+    chmod +x "${INSTALL_DIR}z3" && \
+    rm -rf "${Z3_PKG}.zip" "${Z3_PKG}"
+
+RUN mkdir -p "${DOTNET_INSTALL_DIR}tools/" && \
+    "${DOTNET_INSTALL_DIR}dotnet" tool install --tool-path "${DOTNET_INSTALL_DIR}tools/" Boogie
+
+# Download Lambda Runtime Interface Emulator
+RUN curl -Lo /opt/aws-lambda-rie \
+    https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie-arm64 && \
+    chmod +x /opt/aws-lambda-rie
+
+COPY . /app/
+WORKDIR /app
+
+RUN cargo build --release --bin lambda-handler
+
+FROM --platform=linux/arm64 public.ecr.aws/amazonlinux/amazonlinux:latest
+
+RUN yum update -y && \
+    yum install -y \
+        libicu \
+        zlib \
+        openssl \
+        ca-certificates \
+        shadow-utils \
+        procps-ng && \
+    yum clean all
+
+# Create init script to set max pipe size at runtime
+RUN echo '#!/bin/sh' > /opt/init.sh && \
+    echo 'echo 1048576 > /proc/sys/fs/pipe-max-size 2>/dev/null || true' >> /opt/init.sh && \
+    echo 'exec "$@"' >> /opt/init.sh && \
+    chmod +x /opt/init.sh
+
+ENV DOTNET_ROOT="/opt/dotnet"
+ENV PATH="/opt/bin:/opt/dotnet:/opt/dotnet/tools:$PATH"
+ENV BOOGIE_EXE="/opt/dotnet/tools/boogie"
+ENV Z3_EXE="/opt/bin/z3"
+
+# .NET GC settings to prevent memory bloat, 6GB
+ENV DOTNET_GCHeapHardLimit=6442450944
+ENV DOTNET_GCServer=0
+ENV DOTNET_GCRetainVM=0
+ENV DOTNET_GCConserveMemory=9
+
+RUN mkdir -p /opt/bin /opt/dotnet/tools
+
+COPY --from=builder /opt/dotnet /opt/dotnet
+COPY --from=builder /opt/bin/z3 /opt/bin/z3
+COPY --from=builder /app/target/release/lambda-handler /opt/bin/lambda-handler
+COPY --from=builder /opt/aws-lambda-rie /usr/local/bin/aws-lambda-rie
+
+RUN chmod +x /opt/bin/lambda-handler /usr/local/bin/aws-lambda-rie
+
+# Create entry point script to detect local vs Lambda environment
+RUN echo '#!/bin/sh' > /entry.sh && \
+    echo 'if [ -z "${AWS_LAMBDA_RUNTIME_API}" ]; then' >> /entry.sh && \
+    echo '  /usr/local/bin/aws-lambda-rie /opt/bin/lambda-handler' >> /entry.sh && \
+    echo 'else' >> /entry.sh && \
+    echo '  /opt/bin/lambda-handler' >> /entry.sh && \
+    echo 'fi' >> /entry.sh && \
+    chmod +x /entry.sh
+
+WORKDIR /var/task
+
+ENTRYPOINT ["/entry.sh"]

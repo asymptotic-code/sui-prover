@@ -6,14 +6,11 @@ use crate::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
-    // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
     debug_instrumentation::DebugInstrumenter,
     deterministic_analysis::DeterministicAnalysisProcessor,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
-    // global_invariant_analysis::GlobalInvariantAnalysisProcessor,
-    // global_invariant_instrumentation::GlobalInvariantInstrumentationProcessor,
     inconsistency_check::InconsistencyCheckInstrumenter,
     livevar_analysis::LiveVarAnalysisProcessor,
     loop_analysis::LoopAnalysisProcessor,
@@ -25,7 +22,9 @@ use crate::{
     no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
+    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
+    replacement_analysis::ReplacementAnalysisProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
     spec_purity_analysis::SpecPurityAnalysis,
@@ -34,7 +33,6 @@ use crate::{
     usage_analysis::UsageProcessor,
     verification_analysis::VerificationAnalysisProcessor,
     well_formed_instrumentation::WellFormedInstrumentationProcessor,
-    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
 };
 
 pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetPipeline {
@@ -47,6 +45,8 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         // transformation and analysis
         EliminateImmRefsProcessor::new(),
         MutRefInstrumenter::new(),
+        NoAbortAnalysisProcessor::new(),
+        DeterministicAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
@@ -56,7 +56,10 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     ];
 
     if options.enable_conditional_merge_insertion {
-        // TODO(rvantonder): uncomment when complete
+        // Rerun liveness analysis and its dependencies after MemoryInstrumentation
+        // to ensure fresh liveness annotations for ConditionalMergeInsertion
+        processors.push(ReachingDefProcessor::new());
+        processors.push(LiveVarAnalysisProcessor::new());
         processors.push(ConditionalMergeInsertionProcessor::new());
     }
 
@@ -65,9 +68,8 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         UsageProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
-        NoAbortAnalysisProcessor::new(),
-        DeterministicAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
+        ReplacementAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {

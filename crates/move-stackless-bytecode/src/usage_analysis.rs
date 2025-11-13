@@ -257,13 +257,13 @@ impl<'a> TransferFunctions for MemoryUsageAnalysis<'a> {
                 //         .into_iter()
                 //         .map(|(usage, _)| usage),
                 // ),
-                Assume => {},
+                Assume => {}
                 // Assert => state.add_direct_asserted_iter(
                 //     exp.used_memory(self.cache.global_env())
                 //         .into_iter()
                 //         .map(|(usage, _)| usage),
                 // ),
-                Assert => {},
+                Assert => {}
                 Modifies => {
                     // do nothing, as the `modifies` memories are captured by other sets
                 }

@@ -1,0 +1,23 @@
+name: Code Quality Check
+
+on: [pull_request]
+
+jobs:
+  code-quality-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Check for warnings
+      run: cargo check --all-targets --all-features
+      env:
+        RUSTFLAGS: "-D warnings"
+
+    - name: Run rustfmt
+      run: cargo fmt --all -- --check

@@ -1,0 +1,21 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 270
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/find_find_index.fail.move:29:5
+   │
+29 │     ensures(option::is_some(result4)); // should fail because here we expect none
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/find_find_index.fail.move:27: test_find
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/find_find_index.fail.move:38:5
+   │
+38 │     ensures(*option::borrow(&idx1) == 1); // should fail because here we expect index 0
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/find_find_index.fail.move:34: test_find_index

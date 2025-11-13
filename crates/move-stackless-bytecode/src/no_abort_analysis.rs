@@ -74,9 +74,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        let info = data
-            .annotations
-            .get_or_default_mut::<NoAbortInfo>(true);
+        let info = data.annotations.get_or_default_mut::<NoAbortInfo>(true);
 
         let env = fun_env.module_env.env;
         let qualified_id = fun_env.get_qualified_id();
@@ -100,18 +98,20 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         for bytecode in data.code.iter() {
             let aborts = match bytecode {
                 // calles covered upper
-                Bytecode::Call(_, _, op, _, _) =>  op.can_abort() && !matches!(op, Operation::Function { .. }),
+                Bytecode::Call(_, _, op, _, _) => {
+                    op.can_abort() && !matches!(op, Operation::Function { .. })
+                }
                 Bytecode::Abort(_, _) => true,
                 Bytecode::Prop(_, kind, _) => *kind == PropKind::Assert,
-                Bytecode::Assign(_, _, _, _) |
-                Bytecode::Branch(_, _, _, _) |
-                Bytecode::Load(_, _, _) |
-                Bytecode::Ret(_, _) |
-                Bytecode::Jump(_, _) |
-                Bytecode::VariantSwitch(_, _, _) |
-                Bytecode::Label(_, _) |
-                Bytecode::Nop(_) |
-                Bytecode::SaveMem(_, _, _) => false,
+                Bytecode::Assign(_, _, _, _)
+                | Bytecode::Branch(_, _, _, _)
+                | Bytecode::Load(_, _, _)
+                | Bytecode::Ret(_, _)
+                | Bytecode::Jump(_, _)
+                | Bytecode::VariantSwitch(_, _, _)
+                | Bytecode::Label(_, _)
+                | Bytecode::Nop(_)
+                | Bytecode::SaveMem(_, _, _) => false,
             };
 
             if aborts {
@@ -141,10 +141,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
             let fenv = env.get_function(fun_id);
             for fun_variant in targets.get_target_variants(&fenv) {
                 let target = targets.get_target(&fenv, &fun_variant);
-                let result = target
-                    .get_annotations()
-                    .get::<NoAbortInfo>()
-                    .unwrap();
+                let result = target.get_annotations().get::<NoAbortInfo>().unwrap();
                 write!(f, "  {}: ", fenv.get_full_name_str())?;
                 if result.does_not_abort {
                     writeln!(f, "does not abort")?;

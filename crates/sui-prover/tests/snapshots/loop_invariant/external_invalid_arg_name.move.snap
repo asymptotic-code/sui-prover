@@ -1,0 +1,18 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 271
+expression: output
+---
+exiting with bytecode transformation errors
+error: Loop invariant function loop_invariant_external_invalid_arg_name_fail::loop_inv expects parameter 'compare' which is not found in function loop_invariant_external_invalid_arg_name_fail::test_spec.
+Available variables: ( n: u64, i: u64, s: u128 )
+   ┌─ tests/inputs/loop_invariant/external_invalid_arg_name.move:12:1
+   │  
+12 │ ╭ fun test_spec(n: u64): u128 {
+13 │ │     let mut s: u128 = 0;
+14 │ │     let mut i = 0;
+15 │ │ 
+   · │
+22 │ │     s
+23 │ │ }
+   │ ╰─^

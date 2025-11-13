@@ -18,17 +18,16 @@ use std::{
 use internment::LocalIntern;
 use itertools::Itertools;
 
+use crate::exp_rewriter::ExpRewriterFunctions;
 use move_model::{
     ast::{QualifiedSymbol, Value},
     model::{
-        DatatypeId, FieldId, FunctionVisibility, GlobalEnv, GlobalId, Loc,
-        ModuleId, NodeId, QualifiedId, QualifiedInstId,
-        GHOST_MEMORY_PREFIX,
+        DatatypeId, FieldId, FunctionVisibility, GlobalEnv, GlobalId, Loc, ModuleId, NodeId,
+        QualifiedId, QualifiedInstId, GHOST_MEMORY_PREFIX,
     },
     symbol::Symbol,
     ty::{Type, TypeDisplayContext},
 };
-use crate::exp_rewriter::ExpRewriterFunctions;
 
 // const MAX_ADDR_STRING: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 

@@ -94,6 +94,8 @@ pub struct ProverOptions {
     pub bv_int_encoding: bool,
     /// Skip checking spec functions that do not abort
     pub skip_spec_no_abort: bool,
+    /// CI mode
+    pub ci: bool,
 }
 
 // add custom struct for mutation options
@@ -131,6 +133,7 @@ impl Default for ProverOptions {
             ban_int_2_bv: false,
             bv_int_encoding: true,
             skip_spec_no_abort: false,
+            ci: false,
         }
     }
 }

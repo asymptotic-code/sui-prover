@@ -97,29 +97,23 @@ public fun test::f($t0|a: u64): u64 {
   8: label L0
      # conditional_merge_insertion: t13 := if_then_else(t4, t12, t2)
   9: $t13 := if_then_else($t4, $t12, $t2)
-     # conditional_merge_insertion: merge assign t1 := t13
- 10: $t1 := $t13
- 11: $t6 := 5
- 12: $t7 := >($t0, $t6)
- 13: if ($t7) goto 14 else goto 17
- 14: label L3
- 15: $t8 := 20
- 16: $t14 := *($t1, $t8)
- 17: label L2
+ 10: $t6 := 5
+ 11: $t7 := >($t0, $t6)
+ 12: if ($t7) goto 13 else goto 16
+ 13: label L3
+ 14: $t8 := 20
+ 15: $t14 := *($t13, $t8)
+ 16: label L2
      # conditional_merge_insertion: t15 := if_then_else(t7, t14, t13)
- 18: $t15 := if_then_else($t7, $t14, $t13)
-     # conditional_merge_insertion: merge assign t1 := t15
- 19: $t1 := $t15
- 20: $t9 := 10
- 21: $t10 := >($t0, $t9)
- 22: if ($t10) goto 23 else goto 26
- 23: label L5
- 24: $t11 := 30
- 25: $t16 := *($t1, $t11)
- 26: label L4
+ 17: $t15 := if_then_else($t7, $t14, $t13)
+ 18: $t9 := 10
+ 19: $t10 := >($t0, $t9)
+ 20: if ($t10) goto 21 else goto 24
+ 21: label L5
+ 22: $t11 := 30
+ 23: $t16 := *($t15, $t11)
+ 24: label L4
      # conditional_merge_insertion: t17 := if_then_else(t10, t16, t15)
- 27: $t17 := if_then_else($t10, $t16, $t15)
-     # conditional_merge_insertion: merge assign t1 := t17
- 28: $t1 := $t17
- 29: return $t1
+ 25: $t17 := if_then_else($t10, $t16, $t15)
+ 26: return $t17
 }
