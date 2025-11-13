@@ -529,6 +529,43 @@ procedure {:inline 1} $2_vec_map_from_keys_values{{S}}(keys: Vec ({{K}}), values
     res := $2_vec_map_VecMap{{S}}(entries);
 }
 
+procedure {:inline 1} $2_vec_map_remove{{S}}(m: $Mutation ($2_vec_map_VecMap{{S}}), key: {{K}}) returns (res0: {{K}}, res1: {{V}}, m': $Mutation ($2_vec_map_VecMap{{S}})) {
+    var idx: int;
+    var entry: $2_vec_map_Entry{{S}};
+    var v: Vec ($2_vec_map_Entry{{S}});
+
+    v := $Dereference(m)->$contents;
+
+    idx := $IndexOfVecMap{{S}}(v, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+    
+    entry := ReadVec(v, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+
+    m' := $UpdateMutation(m, $2_vec_map_VecMap{{S}}(RemoveAtVec(v, idx)));
+}
+
+procedure {:inline 1} $2_vec_map_contains{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: bool) {
+    res := $ContainsVecMap{{S}}(vm->$contents, key);
+}
+
+procedure {:inline 1} $2_vec_map_get{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
+    var idx: int;
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+
+    res := ReadVec(vm->$contents, idx)->$value;
+}
+
 {% endmacro vec_map_module %}
 
 {# Tables

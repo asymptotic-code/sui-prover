@@ -1621,10 +1621,13 @@ impl GlobalEnv {
     const TABLE_VEC_STRUCT_NAME: &'static str = "TableVec";
 
     // vec_map function names
+    const VEC_MAP_GET_FUNCTION_NAME: &'static str = "get";
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
+    const VEC_MAP_CONTAINS_FUNCTION_NAME: &'static str = "contains";
     const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
     const VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME: &'static str = "into_keys_values";
     const VEC_MAP_KEYS_FUNCTION_NAME: &'static str = "keys";
+    const VEC_MAP_REMOVE_FUNCTION_NAME: &'static str = "remove";
 
     // option struct name
     const OPTION_STRUCT_NAME: &'static str = "Option";
@@ -2267,11 +2270,19 @@ impl GlobalEnv {
     }
 
     // vec_map intrinsic functions
+    pub fn vec_map_get_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_GET_FUNCTION_NAME)
+    }
+
     pub fn vec_map_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::VEC_MAP_MODULE_NAME,
             Self::VEC_MAP_GET_IDX_OPT_FUNCTION_NAME,
         )
+    }
+
+    pub fn vec_map_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_CONTAINS_FUNCTION_NAME)
     }
 
     pub fn vec_map_from_keys_values_qid(&self) -> Option<QualifiedId<FunId>> {
@@ -2290,6 +2301,10 @@ impl GlobalEnv {
 
     pub fn vec_map_keys_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
+    }
+
+    pub fn vec_map_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_REMOVE_FUNCTION_NAME)
     }
 
     // table_vec struct name
@@ -3632,10 +3647,13 @@ impl GlobalEnv {
             self.vec_set_from_keys_qid(),
             self.vec_set_contains_qid(),
             self.vec_set_remove_qid(),
+            self.vec_map_get_qid(),
             self.vec_map_get_idx_opt_qid(),
+            self.vec_map_contains_qid(),
             self.vec_map_from_keys_values_qid(),
             self.vec_map_into_keys_values_qid(),
             self.vec_map_keys_qid(),
+            self.vec_map_remove_qid(),
             self.table_new_qid(),
             self.table_add_qid(),
             self.table_borrow_qid(),
