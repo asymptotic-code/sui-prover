@@ -2282,7 +2282,10 @@ impl GlobalEnv {
     }
 
     pub fn vec_map_contains_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_CONTAINS_FUNCTION_NAME)
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_CONTAINS_FUNCTION_NAME,
+        )
     }
 
     pub fn vec_map_from_keys_values_qid(&self) -> Option<QualifiedId<FunId>> {
@@ -2304,7 +2307,10 @@ impl GlobalEnv {
     }
 
     pub fn vec_map_remove_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_REMOVE_FUNCTION_NAME)
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_REMOVE_FUNCTION_NAME,
+        )
     }
 
     // table_vec struct name
