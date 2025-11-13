@@ -3554,6 +3554,8 @@ impl GlobalEnv {
             self.prover_end_all_lambda_qid(),
             self.prover_begin_sum_map_lambda_qid(),
             self.prover_end_sum_map_lambda_qid(),
+            self.prover_vec_sum_qid(),
+            self.prover_vec_slice_qid(),
         ]);
 
         // Log module functions
