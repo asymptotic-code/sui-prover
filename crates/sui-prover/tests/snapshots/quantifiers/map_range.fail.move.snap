@@ -1,0 +1,21 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 271
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/map_range.fail.move:24:5
+   │
+24 │     ensures(map_range!<u64, u64>(&v, 0, 1, |x| x_plus_10(x)) == vector[30]); // FAIL: should be [20]
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/map_range.fail.move:21: test_map_range_wrong_result
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/map_range.fail.move:33:5
+   │
+33 │     ensures(map_range!<u64, u64>(&v, 1, 3, |x| x_plus_10(x)) == vector[20, 40]); // FAIL: should be [30, 20]
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/map_range.fail.move:29: test_map_range_wrong_subrange

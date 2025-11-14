@@ -120,14 +120,23 @@ pub enum QuantifierType {
     Forall,
     Exists,
     Map,
+    MapRange,
     Filter,
+    FilterRange,
     Find,
+    FindRange,
     FindIndex,
+    FindIndexRange,
     FindIndices,
+    FindIndicesRange,
     Count,
+    CountRange,
     Any,
+    AnyRange,
     All,
+    AllRange,
     SumMap,
+    SumMapRange,
 }
 
 impl QuantifierType {
@@ -136,19 +145,57 @@ impl QuantifierType {
             QuantifierType::Forall => "forall",
             QuantifierType::Exists => "exists",
             QuantifierType::Map => "map",
+            QuantifierType::MapRange => "map_range",
             QuantifierType::Filter => "filter",
+            QuantifierType::FilterRange => "filter_range",
             QuantifierType::Find => "find",
+            QuantifierType::FindRange => "find_range",
             QuantifierType::FindIndex => "find_index",
+            QuantifierType::FindIndexRange => "find_index_range",
             QuantifierType::FindIndices => "find_indices",
+            QuantifierType::FindIndicesRange => "find_indices_range",
             QuantifierType::Count => "count",
+            QuantifierType::CountRange => "count_range",
             QuantifierType::Any => "any",
+            QuantifierType::AnyRange => "any_range",
             QuantifierType::All => "all",
+            QuantifierType::AllRange => "all_range",
             QuantifierType::SumMap => "sum_map",
+            QuantifierType::SumMapRange => "sum_map_range",
         }
     }
 
     pub fn can_abort(&self) -> bool {
         false
+    }
+
+    pub fn vector_based(&self) -> bool {
+        *self != QuantifierType::Forall && *self != QuantifierType::Exists
+    }
+
+    pub fn range_based(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::MapRange
+                | QuantifierType::FilterRange
+                | QuantifierType::FindRange
+                | QuantifierType::FindIndexRange
+                | QuantifierType::FindIndicesRange
+                | QuantifierType::CountRange
+                | QuantifierType::AnyRange
+                | QuantifierType::AllRange
+                | QuantifierType::SumMapRange
+        )
+    }
+
+    pub fn is_find_or_find_index(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::Find
+                | QuantifierType::FindRange
+                | QuantifierType::FindIndex
+                | QuantifierType::FindIndexRange
+        )
     }
 }
 
