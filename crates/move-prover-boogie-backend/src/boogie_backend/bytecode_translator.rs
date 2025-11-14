@@ -4538,7 +4538,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::MapRange => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(self.writer(), "assume LenVec($t{}) == ($t{} - $t{});", dests[0], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});", srcs[1], srcs[2], dests[0], srcs[2], srcs[1]);
                                 emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "assume $IsValid'vec'{}''($t{});", suffix, dests[0]);
                             }
