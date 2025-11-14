@@ -50,7 +50,7 @@ pub enum FunctionHolderTarget {
 #[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
-    function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
+    function_specs: BTreeSet<(QualifiedId<FunId>, QualifiedId<FunId>)>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     skip_specs: BTreeMap<QualifiedId<FunId>, String>,
@@ -204,7 +204,7 @@ impl FunctionTargetsHolder {
     ) -> Self {
         Self {
             targets: BTreeMap::new(),
-            function_specs: BiBTreeMap::new(),
+            function_specs: BTreeSet::new(),
             no_verify_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
             skip_specs: BTreeMap::new(),
@@ -240,30 +240,28 @@ impl FunctionTargetsHolder {
     /// - specs::* modules (sui-framework-specs package)
     /// - prover::* modules (prover package)
     fn count_system_specs(&self, env: &GlobalEnv) -> usize {
-        let mut system_specs_count = 0;
-        let system_address = &0u16.into(); // Address 0x0 used by system modules
-
-        // Count function specs from system modules
-        for spec_id in self
-            .function_specs
-            .left_values()
+        self.function_specs
+            .iter()
+            .map(|(l, _)| l)
             .chain(self.scenario_specs.iter())
-        {
-            let func_env = env.get_function(*spec_id);
-            let module_env = &func_env.module_env;
-            if module_env.get_name().addr() == system_address {
-                let module_name = module_env
-                    .get_name()
-                    .name()
-                    .display(env.symbol_pool())
-                    .to_string();
-                if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
-                    system_specs_count += 1;
-                }
+            .filter(|spec_id| Self::is_system_spec(spec_id, env))
+            .count()
+    }
+
+    pub fn is_system_spec(qid: &QualifiedId<FunId>, env: &GlobalEnv) -> bool {
+        let func_env = env.get_function(*qid);
+        let module_env = &func_env.module_env;
+        if module_env.get_name().addr() == &0u16.into() {
+            let module_name = module_env
+                .get_name()
+                .name()
+                .display(env.symbol_pool())
+                .to_string();
+            if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
+                return true;
             }
         }
-
-        system_specs_count
+        false
     }
 
     /// Get an iterator for all functions this holder.
@@ -280,16 +278,18 @@ impl FunctionTargetsHolder {
             .flat_map(|(id, vs)| vs.keys().map(move |v| (*id, v.clone())))
     }
 
-    pub fn function_specs(&self) -> &BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>> {
-        &self.function_specs
-    }
-
     pub fn get_fun_by_spec(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs.get_by_left(id)
+        self.function_specs
+            .iter()
+            .find(|(l, _)| l == id)
+            .map(|(_, r)| r)
     }
 
     pub fn get_spec_by_fun(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs.get_by_right(id)
+        self.function_specs
+            .iter()
+            .find(|(r, _)| r == id)
+            .map(|(_, l)| l)
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
@@ -358,7 +358,8 @@ impl FunctionTargetsHolder {
 
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
-            .left_values()
+            .iter()
+            .map(|(l, _)| l)
             .chain(self.scenario_specs.iter())
     }
 
@@ -536,15 +537,23 @@ impl FunctionTargetsHolder {
 
                 match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env)
                 {
-                    Some((module_name, fun_name)) => {
+                    Some((module_name, func_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
-                        Self::process_spec(
-                            func_env,
-                            &module_env,
-                            env,
-                            &mut self.function_specs,
-                            fun_name,
-                        );
+                        if let Some(target_func_env) = module_env
+                            .find_function(func_env.symbol_pool().make(func_name.as_str()))
+                        {
+                            self.process_spec(func_env, &target_func_env);
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "Target function '{}' not found in module '{}'",
+                                    func_name,
+                                    module_env.get_full_name_str(),
+                                ),
+                            );
+                        }
                     }
                     None => {
                         let module_name = func_env.module_env.get_full_name_str();
@@ -568,10 +577,7 @@ impl FunctionTargetsHolder {
                         });
                 match target_func_env_opt {
                     Some(target_func_env) => {
-                        self.function_specs.insert(
-                            func_env.get_qualified_id(),
-                            target_func_env.get_qualified_id(),
-                        );
+                        self.process_spec(func_env, &target_func_env);
                     }
                     None => {
                         self.scenario_specs.insert(func_env.get_qualified_id());
@@ -723,38 +729,50 @@ impl FunctionTargetsHolder {
         }
     }
 
-    fn process_spec(
-        func_env: &FunctionEnv<'_>,
-        module_env: &ModuleEnv<'_>,
-        env: &GlobalEnv,
-        function_specs: &mut BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
-        func_name: String,
-    ) {
-        if let Some(target_func_env) =
-            module_env.find_function(func_env.symbol_pool().make(func_name.as_str()))
-        {
-            let target_id = target_func_env.get_qualified_id();
-
-            if function_specs.contains_right(&target_id) {
-                let env = func_env.module_env.env;
+    fn process_spec(&mut self, func_env: &FunctionEnv<'_>, target_func_env: &FunctionEnv<'_>) {
+        let env = func_env.module_env.env;
+        let target_id = target_func_env.get_qualified_id();
+        let spec_id = func_env.get_qualified_id();
+        if matches!(self.target, FunctionHolderTarget::None) {
+            if self.function_specs.contains(&(spec_id, target_id)) {
                 env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
-                    &format!("Duplicate target function: {}", func_name),
+                    &format!(
+                        "Duplicate target function: {}",
+                        target_func_env.get_name_str()
+                    ),
                 );
             } else {
-                function_specs.insert(func_env.get_qualified_id(), target_id);
+                self.function_specs.insert((spec_id, target_id));
             }
-        } else {
+            return;
+        }
+
+        let target_module = match self.target {
+            FunctionHolderTarget::Function(qid) => qid.module_id,
+            FunctionHolderTarget::Module(mid) => mid,
+            FunctionHolderTarget::None => unreachable!(),
+        };
+        let used_modules: BTreeSet<ModuleId> = env.get_module(target_module).get_used_modules();
+        if func_env.module_env.get_id() != target_module
+            && !used_modules.contains(&func_env.module_env.get_id())
+            && !Self::is_system_spec(&spec_id, env)
+        {
+            return;
+        }
+
+        if self.function_specs.iter().any(|(_, r)| r == &target_id) {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
                 &format!(
-                    "Target function '{}' not found in module '{}'",
-                    func_name,
-                    module_env.get_full_name_str()
+                    "Duplicate target function: {}",
+                    target_func_env.get_name_str()
                 ),
             );
+        } else {
+            self.function_specs.insert((spec_id, target_id));
         }
     }
 

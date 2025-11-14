@@ -91,7 +91,6 @@ impl BorrowAggregate {
 pub enum BoogieFileMode {
     Function,
     Module,
-    All,
 }
 
 impl ToString for BoogieFileMode {
@@ -99,7 +98,6 @@ impl ToString for BoogieFileMode {
         match self {
             BoogieFileMode::Function => "function".to_string(),
             BoogieFileMode::Module => "module".to_string(),
-            BoogieFileMode::All => "all".to_string(),
         }
     }
 }
