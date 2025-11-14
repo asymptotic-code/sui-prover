@@ -52,7 +52,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_map_range_lambda_qid(),
                 env.prover_end_map_lambda_qid(),
-                QuantifierType::Map,
+                QuantifierType::MapRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_filter_lambda_qid(),
@@ -62,7 +62,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_filter_range_lambda_qid(),
                 env.prover_end_filter_lambda_qid(),
-                QuantifierType::Filter,
+                QuantifierType::FilterRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_find_lambda_qid(),
@@ -72,7 +72,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_find_range_lambda_qid(),
                 env.prover_end_find_lambda_qid(),
-                QuantifierType::Find,
+                QuantifierType::FindRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_find_index_lambda_qid(),
@@ -82,7 +82,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_find_index_range_lambda_qid(),
                 env.prover_end_find_index_lambda_qid(),
-                QuantifierType::FindIndex,
+                QuantifierType::FindIndexRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_find_indices_lambda_qid(),
@@ -92,7 +92,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_find_indices_range_lambda_qid(),
                 env.prover_end_find_indices_lambda_qid(),
-                QuantifierType::FindIndices,
+                QuantifierType::FindIndicesRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_sum_map_lambda_qid(),
@@ -102,7 +102,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_sum_map_range_lambda_qid(),
                 env.prover_end_sum_map_lambda_qid(),
-                QuantifierType::SumMap,
+                QuantifierType::SumMapRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_count_lambda_qid(),
@@ -112,7 +112,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_count_range_lambda_qid(),
                 env.prover_end_count_lambda_qid(),
-                QuantifierType::Count,
+                QuantifierType::CountRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_any_lambda_qid(),
@@ -122,7 +122,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_any_range_lambda_qid(),
                 env.prover_end_any_lambda_qid(),
-                QuantifierType::Any,
+                QuantifierType::AnyRange,
             ),
             QuantifierPattern::new(
                 env.prover_begin_all_lambda_qid(),
@@ -132,7 +132,7 @@ impl QuantifierPattern {
             QuantifierPattern::new(
                 env.prover_begin_all_range_lambda_qid(),
                 env.prover_end_all_lambda_qid(),
-                QuantifierType::All,
+                QuantifierType::AllRange,
             ),
         ]
     }
@@ -378,7 +378,6 @@ impl QuantifierIteratorAnalysisProcessor {
                         callee_id,
                         type_params,
                         lambda_index,
-                        srcs_vec.len() > 1,
                     ),
                     // for forall and exists it will be [] otherwise [v]
                     srcs_vec.into_iter().chain(srcs_funcs.into_iter()).collect(),

@@ -20,4 +20,5 @@ fun x_plus_10(x: &u64): u64 {
 fun test_spec() {
     let v = vector[10, 20, 10, 30];
     ensures(map_range!<u64, u64>(&v, 0, 1, |x| x_plus_10(x)) == vector[20]);
+    ensures(map_range!<u64, u64>(&v, 1, 3, |x| x_plus_10(x)) == vector[30, 20]);
 }
