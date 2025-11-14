@@ -1624,6 +1624,7 @@ impl GlobalEnv {
 
     // vec_map function names
     const VEC_MAP_GET_FUNCTION_NAME: &'static str = "get";
+    const VEC_MAP_GET_IDX_FUNCTION_NAME: &'static str = "get_idx";
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
     const VEC_MAP_CONTAINS_FUNCTION_NAME: &'static str = "contains";
     const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
@@ -2282,6 +2283,14 @@ impl GlobalEnv {
     // vec_map intrinsic functions
     pub fn vec_map_get_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_GET_FUNCTION_NAME)
+    }
+
+
+    pub fn vec_map_get_idx_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_GET_IDX_FUNCTION_NAME,
+        )
     }
 
     pub fn vec_map_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
@@ -3720,6 +3729,7 @@ impl GlobalEnv {
             self.vec_set_contains_qid(),
             self.vec_set_remove_qid(),
             self.vec_map_get_qid(),
+            self.vec_map_get_idx_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_contains_qid(),
             self.vec_map_from_keys_values_qid(),
@@ -3833,6 +3843,7 @@ impl GlobalEnv {
             self.vector_reverse_qid(),
             // vec_set and vec_map native functions
             self.vec_set_contains_qid(),
+            self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
         ]
