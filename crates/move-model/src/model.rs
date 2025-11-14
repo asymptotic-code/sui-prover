@@ -2285,7 +2285,6 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_GET_FUNCTION_NAME)
     }
 
-
     pub fn vec_map_get_idx_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::VEC_MAP_MODULE_NAME,
