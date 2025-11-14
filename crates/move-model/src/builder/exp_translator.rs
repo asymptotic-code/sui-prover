@@ -583,7 +583,7 @@ impl ExpTranslator<'_, '_, '_> {
                 Type::new_prim(PrimitiveType::U256),
             )),
             EA::Value_::Bool(x) => Some((Value::Bool(*x), Type::new_prim(PrimitiveType::Bool))),
-            EA::Value_::Bytearray(x) => {
+            EA::Value_::Bytearray(x) | EA::Value_::InferredString(x) => {
                 let ty = Type::Vector(Box::new(Type::new_prim(PrimitiveType::U8)));
                 Some((Value::ByteArray(x.clone()), ty))
             }

@@ -1449,15 +1449,25 @@ impl<'a> StacklessBytecodeGenerator<'a> {
                 let variant_env = enum_env.get_variant_by_tag(handle.variant as usize);
                 let mut field_temp_indices = vec![];
                 let unpack_type = |ty| match bytecode {
-                    MoveBytecode::UnpackVariantImmRef(_) => Type::Reference(false, Box::new(ty)),
-                    MoveBytecode::UnpackVariantMutRef(_) => Type::Reference(true, Box::new(ty)),
-                    MoveBytecode::UnpackVariant(_) => ty,
+                    MoveBytecode::UnpackVariantImmRef(_)
+                    | MoveBytecode::UnpackVariantGenericImmRef(_) => {
+                        Type::Reference(false, Box::new(ty))
+                    }
+                    MoveBytecode::UnpackVariantMutRef(_)
+                    | MoveBytecode::UnpackVariantGenericMutRef(_) => {
+                        Type::Reference(true, Box::new(ty))
+                    }
+                    MoveBytecode::UnpackVariant(_) | MoveBytecode::UnpackVariantGeneric(_) => ty,
                     _ => unreachable!(),
                 };
                 let ref_type = match bytecode {
-                    MoveBytecode::UnpackVariant(_) => RefType::ByValue,
-                    MoveBytecode::UnpackVariantImmRef(_) => RefType::ByImmRef,
-                    MoveBytecode::UnpackVariantMutRef(_) => RefType::ByMutRef,
+                    MoveBytecode::UnpackVariant(_) | MoveBytecode::UnpackVariantGeneric(_) => {
+                        RefType::ByValue
+                    }
+                    MoveBytecode::UnpackVariantImmRef(_)
+                    | MoveBytecode::UnpackVariantGenericImmRef(_) => RefType::ByImmRef,
+                    MoveBytecode::UnpackVariantMutRef(_)
+                    | MoveBytecode::UnpackVariantGenericMutRef(_) => RefType::ByMutRef,
                     _ => unreachable!(),
                 };
                 let variant_temp_index = self.temp_stack.pop().unwrap();

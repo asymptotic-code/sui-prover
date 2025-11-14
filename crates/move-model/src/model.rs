@@ -1623,10 +1623,14 @@ impl GlobalEnv {
     const TABLE_VEC_STRUCT_NAME: &'static str = "TableVec";
 
     // vec_map function names
+    const VEC_MAP_GET_FUNCTION_NAME: &'static str = "get";
+    const VEC_MAP_GET_IDX_FUNCTION_NAME: &'static str = "get_idx";
     const VEC_MAP_GET_IDX_OPT_FUNCTION_NAME: &'static str = "get_idx_opt";
+    const VEC_MAP_CONTAINS_FUNCTION_NAME: &'static str = "contains";
     const VEC_MAP_FROM_KEYS_VALUES_FUNCTION_NAME: &'static str = "from_keys_values";
     const VEC_MAP_INTO_KEYS_VALUES_FUNCTION_NAME: &'static str = "into_keys_values";
     const VEC_MAP_KEYS_FUNCTION_NAME: &'static str = "keys";
+    const VEC_MAP_REMOVE_FUNCTION_NAME: &'static str = "remove";
 
     // option struct name
     const OPTION_STRUCT_NAME: &'static str = "Option";
@@ -1690,7 +1694,7 @@ impl GlobalEnv {
 
     // std::type_name native function names (with fun constants)
     const TYPE_NAME_GETTER_FUNCTION_NAME: &'static str = "get";
-    const TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME: &'static str = "get_with_original_ids";
+    const TYPE_NAME_WITH_ORIGINAL_ID_FUNCTION_NAME: &'static str = "with_original_ids";
 
     // std::string native function names (with fun constants)
     const STRING_CHECK_UTF8_FUNCTION_NAME: &'static str = "internal_check_utf8";
@@ -2277,10 +2281,28 @@ impl GlobalEnv {
     }
 
     // vec_map intrinsic functions
+    pub fn vec_map_get_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_GET_FUNCTION_NAME)
+    }
+
+    pub fn vec_map_get_idx_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_GET_IDX_FUNCTION_NAME,
+        )
+    }
+
     pub fn vec_map_get_idx_opt_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::VEC_MAP_MODULE_NAME,
             Self::VEC_MAP_GET_IDX_OPT_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_contains_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_CONTAINS_FUNCTION_NAME,
         )
     }
 
@@ -2300,6 +2322,13 @@ impl GlobalEnv {
 
     pub fn vec_map_keys_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_KEYS_FUNCTION_NAME)
+    }
+
+    pub fn vec_map_remove_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::VEC_MAP_REMOVE_FUNCTION_NAME,
+        )
     }
 
     // table_vec struct name
@@ -2638,10 +2667,10 @@ impl GlobalEnv {
             Self::TYPE_NAME_GETTER_FUNCTION_NAME,
         )
     }
-    pub fn std_type_name_get_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
+    pub fn std_type_name_with_original_ids_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::STD_TYPE_NAME_MODULE_NAME,
-            Self::TYPE_NAME_ORIGINAL_ID_REVEALER_FUNCTION_NAME,
+            Self::TYPE_NAME_WITH_ORIGINAL_ID_FUNCTION_NAME,
         )
     }
 
@@ -3374,7 +3403,7 @@ impl GlobalEnv {
                 self.std_debug_print_stack_trace_qid(),
                 // std::type_name native functions
                 self.std_type_name_get_qid(),
-                self.std_type_name_get_with_original_ids_qid(),
+                self.std_type_name_with_original_ids_qid(),
                 // std::string native functions
                 self.std_string_internal_check_utf8_qid(),
                 self.std_string_internal_is_char_boundary_qid(),
@@ -3581,7 +3610,7 @@ impl GlobalEnv {
                 self.std_debug_print_stack_trace_qid(),
                 // std::type_name native functions
                 self.std_type_name_get_qid(),
-                self.std_type_name_get_with_original_ids_qid(),
+                self.std_type_name_with_original_ids_qid(),
                 // std::string native functions
                 self.std_string_internal_check_utf8_qid(),
                 self.std_string_internal_is_char_boundary_qid(),
@@ -3698,10 +3727,14 @@ impl GlobalEnv {
             self.vec_set_from_keys_qid(),
             self.vec_set_contains_qid(),
             self.vec_set_remove_qid(),
+            self.vec_map_get_qid(),
+            self.vec_map_get_idx_qid(),
             self.vec_map_get_idx_opt_qid(),
+            self.vec_map_contains_qid(),
             self.vec_map_from_keys_values_qid(),
             self.vec_map_into_keys_values_qid(),
             self.vec_map_keys_qid(),
+            self.vec_map_remove_qid(),
             self.table_new_qid(),
             self.table_add_qid(),
             self.table_borrow_qid(),
@@ -3809,6 +3842,7 @@ impl GlobalEnv {
             self.vector_reverse_qid(),
             // vec_set and vec_map native functions
             self.vec_set_contains_qid(),
+            self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
         ]
