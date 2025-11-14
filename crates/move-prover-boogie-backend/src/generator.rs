@@ -24,8 +24,7 @@ use move_model::{
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
-        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, FunctionVariant,
-        VerificationFlavor,
+        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
     },
     number_operation::GlobalNumberOperationState,
     options::ProverOptions,
@@ -140,19 +139,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         warn!("Boogie options specified in specs can only be used in 'function' boogie file mode.");
     }
 
-    let has_errors = match options.backend.boogie_file_mode {
-        BoogieFileMode::Function | BoogieFileMode::Module => {
-            run_prover_gradual_mode(
-                env,
-                &options,
-                &targets,
-                error_writer,
-                options.backend.boogie_file_mode.clone(),
-            )
-            .await?
-        }
-        BoogieFileMode::All => run_prover_all_mode(env, &options, &targets, error_writer).await?,
-    };
+    let has_errors = run_prover(env, &options, &targets, error_writer).await?;
 
     let total_duration = now.elapsed();
     info!(
@@ -283,6 +270,13 @@ fn generate_function_bpl<W: WriteColor>(
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, target_type);
 
+    check_errors(
+        env,
+        &options,
+        error_writer,
+        "exiting with bytecode transformation errors",
+    )?;
+
     let (code_writer, types) = generate_boogie(env, &options, &mut targets)?;
 
     check_errors(
@@ -374,27 +368,26 @@ async fn verify_bpl<W: WriteColor>(
     Ok(is_error)
 }
 
-pub async fn run_prover_gradual_mode<W: WriteColor>(
+pub async fn run_prover<W: WriteColor>(
     env: &GlobalEnv,
     options: &Options,
     all_targets: &FunctionTargetsHolder,
     error_writer: &mut W,
-    mode: BoogieFileMode,
 ) -> anyhow::Result<bool> {
-    let error = run_prover_spec_no_abort_check(env, error_writer, options, &all_targets).await?;
-    if error {
-        return Ok(true);
-    }
+    // let error = run_prover_spec_no_abort_check(env, error_writer, options, &all_targets).await?;
+    // if error {
+    //     return Ok(true);
+    // }
 
-    let error = run_prover_abort_check(env, error_writer, options, &all_targets).await?;
-    if error {
-        return Ok(true);
-    }
+    // let error = run_prover_abort_check(env, error_writer, options, &all_targets).await?;
+    // if error {
+    //     return Ok(true);
+    // }
 
     let mut has_errors = false;
 
     let mut files = vec![];
-    match mode {
+    match options.backend.boogie_file_mode {
         BoogieFileMode::Function => {
             let fun_targets = all_targets
                 .specs()
@@ -421,7 +414,6 @@ pub async fn run_prover_gradual_mode<W: WriteColor>(
                 files.push(res);
             }
         }
-        BoogieFileMode::All => unreachable!(),
     }
 
     if options.remote.is_some() {
@@ -464,58 +456,6 @@ pub async fn run_prover_gradual_mode<W: WriteColor>(
     }
 
     Ok(has_errors)
-}
-
-pub async fn run_prover_all_mode<W: WriteColor>(
-    env: &GlobalEnv,
-    options: &Options,
-    targets: &FunctionTargetsHolder,
-    error_writer: &mut W,
-) -> anyhow::Result<bool> {
-    let error = run_prover_abort_check(env, error_writer, options, targets).await?;
-    if error {
-        return Ok(true);
-    }
-
-    let (code_writer, types) = generate_boogie(env, &options, &targets)?;
-    check_errors(
-        env,
-        &options,
-        error_writer,
-        "exiting with condition generation errors",
-    )?;
-
-    verify_boogie(
-        env,
-        &options,
-        &targets,
-        code_writer,
-        types,
-        "output".to_string(),
-        None,
-        None,
-    )
-    .await?;
-
-    let errors = env.has_errors();
-    env.report_diag(error_writer, options.prover.report_severity);
-    if errors {
-        return Ok(true);
-    }
-
-    for spec in targets.specs() {
-        let fun_env = env.get_function(*spec);
-        if targets.is_verified_spec(spec)
-            && targets.has_target(
-                &fun_env,
-                &FunctionVariant::Verification(VerificationFlavor::Regular),
-            )
-        {
-            println!("✅ {}", fun_env.get_full_name_str());
-        }
-    }
-
-    Ok(false)
 }
 
 pub fn check_errors<W: WriteColor>(
@@ -593,11 +533,11 @@ pub fn create_and_process_bytecode(
     env: &GlobalEnv,
     target_type: FunctionHolderTarget,
 ) -> (FunctionTargetsHolder, Option<String>) {
-    // Populate initial number operation state for each function and struct based on the pragma
-    create_init_num_operation_state(env, &options.prover);
-
-    let mut targets =
-        FunctionTargetsHolder::new(options.prover.clone(), options.filter.clone(), target_type);
+    let mut targets = FunctionTargetsHolder::new(
+        options.prover.clone(),
+        options.filter.clone(),
+        target_type.clone(),
+    );
 
     let output_dir = Path::new(&options.output_path)
         .parent()
@@ -619,6 +559,13 @@ pub fn create_and_process_bytecode(
             targets.add_target(&func_env);
         }
     }
+
+    if matches!(target_type, FunctionHolderTarget::None) {
+        return (targets, None);
+    }
+
+    // Populate initial number operation state for each function and struct based on the pragma
+    create_init_num_operation_state(env, &options.prover);
 
     // Create processing pipeline and run it.
     let pipeline = if options.experimental_pipeline {

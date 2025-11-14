@@ -57,9 +57,6 @@ fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHold
     if has_attribute(func_env, "test_only") {
         return false;
     }
-    if targets.function_specs().contains_left(&func_id) {
-        return false;
-    }
     if targets.is_spec(&func_id) {
         return false;
     }
