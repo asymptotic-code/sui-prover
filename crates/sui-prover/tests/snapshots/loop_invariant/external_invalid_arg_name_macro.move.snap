@@ -5,12 +5,14 @@ expression: output
 ---
 exiting with bytecode transformation errors
 error: Loop invariant function loop_invariant_external_invalid_arg_name_macro_fail::loop_inv expects parameter 'compare' which is not found in function loop_invariant_external_invalid_arg_name_macro_fail::test_spec.
-Available variables: ( n: u64, i: u64, res: u128, s: u128 )
-   ┌─ tests/inputs/loop_invariant/external_invalid_arg_name_macro.move:23:1
+Available variables: ( n: u64, i: u64, s: u128 )
+   ┌─ tests/inputs/loop_invariant/external_invalid_arg_name_macro.move:38:1
    │  
-23 │ ╭ fun test_spec(n: u64): u128 {
-24 │ │     let res = test_loop!(n);
-25 │ │     ensures(res == (n as u128) * ((n as u128) + 1) / 2);
-26 │ │     res
-27 │ │ }
+38 │ ╭ fun test_spec(n: u64): u128 {
+39 │ │     let s = test_loop!(n);
+40 │ │     empty_macro!();
+41 │ │     let s2 = test_loop_2!(n);
+   · │
+45 │ │     res
+46 │ │ }
    │ ╰─^
