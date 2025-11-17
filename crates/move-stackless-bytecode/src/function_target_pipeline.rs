@@ -20,7 +20,8 @@ use petgraph::graph::DiGraph;
 use move_compiler::{
     expansion::ast::{ModuleAccess, ModuleAccess_},
     shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
+        AttributeKind_, ExternalAttribute, ExternalAttributeEntry_, ExternalAttributeValue_,
+        KnownAttribute, VerificationAttribute,
     },
 };
 
@@ -41,6 +42,12 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum FunctionHolderTarget {
     None,
+    Function(QualifiedId<FunId>),
+    Module(ModuleId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ModuleExternalSpecAttribute {
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -66,6 +73,7 @@ pub struct FunctionTargetsHolder {
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     filter: TargetFilterOptions,
     prover_options: ProverOptions,
+    module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
 }
 
 /// Describes a function verification flavor.
@@ -220,6 +228,7 @@ impl FunctionTargetsHolder {
             filter,
             target,
             loop_invariants: BTreeMap::new(),
+            module_external_attributes: BTreeMap::new(),
         }
     }
 
@@ -288,8 +297,8 @@ impl FunctionTargetsHolder {
     pub fn get_spec_by_fun(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
         self.function_specs
             .iter()
-            .find(|(r, _)| r == id)
-            .map(|(_, l)| l)
+            .find(|(_, r)| r == id)
+            .map(|(l, _)| l)
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
@@ -754,9 +763,9 @@ impl FunctionTargetsHolder {
             FunctionHolderTarget::Module(mid) => mid,
             FunctionHolderTarget::None => unreachable!(),
         };
-        let used_modules: BTreeSet<ModuleId> = env.get_module(target_module).get_used_modules();
+
         if func_env.module_env.get_id() != target_module
-            && !used_modules.contains(&func_env.module_env.get_id())
+            && !self.is_belongs_to_module_explicit_specs(&env.get_module(target_module), spec_id)
             && !Self::is_system_spec(&spec_id, env)
         {
             return;
@@ -991,6 +1000,92 @@ impl FunctionTargetsHolder {
                 "annotation {} not found",
                 std::any::type_name::<T>()
             ))
+    }
+
+    fn get_module_explicit_spec_attributes(
+        &mut self,
+        module_env: &ModuleEnv,
+    ) -> BTreeSet<ModuleExternalSpecAttribute> {
+        if let Some(attrs) = self.module_external_attributes.get(&module_env.get_id()) {
+            return attrs.clone();
+        }
+
+        let mut result = BTreeSet::new();
+
+        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = module_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::External)
+            .map(|attr| &attr.value)
+        {
+            attrs.into_iter().for_each(|attr| match &attr.2.value {
+                ExternalAttributeEntry_::Assigned(aname, value) => {
+                    println!(
+                        "Processing external attribute: {:?} {:?}",
+                        aname.value, value.value
+                    );
+                    if let ExternalAttributeValue_::Module(module_ident) = value.value {
+                        let module_name = ModuleName::from_address_bytes_and_name(
+                            module_ident.value.address.into_addr_bytes(),
+                            module_env
+                                .env
+                                .symbol_pool()
+                                .make(&module_ident.value.module.to_string()),
+                        );
+                        result.insert(ModuleExternalSpecAttribute::Module(
+                            module_env.env.find_module(&module_name).unwrap().get_id(),
+                        ));
+                    } else if let ExternalAttributeValue_::ModuleAccess(module_access) = value.value
+                    {
+                        match module_access.value {
+                            ModuleAccess_::ModuleAccess(module_ident, fname) => {
+                                let module_name = ModuleName::from_address_bytes_and_name(
+                                    module_ident.value.address.into_addr_bytes(),
+                                    module_env
+                                        .env
+                                        .symbol_pool()
+                                        .make(&module_ident.value.module.to_string()),
+                                );
+                                let target_module_env =
+                                    module_env.env.find_module(&module_name).unwrap();
+                                let name = aname.value.as_str();
+                                if name == "explicit_spec_module" {
+                                    result.insert(ModuleExternalSpecAttribute::Module(
+                                        target_module_env.get_id(),
+                                    ));
+                                } else if name == "explicit_spec_fun" {
+                                    let function_str = fname.to_string();
+                                    let function_symbol =
+                                        module_env.env.symbol_pool().make(&function_str);
+                                    if let Some(func_env) =
+                                        target_module_env.find_function(function_symbol)
+                                    {
+                                        result.insert(ModuleExternalSpecAttribute::Function(
+                                            func_env.get_qualified_id(),
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            });
+        }
+
+        self.module_external_attributes
+            .insert(module_env.get_id(), result.clone());
+        result
+    }
+
+    pub fn is_belongs_to_module_explicit_specs(
+        &mut self,
+        module_env: &ModuleEnv,
+        qid: QualifiedId<FunId>,
+    ) -> bool {
+        let external_attrs = self.get_module_explicit_spec_attributes(module_env);
+        external_attrs.contains(&ModuleExternalSpecAttribute::Module(qid.module_id))
+            || external_attrs.contains(&ModuleExternalSpecAttribute::Function(qid))
     }
 
     /// Processes the function target data for given function.

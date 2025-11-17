@@ -20,20 +20,10 @@ module 0x42::foo_specs {
   }
 }
 
-module 0x42::foo_specs_2 {
+#[ext(explicit_spec_module = 0x42::foo_specs)]
+module 0x42::bar_specs_double_foo_imported_module {
   use prover::prover::ensures;
-  use 0x42::fb::foo;
-
-  #[spec(prove, target = 0x42::fb::foo)]
-  public fun foo_spec() {
-    foo();
-    ensures(true); 
-  }
-}
-
-module 0x42::bar_specs {
-  use prover::prover::ensures;
-  use 0x42::fb::{bar, foo};
+  use 0x42::fb::{foo, bar};
 
   #[spec(prove, target = 0x42::fb::foo)]
   public fun foo_spec() {
@@ -48,15 +38,4 @@ module 0x42::bar_specs {
   }
 }
 
-module 0x42::bar_specs_imported_module {
-  use prover::prover::ensures;
-  use 0x42::fb::bar;
-  #[spec_only]
-  use 0x42::foo_specs;
-
-  #[spec(prove, target = 0x42::fb::bar)]
-  public fun bar_spec() {
-    bar();
-    ensures(true); 
-  }
-}
+// Should FAIL because of duplicate spec for foo in same context
