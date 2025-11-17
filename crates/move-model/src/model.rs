@@ -1567,23 +1567,34 @@ impl GlobalEnv {
     const PROVER_BEGIN_EXISTS_LAMBDA: &'static str = "begin_exists_lambda";
     const PROVER_END_EXISTS_LAMBDA: &'static str = "end_exists_lambda";
     const PROVER_BEGIN_MAP_LAMBDA: &'static str = "begin_map_lambda";
+    const PROVER_BEGIN_MAP_RANGE_LAMBDA: &'static str = "begin_map_range_lambda";
     const PROVER_END_MAP_LAMBDA: &'static str = "end_map_lambda";
     const PROVER_BEGIN_FILTER_LAMBDA: &'static str = "begin_filter_lambda";
+    const PROVER_BEGIN_FILTER_RANGE_LAMBDA: &'static str = "begin_filter_range_lambda";
     const PROVER_END_FILTER_LAMBDA: &'static str = "end_filter_lambda";
     const PROVER_BEGIN_FIND_LAMBDA: &'static str = "begin_find_lambda";
+    const PROVER_BEGIN_FIND_RANGE_LAMBDA: &'static str = "begin_find_range_lambda";
     const PROVER_END_FIND_LAMBDA: &'static str = "end_find_lambda";
     const PROVER_BEGIN_FIND_INDEX_LAMBDA: &'static str = "begin_find_index_lambda";
+    const PROVER_BEGIN_FIND_INDEX_RANGE_LAMBDA: &'static str = "begin_find_index_range_lambda";
     const PROVER_END_FIND_INDEX_LAMBDA: &'static str = "end_find_index_lambda";
     const PROVER_BEGIN_FIND_INDICES_LAMBDA: &'static str = "begin_find_indices_lambda";
+    const PROVER_BEGIN_FIND_INDICES_RANGE_LAMBDA: &'static str = "begin_find_indices_range_lambda";
     const PROVER_END_FIND_INDICES_LAMBDA: &'static str = "end_find_indices_lambda";
     const PROVER_BEGIN_COUNT_LAMBDA: &'static str = "begin_count_lambda";
+    const PROVER_BEGIN_COUNT_RANGE_LAMBDA: &'static str = "begin_count_range_lambda";
     const PROVER_END_COUNT_LAMBDA: &'static str = "end_count_lambda";
     const PROVER_BEGIN_ANY_LAMBDA: &'static str = "begin_any_lambda";
+    const PROVER_BEGIN_ANY_RANGE_LAMBDA: &'static str = "begin_any_range_lambda";
     const PROVER_END_ANY_LAMBDA: &'static str = "end_any_lambda";
     const PROVER_BEGIN_ALL_LAMBDA: &'static str = "begin_all_lambda";
+    const PROVER_BEGIN_ALL_RANGE_LAMBDA: &'static str = "begin_all_range_lambda";
     const PROVER_END_ALL_LAMBDA: &'static str = "end_all_lambda";
     const PROVER_BEGIN_SUM_MAP_LAMBDA: &'static str = "begin_sum_map_lambda";
+    const PROVER_BEGIN_SUM_MAP_RANGE_LAMBDA: &'static str = "begin_sum_map_range_lambda";
     const PROVER_END_SUM_MAP_LAMBDA: &'static str = "end_sum_map_lambda";
+    const PROVER_VEC_SUM: &'static str = "sum";
+    const PROVER_VEC_SLICE: &'static str = "slice";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1867,6 +1878,13 @@ impl GlobalEnv {
         )
     }
 
+    pub fn prover_begin_map_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_MAP_RANGE_LAMBDA,
+        )
+    }
+
     pub fn prover_end_map_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_MAP_LAMBDA)
     }
@@ -1875,6 +1893,13 @@ impl GlobalEnv {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_BEGIN_FILTER_LAMBDA,
+        )
+    }
+
+    pub fn prover_begin_filter_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_FILTER_RANGE_LAMBDA,
         )
     }
 
@@ -1892,6 +1917,13 @@ impl GlobalEnv {
         )
     }
 
+    pub fn prover_begin_find_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_FIND_RANGE_LAMBDA,
+        )
+    }
+
     pub fn prover_end_find_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
@@ -1903,6 +1935,13 @@ impl GlobalEnv {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_BEGIN_FIND_INDEX_LAMBDA,
+        )
+    }
+
+    pub fn prover_begin_find_index_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_FIND_INDEX_RANGE_LAMBDA,
         )
     }
 
@@ -1920,6 +1959,13 @@ impl GlobalEnv {
         )
     }
 
+    pub fn prover_begin_find_indices_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_FIND_INDICES_RANGE_LAMBDA,
+        )
+    }
+
     pub fn prover_end_find_indices_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
@@ -1931,6 +1977,13 @@ impl GlobalEnv {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_BEGIN_COUNT_LAMBDA,
+        )
+    }
+
+    pub fn prover_begin_count_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_COUNT_RANGE_LAMBDA,
         )
     }
 
@@ -1948,6 +2001,13 @@ impl GlobalEnv {
         )
     }
 
+    pub fn prover_begin_any_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_ANY_RANGE_LAMBDA,
+        )
+    }
+
     pub fn prover_end_any_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_END_ANY_LAMBDA)
     }
@@ -1956,6 +2016,13 @@ impl GlobalEnv {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_BEGIN_ALL_LAMBDA,
+        )
+    }
+
+    pub fn prover_begin_all_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_ALL_RANGE_LAMBDA,
         )
     }
 
@@ -1970,11 +2037,26 @@ impl GlobalEnv {
         )
     }
 
+    pub fn prover_begin_sum_map_range_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_SUM_MAP_RANGE_LAMBDA,
+        )
+    }
+
     pub fn prover_end_sum_map_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_END_SUM_MAP_LAMBDA,
         )
+    }
+
+    pub fn prover_vec_sum_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
+    }
+
+    pub fn prover_vec_slice_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -3297,6 +3379,43 @@ impl GlobalEnv {
             self.prover_ref_qid(),
         ]);
 
+        // Prover vec iter module functions
+        qids.extend(vec![
+            self.prover_begin_forall_lambda_qid(),
+            self.prover_end_forall_lambda_qid(),
+            self.prover_begin_exists_lambda_qid(),
+            self.prover_end_exists_lambda_qid(),
+            self.prover_begin_map_lambda_qid(),
+            self.prover_begin_map_range_lambda_qid(),
+            self.prover_end_map_lambda_qid(),
+            self.prover_begin_filter_lambda_qid(),
+            self.prover_begin_filter_range_lambda_qid(),
+            self.prover_end_filter_lambda_qid(),
+            self.prover_begin_find_lambda_qid(),
+            self.prover_begin_find_range_lambda_qid(),
+            self.prover_end_find_lambda_qid(),
+            self.prover_begin_find_index_lambda_qid(),
+            self.prover_begin_find_index_range_lambda_qid(),
+            self.prover_end_find_index_lambda_qid(),
+            self.prover_begin_find_indices_lambda_qid(),
+            self.prover_begin_find_indices_range_lambda_qid(),
+            self.prover_end_find_indices_lambda_qid(),
+            self.prover_begin_count_lambda_qid(),
+            self.prover_begin_count_range_lambda_qid(),
+            self.prover_end_count_lambda_qid(),
+            self.prover_begin_any_lambda_qid(),
+            self.prover_begin_any_range_lambda_qid(),
+            self.prover_end_any_lambda_qid(),
+            self.prover_begin_all_lambda_qid(),
+            self.prover_begin_all_range_lambda_qid(),
+            self.prover_end_all_lambda_qid(),
+            self.prover_begin_sum_map_lambda_qid(),
+            self.prover_begin_sum_map_range_lambda_qid(),
+            self.prover_end_sum_map_lambda_qid(),
+            self.prover_vec_sum_qid(),
+            self.prover_vec_slice_qid(),
+        ]);
+
         // Ghost module functions
         qids.extend(vec![
             self.global_qid(),
@@ -3490,6 +3609,43 @@ impl GlobalEnv {
             self.declare_global_qid(),
             self.declare_global_mut_qid(),
             self.havoc_global_qid(),
+        ]);
+
+        // Prover vec iter module functions
+        qids.extend(vec![
+            self.prover_begin_forall_lambda_qid(),
+            self.prover_end_forall_lambda_qid(),
+            self.prover_begin_exists_lambda_qid(),
+            self.prover_end_exists_lambda_qid(),
+            self.prover_begin_map_lambda_qid(),
+            self.prover_begin_map_range_lambda_qid(),
+            self.prover_end_map_lambda_qid(),
+            self.prover_begin_filter_lambda_qid(),
+            self.prover_begin_filter_range_lambda_qid(),
+            self.prover_end_filter_lambda_qid(),
+            self.prover_begin_find_lambda_qid(),
+            self.prover_begin_find_range_lambda_qid(),
+            self.prover_end_find_lambda_qid(),
+            self.prover_begin_find_index_lambda_qid(),
+            self.prover_begin_find_index_range_lambda_qid(),
+            self.prover_end_find_index_lambda_qid(),
+            self.prover_begin_find_indices_lambda_qid(),
+            self.prover_begin_find_indices_range_lambda_qid(),
+            self.prover_end_find_indices_lambda_qid(),
+            self.prover_begin_count_lambda_qid(),
+            self.prover_begin_count_range_lambda_qid(),
+            self.prover_end_count_lambda_qid(),
+            self.prover_begin_any_lambda_qid(),
+            self.prover_begin_any_range_lambda_qid(),
+            self.prover_end_any_lambda_qid(),
+            self.prover_begin_all_lambda_qid(),
+            self.prover_begin_all_range_lambda_qid(),
+            self.prover_end_all_lambda_qid(),
+            self.prover_begin_sum_map_lambda_qid(),
+            self.prover_begin_sum_map_range_lambda_qid(),
+            self.prover_end_sum_map_lambda_qid(),
+            self.prover_vec_sum_qid(),
+            self.prover_vec_slice_qid(),
         ]);
 
         // Log module functions
