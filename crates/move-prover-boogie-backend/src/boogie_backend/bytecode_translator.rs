@@ -2436,8 +2436,8 @@ impl<'env> FunctionTranslator<'env> {
 
     fn create_quantifiers_temp_vars(&self) {
         for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
-                if matches!(qt, QuantifierType::Find | QuantifierType::FindIndex) {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
+                if qt.is_find_or_find_index() {
                     emitln!(self.parent.writer, "var $find_i: int;");
                     emitln!(self.parent.writer, "var $find_exists: bool;");
                     return;
@@ -4494,7 +4494,7 @@ impl<'env> FunctionTranslator<'env> {
                         let b_type = boogie_type(env, &loc_type);
 
                         let cr_args = |local_name: &str| {
-                            if matches!(qt, QuantifierType::Exists | QuantifierType::Forall) {
+                            if !qt.vector_based() {
                                 srcs.iter()
                                     .enumerate()
                                     .map(|(index, vidx)| {
@@ -4506,13 +4506,12 @@ impl<'env> FunctionTranslator<'env> {
                                     })
                                     .join(", ")
                             } else {
-                                let lambda_arg = format!("ReadVec($t{}, {})", srcs[0], local_name);
                                 srcs.iter()
-                                    .skip(1)
+                                    .skip(if qt.range_based() { 3 } else { 1 })
                                     .enumerate()
                                     .map(|(index, vidx)| {
                                         if index == *li {
-                                            lambda_arg.clone()
+                                            format!("ReadVec($t{}, {})", srcs[0], local_name)
                                         } else {
                                             format!("$t{}", vidx)
                                         }
@@ -4520,6 +4519,9 @@ impl<'env> FunctionTranslator<'env> {
                                     .join(", ")
                             }
                         };
+
+                        // srcs[0] is the source vector for vector-based quantifiers
+                        // srcs[1] and srcs[2] are the range bounds for range-based quantifiers [start, end)
 
                         match qt {
                             QuantifierType::Forall => {
@@ -4532,12 +4534,25 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
                                 emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume $IsValid'vec'{}''($t{});", suffix, dests[0]);
+                            }
+                            QuantifierType::MapRange => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});", srcs[1], srcs[2], dests[0], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume $IsValid'vec'{}''($t{});", suffix, dests[0]);
                             }
                             QuantifierType::Any => {
                                 emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
                             }
+                            QuantifierType::AnyRange => {
+                                emitln!(self.writer(), "$t{} := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", dests[0], srcs[1], srcs[2], fun_name, cr_args("i"));
+                            }
                             QuantifierType::All => {
                                 emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
+                            }
+                            QuantifierType::AllRange => {
+                                emitln!(self.writer(), "$t{} := (forall i:int :: $t{} <= i && i < $t{} ==> {}({}));", dests[0], srcs[1], srcs[2], fun_name, cr_args("i"));
                             }
                             QuantifierType::Find => {
                                 emitln!(self.writer(), "havoc $find_exists;");
@@ -4552,6 +4567,19 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "    $t{} := $1_option_Option'{}'(EmptyVec());", dests[0], suffix);
                                 emitln!(self.writer(), "}");
                             }
+                            QuantifierType::FindRange => {
+                                emitln!(self.writer(), "havoc $find_exists;");
+                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "if ($find_exists) {");
+                                emitln!(self.writer(), "    havoc $find_i;");
+                                emitln!(self.writer(), "    assume $t{} <= $find_i && $find_i < $t{};", srcs[1], srcs[2]);
+                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'{}'(MakeVec1(ReadVec($t{}, $find_i)));", dests[0], suffix, srcs[0]);
+                                emitln!(self.writer(), "} else {");
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'{}'(EmptyVec());", dests[0], suffix);
+                                emitln!(self.writer(), "}");
+                            }
                             QuantifierType::FindIndex => {
                                 emitln!(self.writer(), "havoc $find_exists;");
                                 emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
@@ -4560,6 +4588,19 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "    assume 0 <= $find_i && $find_i < LenVec($t{});", srcs[0]);
                                 emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
                                 emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));", dests[0]);
+                                emitln!(self.writer(), "} else {");
+                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
+                                emitln!(self.writer(), "}");
+                            }
+                            QuantifierType::FindIndexRange => {
+                                emitln!(self.writer(), "havoc $find_exists;");
+                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "if ($find_exists) {");
+                                emitln!(self.writer(), "    havoc $find_i;");
+                                emitln!(self.writer(), "    assume $t{} <= $find_i && $find_i < $t{};", srcs[1], srcs[2]);
+                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
                                 emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));", dests[0]);
                                 emitln!(self.writer(), "} else {");
                                 emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
