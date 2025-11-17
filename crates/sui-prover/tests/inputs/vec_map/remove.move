@@ -9,7 +9,7 @@ fun foo(m: &mut vec_map::VecMap<u64, u8>) {
 }
 
 #[spec(prove)]
-fun foo_spec(m: &mut vec_map::VecMap<u64, u8>) {
+fun bar_spec(m: &mut vec_map::VecMap<u64, u8>) {
   requires(m.contains(&10));
   requires(!m.contains(&11));
   foo(m);
