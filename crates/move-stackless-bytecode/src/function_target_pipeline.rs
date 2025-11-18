@@ -36,12 +36,11 @@ use crate::{
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
     stackless_control_flow_graph::generate_cfg_in_dot_format,
-    target_filter::TargetFilterOptions,
 };
 
 #[derive(Debug, Clone)]
 pub enum FunctionHolderTarget {
-    None,
+    FunctionsAbortCheck,
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -57,10 +56,9 @@ enum ModuleExternalSpecAttribute {
 #[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
-    function_specs: BTreeSet<(QualifiedId<FunId>, QualifiedId<FunId>)>,
+    function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
-    skip_specs: BTreeMap<QualifiedId<FunId>, String>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
@@ -71,7 +69,6 @@ pub struct FunctionTargetsHolder {
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
-    filter: TargetFilterOptions,
     prover_options: ProverOptions,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
 }
@@ -205,17 +202,12 @@ pub struct FunctionTargetPipeline {
 }
 
 impl FunctionTargetsHolder {
-    pub fn new(
-        prover_options: ProverOptions,
-        filter: TargetFilterOptions,
-        target: FunctionHolderTarget,
-    ) -> Self {
+    pub fn new(prover_options: ProverOptions, target: FunctionHolderTarget) -> Self {
         Self {
             targets: BTreeMap::new(),
-            function_specs: BTreeSet::new(),
+            function_specs: BiBTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             omit_opaque_specs: BTreeSet::new(),
-            skip_specs: BTreeMap::new(),
             focus_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
@@ -225,7 +217,6 @@ impl FunctionTargetsHolder {
             target_modules: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             prover_options,
-            filter,
             target,
             loop_invariants: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
@@ -233,11 +224,7 @@ impl FunctionTargetsHolder {
     }
 
     pub fn new_dummy(&self) -> Self {
-        Self::new(
-            self.prover_options.clone(),
-            TargetFilterOptions::default(),
-            FunctionHolderTarget::None,
-        )
+        Self::new(self.prover_options.clone(), self.target.clone())
     }
 
     pub fn prover_options(&self) -> &ProverOptions {
@@ -288,17 +275,11 @@ impl FunctionTargetsHolder {
     }
 
     pub fn get_fun_by_spec(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs
-            .iter()
-            .find(|(l, _)| l == id)
-            .map(|(_, r)| r)
+        self.function_specs.get_by_left(id)
     }
 
     pub fn get_spec_by_fun(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
-        self.function_specs
-            .iter()
-            .find(|(_, r)| r == id)
-            .map(|(l, _)| l)
+        self.function_specs.get_by_right(id)
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
@@ -357,18 +338,9 @@ impl FunctionTargetsHolder {
         self.omit_opaque_specs.contains(id)
     }
 
-    pub fn skip_spec_txt(&self, id: &QualifiedId<FunId>) -> String {
-        self.skip_specs.get(id).cloned().unwrap_or_default()
-    }
-
-    pub fn skip_specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
-        self.skip_specs.keys()
-    }
-
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
-            .iter()
-            .map(|(l, _)| l)
+            .left_values()
             .chain(self.scenario_specs.iter())
     }
 
@@ -413,10 +385,6 @@ impl FunctionTargetsHolder {
 
     pub fn get_spec_timeout(&self, id: &QualifiedId<FunId>) -> Option<&u64> {
         self.spec_timeouts.get(id)
-    }
-
-    pub fn has_target_mode(&self) -> bool {
-        !matches!(self.target, FunctionHolderTarget::None)
     }
 
     pub fn get_loop_invariants(
@@ -495,9 +463,9 @@ impl FunctionTargetsHolder {
             .map(|attr| &attr.value)
         {
             let targeted = match self.target {
-                FunctionHolderTarget::None => self.filter.is_targeted(func_env),
                 FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
                 FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
+                FunctionHolderTarget::FunctionsAbortCheck => false,
             };
 
             if let Some(opt) = boogie_opt {
@@ -512,11 +480,6 @@ impl FunctionTargetsHolder {
 
             if *no_opaque {
                 self.omit_opaque_specs.insert(func_env.get_qualified_id());
-            }
-
-            if skip.is_some() {
-                self.skip_specs
-                    .insert(func_env.get_qualified_id(), skip.clone().unwrap());
             }
 
             if *ignore_abort {
@@ -742,36 +705,27 @@ impl FunctionTargetsHolder {
         let env = func_env.module_env.env;
         let target_id = target_func_env.get_qualified_id();
         let spec_id = func_env.get_qualified_id();
-        if matches!(self.target, FunctionHolderTarget::None) {
-            if self.function_specs.contains(&(spec_id, target_id)) {
-                env.diag(
-                    Severity::Error,
-                    &func_env.get_loc(),
-                    &format!(
-                        "Duplicate target function: {}",
-                        target_func_env.get_name_str()
-                    ),
-                );
-            } else {
-                self.function_specs.insert((spec_id, target_id));
+
+        if matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck) {
+            if !Self::is_system_spec(&spec_id, env) {
+                return;
             }
-            return;
+        } else {
+            let target_module = match self.target {
+                FunctionHolderTarget::Function(qid) => qid.module_id,
+                FunctionHolderTarget::Module(mid) => mid,
+                FunctionHolderTarget::FunctionsAbortCheck => unreachable!(),
+            };
+
+            if func_env.module_env.get_id() != target_module
+                && !self.is_belongs_to_module_explicit_specs(&env.get_module(target_module), spec_id)
+                && !Self::is_system_spec(&spec_id, env)
+            {
+                return;
+            }
         }
 
-        let target_module = match self.target {
-            FunctionHolderTarget::Function(qid) => qid.module_id,
-            FunctionHolderTarget::Module(mid) => mid,
-            FunctionHolderTarget::None => unreachable!(),
-        };
-
-        if func_env.module_env.get_id() != target_module
-            && !self.is_belongs_to_module_explicit_specs(&env.get_module(target_module), spec_id)
-            && !Self::is_system_spec(&spec_id, env)
-        {
-            return;
-        }
-
-        if self.function_specs.iter().any(|(_, r)| r == &target_id) {
+        if self.function_specs.contains_right(&target_id) {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
@@ -781,7 +735,7 @@ impl FunctionTargetsHolder {
                 ),
             );
         } else {
-            self.function_specs.insert((spec_id, target_id));
+            self.function_specs.insert(spec_id, target_id);
         }
     }
 

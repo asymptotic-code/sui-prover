@@ -89,8 +89,7 @@ pub fn build_model_with_target(
 
     let mut targets = FunctionTargetsHolder::new(
         Default::default(),
-        Default::default(),
-        FunctionHolderTarget::None,
+        FunctionHolderTarget::FunctionsAbortCheck, // TODO: broken
     );
 
     for module in model.get_modules() {

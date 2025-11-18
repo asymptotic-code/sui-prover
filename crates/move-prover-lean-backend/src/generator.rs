@@ -41,7 +41,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let target_type = FunctionHolderTarget::None;
+    let target_type = FunctionHolderTarget::FunctionsAbortCheck; // TODO: broken
     let (targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
 
     check_errors(
@@ -190,8 +190,7 @@ pub fn create_and_process_bytecode(
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
 
-    let mut targets =
-        FunctionTargetsHolder::new(options.prover.clone(), Default::default(), target_type);
+    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), target_type);
 
     let output_dir = Path::new(&options.output_path)
         .parent()

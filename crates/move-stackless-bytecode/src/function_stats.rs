@@ -1,14 +1,17 @@
-use crate::function_target_pipeline::FunctionTargetsHolder;
+use crate::target_filter::TargetFilterOptions;
 use move_binary_format::file_format::Visibility;
+use move_compiler::shared::known_attributes::{
+    AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
+};
 use move_model::{
     ast::Attribute,
-    model::{FunctionEnv, GlobalEnv},
+    model::{FunId, FunctionEnv, GlobalEnv, ModuleId, QualifiedId},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofStatus {
-    Skipped,
+    Skipped(String),
     NoSpec,
     NoProve,
     SuccessfulProof,
@@ -20,10 +23,117 @@ impl std::fmt::Display for ProofStatus {
         match self {
             ProofStatus::SuccessfulProof => write!(f, "✅ has spec"),
             ProofStatus::IgnoreAborts => write!(f, "⚠️  spec but with ignore_abort"),
-            ProofStatus::Skipped => write!(f, "⏭️  skipped spec"),
+            ProofStatus::Skipped(reason) => write!(f, "⏭️  skipped spec: {}", reason),
             ProofStatus::NoProve => write!(f, "✖️ no prove"),
             ProofStatus::NoSpec => write!(f, "❌ no spec"),
         }
+    }
+}
+
+pub struct CollectedTargets {
+    pub target_specs: BTreeSet<QualifiedId<FunId>>,
+    pub target_modules: BTreeSet<ModuleId>,
+    pub no_verify_specs: BTreeSet<QualifiedId<FunId>>,
+    pub no_verify_modules: BTreeSet<ModuleId>,
+    pub abort_checks: BTreeSet<QualifiedId<FunId>>,
+    pub skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
+    pub ignore_abort_specs: BTreeSet<QualifiedId<FunId>>,
+}
+
+impl CollectedTargets {
+    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions) -> Self {
+        let mut s = Self {
+            target_specs: BTreeSet::new(),
+            target_modules: BTreeSet::new(),
+            abort_checks: BTreeSet::new(),
+            skipped_specs: BTreeMap::new(),
+            no_verify_specs: BTreeSet::new(),
+            ignore_abort_specs: BTreeSet::new(),
+            no_verify_modules: BTreeSet::new(),
+        };
+        s.collect_targets(env, filter);
+        s
+    }
+
+    fn collect_targets(&mut self, env: &GlobalEnv, filter: TargetFilterOptions) {
+        for module_env in env.get_modules() {
+            if module_env.is_target() {
+                for func_env in module_env.get_functions() {
+                    self.check_spec_scope(&func_env, filter.clone());
+                    self.check_abort_check_scope(&func_env, filter.clone());
+                }
+            }
+        }
+    }
+
+    fn check_spec_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) {
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
+            focus,
+            prove,
+            skip,
+            target: _,
+            no_opaque: _,
+            ignore_abort,
+            boogie_opt: _,
+            timeout: _,
+        })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::Spec)
+            .map(|attr| &attr.value)
+        {
+            if filter.is_targeted(func_env) {
+                if *ignore_abort {
+                    self.ignore_abort_specs.insert(func_env.get_qualified_id());
+                }
+                if let Some(str) = skip {
+                    self.skipped_specs.insert(func_env.get_qualified_id(), str.to_string());
+                    self.no_verify_specs.insert(func_env.get_qualified_id());
+                    self.no_verify_modules.insert(func_env.module_env.get_id());
+                    return;
+                }
+                if *focus || *prove {
+                    self.target_specs.insert(func_env.get_qualified_id());
+                    self.target_modules.insert(func_env.module_env.get_id());
+                } else {
+                    self.no_verify_specs.insert(func_env.get_qualified_id());
+                    self.no_verify_modules.insert(func_env.module_env.get_id());
+                }
+            }
+        }
+    }
+
+    fn check_abort_check_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) -> bool {
+        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::External)
+            .map(|attr| &attr.value)
+        {
+            if filter.is_targeted(func_env)
+                && attrs
+                    .into_iter()
+                    .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string())
+            {
+               self.abort_checks.insert(func_env.get_qualified_id());
+            }
+        }
+
+        false
+    }
+
+    fn is_spec(&self, func_id: &QualifiedId<FunId>) -> bool {
+        self.target_specs.contains(func_id) || self.no_verify_specs.contains(func_id)
+    }
+
+    pub fn has_specs(&self) -> bool {
+        !self.target_specs.is_empty() || !self.no_verify_specs.is_empty()
+    }
+
+    pub fn ignores_aborts(&self, func_id: &QualifiedId<FunId>) -> bool {
+        self.ignore_abort_specs.contains(func_id)
+    }
+
+    pub fn is_verified_spec(&self, func_id: &QualifiedId<FunId>) -> bool {
+        self.target_specs.contains(func_id)
     }
 }
 
@@ -45,7 +155,7 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 /// - Functions with `spec_only` attribute
 /// - Functions with `test_only` attribute
 /// - Spec functions themselves
-fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> bool {
+fn should_include_function(func_env: &FunctionEnv, targets: &CollectedTargets) -> bool {
     let func_id = func_env.get_qualified_id();
 
     if func_env.visibility() != Visibility::Public {
@@ -73,13 +183,12 @@ fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHold
 /// - `IgnoreAborts` - Spec is verified but ignores abort conditions
 /// - `SuccessfulProof` - Spec is verified normally
 /// - `NoSpec` - No specification exists for this function
-fn determine_spec_status(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> ProofStatus {
+fn determine_spec_status(func_env: &FunctionEnv, targets: &CollectedTargets) -> ProofStatus {
     let func_id = func_env.get_qualified_id();
-    let skip_specs_set: BTreeSet<_> = targets.skip_specs().collect();
 
-    if let Some(spec_id) = targets.get_spec_by_fun(&func_id) {
-        if skip_specs_set.contains(&spec_id) {
-            ProofStatus::Skipped
+    if let Some(spec_id) = Some(&func_env.get_qualified_id()) {// targets.get_spec_by_fun(&func_id) { // TODO
+        if let Some(reason) = targets.skipped_specs.get(spec_id) {
+            ProofStatus::Skipped(reason.to_string())
         } else if !targets.is_verified_spec(spec_id) {
             ProofStatus::NoProve
         } else if targets.ignores_aborts(spec_id) {
@@ -103,7 +212,7 @@ fn determine_spec_status(func_env: &FunctionEnv, targets: &FunctionTargetsHolder
 /// - System/framework modules
 /// - Non-public functions
 /// - Test-only and spec-only functions
-pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) {
+pub fn display_function_stats(env: &GlobalEnv, targets: &CollectedTargets) {
     println!("📊 Function Statistics\n");
 
     let excluded_addresses = [
