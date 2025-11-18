@@ -11,7 +11,6 @@ fun foo(m: &mut vec_map::VecMap<u64, u8>) {
 #[spec(prove)]
 fun bar_spec(m: &mut vec_map::VecMap<u64, u8>) {
   requires(m.contains(&10));
-  requires(!m.contains(&11));
   foo(m);
   ensures(!m.contains(&10));
 }
