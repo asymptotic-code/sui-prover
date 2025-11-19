@@ -3111,7 +3111,8 @@ impl<'env> FunctionTranslator<'env> {
                         let callee_env = module_env.get_function(*fid);
 
                         let id = &self.fun_target.func_env.get_qualified_id();
-                        let use_impl = self.parent.targets.omits_opaque(&id);
+                        let use_impl = self.style == FunctionTranslationStyle::Opaque
+                            && self.parent.targets.omits_opaque(&id);
                         let mut use_func = false;
                         let mut use_func_datatypes = false;
 
@@ -3359,9 +3360,9 @@ impl<'env> FunctionTranslator<'env> {
                                         // Fallback to $impl if no $pure available
                                         fun_name = format!("{}{}", fun_name, "$impl");
                                     }
-                                } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck
-                                    || self.style == FunctionTranslationStyle::Opaque
-                                {
+                                } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
+                                    fun_name = format!("{}{}", fun_name, "$opaque");
+                                } else if self.style == FunctionTranslationStyle::Opaque {
                                     let suffix = if use_impl { "$impl" } else { "$opaque" };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
@@ -3505,11 +3506,11 @@ impl<'env> FunctionTranslator<'env> {
                             }
                         }
 
-                        if is_spec_call
-                            && (self.style == FunctionTranslationStyle::SpecNoAbortCheck
-                                || self.style == FunctionTranslationStyle::Opaque)
-                        {
-                            if !self.parent.targets.omits_opaque(id) {
+                        if is_spec_call {
+                            if self.style == FunctionTranslationStyle::SpecNoAbortCheck
+                                || self.style == FunctionTranslationStyle::Opaque
+                                    && !self.parent.targets.omits_opaque(id)
+                            {
                                 for type_inst in
                                     spec_global_variable_analysis::get_info(&self.fun_target.data)
                                         .mut_vars()
