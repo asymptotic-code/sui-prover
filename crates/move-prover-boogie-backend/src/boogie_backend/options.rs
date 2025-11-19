@@ -231,7 +231,7 @@ impl Default for BoogieOptions {
             loop_unroll: None,
             borrow_aggregates: vec![],
             prelude_extra: Some(PathBuf::from("prelude_extra.bpl")),
-            path_split:  None,
+            path_split: None,
             bv_int_encoding: true,
             string_options: None,
             boogie_file_mode: BoogieFileMode::Function,
