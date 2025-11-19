@@ -5,8 +5,11 @@ use move_package::{
     package_lock::PackageLock, source_package::layout::SourcePackageLayout,
     BuildConfig as MoveBuildConfig,
 };
-use move_stackless_bytecode::function_target_pipeline::{
-    FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
+use move_stackless_bytecode::{
+    function_stats::PackageTargets,
+    function_target_pipeline::{
+        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
+    },
 };
 use std::path::{Path, PathBuf};
 use termcolor::Buffer;
@@ -87,9 +90,11 @@ pub fn build_model_with_target(
         ));
     }
 
+    let package_targets = PackageTargets::new(&model, Default::default(), false);
     let mut targets = FunctionTargetsHolder::new(
         Default::default(),
-        FunctionHolderTarget::FunctionsAbortCheck, // TODO: broken
+        &package_targets,
+        FunctionHolderTarget::All,
     );
 
     for module in model.get_modules() {

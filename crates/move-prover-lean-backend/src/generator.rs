@@ -9,8 +9,9 @@ use log::info;
 use move_model::code_writer::CodeWriter;
 use move_model::model::GlobalEnv;
 use move_model::ty::Type;
+use move_stackless_bytecode::function_stats::PackageTargets;
 use move_stackless_bytecode::function_target_pipeline::{
-    FunctionHolderTarget, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
+    FunctionHolderTarget, FunctionTargetsHolder,
 };
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
 use move_stackless_bytecode::options::ProverOptions;
@@ -41,17 +42,6 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
 ) -> anyhow::Result<()> {
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let target_type = FunctionHolderTarget::FunctionsAbortCheck; // TODO: broken
-    let (targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
-
-    check_errors(
-        env,
-        &options,
-        error_writer,
-        // TODO: add _err_processor to this message
-        "exiting with bytecode transformation errors",
-    )?;
-
     let output_path = Path::new(&options.output_path);
     let output_existed = output_path.exists();
 
@@ -59,7 +49,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         fs::create_dir_all(output_path)?;
     }
 
-    let has_errors = run_prover_function_mode(env, error_writer, &options, &targets).await?;
+    let has_errors = run_prover_function_mode(env, error_writer, &options).await?;
 
     if has_errors {
         return Err(anyhow!("exiting with verification errors"));
@@ -72,34 +62,31 @@ pub async fn run_prover_function_mode<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     options: &Options,
-    all_targets: &FunctionTargetsHolder,
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
 
-    for target in all_targets.specs() {
-        if !env.get_function(*target).module_env.is_target()
-            || !all_targets.is_verified_spec(target)
-        {
-            continue;
-        }
-
-        let fun_env = env.get_function(*target);
-        let has_target = all_targets.has_target(
-            &env.get_function(*target),
-            &FunctionVariant::Verification(VerificationFlavor::Regular),
-        );
-        let file_name = fun_env.get_full_name_str();
-
-        if has_target {
-            println!("🔄 {file_name}");
-        }
-
+    let package_targets = PackageTargets::new(&env, Default::default(), options.prover.ci);
+    for target in &package_targets.target_specs {
         env.cleanup();
-        let target_type = FunctionHolderTarget::Function(*target);
-        let (new_targets, _err_processor) = create_and_process_bytecode(&options, env, target_type);
 
-        let (code_writer, types) = generate_lean(env, &options, &new_targets)?;
+        let file_name = env.get_function(*target).get_full_name_str();
+        println!("🔄 {}", file_name);
 
+        let (targets, _) = create_and_process_bytecode(
+            options,
+            env,
+            &package_targets,
+            FunctionHolderTarget::Function(*target),
+        );
+        check_errors(
+            env,
+            &options,
+            error_writer,
+            // TODO: add _err_processor to this message
+            "exiting with bytecode transformation errors",
+        )?;
+
+        let (code_writer, types) = generate_lean(env, options, &targets)?;
         check_errors(
             env,
             &options,
@@ -110,7 +97,7 @@ pub async fn run_prover_function_mode<W: WriteColor>(
         verify_lean(
             env,
             &options,
-            &new_targets,
+            &targets,
             code_writer,
             types,
             file_name.clone(),
@@ -124,13 +111,11 @@ pub async fn run_prover_function_mode<W: WriteColor>(
             has_errors = true;
         }
 
-        if has_target {
-            if is_error {
-                println!("❌ {file_name}");
-            } else {
-                print!("\x1B[1A\x1B[2K");
-                println!("✅ {file_name}");
-            }
+        if is_error {
+            println!("❌ {file_name}");
+        } else {
+            print!("\x1B[1A\x1B[2K");
+            println!("✅ {file_name}");
         }
     }
 
@@ -185,12 +170,14 @@ pub async fn verify_lean(
 pub fn create_and_process_bytecode(
     options: &Options,
     env: &GlobalEnv,
+    package_targets: &PackageTargets,
     target_type: FunctionHolderTarget,
 ) -> (FunctionTargetsHolder, Option<String>) {
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
 
-    let mut targets = FunctionTargetsHolder::new(options.prover.clone(), target_type);
+    let mut targets =
+        FunctionTargetsHolder::new(options.prover.clone(), package_targets, target_type);
 
     let output_dir = Path::new(&options.output_path)
         .parent()

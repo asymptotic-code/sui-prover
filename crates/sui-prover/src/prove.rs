@@ -11,7 +11,7 @@ use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
 use move_prover_boogie_backend::generator::run_boogie_gen;
-use move_stackless_bytecode::function_stats::{self, CollectedTargets};
+use move_stackless_bytecode::function_stats::{self, PackageTargets};
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -185,7 +185,10 @@ pub async fn execute(
     let model = build_model(path, Some(build_config))?;
 
     if general_config.stats {
-        function_stats::display_function_stats(&model, &CollectedTargets::new(&model, filter.clone()));
+        function_stats::display_function_stats(
+            &model,
+            &PackageTargets::new(&model, filter.clone(), general_config.ci),
+        );
         return Ok(());
     }
 

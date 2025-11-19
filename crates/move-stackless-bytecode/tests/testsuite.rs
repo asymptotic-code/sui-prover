@@ -12,6 +12,7 @@ use move_stackless_bytecode::{
     clean_and_optimize::CleanAndOptimizeProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
+    function_stats::PackageTargets,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, ProcessorResultDisplay,
     },
@@ -173,8 +174,9 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Initialize and print function targets
         let mut text = String::new();
+        let package_targets = PackageTargets::new(&env, Default::default(), false);
         let mut targets =
-            FunctionTargetsHolder::new(options, FunctionHolderTarget::FunctionsAbortCheck); // dummy
+            FunctionTargetsHolder::new(options, &package_targets, FunctionHolderTarget::All);
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
                 targets.add_target(&func_env);
