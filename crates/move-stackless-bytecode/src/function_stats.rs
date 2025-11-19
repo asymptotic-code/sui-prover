@@ -457,6 +457,20 @@ impl PackageTargets {
                         self.process_spec(func_env, &target_func_env);
                     }
                     None => {
+                        // scenario specs either ignore aborts or do not have any asserts
+                        if !*ignore_abort
+                            && func_env
+                                .get_called_functions()
+                                .iter()
+                                .any(|f| *f == func_env.module_env.env.asserts_qid())
+                        {
+                            func_env.module_env.env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                "Scenario specs either ignore aborts or do not have any asserts.",
+                            );
+                            return;
+                        }
                         self.scenario_specs.insert(func_env.get_qualified_id());
                     }
                 }
