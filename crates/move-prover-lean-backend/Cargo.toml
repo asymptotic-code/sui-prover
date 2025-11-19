@@ -7,6 +7,10 @@ license = "Apache-2.0"
 publish = false
 edition = "2021"
 
+[[bin]]
+name = "lemma-manager"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
@@ -30,6 +34,7 @@ tera.workspace = true
 tokio.workspace = true
 codespan.workspace = true
 codespan-reporting.workspace = true
+ethnum.workspace = true
 
 move-stackless-bytecode.workspace = true
 move-command-line-common.workspace = true
@@ -38,3 +43,13 @@ move-model.workspace = true
 move-binary-format.workspace = true
 move-core-types.workspace = true
 move-docgen.workspace = true
+intermediate-theorem-format.workspace = true
+
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1.0"
+dirs = "5.0"
+walkdir = "2.4"
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

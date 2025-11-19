@@ -1,21 +1,63 @@
-use crate::lean_backend::options::LeanOptions;
-use move_model::code_writer::CodeWriter;
-use move_model::model::GlobalEnv;
-use move_model::{emit, emitln};
+// Copyright (c) Asymptotic Labs
+// SPDX-License-Identifier: Apache-2.0
 
-pub mod generator;
-pub mod generator_options;
-mod lean_backend;
+use std::fs;
+use std::path::Path;
 
-const PRELUDE_INTEGER: &'static str = include_str!("lean_backend/prelude/integer.lean");
+pub mod options;
+pub mod lemma;
+pub mod runtime;
+pub mod renderer;
+pub mod backend;
+pub mod escape;
 
-/// Adds the prelude to the generated output.
-pub fn add_prelude(
-    env: &GlobalEnv,
-    options: &LeanOptions,
-    writer: &CodeWriter,
-) -> anyhow::Result<()> {
-    emit!(writer, "\n-- ** Expanded prelude\n\n");
-    emitln!(writer, PRELUDE_INTEGER);
+// Re-exports for convenience
+pub use options::Options;
+pub use backend::run_backend;
+
+/// Writes the lakefile.lean and lake-manifest.json for the project.
+pub fn write_lakefile(output_path: &Path, module_name: &str) -> anyhow::Result<()> {
+    let lakefile_content = format!(
+        r#"import Lake
+open Lake DSL
+
+package «{}» where
+  -- add package configuration options here
+
+lean_lib Lemmas where
+  roots := #[`Lemmas]
+  globs := #[.submodules `Lemmas]
+
+@[default_target]
+lean_lib Impls where
+  roots := #[`Impls]
+  globs := #[.submodules `Impls]
+
+@[default_target]
+lean_lib Aborts where
+  roots := #[`Aborts]
+  globs := #[.submodules `Aborts]
+
+@[default_target]
+lean_lib Specs where
+  roots := #[`Specs]
+  globs := #[.submodules `Specs]
+"#,
+        module_name
+    );
+
+    fs::write(output_path.join("lakefile.lean"), lakefile_content)?;
+
+    // Write minimal lake-manifest.json (compatible with Lake 4.15+)
+    let manifest = format!(
+        r#"{{"version": "1.1.0",
+ "packagesDir": ".lake/packages",
+ "packages": [],
+ "name": "«{}»",
+ "lakeDir": ".lake"}}"#,
+        module_name
+    );
+    fs::write(output_path.join("lake-manifest.json"), manifest)?;
+
     Ok(())
 }

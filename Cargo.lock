@@ -237,6 +237,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -810,6 +819,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dirs"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -817,6 +835,18 @@ checksum = "b98cf8ebf19c3d1b223e151f99a4f9f0690dca41414773390fc824184ac833e1"
 dependencies = [
  "cfg-if",
  "dirs-sys-next",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -970,12 +1000,6 @@ dependencies = [
  "rustc-hex",
  "static_assertions",
 ]
-
-[[package]]
-name = "fixedbitset"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
 name = "fixedbitset"
@@ -1697,6 +1721,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
+name = "intermediate-theorem-format"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "codespan-reporting",
+ "ethnum",
+ "indexmap 2.12.0",
+ "log",
+ "move-binary-format",
+ "move-compiler",
+ "move-model 0.1.0",
+ "move-stackless-bytecode",
+ "num",
+ "petgraph",
+ "serde",
+]
+
+[[package]]
 name = "internment"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2069,7 +2112,7 @@ dependencies = [
  "indexmap 2.12.0",
  "move-binary-format",
  "move-core-types",
- "petgraph 0.8.3",
+ "petgraph",
  "serde-reflection",
 ]
 
@@ -2085,7 +2128,7 @@ dependencies = [
  "move-bytecode-verifier-meter",
  "move-core-types",
  "move-vm-config",
- "petgraph 0.8.3",
+ "petgraph",
 ]
 
 [[package]]
@@ -2144,7 +2187,7 @@ dependencies = [
  "move-proc-macros",
  "move-symbol-pool",
  "once_cell",
- "petgraph 0.8.3",
+ "petgraph",
  "rayon",
  "regex",
  "serde",
@@ -2201,7 +2244,7 @@ dependencies = [
  "move-core-types",
  "move-ir-types",
  "move-trace-format",
- "petgraph 0.8.3",
+ "petgraph",
  "serde",
 ]
 
@@ -2389,7 +2432,7 @@ dependencies = [
  "move-symbol-pool",
  "named-lock",
  "once_cell",
- "petgraph 0.8.3",
+ "petgraph",
  "regex",
  "serde",
  "serde_yaml",
@@ -2456,10 +2499,14 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bimap",
+ "chrono",
  "clap",
  "codespan",
  "codespan-reporting",
+ "dirs",
+ "ethnum",
  "futures",
+ "intermediate-theorem-format",
  "itertools 0.13.0",
  "log",
  "move-binary-format",
@@ -2475,10 +2522,14 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "simplelog",
+ "tempfile",
  "tera",
  "tokio",
  "toml 0.7.8",
+ "walkdir",
 ]
 
 [[package]]
@@ -2507,7 +2558,7 @@ dependencies = [
  "num",
  "once_cell",
  "paste",
- "petgraph 0.5.1",
+ "petgraph",
  "regex",
  "serde",
 ]
@@ -2945,6 +2996,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "option-ext"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
 name = "ordered-float"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3139,21 +3196,11 @@ dependencies = [
 
 [[package]]
 name = "petgraph"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
-dependencies = [
- "fixedbitset 0.2.0",
- "indexmap 1.9.3",
-]
-
-[[package]]
-name = "petgraph"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
 dependencies = [
- "fixedbitset 0.5.7",
+ "fixedbitset",
  "hashbrown 0.15.5",
  "indexmap 2.12.0",
  "serde",
@@ -4221,7 +4268,7 @@ dependencies = [
  "move-stackless-bytecode",
  "move-symbol-pool",
  "openai_api_rust",
- "petgraph 0.5.1",
+ "petgraph",
  "regex",
  "serde",
  "sha2 0.10.9",

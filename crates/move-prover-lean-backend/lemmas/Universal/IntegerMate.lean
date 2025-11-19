@@ -1,0 +1,19 @@
+-- ================================================================================
+-- integermate.lean: Semantic specifications for i32 and i128 integer operations
+-- ================================================================================
+--
+-- This file provides semantic specifications for operations on signed 32-bit and
+-- 128-bit integers from the integermate Move library.
+--
+-- NOTE: Semantic axioms for integermate operations should be added here.
+-- Currently empty to avoid undefined identifier errors. Future work: generate
+-- axioms that reference the actual generated function names from the Move code.
+--
+-- Example axiom structure (to be generated):
+--
+--   axiom add_spec {I32 : Type} (add_fn : I32 → I32 → I32) (toInt : I32 → Int) :
+--     ∀ a b : I32,
+--       -2147483648 ≤ toInt a → toInt a < 2147483648 →
+--       -2147483648 ≤ toInt b → toInt b < 2147483648 →
+--       -2147483648 ≤ toInt a + toInt b → toInt a + toInt b < 2147483648 →
+--       toInt (add_fn a b) = toInt a + toInt b
