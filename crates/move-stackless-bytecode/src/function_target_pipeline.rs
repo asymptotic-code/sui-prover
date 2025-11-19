@@ -379,15 +379,20 @@ impl FunctionTargetsHolder {
             }
         }
 
-        if self.function_specs.contains_right(&target_id) {
-            env.diag(
-                Severity::Error,
-                &spec_env.get_loc(),
-                &format!(
-                    "Duplicate target function: {}",
-                    env.get_function(*target_id).get_name_str()
-                ),
-            );
+        if let Some(qid) = self.function_specs.get_by_right(&target_id) {
+            if self.package_targets.is_system_spec(qid) {
+                // Allow overwriting system specs
+                self.function_specs.insert(spec_id, *target_id);
+            } else {
+                env.diag(
+                    Severity::Error,
+                    &spec_env.get_loc(),
+                    &format!(
+                        "Duplicate target function: {}",
+                        env.get_function(*target_id).get_name_str()
+                    ),
+                );
+            }
         } else {
             self.function_specs.insert(spec_id, *target_id);
         }
