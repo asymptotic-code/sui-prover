@@ -7,6 +7,7 @@ members = [
   "crates/move-prover-boogie-backend",
   "crates/move-prover-lean-backend",
   "crates/lambda-boogie-handler",
+  "crates/intermediate-theorem-format",
 ]
 
 default-members = ["crates/sui-prover"]
@@ -37,6 +38,7 @@ move-model = { path = "crates/move-model" }
 move-stackless-bytecode = { path = "crates/move-stackless-bytecode" }
 move-prover-boogie-backend = { path = "crates/move-prover-boogie-backend" }
 move-prover-lean-backend = { path = "crates/move-prover-lean-backend" }
+intermediate-theorem-format = { path = "crates/intermediate-theorem-format" }
 
 anyhow = "1.0.71"
 clap = { version = "4.4", features = ["derive", "wrap_help", "env"] }
@@ -75,11 +77,12 @@ internment = { version = "0.5.0", features = [ "arc"] }
 ethnum = "1.0.4"
 im = "15.1.0"
 paste = "1.0.15"
-petgraph = "0.5.1"
+petgraph = "0.8.3"
 tokio = { version = "1.43.0", features = ["full"] }
 datatest-stable = "0.3.2"
 sha2 = "0.10.9"
 dir-test = "0.4.1"
+indexmap = "2.12.0"
 
 move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }

@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "project_hash": "b75febd6b9f536e0b3e11bbc4ecae913be00ad65393453b67b6c7d486c4f3a95",
+  "total_lemmas": 21,
+  "proven_lemmas": 21,
+  "candidate_lemmas": 0,
+  "modules": [
+    {
+      "module": "Universal/Basic",
+      "lemma_count": 5,
+      "lemma_ids": [
+        "bool_not_not",
+        "bool_true_ne_false",
+        "option_some_ne_none",
+        "option_is_none_none",
+        "option_is_some_some"
+      ]
+    },
+    {
+      "module": "Universal/Bitwise",
+      "lemma_count": 2,
+      "lemma_ids": [
+        "uint_or_comm",
+        "uint_and_comm"
+      ]
+    },
+    {
+      "module": "Universal/ProgramState",
+      "lemma_count": 3,
+      "lemma_ids": [
+        "program_state_bind_aborted",
+        "program_state_bind_returned",
+        "program_state_returned_ne_aborted"
+      ]
+    },
+    {
+      "module": "Universal/Arithmetic",
+      "lemma_count": 8,
+      "lemma_ids": [
+        "nat_add_assoc",
+        "nat_lt_trans",
+        "nat_add_zero",
+        "nat_le_refl",
+        "nat_zero_add",
+        "nat_lt_irrefl",
+        "nat_mul_comm",
+        "nat_add_comm"
+      ]
+    },
+    {
+      "module": "Universal/Monotonicity",
+      "lemma_count": 3,
+      "lemma_ids": [
+        "nat_add_lt_add_left",
+        "nat_mul_lt_mul_left",
+        "nat_add_lt_add_right"
+      ]
+    }
+  ]
+}

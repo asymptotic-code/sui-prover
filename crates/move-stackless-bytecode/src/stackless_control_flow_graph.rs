@@ -62,7 +62,7 @@ impl StacklessControlFlowGraph {
     pub fn new_backward(code: &[Bytecode], from_all_blocks: bool) -> Self {
         Self::new_backward_with_options(code, from_all_blocks, false)
     }
-
+    
     pub fn new_backward_with_options(
         code: &[Bytecode],
         from_all_blocks: bool,
@@ -182,7 +182,14 @@ impl StacklessControlFlowGraph {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);
                 }
-                if code[co_pc as usize].is_exit() {
+                // Add DUMMY_EXIT edge for exit instructions
+                // When ignore_aborts=true, only Ret goes to DUMMY_EXIT
+                let should_add_exit = match &code[co_pc as usize] {
+                    Bytecode::Ret(..) => true,
+                    Bytecode::Abort(..) => !ignore_aborts,
+                    _ => false,
+                };
+                if should_add_exit {
                     successors.push(DUMMY_EXIT);
                 }
                 let bb = BlockContent::Basic {
@@ -276,7 +283,6 @@ impl StacklessControlFlowGraph {
                     .successors(*x)
                     .iter()
                     .map(|y| (*x, *y))
-                    .collect::<Vec<_>>()
             })
             .collect();
         let graph = crate::graph::Graph::new(entry, nodes.clone(), edges);
