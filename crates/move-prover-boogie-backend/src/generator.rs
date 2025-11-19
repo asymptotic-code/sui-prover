@@ -386,7 +386,7 @@ pub async fn run_prover<W: WriteColor>(
     if matches!(options.backend.boogie_file_mode, BoogieFileMode::Module)
         && targets.has_spec_boogie_options()
     {
-        warn!("WARN: Boogie options specified in specs can only be used in 'function' boogie file mode.");
+        warn!("Boogie options specified in specs can only be used in 'function' boogie file mode.");
     }
 
     let files = match options.backend.boogie_file_mode {

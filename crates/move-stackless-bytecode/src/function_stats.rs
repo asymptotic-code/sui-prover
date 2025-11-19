@@ -533,10 +533,6 @@ impl PackageTargets {
         {
             attrs.into_iter().for_each(|attr| match &attr.2.value {
                 ExternalAttributeEntry_::Assigned(aname, value) => {
-                    println!(
-                        "Processing external attribute: {:?} {:?}",
-                        aname.value, value.value
-                    );
                     if let ExternalAttributeValue_::Module(module_ident) = value.value {
                         let module_name = ModuleName::from_address_bytes_and_name(
                             module_ident.value.address.into_addr_bytes(),
