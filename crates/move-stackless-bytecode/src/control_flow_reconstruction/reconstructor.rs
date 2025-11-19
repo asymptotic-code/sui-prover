@@ -53,9 +53,7 @@ pub fn reconstruct_control_flow(code: &[Bytecode]) -> Vec<StructuredBlock> {
 }
 
 /// Translates all CFG blocks into a basic flat StructuredBlock vec.
-fn fallback_flat_blocks(
-    forward_cfg: &StacklessControlFlowGraph,
-) -> Vec<StructuredBlock> {
+fn fallback_flat_blocks(forward_cfg: &StacklessControlFlowGraph) -> Vec<StructuredBlock> {
     let mut flat: Vec<StructuredBlock> = Vec::new();
     for block in forward_cfg.blocks() {
         if let BlockContent::Basic { lower, upper } = forward_cfg.content(block) {
@@ -98,8 +96,8 @@ fn reconstruct_region(
     let mut cursor = start;
     let mut local: BTreeSet<BlockId> = BTreeSet::new();
     let labels = Bytecode::label_offsets(ctx.code);
-    let stop_pc = stop_block
-        .and_then(|b| StacklessControlFlowGraph::block_start_pc(ctx.forward_cfg, b));
+    let stop_pc =
+        stop_block.and_then(|b| StacklessControlFlowGraph::block_start_pc(ctx.forward_cfg, b));
 
     while !local.contains(&cursor) {
         if Some(cursor) == stop_block {
@@ -144,7 +142,7 @@ fn reconstruct_region(
                     ctx, &mut seq, cursor, lower, upper, *tlabel, *elabel, &labels, stop_pc,
                     stop_block,
                 );
-                break
+                break;
             }
         }
 
@@ -266,7 +264,13 @@ fn handle_block_ending_branch(
         }
     };
 
-    let Some(merge_block) = find_merge_point(ctx.forward_cfg, ctx.back_cfg, cursor, then_block, else_block) else {
+    let Some(merge_block) = find_merge_point(
+        ctx.forward_cfg,
+        ctx.back_cfg,
+        cursor,
+        then_block,
+        else_block,
+    ) else {
         error!("CFG reconstruct: no IPD merge found; emitting Basic");
         emit_basic_block_with_trim(ctx, seq, cursor, lower, upper, stop_pc, labels);
         return true;

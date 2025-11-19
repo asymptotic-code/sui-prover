@@ -6,11 +6,14 @@ use move_binary_format::file_format::CodeOffset;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StructuredBlock {
     /// A straight-line sequence of bytecodes from `lower..=upper` (inclusive)
-    Basic { lower: CodeOffset, upper: CodeOffset },
-    
+    Basic {
+        lower: CodeOffset,
+        upper: CodeOffset,
+    },
+
     /// A sequence of blocks
     Seq(Vec<StructuredBlock>),
-    
+
     /// A structured if/else with the condition evaluated at `cond_at` (the Branch instruction)
     /// and structured bodies up to the merge point. `else_branch` is None for if-then.
     IfThenElse {
@@ -18,7 +21,7 @@ pub enum StructuredBlock {
         then_branch: Box<StructuredBlock>,
         else_branch: Option<Box<StructuredBlock>>,
     },
-    
+
     /// A structured if/else-if/else chain with multiple conditions.
     /// Each entry in `branches` is (condition_location, body).
     /// The final `else_branch` is optional.
@@ -33,8 +36,14 @@ impl StructuredBlock {
     pub fn iter_offsets<'a>(&'a self) -> Box<dyn Iterator<Item = CodeOffset> + 'a> {
         match self {
             StructuredBlock::Basic { lower, upper } => Box::new((*lower)..=(*upper)),
-            StructuredBlock::Seq(blocks) => Box::new(blocks.iter().flat_map(|block| block.iter_offsets())),
-            StructuredBlock::IfThenElse { then_branch, else_branch, .. } => {
+            StructuredBlock::Seq(blocks) => {
+                Box::new(blocks.iter().flat_map(|block| block.iter_offsets()))
+            }
+            StructuredBlock::IfThenElse {
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 let then_iter = then_branch.iter_offsets();
                 if let Some(else_block) = else_branch {
                     let else_iter = else_block.iter_offsets();
@@ -43,7 +52,10 @@ impl StructuredBlock {
                     then_iter
                 }
             }
-            StructuredBlock::IfElseChain { branches, else_branch } => {
+            StructuredBlock::IfElseChain {
+                branches,
+                else_branch,
+            } => {
                 let chain_iter = branches.iter().flat_map(|(_, body)| body.iter_offsets());
                 if let Some(else_block) = else_branch {
                     let else_iter = else_block.iter_offsets();
@@ -58,9 +70,11 @@ impl StructuredBlock {
     /// Convert nested IfThenElse structures into an IfElseChain if they form a chain pattern.
     pub fn optimize_to_chain(self) -> Self {
         match self {
-            StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } => {
-                Self::build_chain_from_if(cond_at, then_branch, else_branch)
-            }
+            StructuredBlock::IfThenElse {
+                cond_at,
+                then_branch,
+                else_branch,
+            } => Self::build_chain_from_if(cond_at, then_branch, else_branch),
             other => other,
         }
     }
@@ -75,22 +89,28 @@ impl StructuredBlock {
 
         while let Some(else_block) = current_else {
             match *else_block {
-                StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } => {
+                StructuredBlock::IfThenElse {
+                    cond_at,
+                    then_branch,
+                    else_branch,
+                } => {
                     branches.push((cond_at, then_branch));
                     current_else = else_branch;
                 }
-                StructuredBlock::Seq(blocks) => {
-                    match Self::unwrap_seq_for_chain(blocks) {
-                        SeqUnwrapResult::Advanced { next_cond, next_then, next_else } => {
-                            branches.push((next_cond, next_then));
-                            current_else = next_else;
-                        }
-                        SeqUnwrapResult::NotChain(restored) => {
-                            current_else = Some(Box::new(StructuredBlock::Seq(restored)));
-                            break;
-                        }
+                StructuredBlock::Seq(blocks) => match Self::unwrap_seq_for_chain(blocks) {
+                    SeqUnwrapResult::Advanced {
+                        next_cond,
+                        next_then,
+                        next_else,
+                    } => {
+                        branches.push((next_cond, next_then));
+                        current_else = next_else;
                     }
-                }
+                    SeqUnwrapResult::NotChain(restored) => {
+                        current_else = Some(Box::new(StructuredBlock::Seq(restored)));
+                        break;
+                    }
+                },
                 other => {
                     current_else = Some(Box::new(other));
                     break;
@@ -118,7 +138,12 @@ impl StructuredBlock {
         // Pattern 1: Single IfThenElse inside the Seq
         if blocks.len() == 1 {
             let single = blocks.pop().unwrap();
-            if let StructuredBlock::IfThenElse { cond_at, then_branch, else_branch } = single {
+            if let StructuredBlock::IfThenElse {
+                cond_at,
+                then_branch,
+                else_branch,
+            } = single
+            {
                 return SeqUnwrapResult::Advanced {
                     next_cond: cond_at,
                     next_then: then_branch,
@@ -145,7 +170,12 @@ impl StructuredBlock {
         let mut remaining = blocks.split_off(idx);
         let if_block = remaining.remove(0);
 
-        if let StructuredBlock::IfThenElse { cond_at, then_branch, mut else_branch } = if_block {
+        if let StructuredBlock::IfThenElse {
+            cond_at,
+            then_branch,
+            mut else_branch,
+        } = if_block
+        {
             if !remaining.is_empty() {
                 if let Some(else_content) = else_branch.take() {
                     remaining.insert(0, *else_content);

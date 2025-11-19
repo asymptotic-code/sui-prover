@@ -10,5 +10,5 @@ mod helpers;
 mod reconstructor;
 mod types;
 
-pub use types::StructuredBlock;
 pub use reconstructor::reconstruct_control_flow;
+pub use types::StructuredBlock;

@@ -33,9 +33,13 @@ pub fn prefer_fallthrough_successor(
         }
     };
 
-    cfg.successors(from).iter()
-        .find(|successor| StacklessControlFlowGraph::block_start_pc(cfg, **successor)
-            .map(|start_pc| start_pc == fallthrough_pc).unwrap_or(false))
+    cfg.successors(from)
+        .iter()
+        .find(|successor| {
+            StacklessControlFlowGraph::block_start_pc(cfg, **successor)
+                .map(|start_pc| start_pc == fallthrough_pc)
+                .unwrap_or(false)
+        })
         .cloned()
         .or_else(|| cfg.successors(from).first().copied())
 }
@@ -72,7 +76,8 @@ pub fn find_merge_point(
     then_block: BlockId,
     else_block: BlockId,
 ) -> Option<BlockId> {
-    let mut merge_block = StacklessControlFlowGraph::find_immediate_post_dominator(back_cfg, branch_block);
+    let mut merge_block =
+        StacklessControlFlowGraph::find_immediate_post_dominator(back_cfg, branch_block);
 
     debug!(
         "[find_merge] branch_block={} then={} else={} IPD={:?}",
@@ -127,8 +132,9 @@ pub fn trim_jump_to_merge(
     mut upper: CodeOffset,
     merge_block: Option<BlockId>,
 ) -> CodeOffset {
-    let Some(merge_start_pc) =
-        merge_block.and_then(|merge_block| StacklessControlFlowGraph::block_start_pc(forward_cfg, merge_block)) else {
+    let Some(merge_start_pc) = merge_block.and_then(|merge_block| {
+        StacklessControlFlowGraph::block_start_pc(forward_cfg, merge_block)
+    }) else {
         return upper;
     };
 
