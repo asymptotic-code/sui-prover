@@ -380,10 +380,7 @@ impl FunctionTargetsHolder {
         }
 
         if let Some(qid) = self.function_specs.get_by_right(&target_id) {
-            if self.package_targets.is_system_spec(qid) {
-                // Allow overwriting system specs
-                self.function_specs.insert(spec_id, *target_id);
-            } else {
+            if !self.package_targets.is_system_spec(qid) {
                 env.diag(
                     Severity::Error,
                     &spec_env.get_loc(),
@@ -392,10 +389,11 @@ impl FunctionTargetsHolder {
                         env.get_function(*target_id).get_name_str()
                     ),
                 );
+                return;
             }
-        } else {
-            self.function_specs.insert(spec_id, *target_id);
         }
+
+        self.function_specs.insert(spec_id, *target_id);
     }
 
     fn process_inv(&mut self, func_env: &FunctionEnv, sid: &QualifiedId<DatatypeId>) {

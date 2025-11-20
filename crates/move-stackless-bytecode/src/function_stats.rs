@@ -9,7 +9,7 @@ use crate::package_targets::PackageTargets;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofStatus {
-    Skipped(String),
+    Skipped,
     NoSpec,
     NoProve,
     SuccessfulProof,
@@ -21,7 +21,7 @@ impl std::fmt::Display for ProofStatus {
         match self {
             ProofStatus::SuccessfulProof => write!(f, "✅ has spec"),
             ProofStatus::IgnoreAborts => write!(f, "⚠️  spec but with ignore_abort"),
-            ProofStatus::Skipped(reason) => write!(f, "⏭️  skipped spec: {}", reason),
+            ProofStatus::Skipped => write!(f, "⏭️  skipped spec"),
             ProofStatus::NoProve => write!(f, "✖️ no prove"),
             ProofStatus::NoSpec => write!(f, "❌ no spec"),
         }
@@ -79,8 +79,8 @@ fn determine_spec_status(func_env: &FunctionEnv, targets: &PackageTargets) -> Pr
 
     // TODO: Find best?
     if let Some(spec_id) = targets.get_specs(&func_id).iter().next() {
-        if let Some(reason) = targets.skipped_specs().get(spec_id) {
-            ProofStatus::Skipped(reason.to_string())
+        if targets.skipped_specs().contains_key(spec_id) {
+            ProofStatus::Skipped
         } else if !targets.is_verified_spec(spec_id) {
             ProofStatus::NoProve
         } else if targets.ignores_aborts(spec_id) {
