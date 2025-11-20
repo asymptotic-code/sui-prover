@@ -36,13 +36,6 @@ def mul (a b : UInt128) : UInt128 := ⟨a.val * b.val⟩
 def div (a b : UInt128) : UInt128 := ⟨a.val / b.val⟩
 def mod (a b : UInt128) : UInt128 := if b.val == 0 then ⟨0⟩ else ⟨a.val % b.val⟩
 def modn (a : UInt128) (n : Nat) : UInt128 := ⟨Fin.modn a.val n⟩
-def land (a b : UInt128) : UInt128  := ⟨Fin.land a.val b.val⟩
-def lor (a b : UInt128) : UInt128   := ⟨Fin.lor a.val b.val⟩
-def xor (a b : UInt128) : UInt128   := ⟨Fin.xor a.val b.val⟩
-def shiftLeft (a b : UInt128) : UInt128  :=
-  if b.val >= 128 then ⟨0⟩ else ⟨a.val <<< b.val⟩
-def shiftRight (a b : UInt128) : UInt128 :=
-  if b.val >= 128 then ⟨0⟩ else ⟨a.val >>> b.val⟩
 def lt (a b : UInt128) : Prop := a.1 < b.1
 def le (a b : UInt128) : Prop := a.1 ≤ b.1
 def log2 (a : UInt128) : UInt128 := ⟨Fin.log2 a.val⟩
@@ -104,17 +97,6 @@ private def powAux (a : UInt128) (c : UInt128) : Nat → UInt128
 def pow (b : UInt128) (n : UInt128) := powAux ⟨1⟩ b n.1
 
 instance : HPow UInt128 UInt128 UInt128 := ⟨pow⟩
-instance : AndOp UInt128 := ⟨UInt128.land⟩
-instance : OrOp UInt128 := ⟨UInt128.lor⟩
-instance : XorOp UInt128 := ⟨UInt128.xor⟩
-instance : ShiftLeft UInt128 := ⟨UInt128.shiftLeft⟩
-instance : ShiftRight UInt128 := ⟨UInt128.shiftRight⟩
-
--- Mixed-type shift instances for UInt128
-instance : HShiftLeft UInt128 UInt8 UInt128 := ⟨fun a b => UInt128.shiftLeft a (UInt128.ofNat b.toNat)⟩
-instance : HShiftRight UInt128 UInt8 UInt128 := ⟨fun a b => UInt128.shiftRight a (UInt128.ofNat b.toNat)⟩
-instance : HShiftLeft UInt128 Nat UInt128 := ⟨fun a b => UInt128.shiftLeft a (UInt128.ofNat b)⟩
-instance : HShiftRight UInt128 Nat UInt128 := ⟨fun a b => UInt128.shiftRight a (UInt128.ofNat b)⟩
 
 instance : Max UInt128 := maxOfLe
 instance : Min UInt128 := minOfLe

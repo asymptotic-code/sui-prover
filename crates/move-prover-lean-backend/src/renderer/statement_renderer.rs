@@ -189,6 +189,10 @@ impl StatementRenderer {
 
             Statement::Abort { code } => {
                 let code_str = self.render_expression_to_string(code, registry, program, writer.name_manager);
+                // Convert abort code to Nat since abort expects Nat parameter
+                // Use dot notation .toNat which works for all UInt types
+                // Wrap in extra parens to prevent line breaks in formatting
+                let code_nat = format!("(({}).toNat)", code_str);
                 if let Some(ret_type) = &self.expected_return_type {
                     let inner_type = if ret_type.starts_with("(ProgramState ") && ret_type.ends_with(")") {
                         &ret_type[14..ret_type.len()-1]
@@ -197,9 +201,9 @@ impl StatementRenderer {
                     } else {
                         ret_type.as_str()
                     };
-                    writer.emit(&format!("(@abort {} {})", inner_type, code_str));
+                    writer.emit(&format!("(@abort {} {})", inner_type, code_nat));
                 } else {
-                    writer.emit(&format!("abort {}", code_str));
+                    writer.emit(&format!("abort {}", code_nat));
                 }
             }
 
@@ -235,14 +239,16 @@ impl StatementRenderer {
                     value_str));
             }
 
-            Statement::Requires { condition } => {
-                let cond_str = self.render_expression_to_string(condition, registry, program, writer.name_manager);
-                writer.emit(&format!("_ ← prover_requires {}", cond_str));
+            Statement::Requires { .. } => {
+                // Prover requires are for verification only - skip in Lean backend
+                // These statements appear in do-blocks, so we need pure ()
+                writer.emit("pure ()");
             }
 
-            Statement::Ensures { condition } => {
-                let cond_str = self.render_expression_to_string(condition, registry, program, writer.name_manager);
-                writer.emit(&format!("_ ← prover_ensures {}", cond_str));
+            Statement::Ensures { .. } => {
+                // Prover ensures are for verification only - skip in Lean backend
+                // These statements appear in do-blocks, so we need pure ()
+                writer.emit("pure ()");
             }
         }
     }

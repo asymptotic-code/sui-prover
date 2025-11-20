@@ -37,13 +37,6 @@ def mul (a b : UInt256) : UInt256 := ⟨a.val * b.val⟩
 def div (a b : UInt256) : UInt256 := ⟨a.val / b.val⟩
 def mod (a b : UInt256) : UInt256 := if b.val == 0 then ⟨0⟩ else ⟨a.val % b.val⟩
 def modn (a : UInt256) (n : Nat) : UInt256 := ⟨Fin.modn a.val n⟩
-def land (a b : UInt256) : UInt256  := ⟨Fin.land a.val b.val⟩
-def lor (a b : UInt256) : UInt256   := ⟨Fin.lor a.val b.val⟩
-def xor (a b : UInt256) : UInt256   := ⟨Fin.xor a.val b.val⟩
-def shiftLeft (a b : UInt256) : UInt256  :=
-  if b.val >= 256 then ⟨0⟩ else ⟨a.val <<< b.val⟩
-def shiftRight (a b : UInt256) : UInt256 :=
-  if b.val >= 256 then ⟨0⟩ else ⟨a.val >>> b.val⟩
 def lt (a b : UInt256) : Prop := a.1 < b.1
 def le (a b : UInt256) : Prop := a.1 ≤ b.1
 def log2 (a : UInt256) : UInt256 := ⟨Fin.log2 a.val⟩
@@ -93,17 +86,6 @@ private def powAux (a : UInt256) (c : UInt256) : Nat → UInt256
 def pow (b : UInt256) (n : UInt256) := powAux ⟨1⟩ b n.1
 
 instance : HPow UInt256 UInt256 UInt256 := ⟨pow⟩
-instance : AndOp UInt256 := ⟨UInt256.land⟩
-instance : OrOp UInt256 := ⟨UInt256.lor⟩
-instance : XorOp UInt256 := ⟨UInt256.xor⟩
-instance : ShiftLeft UInt256 := ⟨UInt256.shiftLeft⟩
-instance : ShiftRight UInt256 := ⟨UInt256.shiftRight⟩
-
--- Mixed-type shift instances for UInt256
-instance : HShiftLeft UInt256 UInt8 UInt256 := ⟨fun a b => UInt256.shiftLeft a (UInt256.ofNat b.toNat)⟩
-instance : HShiftRight UInt256 UInt8 UInt256 := ⟨fun a b => UInt256.shiftRight a (UInt256.ofNat b.toNat)⟩
-instance : HShiftLeft UInt256 Nat UInt256 := ⟨fun a b => UInt256.shiftLeft a (UInt256.ofNat b)⟩
-instance : HShiftRight UInt256 Nat UInt256 := ⟨fun a b => UInt256.shiftRight a (UInt256.ofNat b)⟩
 
 instance : Max UInt256 := maxOfLe
 instance : Min UInt256 := minOfLe

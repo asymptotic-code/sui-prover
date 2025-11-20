@@ -8,7 +8,6 @@ use super::type_renderer::TypeRenderer;
 use super::lean_writer::LeanWriter;
 use super::native_impls;
 use crate::escape;
-use ethnum::U256;
 
 pub struct ExpressionRenderer {
     type_renderer: TypeRenderer,
@@ -35,34 +34,28 @@ impl ExpressionRenderer {
             }
 
             Expression::Constant(value) => {
-                // CRITICAL: For large UInt constants, we need type annotations
-                // to prevent Lean from inferring them as Nat, which causes type errors
-                // in bitwise operations (e.g., `340282... <<< n` yields Nat, not UInt128)
+                // CRITICAL: UInt constants need type annotations to prevent Lean from
+                // inferring them as Nat, which causes type errors in operations
+                // Always annotate to preserve exact Move types
                 match value {
                     ConstantValue::UInt { bits, value: v } => {
-                        // Large constants (> u64::MAX) need explicit type annotation
-                        // Also annotate all UInt256 to be explicit
-                        let needs_annotation = *bits == 256 || *v > U256::from(u64::MAX);
+                        // Map bit width to Lean type name
+                        let type_name = match bits {
+                            8 => "UInt8",
+                            16 => "UInt16",
+                            32 => "UInt32",
+                            64 => "UInt64",
+                            128 => "UInt128",
+                            256 => "UInt256",
+                            _ => unreachable!(),
+                        };
 
-                        if needs_annotation {
-                            writer.emit("(");
-                            writer.emit(&v.to_string());
-                            writer.emit(" : ");
-                            // Map bit width to Lean type name
-                            let type_name = match bits {
-                                8 => "UInt8",
-                                16 => "UInt16",
-                                32 => "UInt32",
-                                64 => "UInt64",
-                                128 => "UInt128",
-                                256 => "UInt256",
-                                _ => "Nat", // Fallback for unexpected bit widths
-                            };
-                            writer.emit(type_name);
-                            writer.emit(")");
-                        } else {
-                            writer.emit(&v.to_string());
-                        }
+                        // Always annotate all UInt constants to preserve Move type information
+                        writer.emit("(");
+                        writer.emit(&v.to_string());
+                        writer.emit(" : ");
+                        writer.emit(type_name);
+                        writer.emit(")");
                     }
                     _ => {
                         writer.emit(&value.to_string());
