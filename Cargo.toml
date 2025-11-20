@@ -81,14 +81,14 @@ datatest-stable = "0.3.2"
 sha2 = "0.10.9"
 dir-test = "0.4.1"
 
-move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-package = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
-move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "next_new" }
+move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-package = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-compiler = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-ir-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-core-types = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-symbol-pool = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-disassembler = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-binary-format = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-bytecode-source-map = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
+move-command-line-common = { git = "https://github.com/asymptotic-code/sui", branch = "next" }

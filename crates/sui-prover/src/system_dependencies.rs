@@ -21,7 +21,7 @@ static SYSTEM_PROVER_GIT_REPO: &str = "https://github.com/asymptotic-code/sui-pr
 
 static LATEST_SYSTEM_PACKAGES: LazyLock<SystemPackagesVersion> =
     LazyLock::new(|| SystemPackagesVersion {
-        git_revision: "next_new".to_owned(),
+        git_revision: "next".to_owned(),
         packages: vec![
             SystemPackage {
                 package_name: "MoveStdlib".to_owned(),
@@ -49,7 +49,7 @@ fn prover_deps() -> Dependencies {
         Dependency::Internal(InternalDependency {
             kind: DependencyKind::Git(GitInfo {
                 git_url: SYSTEM_PROVER_GIT_REPO.into(),
-                git_rev: "new-sui-version".to_string().into(),
+                git_rev: "main".to_string().into(),
                 subdir: "packages/sui-prover".to_string().into(),
             }),
             subst: None,
