@@ -40,10 +40,13 @@ pub async fn run_backend(
     let lemma_gen = LemmaFileGenerator::new(output_dir.to_path_buf());
     lemma_gen.initialize_directories()?;
 
+    // Get Prelude imports from actual files being copied
+    let prelude_imports = lemma_gen.get_prelude_imports()?;
+
     // Render to Lean in Impls/ directory with module organization
     let renderer = ProgramRenderer::new();
     let impls_dir = output_dir.join("Impls");
-    renderer.render_to_directory(&program, &impls_dir)?;
+    renderer.render_to_directory(&program, &impls_dir, &prelude_imports)?;
 
     // Generate lakefile and manifest
     crate::write_lakefile(output_dir, "sui_prover_output")?;

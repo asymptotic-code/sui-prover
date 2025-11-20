@@ -48,7 +48,7 @@ impl ProgramRenderer {
     }
 
     /// Render program to directory structure (organized by module hierarchy)
-    pub fn render_to_directory(&self, program: &TheoremProgram, output_dir: &Path) -> anyhow::Result<()> {
+    pub fn render_to_directory(&self, program: &TheoremProgram, output_dir: &Path, prelude_imports: &[String]) -> anyhow::Result<()> {
         fs::create_dir_all(output_dir)?;
 
         // Render each module
@@ -57,14 +57,10 @@ impl ProgramRenderer {
 
             module_output.push_str(&format!("-- Module: {}\n\n", module.name));
 
-            // Import Universal lemma modules
-            module_output.push_str("import Lemmas.Universal.UInt128\n");
-            module_output.push_str("import Lemmas.Universal.UInt256\n");
-            module_output.push_str("import Lemmas.Universal.Helpers\n");
-            module_output.push_str("import Lemmas.Universal.ProgramState\n");
-            module_output.push_str("import Lemmas.Universal.ToNatHelper\n");
-            module_output.push_str("import Lemmas.Universal.TypeConversion\n");
-            module_output.push_str("import Lemmas.Universal.Vector\n");
+            // Import Prelude modules (dynamically discovered from actual files)
+            for prelude_import in prelude_imports {
+                module_output.push_str(&format!("import {}\n", prelude_import));
+            }
 
             // Add imports for other modules that this module depends on
             let module_imports = self.collect_module_imports(program, module_id);

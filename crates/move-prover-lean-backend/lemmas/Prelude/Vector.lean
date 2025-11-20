@@ -1,9 +1,9 @@
 -- Native Move vector operations implemented using Lean List
 -- These provide concrete implementations for Move's 0x1::vector stdlib
 
-import Lemmas.Universal.UInt128
-import Lemmas.Universal.UInt256
-import Lemmas.Universal.Helpers
+import Prelude.UInt128
+import Prelude.UInt256
+import Prelude.Helpers
 
 -- Vector operations using Lean's List type
 

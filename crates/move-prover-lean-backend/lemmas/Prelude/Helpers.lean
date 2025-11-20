@@ -1,5 +1,5 @@
-import Lemmas.Universal.UInt256
-import Lemmas.Universal.UInt128
+import Prelude.UInt256
+import Prelude.UInt128
 
 -- Shift instances for standard UInt types with Nat shift amounts
 instance : HShiftLeft UInt8 Nat UInt8 := ⟨fun a b => a <<< b.toUInt8⟩
@@ -95,11 +95,3 @@ def is_valid_address (_ : Address) : Bool :=
 
 def is_equal_address (addr1 addr2 : Address) : Bool :=
     addr1 == addr2
-
--- Shift instances for UInt32 with Nat shift amounts
--- (Lean's standard UInt32 doesn't define these)
-instance : HShiftLeft UInt32 Nat UInt32 where
-  hShiftLeft a n := a <<< n.toUInt32
-
-instance : HShiftRight UInt32 Nat UInt32 where
-  hShiftRight a n := a >>> n.toUInt32

@@ -131,22 +131,21 @@ impl ExpressionRenderer {
                         self.render(rhs, registry, program, writer);
                         writer.emit(")");
                     }
-                    // Shift operators - convert RHS to Nat using ToNatHelper typeclass
-                    // Lean's shift operators require Nat on RHS
-                    // ToNatHelper has instances for Nat (identity) and all UInt* types
+                    // Shift operators - use HShiftLeft/HShiftRight instances from Helpers.lean
+                    // These instances handle type conversion from Nat/UInt* to the appropriate shift amount
                     BinOp::Shl => {
                         writer.emit("(");
                         self.render(lhs, registry, program, writer);
-                        writer.emit(" <<< (toNatHelper ");
+                        writer.emit(" <<< ");
                         self.render(rhs, registry, program, writer);
-                        writer.emit("))");
+                        writer.emit(")");
                     }
                     BinOp::Shr => {
                         writer.emit("(");
                         self.render(lhs, registry, program, writer);
-                        writer.emit(" >>> (toNatHelper ");
+                        writer.emit(" >>> ");
                         self.render(rhs, registry, program, writer);
-                        writer.emit("))");
+                        writer.emit(")");
                     }
 
                     // Logical operators - && and || work on Bool in Lean

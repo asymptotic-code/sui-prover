@@ -1,5 +1,5 @@
-import Lemmas.Universal.UInt256
-import Lemmas.Universal.UInt128
+import Prelude.UInt256
+import Prelude.UInt128
 
 -- Type conversion helpers for unsigned integer types
 -- Lean's standard library defines most conversions between UInt8/16/32/64

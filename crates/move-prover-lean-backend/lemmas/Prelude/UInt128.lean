@@ -1,4 +1,4 @@
-import Lemmas.Universal.UInt256
+import Prelude.UInt256
 
 -- The size of type `UInt128`, that is, `2^128`.
 def UInt128.size : Nat :=

@@ -24,6 +24,10 @@ open Lake DSL
 package «{}» where
   -- add package configuration options here
 
+lean_lib Prelude where
+  roots := #[`Prelude]
+  globs := #[.submodules `Prelude]
+
 lean_lib Lemmas where
   roots := #[`Lemmas]
   globs := #[.submodules `Lemmas]

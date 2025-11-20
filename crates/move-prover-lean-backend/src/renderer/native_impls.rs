@@ -68,6 +68,6 @@ pub fn is_native_with_impl(module_name: &str, function_name: &str) -> bool {
 /// Get the set of lemma imports needed for native functions
 pub fn get_native_imports() -> Vec<String> {
     vec![
-        "Lemmas.Universal.Vector".to_string(),
+        "Prelude.Vector".to_string(),
     ]
 }

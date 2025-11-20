@@ -1,9 +1,7 @@
-import Lemmas.Universal.UInt256
-import Lemmas.Universal.UInt128
-import Lemmas.Universal.ToNatHelper
+import Prelude.UInt256
+import Prelude.UInt128
 
 -- Program state for control flow
--- NOTE: AtBlock removed - only Returned and Aborted are needed
 inductive ProgramState (α : Type) where
   | Returned : α -> ProgramState α
   | Aborted : Nat -> ProgramState α
@@ -19,22 +17,6 @@ def ProgramState.bind {α β : Type} (ma : ProgramState α) (f : α → ProgramS
 instance : Monad ProgramState where
   pure := ProgramState.pure
   bind := ProgramState.bind
-
-def prover_requires (cond : Bool) : ProgramState Unit :=
-  if cond then
-    pure ()
-  else
-    ProgramState.Aborted 0
-
-def prover_ensures (cond : Bool) : ProgramState Unit :=
-  if cond then
-    pure ()
-  else
-    ProgramState.Aborted 0
-
--- Helper for abort in StateT contexts
-def abortStateT {s α : Type} (code : Nat) : StateT s ProgramState α :=
-  fun _ => ProgramState.Aborted code
 
 -- Helper for abort in ProgramState contexts
 def abort {α : Type} (code : Nat) : ProgramState α :=
@@ -100,52 +82,6 @@ theorem aborted_eq_iff {α : Type} (m : ProgramState α) (n : Nat) :
   · intro ⟨k, hm, hk⟩; rw [hm, hk]
 
 end ProgramState
-
--- ------------------------------------------------------------------------------------
--- Section 2: StateT Reasoning Lemmas - REMOVED
--- ------------------------------------------------------------------------------------
--- NOTE: StateT reasoning lemmas were removed to avoid conflicts with Lean 4's
--- standard library. Use the standard library's StateT lemmas instead.
-
--- ------------------------------------------------------------------------------------
--- Section 3: runVerified Combinator
--- ------------------------------------------------------------------------------------
--- The runVerified combinator extracts a value from a ProgramState computation when we
--- have proof that it returns successfully. This enables zero-duplication pure functions
--- by allowing them to call runtime functions and extract the result.
-
-/-- Extract the returned value from a ProgramState when we know it returns successfully. -/
-def runVerified {α : Type}
-  (computation : ProgramState α)
-  (h : ∃ result, computation = ProgramState.Returned result)
-  : α :=
-  match computation with
-  | ProgramState.Returned result => result
-  | ProgramState.Aborted code =>
-      False.elim (by
-        obtain ⟨r, hr⟩ := h
-        cases hr
-      )
-
-/-- Key lemma: runVerified preserves the Returned value. -/
-theorem runVerified_eq {α : Type}
-  (computation : ProgramState α)
-  (h : ∃ result, computation = ProgramState.Returned result)
-  : computation = ProgramState.Returned (runVerified computation h) := by
-  obtain ⟨result, hr⟩ := h
-  cases hr
-  rfl
-
--- ====================================================================================
--- END HELPER LEMMAS
--- ====================================================================================
-
--- Lift Except String into ProgramState
--- Treats errors as aborts with code 0
-def liftExceptToProgramState {α : Type} (e : Except String α) : ProgramState α :=
-  match e with
-  | Except.ok a => ProgramState.Returned a
-  | Except.error _ => ProgramState.Aborted 0
 
 -- While loop combinator for ProgramState monad
 -- Takes a condition function, body function, and initial loop state
