@@ -372,7 +372,13 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
 
+procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
+    res := SliceVec(v, start, end);
+}
+
 {%- if instance.is_number -%}
+{%- if include_vec_sum -%}
+
 function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
 
 {%- if instance.is_bv -%}
@@ -430,11 +436,12 @@ procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}
     res := $0_vec_$sum{{S}}(v, 0, LenVec(v));
 }
 
-{%- endif %}
-
-procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
-    res := SliceVec(v, start, end);
+procedure {:inline 1} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: {{T}}) {
+    res := $0_vec_$sum{{S}}(v, start, end);
 }
+
+{%- endif %}
+{%- endif %}
 
 {% endmacro vector_module %}
 
