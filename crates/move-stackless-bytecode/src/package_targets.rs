@@ -661,7 +661,9 @@ impl PackageTargets {
         &self.spec_timeouts
     }
 
-    pub fn loop_invariants(&self) -> &BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>> {
+    pub fn loop_invariants(
+        &self,
+    ) -> &BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>> {
         &self.loop_invariants
     }
 }

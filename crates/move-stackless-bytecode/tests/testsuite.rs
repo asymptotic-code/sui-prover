@@ -12,7 +12,6 @@ use move_stackless_bytecode::{
     clean_and_optimize::CleanAndOptimizeProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
-    package_targets::PackageTargets,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, ProcessorResultDisplay,
     },
@@ -20,6 +19,7 @@ use move_stackless_bytecode::{
     memory_instrumentation::MemoryInstrumentationProcessor,
     mut_ref_instrumentation::MutRefInstrumenter,
     options::ProverOptions,
+    package_targets::PackageTargets,
     reaching_def_analysis::ReachingDefProcessor,
 };
 use regex::Regex;

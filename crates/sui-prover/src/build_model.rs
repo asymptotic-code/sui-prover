@@ -6,10 +6,10 @@ use move_package::{
     BuildConfig as MoveBuildConfig,
 };
 use move_stackless_bytecode::{
-    package_targets::PackageTargets,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
     },
+    package_targets::PackageTargets,
 };
 use std::path::{Path, PathBuf};
 use termcolor::Buffer;

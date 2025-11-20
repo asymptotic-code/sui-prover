@@ -9,12 +9,12 @@ use log::info;
 use move_model::code_writer::CodeWriter;
 use move_model::model::GlobalEnv;
 use move_model::ty::Type;
-use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::function_target_pipeline::{
     FunctionHolderTarget, FunctionTargetsHolder,
 };
 use move_stackless_bytecode::number_operation::GlobalNumberOperationState;
 use move_stackless_bytecode::options::ProverOptions;
+use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::pipeline_factory;
 /// This file is nearly identical to Boogie's generator.rs, with minor var name changes.
 use std::cell::RefCell;

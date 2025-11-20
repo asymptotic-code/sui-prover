@@ -18,9 +18,9 @@ use move_model::model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleId, Qua
 use petgraph::graph::DiGraph;
 
 use crate::{
-    package_targets::PackageTargets,
     function_target::{FunctionData, FunctionTarget},
     options::ProverOptions,
+    package_targets::PackageTargets,
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
     stackless_control_flow_graph::generate_cfg_in_dot_format,
