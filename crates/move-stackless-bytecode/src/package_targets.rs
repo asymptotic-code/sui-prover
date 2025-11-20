@@ -5,8 +5,7 @@ use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
     expansion::ast::{ModuleAccess, ModuleAccess_},
     shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, ExternalAttributeEntry_, ExternalAttributeValue_,
-        KnownAttribute, VerificationAttribute,
+        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
     },
 };
 use move_model::{
@@ -83,15 +82,14 @@ impl PackageTargets {
     }
 
     fn parse_module_access(
-        function_spec: &ModuleAccess,
-        env: &GlobalEnv,
+        ms: &ModuleAccess,
         current_module: &ModuleEnv,
     ) -> Option<(ModuleName, String)> {
-        match &function_spec.value {
+        match &ms.value {
             ModuleAccess_::Name(name) => {
                 // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
                 let function_name = name.value.to_string();
-                let function_symbol = env.symbol_pool().make(&function_name);
+                let function_symbol = current_module.env.symbol_pool().make(&function_name);
 
                 // First try to find the function in the current module
                 if current_module.find_function(function_symbol).is_some() {
@@ -132,7 +130,7 @@ impl PackageTargets {
                 let addr_bytes = address.into_addr_bytes();
                 let module_name = ModuleName::from_address_bytes_and_name(
                     addr_bytes,
-                    env.symbol_pool().make(&module.to_string()),
+                    current_module.env.symbol_pool().make(&module.to_string()),
                 );
 
                 let function_name = name.value.to_string();
@@ -269,6 +267,8 @@ impl PackageTargets {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target,
             loop_inv,
+            explicit_spec_modules: _,
+            explicit_specs: _,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -281,7 +281,7 @@ impl PackageTargets {
             let env = func_env.module_env.env;
 
             if let Some(loop_inv) = loop_inv {
-                match Self::parse_module_access(&loop_inv.target, env, &func_env.module_env) {
+                match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
                     Some((module_name, fun_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
                         self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
@@ -300,11 +300,8 @@ impl PackageTargets {
             }
 
             if inv_target.is_some() {
-                match Self::parse_module_access(
-                    inv_target.as_ref().unwrap(),
-                    env,
-                    &func_env.module_env,
-                ) {
+                match Self::parse_module_access(inv_target.as_ref().unwrap(), &func_env.module_env)
+                {
                     Some((module_name, struct_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
 
@@ -391,8 +388,7 @@ impl PackageTargets {
             }
 
             if target.is_some() {
-                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env)
-                {
+                match Self::parse_module_access(target.as_ref().unwrap(), &func_env.module_env) {
                     Some((module_name, func_name)) => {
                         let module_env = env.find_module(&module_name).unwrap();
                         if let Some(target_func_env) = module_env
@@ -517,63 +513,77 @@ impl PackageTargets {
     }
 
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
-        let mut result = BTreeSet::new();
+        let mut result: BTreeSet<ModuleExternalSpecAttribute> = BTreeSet::new();
 
-        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = module_env
+        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
+            inv_target: _,
+            loop_inv: _,
+            explicit_spec_modules,
+            explicit_specs,
+        })) = module_env
             .get_toplevel_attributes()
-            .get_(&AttributeKind_::External)
+            .get_(&AttributeKind_::SpecOnly)
             .map(|attr| &attr.value)
         {
-            attrs.into_iter().for_each(|attr| match &attr.2.value {
-                ExternalAttributeEntry_::Assigned(aname, value) => {
-                    if let ExternalAttributeValue_::Module(module_ident) = value.value {
-                        let module_name = ModuleName::from_address_bytes_and_name(
-                            module_ident.value.address.into_addr_bytes(),
-                            module_env
-                                .env
-                                .symbol_pool()
-                                .make(&module_ident.value.module.to_string()),
-                        );
-                        result.insert(ModuleExternalSpecAttribute::Module(
-                            module_env.env.find_module(&module_name).unwrap().get_id(),
-                        ));
-                    } else if let ExternalAttributeValue_::ModuleAccess(module_access) = value.value
-                    {
-                        match module_access.value {
-                            ModuleAccess_::ModuleAccess(module_ident, fname) => {
-                                let module_name = ModuleName::from_address_bytes_and_name(
-                                    module_ident.value.address.into_addr_bytes(),
-                                    module_env
-                                        .env
-                                        .symbol_pool()
-                                        .make(&module_ident.value.module.to_string()),
-                                );
-                                let target_module_env =
-                                    module_env.env.find_module(&module_name).unwrap();
-                                let name = aname.value.as_str();
-                                if name == "explicit_spec_module" {
-                                    result.insert(ModuleExternalSpecAttribute::Module(
-                                        target_module_env.get_id(),
-                                    ));
-                                } else if name == "explicit_spec_fun" {
-                                    let function_str = fname.to_string();
-                                    let function_symbol =
-                                        module_env.env.symbol_pool().make(&function_str);
-                                    if let Some(func_env) =
-                                        target_module_env.find_function(function_symbol)
-                                    {
-                                        result.insert(ModuleExternalSpecAttribute::Function(
-                                            func_env.get_qualified_id(),
-                                        ));
-                                    }
-                                }
-                            }
-                            _ => {}
+            for mi in explicit_spec_modules {
+                let name = ModuleName::from_address_bytes_and_name(
+                    mi.value.address.into_addr_bytes(),
+                    module_env
+                        .env
+                        .symbol_pool()
+                        .make(&mi.value.module.to_string()),
+                );
+                if let Some(module) = module_env.env.find_module(&name) {
+                    result.insert(ModuleExternalSpecAttribute::Module(module.get_id()));
+                } else {
+                    module_env.env.diag(
+                        Severity::Error,
+                        &module_env.get_loc(),
+                        &format!(
+                            "Error parsing module path in explicit_spec_module '{}'",
+                            module_env.get_full_name_str()
+                        ),
+                    );
+                    return;
+                }
+            }
+
+            for ms in explicit_specs {
+                match Self::parse_module_access(ms, module_env) {
+                    Some((module_name, fun_name)) => {
+                        let target_module_env = module_env.env.find_module(&module_name).unwrap();
+                        if let Some(func_env) = target_module_env
+                            .find_function(module_env.env.symbol_pool().make(&fun_name))
+                        {
+                            result.insert(ModuleExternalSpecAttribute::Function(
+                                func_env.get_qualified_id(),
+                            ));
+                        } else {
+                            module_env.env.diag(
+                                Severity::Error,
+                                &module_env.get_loc(),
+                                &format!(
+                                    "Function '{}' not found in module '{}'",
+                                    fun_name,
+                                    target_module_env.get_full_name_str(),
+                                ),
+                            );
+                            return;
                         }
                     }
+                    None => {
+                        module_env.env.diag(
+                            Severity::Error,
+                            &module_env.get_loc(),
+                            &format!(
+                                "Error parsing module path in explicit_spec_module '{}'",
+                                module_env.get_full_name_str()
+                            ),
+                        );
+                        return;
+                    }
                 }
-                _ => {}
-            });
+            }
         }
 
         self.module_external_attributes
