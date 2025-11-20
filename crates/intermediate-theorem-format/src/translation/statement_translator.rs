@@ -237,13 +237,15 @@ impl<'env, 'a> StatementTranslator<'env, 'a> {
                                 .cloned()
                                 .unwrap_or(TheoremType::Bool);
 
+                            let operation = crate::Expression::Unpack {
+                                struct_id: struct_id_ir,
+                                field_index,
+                                operand: Box::new(crate::Expression::Temporary(source_temp as TempId)),
+                            };
+
                             statements.push(Statement::Let {
                                 results: vec![dest_temp as TempId],
-                                operation: crate::Expression::Unpack {
-                                    struct_id: struct_id_ir,
-                                    field_index,
-                                    operand: Box::new(crate::Expression::Temporary(source_temp as TempId)),
-                                },
+                                operation,
                                 result_types: vec![dest_type],
                             });
                         }

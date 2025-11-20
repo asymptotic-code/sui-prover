@@ -4,7 +4,6 @@
 use std::fs;
 use std::path::Path;
 
-pub mod options;
 pub mod lemma;
 pub mod runtime;
 pub mod renderer;
@@ -12,7 +11,6 @@ pub mod backend;
 pub mod escape;
 
 // Re-exports for convenience
-pub use options::Options;
 pub use backend::run_backend;
 
 /// Writes the lakefile.lean and lake-manifest.json for the project.

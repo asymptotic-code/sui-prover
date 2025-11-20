@@ -1,9 +1,14 @@
+-- Module: vector
 -- Native Move vector operations implemented using Lean List
 -- These provide concrete implementations for Move's 0x1::vector stdlib
 
+import Prelude.Helpers
+import Prelude.ProgramState
+import Prelude.TypeConversion
 import Prelude.UInt128
 import Prelude.UInt256
-import Prelude.Helpers
+
+namespace MoveVector
 
 -- Vector operations using Lean's List type
 
@@ -83,3 +88,5 @@ theorem vector_length_empty (tv0 : Type) :
 theorem vector_is_empty_empty (tv0 : Type) :
   vector_is_empty tv0 (vector_empty tv0) = true := by
   rfl
+
+end MoveVector

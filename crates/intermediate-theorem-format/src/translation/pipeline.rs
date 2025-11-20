@@ -34,7 +34,7 @@ impl<'env> TranslationPipeline<'env> {
         let translator = FunctionTranslator::new(self.env, function_id_map, struct_id_map);
         translator.translate_all(&mut program, targets);
 
-        // Step 3: Topologically sort functions by dependency order
+        // Step 3: Topologically sort functions and structs by dependency order
         DependencyOrderPass::run(&mut program);
 
         program

@@ -41,7 +41,9 @@ impl ProgramRenderer {
         }
 
         // Write to file
-        fs::create_dir_all(output_path.parent().unwrap())?;
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(output_path, output)?;
 
         Ok(())
@@ -51,8 +53,15 @@ impl ProgramRenderer {
     pub fn render_to_directory(&self, program: &TheoremProgram, output_dir: &Path, prelude_imports: &[String]) -> anyhow::Result<()> {
         fs::create_dir_all(output_dir)?;
 
+        // Copy native package implementations from lemmas directory
+        self.copy_native_packages(program, output_dir)?;
+
         // Render each module
         for (&module_id, module) in &program.modules {
+            // Skip native modules - they've already been copied
+            if program.is_native_module(&module.package_name, &module.name) {
+                continue;
+            }
             let mut module_output = String::new();
 
             module_output.push_str(&format!("-- Module: {}\n\n", module.name));
@@ -63,21 +72,22 @@ impl ProgramRenderer {
             }
 
             // Add imports for other modules that this module depends on
-            let module_imports = self.collect_module_imports(program, module_id);
-            for import in module_imports {
-                module_output.push_str(&format!("import {}\n", import));
+            // Use pre-computed imports from IR
+            for &required_module_id in &module.required_imports {
+                if let Some(required_module) = program.modules.get(&required_module_id) {
+                    let import_path = self.module_to_import_path(required_module);
+                    module_output.push_str(&format!("import {}\n", import_path));
+                }
             }
             module_output.push('\n');
 
-            // Extract module short name and capitalize for namespace
-            let module_short_name = module.name.split("::").last().unwrap_or(&module.name);
-            let mut namespace_name = self.capitalize_first(module_short_name);
-
+            // Capitalize module name for Lean namespace
             // Avoid conflicts with Lean built-in types/modules
-            // Lean has a built-in Vector type, so rename it to avoid conflicts
-            if namespace_name == "Vector" {
-                namespace_name = "MoveVector".to_string();
-            }
+            let namespace_name = if module.name == "vector" {
+                "MoveVector".to_string()
+            } else {
+                Self::capitalize_first(&module.name)
+            };
 
             // Open namespace for this module
             module_output.push_str(&format!("namespace {}\n\n", namespace_name));
@@ -106,7 +116,8 @@ impl ProgramRenderer {
                 }
 
                 // Skip if already rendered (shouldn't happen, but defensive check)
-                if rendered_functions.contains(&func.name) {
+                // Use function ID for deduplication since IDs are globally unique
+                if rendered_functions.contains(&func.id) {
                     continue;
                 }
 
@@ -126,7 +137,7 @@ impl ProgramRenderer {
                     module_output.push_str(&rendered);
                     module_output.push_str("\n");
                 }
-                rendered_functions.insert(func.name.clone());
+                rendered_functions.insert(func.id);
             }
 
             // Ensure there's a blank line before closing namespace
@@ -154,135 +165,12 @@ impl ProgramRenderer {
 
     /// Get module file path from TheoremModule data
     fn get_module_file_path_from_module(&self, module: &intermediate_theorem_format::TheoremModule) -> String {
-        let capitalized_name = self.capitalize_first(&module.simple_name);
-        let capitalized_package = self.capitalize_first(&module.package_name);
-        format!("{}/{}.lean", capitalized_package, capitalized_name)
-    }
-
-    fn capitalize_first(&self, s: &str) -> String {
-        let mut chars = s.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
-    }
-
-    /// Collect all module imports needed for this module based on type dependencies
-    fn collect_module_imports(
-        &self,
-        program: &TheoremProgram,
-        module_id: intermediate_theorem_format::TheoremModuleID,
-    ) -> Vec<String> {
-        use std::collections::BTreeSet;
-        use intermediate_theorem_format::TheoremType;
-
-        let mut required_modules = BTreeSet::new();
-
-        // Helper to extract struct IDs from types
-        fn extract_struct_ids(ty: &TheoremType, struct_ids: &mut BTreeSet<usize>) {
-            match ty {
-                TheoremType::Struct { struct_id, type_args } => {
-                    struct_ids.insert(*struct_id);
-                    for arg in type_args {
-                        extract_struct_ids(arg, struct_ids);
-                    }
-                }
-                TheoremType::Reference(inner) | TheoremType::MutableReference(inner) => {
-                    extract_struct_ids(inner, struct_ids);
-                }
-                TheoremType::Vector(inner) => {
-                    extract_struct_ids(inner, struct_ids);
-                }
-                TheoremType::Tuple(types) => {
-                    for ty in types {
-                        extract_struct_ids(ty, struct_ids);
-                    }
-                }
-                TheoremType::ProgramState(inner) => {
-                    extract_struct_ids(inner, struct_ids);
-                }
-                _ => {}
-            }
-        }
-
-        // Collect struct IDs from struct fields in this module
-        let mut used_struct_ids = BTreeSet::new();
-        for (_, struct_def) in &program.structs {
-            if struct_def.module_id == module_id {
-                for field in &struct_def.fields {
-                    extract_struct_ids(&field.field_type, &mut used_struct_ids);
-                }
-            }
-        }
-
-        // Convert struct IDs to module IDs using centralized module_id field
-        let mut used_module_ids = BTreeSet::new();
-        for struct_id in &used_struct_ids {
-            if let Some(struct_def) = program.structs.get(struct_id) {
-                used_module_ids.insert(struct_def.module_id);
-            }
-        }
-
-        // Collect struct IDs from function signatures and calls
-        let mut called_function_ids = BTreeSet::new();
-        for (_, func) in &program.functions {
-            if func.module_id == module_id {
-                // Check parameters
-                for param in &func.signature.parameters {
-                    extract_struct_ids(&param.param_type, &mut used_struct_ids);
-                }
-                // Check return types
-                for ret_ty in &func.signature.return_types {
-                    extract_struct_ids(ret_ty, &mut used_struct_ids);
-                }
-                // Collect function calls from the function body
-                self.extract_function_calls(&func.body, &mut called_function_ids);
-            }
-        }
-
-        // Convert collected struct IDs to module IDs
-        for struct_id in &used_struct_ids {
-            if let Some(struct_def) = program.structs.get(struct_id) {
-                used_module_ids.insert(struct_def.module_id);
-            }
-        }
-
-        // Generate import paths for used modules (exclude self)
-        for used_module_id in &used_module_ids {
-            if *used_module_id != module_id {
-                if let Some(other_module) = program.modules.get(used_module_id) {
-                    let import_path = self.module_to_import_path(other_module);
-                    required_modules.insert(import_path);
-                }
-            }
-        }
-
-        // Find modules that define the functions we call
-        for called_func_id in called_function_ids {
-            if let Some(called_func) = program.functions.get(&called_func_id) {
-                // Use centralized module_id field - O(1) lookup!
-                if called_func.module_id != module_id {
-                    if let Some(other_module) = program.modules.get(&called_func.module_id) {
-                        let import_path = self.module_to_import_path(other_module);
-                        required_modules.insert(import_path);
-                    }
-                }
-            }
-        }
-
-        required_modules.into_iter().collect()
-    }
-
-    /// Extract all function calls from a statement recursively using the visitor API
-    fn extract_function_calls(
-        &self,
-        stmt: &intermediate_theorem_format::Statement,
-        calls: &mut std::collections::BTreeSet<usize>,
-    ) {
-        // Use the built-in visitor API from Statement
-        for func_id in stmt.calls() {
-            calls.insert(func_id);
-        }
+        let namespace = if module.name == "vector" {
+            "MoveVector"
+        } else {
+            &Self::capitalize_first(&module.name)
+        };
+        format!("{}/{}.lean", module.package_name, namespace)
     }
 
     /// Convert a module to its Lean import path
@@ -290,8 +178,93 @@ impl ProgramRenderer {
         &self,
         module: &intermediate_theorem_format::TheoremModule,
     ) -> String {
-        let capitalized_name = self.capitalize_first(&module.simple_name);
-        let capitalized_package = self.capitalize_first(&module.package_name);
-        format!("Impls.{}.{}", capitalized_package, capitalized_name)
+        let namespace = if module.name == "vector" {
+            "MoveVector".to_string()
+        } else {
+            Self::capitalize_first(&module.name)
+        };
+        format!("Impls.{}.{}", module.package_name, namespace)
+    }
+
+    /// Capitalize the first letter of a string (for Lean naming conventions)
+    fn capitalize_first(s: &str) -> String {
+        let mut chars = s.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => {
+                let mut result = first.to_uppercase().collect::<String>();
+                result.push_str(chars.as_str());
+                result
+            }
+        }
+    }
+
+    /// Copy native package implementations from lemmas directory to output
+    fn copy_native_packages(&self, program: &TheoremProgram, output_dir: &Path) -> anyhow::Result<()> {
+        use std::collections::HashSet;
+
+        // Get the path to the lemmas directory (in the crate)
+        let lemmas_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("lemmas");
+
+        // Track which modules we've copied
+        let mut copied_modules = HashSet::new();
+
+        // For each module in the program
+        for module in program.modules.values() {
+            if !program.is_native_module(&module.package_name, &module.name) {
+                continue;
+            }
+
+            // Avoid duplicates
+            let module_key = format!("{}::{}", module.package_name, module.name);
+            if copied_modules.contains(&module_key) {
+                continue;
+            }
+
+            // Map module to its lemma file
+            let lemma_file = self.get_native_lemma_path(&module.package_name, &module.name);
+            let source_path = lemmas_dir.join(&lemma_file);
+
+            if !source_path.exists() {
+                // No native implementation available - this is OK, module will be empty
+                continue;
+            }
+
+            // Determine destination path in output
+            let namespace = if module.name == "vector" {
+                "MoveVector"
+            } else {
+                &Self::capitalize_first(&module.name)
+            };
+            let dest_path = output_dir.join(&module.package_name).join(format!("{}.lean", namespace));
+
+            // Create parent directory
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Copy the file
+            fs::copy(&source_path, &dest_path)?;
+
+            copied_modules.insert(module_key);
+        }
+
+        Ok(())
+    }
+
+    /// Get the path to a native lemma file relative to lemmas directory
+    fn get_native_lemma_path(&self, package_name: &str, module_name: &str) -> String {
+        // MoveStdlib maps to Prelude
+        match package_name {
+            "MoveStdlib" => {
+                // Map module names to their Prelude files
+                match module_name {
+                    "vector" => "Prelude/Vector.lean".to_string(),
+                    _ => format!("Prelude/{}.lean", Self::capitalize_first(module_name)),
+                }
+            }
+            // Other packages would go here
+            _ => format!("Impls/{}/{}.lean", package_name, Self::capitalize_first(module_name)),
+        }
     }
 }

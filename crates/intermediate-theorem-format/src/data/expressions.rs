@@ -143,37 +143,4 @@ pub enum VectorOp {
     Swap,
 }
 
-impl Expression {
-    /// Check if this expression or any nested expression contains monadic operations
-    /// Monadic operations are function calls with CallConvention::Monadic
-    pub fn is_monadic(&self) -> bool {
-        match self {
-            Expression::Call { convention, .. } => {
-                matches!(convention, CallConvention::Monadic)
-            }
-            Expression::BinOp { lhs, rhs, .. } => {
-                lhs.is_monadic() || rhs.is_monadic()
-            }
-            Expression::UnOp { operand, .. } => {
-                operand.is_monadic()
-            }
-            Expression::Cast { value, .. } => {
-                value.is_monadic()
-            }
-            Expression::Pack { fields, .. } => {
-                fields.iter().any(|f| f.is_monadic())
-            }
-            Expression::Unpack { operand, .. } => {
-                operand.is_monadic()
-            }
-            Expression::UnpackAll { operand, .. } => {
-                operand.is_monadic()
-            }
-            Expression::VecOp { operands, .. } => {
-                operands.iter().any(|o| o.is_monadic())
-            }
-            Expression::Temporary(_) | Expression::Constant(_) => false,
-        }
-    }
-}
 

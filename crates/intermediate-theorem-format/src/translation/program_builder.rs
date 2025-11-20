@@ -134,17 +134,16 @@ impl<'env> ProgramBuilder<'env> {
                 )
             });
 
-        let simple_name = module_env
+        let name = module_env
             .get_name()
             .display(self.env.symbol_pool())
             .to_string();
-        let qualified_name = module_env.get_full_name_str();
 
         let module = TheoremModule {
             id: module_id,
-            name: qualified_name.clone(),
-            simple_name: simple_name.clone(),
+            name,
             package_name,
+            required_imports: Vec::new(), // Will be computed later
         };
 
         program.modules.insert(module_id, module);
@@ -386,14 +385,16 @@ impl<'env> ProgramBuilder<'env> {
             // Build signature
             let signature = self.build_signature(&func_env);
 
+            let name = func_env
+                .get_name()
+                .display(self.env.symbol_pool())
+                .to_string();
+
             // Create function with empty body (will be filled by FunctionTranslator)
             let theorem_func = TheoremFunction {
                 id: func_id,
                 module_id,
-                name: func_env
-                    .get_name()
-                    .display(self.env.symbol_pool())
-                    .to_string(),
+                name,
                 signature,
                 body: Statement::Sequence(vec![]), // Placeholder
                 ssa_registry: VariableRegistry::new(),
@@ -464,4 +465,5 @@ impl<'env> ProgramBuilder<'env> {
             return_types: wrapped_return_types,
         }
     }
+
 }

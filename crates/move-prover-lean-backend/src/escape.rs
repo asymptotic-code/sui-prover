@@ -22,7 +22,7 @@ pub fn escape_struct_name(name: &str) -> String {
 /// Escape identifiers (function names, field names, parameter names) that conflict with Lean reserved words
 pub fn escape_identifier(name: &str) -> String {
     match name {
-        "from" => "from_".to_string(),
+        // Basic control flow
         "if" => "if_".to_string(),
         "then" => "then_".to_string(),
         "else" => "else_".to_string(),
@@ -34,14 +34,74 @@ pub fn escape_identifier(name: &str) -> String {
         "match" => "match_".to_string(),
         "fun" => "fun_".to_string(),
         "λ" => "lambda_".to_string(),
-        "class" => "class_".to_string(),
-        "instance" => "instance_".to_string(),
-        "where" => "where_".to_string(),
-        "extends" => "extends_".to_string(),
-        "import" => "import_".to_string(),
-        "export" => "export_".to_string(),
+
+        // Declaration keywords
+        "axiom" => "axiom_".to_string(),
+        "theorem" => "theorem_".to_string(),
+        "lemma" => "lemma_".to_string(),
+        "example" => "example_".to_string(),
+        "opaque" => "opaque_".to_string(),
+        "def" => "def_".to_string(),
+        "abbrev" => "abbrev_".to_string(),
+
+        // Proof keywords
+        "by" => "by_".to_string(),
+        "done" => "done_".to_string(),
+        "from" => "from_".to_string(),
+        "using" => "using_".to_string(),
+        "have" => "have_".to_string(),
+        "show" => "show_".to_string(),
+        "suffices" => "suffices_".to_string(),
+        "calc" => "calc_".to_string(),
+        "mutual" => "mutual_".to_string(),
+
+        // Module/namespace keywords
+        "section" => "section_".to_string(),
         "namespace" => "namespace_".to_string(),
         "end" => "end_".to_string(),
+        "variable" => "variable_".to_string(),
+        "universe" => "universe_".to_string(),
+
+        // Import/export keywords
+        "import" => "import_".to_string(),
+        "export" => "export_".to_string(),
+        "open" => "open_".to_string(),
+        "hiding" => "hiding_".to_string(),
+        "renaming" => "renaming_".to_string(),
+        "extending" => "extending_".to_string(),
+
+        // Visibility/modifiers
+        "private" => "private_".to_string(),
+        "protected" => "protected_".to_string(),
+        "noncomputable" => "noncomputable_".to_string(),
+        "partial" => "partial_".to_string(),
+        "unsafe" => "unsafe_".to_string(),
+
+        // Type definition keywords
+        "inductive" => "inductive_".to_string(),
+        "coinductive" => "coinductive_".to_string(),
+        "structure" => "structure_".to_string(),
+        "class" => "class_".to_string(),
+        "instance" => "instance_".to_string(),
+        "deriving" => "deriving_".to_string(),
+        "extends" => "extends_".to_string(),
+        "where" => "where_".to_string(),
+
+        // Notation keywords
+        "notation" => "notation_".to_string(),
+        "infix" => "infix_".to_string(),
+        "prefix" => "prefix_".to_string(),
+        "postfix" => "postfix_".to_string(),
+
+        // Metaprogramming keywords
+        "macro" => "macro_".to_string(),
+        "elab" => "elab_".to_string(),
+        "syntax" => "syntax_".to_string(),
+
+        // Other keywords
+        "extern" => "extern_".to_string(),
+        "constant" => "constant_".to_string(),
+
         _ => name.to_string(),
     }
 }

@@ -60,7 +60,7 @@ pub struct TheoremFunction {
     /// TheoremIR module identifier (which module owns this function)
     pub module_id: TheoremModuleID,
 
-    /// Function name
+    /// Function name (e.g., "empty")
     pub name: String,
 
     /// Function signature

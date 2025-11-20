@@ -63,4 +63,12 @@ impl VariableRegistry {
         temps.sort();
         temps
     }
+
+    /// Get the display name for a temporary (for code generation)
+    /// Returns the registered name if available, otherwise generates t{id}
+    pub fn get_display_name(&self, temp: TempId) -> String {
+        self.get_name(temp)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("t{}", temp))
+    }
 }

@@ -19,6 +19,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+use move_prover_boogie_backend::generator_options::Options;
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -269,14 +270,8 @@ async fn execute_backend_lean(
     model: GlobalEnv,
     _general_config: &GeneralConfig,
 ) -> anyhow::Result<()> {
-    use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
-    use move_prover_boogie_backend::generator::create_and_process_bytecode;
-
-    // Create empty options for pipeline
-    let options = move_prover_boogie_backend::generator_options::Options::default();
-
     // Run bytecode transformation pipeline
-    let (targets, _) = create_and_process_bytecode(&options, &model, FunctionHolderTarget::None);
+    let (targets, _) = create_and_process_bytecode(&Options::default(), &model, FunctionHolderTarget::None);
 
     // Determine output directory (use current working directory + output)
     let output_dir = std::env::current_dir()?.join("output");

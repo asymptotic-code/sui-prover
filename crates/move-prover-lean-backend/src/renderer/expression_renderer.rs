@@ -3,10 +3,9 @@
 
 //! Renders Expression IR to Lean syntax
 
-use intermediate_theorem_format::{Expression, BinOp, UnOp, VariableRegistry, TheoremProgram, ConstantValue};
+use intermediate_theorem_format::{Expression, BinOp, UnOp, VariableRegistry, TheoremProgram, ConstantValue, TheoremModuleID};
 use super::type_renderer::TypeRenderer;
 use super::lean_writer::LeanWriter;
-use super::native_impls;
 use crate::escape;
 
 pub struct ExpressionRenderer {
@@ -20,17 +19,25 @@ impl ExpressionRenderer {
         }
     }
 
-    fn get_var_name(&self, temp_id: u32, registry: &VariableRegistry) -> String {
-        registry.get_name(temp_id)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("t{}", temp_id))
+    /// Capitalize the first letter of a string (for Lean naming conventions)
+    fn capitalize_first(s: &str) -> String {
+        let mut chars = s.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => {
+                let mut result = first.to_uppercase().collect::<String>();
+                result.push_str(chars.as_str());
+                result
+            }
+        }
     }
 
     /// Render expression to a writer
-    pub fn render(&self, expr: &Expression, registry: &VariableRegistry, program: &TheoremProgram, writer: &LeanWriter) {
+    /// current_module_id: ID of the module we're currently rendering (for determining if function calls need qualification)
+    pub fn render(&self, expr: &Expression, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, writer: &LeanWriter) {
         match expr {
             Expression::Temporary(temp_id) => {
-                writer.emit(&self.get_var_name(*temp_id, registry));
+                writer.emit(&registry.get_display_name(*temp_id));
             }
 
             Expression::Constant(value) => {
@@ -68,92 +75,92 @@ impl ExpressionRenderer {
                     // Arithmetic operators - infix notation
                     BinOp::Add => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" + ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Sub => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" - ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Mul => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" * ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Div => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" / ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Mod => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" % ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
 
                     // Bitwise operators - use &&& ||| ^^^ for bit operations
                     BinOp::BitAnd => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" &&& ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::BitOr => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" ||| ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::BitXor => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" ^^^ ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     // Shift operators - use HShiftLeft/HShiftRight instances from Helpers.lean
                     // These instances handle type conversion from Nat/UInt* to the appropriate shift amount
                     BinOp::Shl => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" <<< ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Shr => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" >>> ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
 
                     // Logical operators - && and || work on Bool in Lean
                     BinOp::And => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" && ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Or => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" || ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
 
@@ -161,16 +168,16 @@ impl ExpressionRenderer {
                     // These produce Bool via the Decidable typeclass
                     BinOp::Eq => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" == ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     BinOp::Neq => {
                         writer.emit("(");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" != ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
 
@@ -179,30 +186,30 @@ impl ExpressionRenderer {
                     // Use decide to convert Prop to Bool for decidable instances
                     BinOp::Lt => {
                         writer.emit("(decide (");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" < ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit("))");
                     }
                     BinOp::Le => {
                         writer.emit("(decide (");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" ≤ ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit("))");
                     }
                     BinOp::Gt => {
                         writer.emit("(decide (");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" > ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit("))");
                     }
                     BinOp::Ge => {
                         writer.emit("(decide (");
-                        self.render(lhs, registry, program, writer);
+                        self.render(lhs, registry, program, current_module_id, writer);
                         writer.emit(" ≥ ");
-                        self.render(rhs, registry, program, writer);
+                        self.render(rhs, registry, program, current_module_id, writer);
                         writer.emit("))");
                     }
                 }
@@ -212,37 +219,37 @@ impl ExpressionRenderer {
                 match op {
                     UnOp::Not => {
                         writer.emit("(!");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU8 => {
                         writer.emit("(toUInt8 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU16 => {
                         writer.emit("(toUInt16 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU32 => {
                         writer.emit("(toUInt32 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU64 => {
                         writer.emit("(toUInt64 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU128 => {
                         writer.emit("(toUInt128 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     UnOp::CastU256 => {
                         writer.emit("(toUInt256 ");
-                        self.render(operand, registry, program, writer);
+                        self.render(operand, registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                 }
@@ -266,14 +273,14 @@ impl ExpressionRenderer {
                 if let Some(func) = func_name {
                     // Use dot notation: value.toUInt128
                     writer.emit("(");
-                    self.render(value, registry, program, writer);
+                    self.render(value, registry, program, current_module_id, writer);
                     writer.emit(".");
                     writer.emit(func);
                     writer.emit(")");
                 } else {
                     // For non-UInt types, fall back to cast with type annotation
                     writer.emit("(cast ");
-                    self.render(value, registry, program, writer);
+                    self.render(value, registry, program, current_module_id, writer);
                     writer.emit(" : ");
                     self.type_renderer.render(target_type, writer);
                     writer.emit(")");
@@ -281,40 +288,26 @@ impl ExpressionRenderer {
             }
 
             Expression::Call { function, args, type_args, .. } => {
-                // Check if this is a native function call first
-                let is_native = if let Some(func) = program.get_function(*function) {
-                    if let Some(module) = program.get_module(func.module_id) {
-                        native_impls::get_native_impl(&module.name, &func.name).is_some()
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                // Get function name - use native impl name if available
+                // Get function name
                 let func_name = if let Some(func) = program.get_function(*function) {
                     // Escape the function name for Lean reserved words
                     let escaped_func_name = escape::escape_identifier(&func.name);
 
                     // Try to get the module for this function to qualify the call
                     if let Some(module) = program.get_module(func.module_id) {
-                        // Check if this is a native function - if so, use the native impl name directly
-                        if let Some(native_name) = native_impls::get_native_impl(&module.name, &func.name) {
-                            native_name.to_string()
+                        // Check if we're calling a function in the same module
+                        if func.module_id == current_module_id {
+                            // Same module - use unqualified name
+                            escaped_func_name
                         } else {
-                            // Extract module short name and capitalize for namespace
-                            let module_short_name = module.name.split("::").last().unwrap_or(&module.name);
-                            let mut namespace_name = module_short_name.chars().next().map(|c| {
-                                c.to_uppercase().collect::<String>() + &module_short_name[c.len_utf8()..]
-                            }).unwrap_or_else(|| module_short_name.to_string());
-
-                            // Avoid conflicts with Lean built-in types/modules
-                            if namespace_name == "Vector" {
-                                namespace_name = "MoveVector".to_string();
-                            }
-
-                            format!("{}.{}", namespace_name, escaped_func_name)
+                            // Cross-module call: use Module.function format
+                            // Handle name conflicts like "vector" -> "MoveVector"
+                            let capitalized_module = if module.name == "vector" {
+                                "MoveVector".to_string()
+                            } else {
+                                Self::capitalize_first(&module.name)
+                            };
+                            format!("{}.{}", capitalized_module, escaped_func_name)
                         }
                     } else {
                         // Module not found, use unqualified (escaped)
@@ -325,15 +318,10 @@ impl ExpressionRenderer {
                     format!("func_{}", function)
                 };
 
-                // All Move functions (both native and non-native) take explicit type parameters
+                // All Move functions take explicit type parameters
                 // Unlike Lean's implicit type inference, Move functions have type params in their signatures
                 // So we always pass type args first, then value args
                 let has_args = !type_args.is_empty() || !args.is_empty();
-
-                // Wrap native function calls in pure since they return bare values, not ProgramState
-                if is_native {
-                    writer.emit("(pure ");
-                }
 
                 if has_args {
                     writer.emit("(");
@@ -348,16 +336,12 @@ impl ExpressionRenderer {
                     // Render value arguments
                     for arg in args {
                         writer.emit(" ");
-                        self.render(arg, registry, program, writer);
+                        self.render(arg, registry, program, current_module_id, writer);
                     }
 
                     writer.emit(")");
                 } else {
                     writer.emit(&func_name);
-                }
-
-                if is_native {
-                    writer.emit(")");
                 }
             }
 
@@ -372,7 +356,7 @@ impl ExpressionRenderer {
 
                 for field in fields {
                     writer.emit(" ");
-                    self.render(field, registry, program, writer);
+                    self.render(field, registry, program, current_module_id, writer);
                 }
 
                 writer.emit(")");
@@ -391,7 +375,7 @@ impl ExpressionRenderer {
                 writer.emit(".");
                 writer.emit(&field_name);
                 writer.emit(" ");
-                self.render(operand, registry, program, writer);
+                self.render(operand, registry, program, current_module_id, writer);
                 writer.emit(")");
             }
 
@@ -411,7 +395,7 @@ impl ExpressionRenderer {
                     writer.emit(".");
                     writer.emit(&escape::escape_identifier(&field.name));
                     writer.emit(" ");
-                    self.render(operand, registry, program, writer);
+                    self.render(operand, registry, program, current_module_id, writer);
                     writer.emit(")");
                 }
                 writer.emit(")");
@@ -425,35 +409,35 @@ impl ExpressionRenderer {
                     }
                     VectorOp::Length => {
                         writer.emit("(List.length ");
-                        self.render(&operands[0], registry, program, writer);
+                        self.render(&operands[0], registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     VectorOp::Push => {
                         writer.emit("(List.concat ");
-                        self.render(&operands[0], registry, program, writer);
+                        self.render(&operands[0], registry, program, current_module_id, writer);
                         writer.emit(" [");
-                        self.render(&operands[1], registry, program, writer);
+                        self.render(&operands[1], registry, program, current_module_id, writer);
                         writer.emit("])");
                     }
                     VectorOp::Pop => {
                         writer.emit("(List.dropLast ");
-                        self.render(&operands[0], registry, program, writer);
+                        self.render(&operands[0], registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     VectorOp::Borrow | VectorOp::BorrowMut => {
                         writer.emit("(List.get! ");
-                        self.render(&operands[0], registry, program, writer);
+                        self.render(&operands[0], registry, program, current_module_id, writer);
                         writer.emit(" ");
-                        self.render(&operands[1], registry, program, writer);
+                        self.render(&operands[1], registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                     VectorOp::Swap => {
                         writer.emit("(List.swap ");
-                        self.render(&operands[0], registry, program, writer);
+                        self.render(&operands[0], registry, program, current_module_id, writer);
                         writer.emit(" ");
-                        self.render(&operands[1], registry, program, writer);
+                        self.render(&operands[1], registry, program, current_module_id, writer);
                         writer.emit(" ");
-                        self.render(&operands[2], registry, program, writer);
+                        self.render(&operands[2], registry, program, current_module_id, writer);
                         writer.emit(")");
                     }
                 }

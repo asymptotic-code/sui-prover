@@ -186,6 +186,7 @@ impl<'env> FunctionTranslator<'env> {
         let code = target.get_bytecode();
         if code.is_empty() {
             // Native or abstract function - leave body empty
+            // The backend will check if it's in a native package and handle accordingly
             return;
         }
 
@@ -448,7 +449,7 @@ impl<'env> FunctionTranslator<'env> {
             StructuredBlock::While { cond_temp, condition_body, body, phi_variables, .. } => {
                 // The condition_body contains the bytecode that computes the condition
                 // The body contains the loop body (without the condition)
-                let condition_stmt = self.translate_structured_block(condition_body, bytecode_translator, registry, code);
+                let _condition_stmt = self.translate_structured_block(condition_body, bytecode_translator, registry, code);
                 let body_stmt = self.translate_structured_block(body, bytecode_translator, registry, code);
 
                 // Convert phi variables to loop variables

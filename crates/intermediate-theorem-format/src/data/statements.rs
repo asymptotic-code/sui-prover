@@ -268,14 +268,13 @@ impl Statement {
     }
 
     /// Check if this statement or any nested statement contains monadic operations
-    /// Monadic operations are function calls with CallConvention::Monadic
+    /// A statement is monadic if any Let has a ProgramState result type,
+    /// or if it's a While, Return, or Abort (which always use ProgramState monad)
     pub fn is_monadic(&self) -> bool {
-        // Check if any Let statement has a monadic operation (including nested)
-        // While loops, Returns, and Aborts are always monadic (use ProgramState monad)
         self.any(|stmt| {
-            if let Statement::Let { operation, .. } = stmt {
-                // Check if the operation itself is monadic (recursively)
-                return operation.is_monadic();
+            if let Statement::Let { result_types, .. } = stmt {
+                // Check if any result type is ProgramState
+                return result_types.iter().any(|ty| ty.is_monad());
             }
             matches!(stmt, Statement::While { .. } | Statement::Return { .. } | Statement::Abort { .. })
         })

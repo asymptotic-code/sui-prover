@@ -99,17 +99,32 @@ pub struct TheoremProgram {
 
     /// Name manager for rendering
     pub name_manager: NameManager,
+
+    /// Modules that have native-only implementations
+    /// Key: (package_name, module_name), e.g., ("MoveStdlib", "vector")
+    /// Functions in these modules should not be translated
+    pub native_modules: std::collections::HashSet<(String, String)>,
 }
 
 impl TheoremProgram {
     /// Create a new empty program IR
     pub fn new() -> Self {
+        let mut native_modules = std::collections::HashSet::new();
+        // MoveStdlib::vector has native implementation in Prelude/Vector.lean
+        native_modules.insert(("MoveStdlib".to_string(), "vector".to_string()));
+
         Self {
             modules: BTreeMap::new(),
             functions: IndexMap::new(),
             structs: IndexMap::new(),
             name_manager: NameManager::new(),
+            native_modules,
         }
+    }
+
+    /// Check if a module is native-only
+    pub fn is_native_module(&self, package_name: &str, module_name: &str) -> bool {
+        self.native_modules.contains(&(package_name.to_string(), module_name.to_string()))
     }
 
     /// Get a function by ID
@@ -133,12 +148,13 @@ pub struct TheoremModule {
     /// Unique identifier for this module
     pub id: TheoremModuleID,
 
-    /// Module name (e.g., "0x123::math::helpers")
+    /// Module name (last component, e.g., "helpers")
     pub name: String,
-
-    /// Simple module name (last component, e.g., "helpers")
-    pub simple_name: String,
 
     /// Package name from Move.toml (e.g., "Sui", "MoveStdlib", "DeepBook")
     pub package_name: String,
+
+    /// Required imports for this module (computed during IR construction)
+    /// Contains TheoremModuleIDs of modules that this module depends on
+    pub required_imports: Vec<TheoremModuleID>,
 }

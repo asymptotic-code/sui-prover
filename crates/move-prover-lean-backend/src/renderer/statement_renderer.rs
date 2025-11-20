@@ -3,7 +3,7 @@
 
 //! Renders Statement IR to Lean syntax
 
-use intermediate_theorem_format::{Statement, VariableRegistry, TheoremProgram, PhiVariable};
+use intermediate_theorem_format::{Statement, VariableRegistry, TheoremProgram, PhiVariable, TheoremModuleID};
 use super::expression_renderer::ExpressionRenderer;
 use super::type_renderer::TypeRenderer;
 use super::lean_writer::LeanWriter;
@@ -31,39 +31,40 @@ impl StatementRenderer {
         }
     }
 
-    fn get_var_name(&self, temp_id: u32, registry: &VariableRegistry) -> String {
-        registry.get_name(temp_id)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("t{}", temp_id))
-    }
-
     /// Render an expression to a string
-    fn render_expression_to_string<'a>(&self, expr: &intermediate_theorem_format::Expression, registry: &VariableRegistry, program: &TheoremProgram, name_manager: &'a intermediate_theorem_format::NameManager) -> String {
+    fn render_expression_to_string<'a>(&self, expr: &intermediate_theorem_format::Expression, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, name_manager: &'a intermediate_theorem_format::NameManager) -> String {
         let writer = LeanWriter::new(name_manager);
-        self.expr_renderer.render(expr, registry, program, &writer);
+        self.expr_renderer.render(expr, registry, program, current_module_id, &writer);
         writer.extract_result()
     }
 
-    /// Extract statements from a branch for phi-merge if-expressions
-    /// Returns just the prefix statements - phi values are accessed via the PhiVariable struct
-    fn extract_branch_statements(&self, branch: &Statement) -> Vec<Statement> {
+    /// Check if a branch contains monadic operations
+    fn branch_is_monadic(&self, branch: &Statement) -> bool {
+        match branch {
+            Statement::Sequence(stmts) => stmts.iter().any(|s| s.is_monadic()),
+            stmt => stmt.is_monadic(),
+        }
+    }
+
+    /// Render statements in a branch
+    fn render_branch_statements(&mut self, branch: &Statement, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, writer: &LeanWriter) {
         match branch {
             Statement::Sequence(stmts) => {
-                // Keep ALL statements in the prefix, filtering empty sequences
-                stmts.iter()
-                    .filter(|stmt| {
-                        !matches!(stmt, Statement::Sequence(s) if s.is_empty())
-                    })
-                    .cloned()
-                    .collect()
+                for stmt in stmts {
+                    self.render(stmt, registry, program, current_module_id, writer);
+                    writer.emit("\n");
+                }
             }
-            _ => vec![branch.clone()],
+            stmt => {
+                self.render(stmt, registry, program, current_module_id, writer);
+                writer.emit("\n");
+            }
         }
     }
 
     /// Render a statement to a LeanWriter
     /// This is the ONLY public rendering method - all statement rendering uses LeanWriter
-    pub fn render<'a>(&mut self, stmt: &Statement, registry: &VariableRegistry, program: &TheoremProgram, writer: &LeanWriter<'a>) {
+    pub fn render<'a>(&mut self, stmt: &Statement, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, writer: &LeanWriter<'a>) {
         match stmt {
             Statement::Sequence(stmts) => {
                 if stmts.is_empty() {
@@ -77,7 +78,7 @@ impl StatementRenderer {
                     writer.emit("()");
                 } else {
                     for (i, s) in stmts.iter().enumerate() {
-                        self.render(s, registry, program, writer);
+                        self.render(s, registry, program, current_module_id, writer);
                         if i < stmts.len() - 1 {
                             writer.emit("\n");
                         }
@@ -89,14 +90,14 @@ impl StatementRenderer {
                 }
             }
 
-            Statement::Let { results, operation, .. } => {
+            Statement::Let { results, operation, result_types } => {
                 let results_str = if results.len() == 1 {
-                    let var_name = self.get_var_name(results[0], registry);
+                    let var_name = registry.get_display_name(results[0]);
                     if var_name == "()" { "_".to_string() } else { var_name }
                 } else {
                     let temps = results.iter()
                         .map(|r| {
-                            let var_name = self.get_var_name(*r, registry);
+                            let var_name = registry.get_display_name(*r);
                             if var_name == "()" { "_".to_string() } else { var_name }
                         })
                         .collect::<Vec<_>>()
@@ -104,33 +105,34 @@ impl StatementRenderer {
                     format!("({})", temps)
                 };
 
-                let is_monadic = operation.is_monadic();
+                // Check if any result type is ProgramState - if so, use monadic binding
+                let is_monadic = result_types.iter().any(|ty| ty.is_monad());
 
                 if is_monadic {
                     writer.emit(&format!("let {} ← ", results_str));
-                    self.expr_renderer.render(operation, registry, program, writer);
+                    self.expr_renderer.render(operation, registry, program, current_module_id, writer);
                 } else {
                     writer.emit(&format!("let {} := ", results_str));
-                    self.expr_renderer.render(operation, registry, program, writer);
+                    self.expr_renderer.render(operation, registry, program, current_module_id, writer);
                 }
             }
 
             Statement::If { condition, then_branch, else_branch, phi_vars } => {
-                let cond_str = self.render_expression_to_string(condition, registry, program, writer.name_manager);
+                let cond_str = self.render_expression_to_string(condition, registry, program, current_module_id, writer.name_manager);
 
                 // Check if this is a phi-merge if or a statement-level if
                 if !phi_vars.is_empty() {
                     // Value-producing if with phi-merge
-                    self.render_phi_if(cond_str, then_branch, else_branch, phi_vars, registry, program, writer);
+                    self.render_phi_if(cond_str, then_branch, else_branch, phi_vars, registry, program, current_module_id, writer);
                 } else {
                     // Statement-level if for control flow
-                    self.render_statement_if(cond_str, then_branch, else_branch, registry, program, writer);
+                    self.render_statement_if(cond_str, then_branch, else_branch, registry, program, current_module_id, writer);
                 }
             }
 
             Statement::While { loop_vars, condition, body } => {
                 let init_vals = loop_vars.iter()
-                    .map(|v| self.get_var_name(v.initial_value, registry))
+                    .map(|v| registry.get_display_name(v.initial_value))
                     .collect::<Vec<_>>();
                 let init_tuple = if init_vals.len() == 1 {
                     init_vals[0].clone()
@@ -140,7 +142,7 @@ impl StatementRenderer {
 
                 // Bind the phi_result variables to the loop output
                 let phi_results = loop_vars.iter()
-                    .map(|v| self.get_var_name(v.phi_result, registry))
+                    .map(|v| registry.get_display_name(v.phi_result))
                     .collect::<Vec<_>>();
                 let phi_pattern = if phi_results.len() == 1 {
                     phi_results[0].clone()
@@ -150,7 +152,7 @@ impl StatementRenderer {
 
                 // Get the updated values from the loop body
                 let updated_vals = loop_vars.iter()
-                    .map(|v| self.get_var_name(v.updated_value, registry))
+                    .map(|v| registry.get_display_name(v.updated_value))
                     .collect::<Vec<_>>();
                 let updated_tuple = if updated_vals.len() == 1 {
                     updated_vals[0].clone()
@@ -158,13 +160,13 @@ impl StatementRenderer {
                     format!("({})", updated_vals.join(", "))
                 };
 
-                let cond_str = self.render_expression_to_string(condition, registry, program, writer.name_manager);
+                let cond_str = self.render_expression_to_string(condition, registry, program, current_module_id, writer.name_manager);
 
                 writer.emit(&format!("let {} ← (whileLoop (fun state => pure {}) (fun state =>\n", phi_pattern, cond_str));
                 writer.with_indent(|| {
                     writer.emit("do\n");
                     writer.with_indent(|| {
-                        self.render(body, registry, program, writer);
+                        self.render(body, registry, program, current_module_id, writer);
                         // Return the updated values from the loop body
                         writer.emit(&format!("\npure {}", updated_tuple));
                     });
@@ -176,11 +178,11 @@ impl StatementRenderer {
                 if values.is_empty() {
                     writer.emit("pure ()");
                 } else if values.len() == 1 {
-                    let val_str = self.render_expression_to_string(&values[0], registry, program, writer.name_manager);
+                    let val_str = self.render_expression_to_string(&values[0], registry, program, current_module_id, writer.name_manager);
                     writer.emit(&format!("pure {}", val_str));
                 } else {
                     let vals = values.iter()
-                        .map(|v| self.render_expression_to_string(v, registry, program, writer.name_manager))
+                        .map(|v| self.render_expression_to_string(v, registry, program, current_module_id, writer.name_manager))
                         .collect::<Vec<_>>()
                         .join(", ");
                     writer.emit(&format!("pure ({})", vals));
@@ -188,7 +190,7 @@ impl StatementRenderer {
             }
 
             Statement::Abort { code } => {
-                let code_str = self.render_expression_to_string(code, registry, program, writer.name_manager);
+                let code_str = self.render_expression_to_string(code, registry, program, current_module_id, writer.name_manager);
                 // Convert abort code to Nat since abort expects Nat parameter
                 // Use dot notation .toNat which works for all UInt types
                 // Wrap in extra parens to prevent line breaks in formatting
@@ -208,16 +210,16 @@ impl StatementRenderer {
             }
 
             Statement::UpdateField { target, struct_id, field_index, new_value } => {
-                let target_str = self.render_expression_to_string(target, registry, program, writer.name_manager);
-                let value_str = self.render_expression_to_string(new_value, registry, program, writer.name_manager);
+                let target_str = self.render_expression_to_string(target, registry, program, current_module_id, writer.name_manager);
+                let value_str = self.render_expression_to_string(new_value, registry, program, current_module_id, writer.name_manager);
 
                 let struct_info = program.structs.get(struct_id);
                 let field_name = if let Some(info) = struct_info {
                     info.fields.get(*field_index)
                         .map(|f| f.name.clone())
-                        .unwrap_or_else(|| format!("field{}", field_index))
+                        .unwrap_or_else(|| panic!("BUG: Field index {} out of bounds for struct", field_index))
                 } else {
-                    format!("field{}", field_index)
+                    panic!("BUG: Missing struct info when unpacking struct field");
                 };
 
                 writer.emit(&format!("let {} := {{ {} with {} := {} }}",
@@ -228,9 +230,9 @@ impl StatementRenderer {
             }
 
             Statement::UpdateVectorElement { target, index, new_value } => {
-                let target_str = self.render_expression_to_string(target, registry, program, writer.name_manager);
-                let index_str = self.render_expression_to_string(index, registry, program, writer.name_manager);
-                let value_str = self.render_expression_to_string(new_value, registry, program, writer.name_manager);
+                let target_str = self.render_expression_to_string(target, registry, program, current_module_id, writer.name_manager);
+                let index_str = self.render_expression_to_string(index, registry, program, current_module_id, writer.name_manager);
+                let value_str = self.render_expression_to_string(new_value, registry, program, current_module_id, writer.name_manager);
 
                 writer.emit(&format!("let {} := {}.set {} {}",
                     target_str,
@@ -261,12 +263,13 @@ impl StatementRenderer {
         else_branch: &Statement,
         registry: &VariableRegistry,
         program: &TheoremProgram,
+        current_module_id: TheoremModuleID,
         writer: &LeanWriter,
     ) {
         writer.emit(&format!("if {} then\n", cond_str));
 
         writer.with_indent(|| {
-            self.render(then_branch, registry, program, writer);
+            self.render(then_branch, registry, program, current_module_id, writer);
         });
 
         // Check if else branch has content
@@ -278,7 +281,7 @@ impl StatementRenderer {
         if has_else_content {
             writer.emit("\nelse\n");
             writer.with_indent(|| {
-                self.render(else_branch, registry, program, writer);
+                self.render(else_branch, registry, program, current_module_id, writer);
             });
         }
     }
@@ -292,24 +295,21 @@ impl StatementRenderer {
         phi_vars: &[PhiVariable],
         registry: &VariableRegistry,
         program: &TheoremProgram,
+        current_module_id: TheoremModuleID,
         writer: &LeanWriter,
     ) {
-        // Extract prefix statements
-        let then_prefix = self.extract_branch_statements(then_branch);
-        let else_prefix = self.extract_branch_statements(else_branch);
-
         // Check if either branch has monadic operations
-        let then_monadic = then_prefix.iter().any(|s| s.is_monadic());
-        let else_monadic = else_prefix.iter().any(|s| s.is_monadic());
+        let then_monadic = self.branch_is_monadic(then_branch);
+        let else_monadic = self.branch_is_monadic(else_branch);
         // If EITHER branch is monadic, BOTH must be wrapped in do-blocks for type consistency
         let any_monadic = then_monadic || else_monadic;
 
         // Render phi variable pattern
         let phi_pattern = if phi_vars.len() == 1 {
-            self.get_var_name(phi_vars[0].result, registry)
+            registry.get_display_name(phi_vars[0].result)
         } else {
             let names = phi_vars.iter()
-                .map(|v| self.get_var_name(v.result, registry))
+                .map(|v| registry.get_display_name(v.result))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("({})", names)
@@ -325,26 +325,20 @@ impl StatementRenderer {
                 writer.emit("do\n");
                 writer.with_indent(|| {
                     // Render then branch statements
-                    for stmt in &then_prefix {
-                        self.render(stmt, registry, program, writer);
-                        writer.emit("\n");
-                    }
+                    self.render_branch_statements(then_branch, registry, program, current_module_id, writer);
                     // Render return values wrapped in pure
-                    self.render_phi_values(&phi_vars.iter().map(|p| &p.then_value).collect::<Vec<_>>(), registry, program, writer);
+                    self.render_phi_values(&phi_vars.iter().map(|p| &p.then_value).collect::<Vec<_>>(), registry, program, current_module_id, writer);
                 });
             } else {
                 // Pure branch: render statements and value directly
-                for stmt in &then_prefix {
-                    self.render(stmt, registry, program, writer);
-                    writer.emit("\n");
-                }
+                self.render_branch_statements(then_branch, registry, program, current_module_id, writer);
                 // Render return values
                 if phi_vars.len() == 1 {
-                    let val_str = self.render_expression_to_string(&phi_vars[0].then_value, registry, program, writer.name_manager);
+                    let val_str = self.render_expression_to_string(&phi_vars[0].then_value, registry, program, current_module_id, writer.name_manager);
                     writer.emit(&val_str);
                 } else {
                     let vals = phi_vars.iter()
-                        .map(|v| self.render_expression_to_string(&v.then_value, registry, program, writer.name_manager))
+                        .map(|v| self.render_expression_to_string(&v.then_value, registry, program, current_module_id, writer.name_manager))
                         .collect::<Vec<_>>()
                         .join(", ");
                     writer.emit(&format!("({})", vals));
@@ -360,26 +354,20 @@ impl StatementRenderer {
                 writer.emit("do\n");
                 writer.with_indent(|| {
                     // Render else branch statements
-                    for stmt in &else_prefix {
-                        self.render(stmt, registry, program, writer);
-                        writer.emit("\n");
-                    }
+                    self.render_branch_statements(else_branch, registry, program, current_module_id, writer);
                     // Render return values wrapped in pure
-                    self.render_phi_values(&phi_vars.iter().map(|p| &p.else_value).collect::<Vec<_>>(), registry, program, writer);
+                    self.render_phi_values(&phi_vars.iter().map(|p| &p.else_value).collect::<Vec<_>>(), registry, program, current_module_id, writer);
                 });
             } else {
                 // Pure branch: render statements and value directly
-                for stmt in &else_prefix {
-                    self.render(stmt, registry, program, writer);
-                    writer.emit("\n");
-                }
+                self.render_branch_statements(else_branch, registry, program, current_module_id, writer);
                 // Render return values
                 if phi_vars.len() == 1 {
-                    let val_str = self.render_expression_to_string(&phi_vars[0].else_value, registry, program, writer.name_manager);
+                    let val_str = self.render_expression_to_string(&phi_vars[0].else_value, registry, program, current_module_id, writer.name_manager);
                     writer.emit(&val_str);
                 } else {
                     let vals = phi_vars.iter()
-                        .map(|v| self.render_expression_to_string(&v.else_value, registry, program, writer.name_manager))
+                        .map(|v| self.render_expression_to_string(&v.else_value, registry, program, current_module_id, writer.name_manager))
                         .collect::<Vec<_>>()
                         .join(", ");
                     writer.emit(&format!("({})", vals));
@@ -389,20 +377,25 @@ impl StatementRenderer {
     }
 
     /// Helper to render phi values with appropriate wrapping
-    /// If any value is monadic, return it directly; otherwise wrap in pure
+    /// If the value is a monadic call, return it directly; otherwise wrap in pure
     fn render_phi_values(
         &self,
         values: &[&intermediate_theorem_format::Expression],
         registry: &VariableRegistry,
         program: &TheoremProgram,
+        current_module_id: TheoremModuleID,
         writer: &LeanWriter,
     ) {
-        // Check if any value is monadic
-        let any_monadic = values.iter().any(|v| v.is_monadic());
+        use intermediate_theorem_format::{Expression, CallConvention};
+
+        // Check if a value is a monadic call
+        let is_monadic_call = |expr: &Expression| -> bool {
+            matches!(expr, Expression::Call { convention: CallConvention::Monadic, .. })
+        };
 
         if values.len() == 1 {
-            let val_str = self.render_expression_to_string(values[0], registry, program, writer.name_manager);
-            if values[0].is_monadic() {
+            let val_str = self.render_expression_to_string(values[0], registry, program, current_module_id, writer.name_manager);
+            if is_monadic_call(values[0]) {
                 // Already monadic, don't wrap in pure
                 writer.emit(&val_str);
             } else {
@@ -410,16 +403,11 @@ impl StatementRenderer {
             }
         } else {
             let vals = values.iter()
-                .map(|v| self.render_expression_to_string(v, registry, program, writer.name_manager))
+                .map(|v| self.render_expression_to_string(v, registry, program, current_module_id, writer.name_manager))
                 .collect::<Vec<_>>()
                 .join(", ");
-            if any_monadic {
-                // At least one is monadic - need to handle this case
-                // For now, just return the tuple directly (this might need more sophisticated handling)
-                writer.emit(&format!("pure ({})", vals));
-            } else {
-                writer.emit(&format!("pure ({})", vals));
-            }
+            // For tuples, always wrap in pure (monadic calls should be bound before phi merge)
+            writer.emit(&format!("pure ({})", vals));
         }
     }
 }

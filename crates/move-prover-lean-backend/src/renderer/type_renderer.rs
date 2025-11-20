@@ -73,6 +73,7 @@ impl TypeRenderer {
                 self.render(inner, writer);
             }
             TheoremType::TypeParameter(idx) => {
+                // TODO: Get real type param names
                 writer.emit(&format!("tv{}", idx));
             }
             TheoremType::Tuple(types) => {
