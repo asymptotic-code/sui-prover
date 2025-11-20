@@ -10,6 +10,7 @@ use move_model::{model::GlobalEnv, run_model_builder_with_options};
 use move_stackless_bytecode::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
+    control_flow_reconstruction::reconstruct_control_flow,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
@@ -127,6 +128,18 @@ fn get_tested_transformation_pipeline(
             pipeline.add_processor(CleanAndOptimizeProcessor::new());
             Ok(Some(pipeline))
         }
+        "control_flow_reconstruction" => {
+            // Run the same pipeline as the Lean backend to match its behavior
+            let mut pipeline = FunctionTargetPipeline::default();
+            pipeline.add_processor(EliminateImmRefsProcessor::new());
+            pipeline.add_processor(MutRefInstrumenter::new());
+            pipeline.add_processor(ReachingDefProcessor::new());
+            pipeline.add_processor(LiveVarAnalysisProcessor::new());
+            pipeline.add_processor(BorrowAnalysisProcessor::new());
+            pipeline.add_processor(MemoryInstrumentationProcessor::new());
+            pipeline.add_processor(CleanAndOptimizeProcessor::new());
+            Ok(Some(pipeline))
+        }
         _ => Err(anyhow!(
             "the sub-directory `{}` has no associated pipeline to test",
             dir_name
@@ -214,6 +227,27 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
                 processor,
             }
             .to_string();
+
+            // For control_flow_reconstruction tests, add reconstruction output after pipeline
+            if dir_name == "control_flow_reconstruction" {
+                text += "\n============ Control Flow Reconstruction ================\n";
+                for module_env in env.get_modules() {
+                    for func_env in module_env.get_functions() {
+                        for (variant, target) in targets.get_targets(&func_env) {
+                            if !target.data.code.is_empty() {
+                                text += &format!(
+                                    "\n[variant {}]\nfun {}::{}\n",
+                                    variant,
+                                    func_env.module_env.get_name().display(env.symbol_pool()),
+                                    func_env.get_name().display(func_env.symbol_pool())
+                                );
+                                let blocks = reconstruct_control_flow(&target.data.code);
+                                text += &format!("{:#?}\n", blocks);
+                            }
+                        }
+                    }
+                }
+            }
         }
         // add Warning and Error diagnostics to output
         let mut error_writer = Buffer::no_color();

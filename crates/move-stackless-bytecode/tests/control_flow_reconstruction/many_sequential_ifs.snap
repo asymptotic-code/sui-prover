@@ -1,0 +1,877 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+assertion_line: 260
+---
+============ initial translation from Move ================
+
+[variant baseline]
+fun test::many_sequential_ifs($t0|ratio: u128, $t1|abs_tick: u32): u128 {
+     var $t2: u32
+     var $t3: u32
+     var $t4: u32
+     var $t5: u32
+     var $t6: bool
+     var $t7: u128
+     var $t8: u128
+     var $t9: u128
+     var $t10: u32
+     var $t11: u32
+     var $t12: u32
+     var $t13: u32
+     var $t14: bool
+     var $t15: u128
+     var $t16: u128
+     var $t17: u128
+     var $t18: u32
+     var $t19: u32
+     var $t20: u32
+     var $t21: u32
+     var $t22: bool
+     var $t23: u128
+     var $t24: u128
+     var $t25: u128
+     var $t26: u32
+     var $t27: u32
+     var $t28: u32
+     var $t29: u32
+     var $t30: bool
+     var $t31: u128
+     var $t32: u128
+     var $t33: u128
+     var $t34: u32
+     var $t35: u32
+     var $t36: u32
+     var $t37: u32
+     var $t38: bool
+     var $t39: u128
+     var $t40: u128
+     var $t41: u128
+     var $t42: u32
+     var $t43: u32
+     var $t44: u32
+     var $t45: u32
+     var $t46: bool
+     var $t47: u128
+     var $t48: u128
+     var $t49: u128
+     var $t50: u32
+     var $t51: u32
+     var $t52: u32
+     var $t53: u32
+     var $t54: bool
+     var $t55: u128
+     var $t56: u128
+     var $t57: u128
+     var $t58: u32
+     var $t59: u32
+     var $t60: u32
+     var $t61: u32
+     var $t62: bool
+     var $t63: u128
+     var $t64: u128
+     var $t65: u128
+     var $t66: u32
+     var $t67: u32
+     var $t68: u32
+     var $t69: u32
+     var $t70: bool
+     var $t71: u128
+     var $t72: u128
+     var $t73: u128
+     var $t74: u32
+     var $t75: u32
+     var $t76: u32
+     var $t77: u32
+     var $t78: bool
+     var $t79: u128
+     var $t80: u128
+     var $t81: u128
+     var $t82: u32
+     var $t83: u32
+     var $t84: u32
+     var $t85: u32
+     var $t86: bool
+     var $t87: u128
+     var $t88: u128
+     var $t89: u128
+     var $t90: u32
+     var $t91: u32
+     var $t92: u32
+     var $t93: u32
+     var $t94: bool
+     var $t95: u128
+     var $t96: u128
+     var $t97: u128
+     var $t98: u32
+     var $t99: u32
+     var $t100: u32
+     var $t101: u32
+     var $t102: bool
+     var $t103: u128
+     var $t104: u128
+     var $t105: u128
+     var $t106: u32
+     var $t107: u32
+     var $t108: u32
+     var $t109: u32
+     var $t110: bool
+     var $t111: u128
+     var $t112: u128
+     var $t113: u128
+     var $t114: u32
+     var $t115: u32
+     var $t116: u32
+     var $t117: u32
+     var $t118: bool
+     var $t119: u128
+     var $t120: u128
+     var $t121: u128
+     var $t122: u32
+     var $t123: u32
+     var $t124: u32
+     var $t125: u32
+     var $t126: bool
+     var $t127: u128
+     var $t128: u128
+     var $t129: u128
+     var $t130: u32
+     var $t131: u32
+     var $t132: u32
+     var $t133: u32
+     var $t134: bool
+     var $t135: u128
+     var $t136: u128
+     var $t137: u128
+     var $t138: u32
+     var $t139: u32
+     var $t140: u32
+     var $t141: u32
+     var $t142: bool
+     var $t143: u128
+     var $t144: u128
+     var $t145: u128
+     var $t146: u128
+  0: $t2 := copy($t1)
+  1: $t3 := 1
+  2: $t4 := &($t2, $t3)
+  3: $t5 := 0
+  4: $t6 := !=($t4, $t5)
+  5: if ($t6) goto 6 else goto 12
+  6: label L1
+  7: $t7 := move($t0)
+  8: $t8 := 2
+  9: $t9 := *($t7, $t8)
+ 10: $t0 := $t9
+ 11: goto 12
+ 12: label L0
+ 13: $t10 := copy($t1)
+ 14: $t11 := 2
+ 15: $t12 := &($t10, $t11)
+ 16: $t13 := 0
+ 17: $t14 := !=($t12, $t13)
+ 18: if ($t14) goto 19 else goto 25
+ 19: label L3
+ 20: $t15 := move($t0)
+ 21: $t16 := 3
+ 22: $t17 := *($t15, $t16)
+ 23: $t0 := $t17
+ 24: goto 25
+ 25: label L2
+ 26: $t18 := copy($t1)
+ 27: $t19 := 4
+ 28: $t20 := &($t18, $t19)
+ 29: $t21 := 0
+ 30: $t22 := !=($t20, $t21)
+ 31: if ($t22) goto 32 else goto 38
+ 32: label L5
+ 33: $t23 := move($t0)
+ 34: $t24 := 5
+ 35: $t25 := *($t23, $t24)
+ 36: $t0 := $t25
+ 37: goto 38
+ 38: label L4
+ 39: $t26 := copy($t1)
+ 40: $t27 := 8
+ 41: $t28 := &($t26, $t27)
+ 42: $t29 := 0
+ 43: $t30 := !=($t28, $t29)
+ 44: if ($t30) goto 45 else goto 51
+ 45: label L7
+ 46: $t31 := move($t0)
+ 47: $t32 := 7
+ 48: $t33 := *($t31, $t32)
+ 49: $t0 := $t33
+ 50: goto 51
+ 51: label L6
+ 52: $t34 := copy($t1)
+ 53: $t35 := 16
+ 54: $t36 := &($t34, $t35)
+ 55: $t37 := 0
+ 56: $t38 := !=($t36, $t37)
+ 57: if ($t38) goto 58 else goto 64
+ 58: label L9
+ 59: $t39 := move($t0)
+ 60: $t40 := 11
+ 61: $t41 := *($t39, $t40)
+ 62: $t0 := $t41
+ 63: goto 64
+ 64: label L8
+ 65: $t42 := copy($t1)
+ 66: $t43 := 32
+ 67: $t44 := &($t42, $t43)
+ 68: $t45 := 0
+ 69: $t46 := !=($t44, $t45)
+ 70: if ($t46) goto 71 else goto 77
+ 71: label L11
+ 72: $t47 := move($t0)
+ 73: $t48 := 13
+ 74: $t49 := *($t47, $t48)
+ 75: $t0 := $t49
+ 76: goto 77
+ 77: label L10
+ 78: $t50 := copy($t1)
+ 79: $t51 := 64
+ 80: $t52 := &($t50, $t51)
+ 81: $t53 := 0
+ 82: $t54 := !=($t52, $t53)
+ 83: if ($t54) goto 84 else goto 90
+ 84: label L13
+ 85: $t55 := move($t0)
+ 86: $t56 := 17
+ 87: $t57 := *($t55, $t56)
+ 88: $t0 := $t57
+ 89: goto 90
+ 90: label L12
+ 91: $t58 := copy($t1)
+ 92: $t59 := 128
+ 93: $t60 := &($t58, $t59)
+ 94: $t61 := 0
+ 95: $t62 := !=($t60, $t61)
+ 96: if ($t62) goto 97 else goto 103
+ 97: label L15
+ 98: $t63 := move($t0)
+ 99: $t64 := 19
+100: $t65 := *($t63, $t64)
+101: $t0 := $t65
+102: goto 103
+103: label L14
+104: $t66 := copy($t1)
+105: $t67 := 256
+106: $t68 := &($t66, $t67)
+107: $t69 := 0
+108: $t70 := !=($t68, $t69)
+109: if ($t70) goto 110 else goto 116
+110: label L17
+111: $t71 := move($t0)
+112: $t72 := 23
+113: $t73 := *($t71, $t72)
+114: $t0 := $t73
+115: goto 116
+116: label L16
+117: $t74 := copy($t1)
+118: $t75 := 512
+119: $t76 := &($t74, $t75)
+120: $t77 := 0
+121: $t78 := !=($t76, $t77)
+122: if ($t78) goto 123 else goto 129
+123: label L19
+124: $t79 := move($t0)
+125: $t80 := 29
+126: $t81 := *($t79, $t80)
+127: $t0 := $t81
+128: goto 129
+129: label L18
+130: $t82 := copy($t1)
+131: $t83 := 1024
+132: $t84 := &($t82, $t83)
+133: $t85 := 0
+134: $t86 := !=($t84, $t85)
+135: if ($t86) goto 136 else goto 142
+136: label L21
+137: $t87 := move($t0)
+138: $t88 := 31
+139: $t89 := *($t87, $t88)
+140: $t0 := $t89
+141: goto 142
+142: label L20
+143: $t90 := copy($t1)
+144: $t91 := 2048
+145: $t92 := &($t90, $t91)
+146: $t93 := 0
+147: $t94 := !=($t92, $t93)
+148: if ($t94) goto 149 else goto 155
+149: label L23
+150: $t95 := move($t0)
+151: $t96 := 37
+152: $t97 := *($t95, $t96)
+153: $t0 := $t97
+154: goto 155
+155: label L22
+156: $t98 := copy($t1)
+157: $t99 := 4096
+158: $t100 := &($t98, $t99)
+159: $t101 := 0
+160: $t102 := !=($t100, $t101)
+161: if ($t102) goto 162 else goto 168
+162: label L25
+163: $t103 := move($t0)
+164: $t104 := 41
+165: $t105 := *($t103, $t104)
+166: $t0 := $t105
+167: goto 168
+168: label L24
+169: $t106 := copy($t1)
+170: $t107 := 8192
+171: $t108 := &($t106, $t107)
+172: $t109 := 0
+173: $t110 := !=($t108, $t109)
+174: if ($t110) goto 175 else goto 181
+175: label L27
+176: $t111 := move($t0)
+177: $t112 := 43
+178: $t113 := *($t111, $t112)
+179: $t0 := $t113
+180: goto 181
+181: label L26
+182: $t114 := copy($t1)
+183: $t115 := 16384
+184: $t116 := &($t114, $t115)
+185: $t117 := 0
+186: $t118 := !=($t116, $t117)
+187: if ($t118) goto 188 else goto 194
+188: label L29
+189: $t119 := move($t0)
+190: $t120 := 47
+191: $t121 := *($t119, $t120)
+192: $t0 := $t121
+193: goto 194
+194: label L28
+195: $t122 := copy($t1)
+196: $t123 := 32768
+197: $t124 := &($t122, $t123)
+198: $t125 := 0
+199: $t126 := !=($t124, $t125)
+200: if ($t126) goto 201 else goto 207
+201: label L31
+202: $t127 := move($t0)
+203: $t128 := 53
+204: $t129 := *($t127, $t128)
+205: $t0 := $t129
+206: goto 207
+207: label L30
+208: $t130 := copy($t1)
+209: $t131 := 65536
+210: $t132 := &($t130, $t131)
+211: $t133 := 0
+212: $t134 := !=($t132, $t133)
+213: if ($t134) goto 214 else goto 220
+214: label L33
+215: $t135 := move($t0)
+216: $t136 := 59
+217: $t137 := *($t135, $t136)
+218: $t0 := $t137
+219: goto 220
+220: label L32
+221: $t138 := move($t1)
+222: $t139 := 131072
+223: $t140 := &($t138, $t139)
+224: $t141 := 0
+225: $t142 := !=($t140, $t141)
+226: if ($t142) goto 227 else goto 233
+227: label L35
+228: $t143 := move($t0)
+229: $t144 := 61
+230: $t145 := *($t143, $t144)
+231: $t0 := $t145
+232: goto 233
+233: label L34
+234: $t146 := move($t0)
+235: return $t146
+}
+
+============ after pipeline `control_flow_reconstruction` ================
+
+[variant baseline]
+fun test::many_sequential_ifs($t0|ratio: u128, $t1|abs_tick: u32): u128 {
+     var $t2: u32
+     var $t3: u32
+     var $t4: u32
+     var $t5: bool
+     var $t6: u128
+     var $t7: u32
+     var $t8: u32
+     var $t9: u32
+     var $t10: bool
+     var $t11: u128
+     var $t12: u32
+     var $t13: u32
+     var $t14: u32
+     var $t15: bool
+     var $t16: u128
+     var $t17: u32
+     var $t18: u32
+     var $t19: u32
+     var $t20: bool
+     var $t21: u128
+     var $t22: u32
+     var $t23: u32
+     var $t24: u32
+     var $t25: bool
+     var $t26: u128
+     var $t27: u32
+     var $t28: u32
+     var $t29: u32
+     var $t30: bool
+     var $t31: u128
+     var $t32: u32
+     var $t33: u32
+     var $t34: u32
+     var $t35: bool
+     var $t36: u128
+     var $t37: u32
+     var $t38: u32
+     var $t39: u32
+     var $t40: bool
+     var $t41: u128
+     var $t42: u32
+     var $t43: u32
+     var $t44: u32
+     var $t45: bool
+     var $t46: u128
+     var $t47: u32
+     var $t48: u32
+     var $t49: u32
+     var $t50: bool
+     var $t51: u128
+     var $t52: u32
+     var $t53: u32
+     var $t54: u32
+     var $t55: bool
+     var $t56: u128
+     var $t57: u32
+     var $t58: u32
+     var $t59: u32
+     var $t60: bool
+     var $t61: u128
+     var $t62: u32
+     var $t63: u32
+     var $t64: u32
+     var $t65: bool
+     var $t66: u128
+     var $t67: u32
+     var $t68: u32
+     var $t69: u32
+     var $t70: bool
+     var $t71: u128
+     var $t72: u32
+     var $t73: u32
+     var $t74: u32
+     var $t75: bool
+     var $t76: u128
+     var $t77: u32
+     var $t78: u32
+     var $t79: u32
+     var $t80: bool
+     var $t81: u128
+     var $t82: u32
+     var $t83: u32
+     var $t84: u32
+     var $t85: bool
+     var $t86: u128
+     var $t87: u32
+     var $t88: u32
+     var $t89: u32
+     var $t90: bool
+     var $t91: u128
+  0: $t2 := 1
+  1: $t3 := &($t1, $t2)
+  2: $t4 := 0
+  3: $t5 := !=($t3, $t4)
+  4: if ($t5) goto 5 else goto 8
+  5: label L1
+  6: $t6 := 2
+  7: $t0 := *($t0, $t6)
+  8: label L0
+  9: $t7 := 2
+ 10: $t8 := &($t1, $t7)
+ 11: $t9 := 0
+ 12: $t10 := !=($t8, $t9)
+ 13: if ($t10) goto 14 else goto 17
+ 14: label L3
+ 15: $t11 := 3
+ 16: $t0 := *($t0, $t11)
+ 17: label L2
+ 18: $t12 := 4
+ 19: $t13 := &($t1, $t12)
+ 20: $t14 := 0
+ 21: $t15 := !=($t13, $t14)
+ 22: if ($t15) goto 23 else goto 26
+ 23: label L5
+ 24: $t16 := 5
+ 25: $t0 := *($t0, $t16)
+ 26: label L4
+ 27: $t17 := 8
+ 28: $t18 := &($t1, $t17)
+ 29: $t19 := 0
+ 30: $t20 := !=($t18, $t19)
+ 31: if ($t20) goto 32 else goto 35
+ 32: label L7
+ 33: $t21 := 7
+ 34: $t0 := *($t0, $t21)
+ 35: label L6
+ 36: $t22 := 16
+ 37: $t23 := &($t1, $t22)
+ 38: $t24 := 0
+ 39: $t25 := !=($t23, $t24)
+ 40: if ($t25) goto 41 else goto 44
+ 41: label L9
+ 42: $t26 := 11
+ 43: $t0 := *($t0, $t26)
+ 44: label L8
+ 45: $t27 := 32
+ 46: $t28 := &($t1, $t27)
+ 47: $t29 := 0
+ 48: $t30 := !=($t28, $t29)
+ 49: if ($t30) goto 50 else goto 53
+ 50: label L11
+ 51: $t31 := 13
+ 52: $t0 := *($t0, $t31)
+ 53: label L10
+ 54: $t32 := 64
+ 55: $t33 := &($t1, $t32)
+ 56: $t34 := 0
+ 57: $t35 := !=($t33, $t34)
+ 58: if ($t35) goto 59 else goto 62
+ 59: label L13
+ 60: $t36 := 17
+ 61: $t0 := *($t0, $t36)
+ 62: label L12
+ 63: $t37 := 128
+ 64: $t38 := &($t1, $t37)
+ 65: $t39 := 0
+ 66: $t40 := !=($t38, $t39)
+ 67: if ($t40) goto 68 else goto 71
+ 68: label L15
+ 69: $t41 := 19
+ 70: $t0 := *($t0, $t41)
+ 71: label L14
+ 72: $t42 := 256
+ 73: $t43 := &($t1, $t42)
+ 74: $t44 := 0
+ 75: $t45 := !=($t43, $t44)
+ 76: if ($t45) goto 77 else goto 80
+ 77: label L17
+ 78: $t46 := 23
+ 79: $t0 := *($t0, $t46)
+ 80: label L16
+ 81: $t47 := 512
+ 82: $t48 := &($t1, $t47)
+ 83: $t49 := 0
+ 84: $t50 := !=($t48, $t49)
+ 85: if ($t50) goto 86 else goto 89
+ 86: label L19
+ 87: $t51 := 29
+ 88: $t0 := *($t0, $t51)
+ 89: label L18
+ 90: $t52 := 1024
+ 91: $t53 := &($t1, $t52)
+ 92: $t54 := 0
+ 93: $t55 := !=($t53, $t54)
+ 94: if ($t55) goto 95 else goto 98
+ 95: label L21
+ 96: $t56 := 31
+ 97: $t0 := *($t0, $t56)
+ 98: label L20
+ 99: $t57 := 2048
+100: $t58 := &($t1, $t57)
+101: $t59 := 0
+102: $t60 := !=($t58, $t59)
+103: if ($t60) goto 104 else goto 107
+104: label L23
+105: $t61 := 37
+106: $t0 := *($t0, $t61)
+107: label L22
+108: $t62 := 4096
+109: $t63 := &($t1, $t62)
+110: $t64 := 0
+111: $t65 := !=($t63, $t64)
+112: if ($t65) goto 113 else goto 116
+113: label L25
+114: $t66 := 41
+115: $t0 := *($t0, $t66)
+116: label L24
+117: $t67 := 8192
+118: $t68 := &($t1, $t67)
+119: $t69 := 0
+120: $t70 := !=($t68, $t69)
+121: if ($t70) goto 122 else goto 125
+122: label L27
+123: $t71 := 43
+124: $t0 := *($t0, $t71)
+125: label L26
+126: $t72 := 16384
+127: $t73 := &($t1, $t72)
+128: $t74 := 0
+129: $t75 := !=($t73, $t74)
+130: if ($t75) goto 131 else goto 134
+131: label L29
+132: $t76 := 47
+133: $t0 := *($t0, $t76)
+134: label L28
+135: $t77 := 32768
+136: $t78 := &($t1, $t77)
+137: $t79 := 0
+138: $t80 := !=($t78, $t79)
+139: if ($t80) goto 140 else goto 143
+140: label L31
+141: $t81 := 53
+142: $t0 := *($t0, $t81)
+143: label L30
+144: $t82 := 65536
+145: $t83 := &($t1, $t82)
+146: $t84 := 0
+147: $t85 := !=($t83, $t84)
+148: if ($t85) goto 149 else goto 152
+149: label L33
+150: $t86 := 59
+151: $t0 := *($t0, $t86)
+152: label L32
+153: $t87 := 131072
+154: $t88 := &($t1, $t87)
+155: $t89 := 0
+156: $t90 := !=($t88, $t89)
+157: if ($t90) goto 158 else goto 161
+158: label L35
+159: $t91 := 61
+160: $t0 := *($t0, $t91)
+161: label L34
+162: return $t0
+}
+
+
+============ Control Flow Reconstruction ================
+
+[variant baseline]
+fun test::many_sequential_ifs
+[
+    Basic {
+        lower: 0,
+        upper: 3,
+    },
+    IfThenElse {
+        cond_at: 4,
+        then_branch: Basic {
+            lower: 5,
+            upper: 7,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 8,
+        upper: 12,
+    },
+    IfThenElse {
+        cond_at: 13,
+        then_branch: Basic {
+            lower: 14,
+            upper: 16,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 17,
+        upper: 21,
+    },
+    IfThenElse {
+        cond_at: 22,
+        then_branch: Basic {
+            lower: 23,
+            upper: 25,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 26,
+        upper: 30,
+    },
+    IfThenElse {
+        cond_at: 31,
+        then_branch: Basic {
+            lower: 32,
+            upper: 34,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 35,
+        upper: 39,
+    },
+    IfThenElse {
+        cond_at: 40,
+        then_branch: Basic {
+            lower: 41,
+            upper: 43,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 44,
+        upper: 48,
+    },
+    IfThenElse {
+        cond_at: 49,
+        then_branch: Basic {
+            lower: 50,
+            upper: 52,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 53,
+        upper: 57,
+    },
+    IfThenElse {
+        cond_at: 58,
+        then_branch: Basic {
+            lower: 59,
+            upper: 61,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 62,
+        upper: 66,
+    },
+    IfThenElse {
+        cond_at: 67,
+        then_branch: Basic {
+            lower: 68,
+            upper: 70,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 71,
+        upper: 75,
+    },
+    IfThenElse {
+        cond_at: 76,
+        then_branch: Basic {
+            lower: 77,
+            upper: 79,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 80,
+        upper: 84,
+    },
+    IfThenElse {
+        cond_at: 85,
+        then_branch: Basic {
+            lower: 86,
+            upper: 88,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 89,
+        upper: 93,
+    },
+    IfThenElse {
+        cond_at: 94,
+        then_branch: Basic {
+            lower: 95,
+            upper: 97,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 98,
+        upper: 102,
+    },
+    IfThenElse {
+        cond_at: 103,
+        then_branch: Basic {
+            lower: 104,
+            upper: 106,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 107,
+        upper: 111,
+    },
+    IfThenElse {
+        cond_at: 112,
+        then_branch: Basic {
+            lower: 113,
+            upper: 115,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 116,
+        upper: 120,
+    },
+    IfThenElse {
+        cond_at: 121,
+        then_branch: Basic {
+            lower: 122,
+            upper: 124,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 125,
+        upper: 129,
+    },
+    IfThenElse {
+        cond_at: 130,
+        then_branch: Basic {
+            lower: 131,
+            upper: 133,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 134,
+        upper: 138,
+    },
+    IfThenElse {
+        cond_at: 139,
+        then_branch: Basic {
+            lower: 140,
+            upper: 142,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 143,
+        upper: 147,
+    },
+    IfThenElse {
+        cond_at: 148,
+        then_branch: Basic {
+            lower: 149,
+            upper: 151,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 152,
+        upper: 156,
+    },
+    IfThenElse {
+        cond_at: 157,
+        then_branch: Basic {
+            lower: 158,
+            upper: 160,
+        },
+        else_branch: None,
+    },
+    Basic {
+        lower: 161,
+        upper: 162,
+    },
+]

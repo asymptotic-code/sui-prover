@@ -16,6 +16,7 @@ pub mod borrow_analysis;
 pub mod clean_and_optimize;
 pub mod compositional_analysis;
 pub mod conditional_merge_insertion;
+pub mod control_flow_reconstruction;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
