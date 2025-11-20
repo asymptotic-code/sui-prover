@@ -6,7 +6,7 @@ use move_package::{
     BuildConfig as MoveBuildConfig,
 };
 use move_stackless_bytecode::{
-    function_stats::PackageTargets,
+    package_targets::PackageTargets,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
     },

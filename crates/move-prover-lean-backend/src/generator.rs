@@ -9,7 +9,7 @@ use log::info;
 use move_model::code_writer::CodeWriter;
 use move_model::model::GlobalEnv;
 use move_model::ty::Type;
-use move_stackless_bytecode::function_stats::PackageTargets;
+use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::function_target_pipeline::{
     FunctionHolderTarget, FunctionTargetsHolder,
 };
@@ -66,7 +66,7 @@ pub async fn run_prover_function_mode<W: WriteColor>(
     let mut has_errors = false;
 
     let package_targets = PackageTargets::new(&env, Default::default(), options.prover.ci);
-    for target in &package_targets.target_specs {
+    for target in package_targets.target_specs() {
         env.cleanup();
 
         let file_name = env.get_function(*target).get_full_name_str();

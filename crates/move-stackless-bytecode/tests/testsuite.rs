@@ -12,7 +12,7 @@ use move_stackless_bytecode::{
     clean_and_optimize::CleanAndOptimizeProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     escape_analysis::EscapeAnalysisProcessor,
-    function_stats::PackageTargets,
+    package_targets::PackageTargets,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, ProcessorResultDisplay,
     },

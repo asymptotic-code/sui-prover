@@ -18,7 +18,7 @@ use move_model::model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleId, Qua
 use petgraph::graph::DiGraph;
 
 use crate::{
-    function_stats::PackageTargets,
+    package_targets::PackageTargets,
     function_target::{FunctionData, FunctionTarget},
     options::ProverOptions,
     print_targets_for_test,
@@ -39,11 +39,11 @@ pub enum FunctionHolderTarget {
 #[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
+    package_targets: PackageTargets,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
     target: FunctionHolderTarget,
     prover_options: ProverOptions,
-    package_targets: PackageTargets,
 }
 
 /// Describes a function verification flavor.
@@ -225,30 +225,30 @@ impl FunctionTargetsHolder {
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
-        Box::new(self.package_targets.no_verify_specs.iter().filter(|nvs| {
+        Box::new(self.package_targets.no_verify_specs().iter().filter(|nvs| {
             self.function_specs.contains_left(nvs)
-                || self.package_targets.scenario_specs.contains(nvs)
+                || self.package_targets.scenario_specs().contains(nvs)
         }))
     }
 
     pub fn ignore_aborts(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.package_targets.ignore_aborts
+        &self.package_targets.ignore_aborts()
     }
 
     pub fn scenario_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.package_targets.scenario_specs
+        &self.package_targets.scenario_specs()
     }
 
     pub fn ignores_aborts(&self, id: &QualifiedId<FunId>) -> bool {
-        self.package_targets.ignore_aborts.contains(id)
+        self.package_targets.ignore_aborts().contains(id)
     }
 
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
-        self.package_targets.abort_check_functions.contains(id)
+        self.package_targets.abort_check_functions().contains(id)
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs.contains(id)
+        self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs().contains(id)
     }
 
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
@@ -260,17 +260,17 @@ impl FunctionTargetsHolder {
     }
 
     pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.package_targets.scenario_specs.contains(id)
+        self.package_targets.scenario_specs().contains(id)
     }
 
     pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
-        self.package_targets.omit_opaque_specs.contains(id)
+        self.package_targets.omit_opaque_specs().contains(id)
     }
 
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
             .left_values()
-            .chain(self.package_targets.scenario_specs.iter())
+            .chain(self.package_targets.scenario_specs().iter())
     }
 
     pub fn get_inv_by_datatype(&self, id: &QualifiedId<DatatypeId>) -> Option<&QualifiedId<FunId>> {
@@ -286,25 +286,25 @@ impl FunctionTargetsHolder {
     }
 
     pub fn get_spec_boogie_options(&self, id: &QualifiedId<FunId>) -> Option<&String> {
-        self.package_targets.spec_boogie_options.get(id)
+        self.package_targets.spec_boogie_options().get(id)
     }
 
     pub fn get_spec_timeout(&self, id: &QualifiedId<FunId>) -> Option<&u64> {
-        self.package_targets.spec_timeouts.get(id)
+        self.package_targets.spec_timeouts().get(id)
     }
 
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
     ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
-        self.package_targets.loop_invariants.get(id)
+        self.package_targets.loop_invariants().get(id)
     }
 
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
         self.package_targets
-            .loop_invariants
+            .loop_invariants()
             .iter()
             .map(|(target_fun_id, invs)| {
                 (

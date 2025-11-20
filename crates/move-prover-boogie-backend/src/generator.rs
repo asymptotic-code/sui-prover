@@ -21,7 +21,7 @@ use move_model::{
     model::{FunId, GlobalEnv, ModuleId, QualifiedId},
     ty::Type,
 };
-use move_stackless_bytecode::function_stats::PackageTargets;
+use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
@@ -114,7 +114,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
             return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
         }
 
-        if targets.target_specs.is_empty() {
+        if targets.target_specs().is_empty() {
             return Ok(
                 "🦀 No specifications are marked for verification. Nothing to verify.".to_owned(),
             );
@@ -379,7 +379,7 @@ pub async fn run_prover<W: WriteColor>(
         return Ok(true);
     }
 
-    if targets.target_specs.is_empty() {
+    if targets.target_specs().is_empty() {
         return Ok(false);
     }
 
@@ -391,7 +391,7 @@ pub async fn run_prover<W: WriteColor>(
 
     let files = match options.backend.boogie_file_mode {
         BoogieFileMode::Function => targets
-            .target_specs
+            .target_specs()
             .iter()
             .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid))
             .collect::<Result<Vec<_>, _>>()?,
@@ -404,7 +404,7 @@ pub async fn run_prover<W: WriteColor>(
 
     let has_errors = verify_batch(options, env, error_writer, files).await?;
 
-    for (qid, reason) in targets.skipped_specs.iter() {
+    for (qid, reason) in targets.skipped_specs().iter() {
         let fun_env = env.get_function(*qid);
         let loc = fun_env.get_loc().display_line_only(env).to_string();
         let name = fun_env.get_full_name_str();
