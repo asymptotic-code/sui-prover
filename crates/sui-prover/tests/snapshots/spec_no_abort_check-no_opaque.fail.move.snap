@@ -1,10 +1,9 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 271
 expression: output
 ---
 exiting with verification errors
-error: spec code itself should not abort
+error: code should not abort
    ┌─ tests/inputs/spec_no_abort_check-no_opaque.fail.move:13:17
    │
 13 │     ensures(res - 1 == x);
