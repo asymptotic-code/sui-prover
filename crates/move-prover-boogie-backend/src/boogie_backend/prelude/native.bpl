@@ -536,17 +536,6 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
         (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
 
-function {:inline} $2_vec_map_get_idx_opt{{S}}(
-    m: $2_vec_map_VecMap{{S}},
-    k: {{K}}
-): $1_option_Option'u64' {
-    (var idx := $IndexOfVecMap{{S}}(m->$contents, k);
-     if idx >= 0 then 
-         $1_option_Option'u64'(MakeVec1(idx))
-     else 
-         $1_option_Option'u64'(EmptyVec()))
-}
-
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
 axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
     (var keys := $VecMapKeys{{S}}(v);
@@ -592,6 +581,60 @@ procedure {:inline 1} $2_vec_map_from_keys_values{{S}}(keys: Vec ({{K}}), values
         return;
     }
     res := $2_vec_map_VecMap{{S}}(entries);
+}
+
+procedure {:inline 1} $2_vec_map_remove{{S}}(m: $Mutation ($2_vec_map_VecMap{{S}}), key: {{K}}) returns (res0: {{K}}, res1: {{V}}, m': $Mutation ($2_vec_map_VecMap{{S}})) {
+    var idx: int;
+    var entry: $2_vec_map_Entry{{S}};
+    var v: Vec ($2_vec_map_Entry{{S}});
+
+    v := $Dereference(m)->$contents;
+
+    idx := $IndexOfVecMap{{S}}(v, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+    
+    entry := ReadVec(v, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+
+    m' := $UpdateMutation(m, $2_vec_map_VecMap{{S}}(RemoveAtVec(v, idx)));
+}
+
+function {:inline} $2_vec_map_contains{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): bool {
+    $ContainsVecMap{{S}}(vm->$contents, key)
+}
+
+procedure {:inline 1} $2_vec_map_get{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
+    var idx: int;
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+
+    res := ReadVec(vm->$contents, idx)->$value;
+}
+
+procedure {:inline 1} $2_vec_map_get_idx{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (idx: int) {
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+}
+
+function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $1_option_Option'u64' {
+    (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+     if idx >= 0 then
+         $1_option_Option'u64'(MakeVec1(idx))
+     else 
+         $1_option_Option'u64'(EmptyVec()))
 }
 
 {% endmacro vec_map_module %}
