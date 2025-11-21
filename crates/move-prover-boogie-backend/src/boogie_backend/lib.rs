@@ -131,6 +131,7 @@ fn bv_helper() -> Vec<BvInfo> {
 }
 
 fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
+    return true;
     let sum_func_env = env.get_function(env.prover_vec_sum_qid());
     let sum_func_inlined = targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
         && verification_analysis::get_info(
