@@ -4,7 +4,7 @@ use prover::ghost;
 
 public fun foo<T>() {}
 
-#[spec]
+#[spec(prove)]
 public fun foo_spec<T>() {
     ghost::declare_global_mut<T, bool>();
     ghost::declare_global<u64, bool>();
@@ -16,7 +16,7 @@ public fun bar<T>() {
     foo<u8>();
 }
 
-#[spec]
+#[spec(prove)]
 public fun bar_spec<T>() {
     bar<T>()
 }

@@ -916,6 +916,7 @@ impl GlobalEnv {
         &mut self,
         loc: Loc,
         attributes: Vec<Attribute>,
+        toplevel_attributes: expansion::ast::Attributes,
         module: CompiledModule,
         source_map: SourceMap,
         named_constants: BTreeMap<NamedConstantId, NamedConstantData>,
@@ -966,6 +967,7 @@ impl GlobalEnv {
             source_map,
             loc,
             attributes,
+            toplevel_attributes,
             used_modules: Default::default(),
             friend_modules: Default::default(),
         });
@@ -3983,6 +3985,7 @@ impl GlobalEnv {
                 ),
                 loc: Loc::default(),
                 attributes: Default::default(),
+                toplevel_attributes: Default::default(),
                 used_modules: Default::default(),
                 friend_modules: Default::default(),
                 enum_data: BTreeMap::new(),
@@ -4024,6 +4027,8 @@ pub struct ModuleData {
 
     /// Attributes attached to this module.
     attributes: Vec<Attribute>,
+
+    toplevel_attributes: expansion::ast::Attributes,
 
     /// Module byte code.
     pub module: CompiledModule,
@@ -4080,6 +4085,7 @@ impl ModuleData {
             source_map: SourceMap::new(MoveIrLoc::new(FileHash::empty(), 0, 0), ident),
             loc: Loc::default(),
             attributes: Default::default(),
+            toplevel_attributes: Default::default(),
             used_modules: Default::default(),
             friend_modules: Default::default(),
             enum_data: BTreeMap::new(),
@@ -4123,6 +4129,10 @@ impl<'env> ModuleEnv<'env> {
     /// Returns the attributes of this module.
     pub fn get_attributes(&self) -> &[Attribute] {
         &self.data.attributes
+    }
+
+    pub fn get_toplevel_attributes(&self) -> &expansion::ast::Attributes {
+        &self.data.toplevel_attributes
     }
 
     /// Returns full name as a string.

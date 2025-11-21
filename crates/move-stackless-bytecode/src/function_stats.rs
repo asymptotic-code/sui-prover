@@ -1,10 +1,11 @@
-use crate::function_target_pipeline::FunctionTargetsHolder;
 use move_binary_format::file_format::Visibility;
 use move_model::{
     ast::Attribute,
-    model::{FunctionEnv, GlobalEnv},
+    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+
+use crate::package_targets::PackageTargets;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofStatus {
@@ -45,9 +46,7 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 /// - Functions with `spec_only` attribute
 /// - Functions with `test_only` attribute
 /// - Spec functions themselves
-fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> bool {
-    let func_id = func_env.get_qualified_id();
-
+fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> bool {
     if func_env.visibility() != Visibility::Public {
         return false;
     }
@@ -57,10 +56,7 @@ fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHold
     if has_attribute(func_env, "test_only") {
         return false;
     }
-    if targets.function_specs().contains_left(&func_id) {
-        return false;
-    }
-    if targets.is_spec(&func_id) {
+    if targets.is_spec(&func_env.get_qualified_id()) {
         return false;
     }
 
@@ -76,22 +72,15 @@ fn should_include_function(func_env: &FunctionEnv, targets: &FunctionTargetsHold
 /// - `IgnoreAborts` - Spec is verified but ignores abort conditions
 /// - `SuccessfulProof` - Spec is verified normally
 /// - `NoSpec` - No specification exists for this function
-fn determine_spec_status(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) -> ProofStatus {
-    let func_id = func_env.get_qualified_id();
-    let skip_specs_set: BTreeSet<_> = targets.skip_specs().collect();
-
-    if let Some(spec_id) = targets.get_spec_by_fun(&func_id) {
-        if skip_specs_set.contains(&spec_id) {
-            ProofStatus::Skipped
-        } else if !targets.is_verified_spec(spec_id) {
-            ProofStatus::NoProve
-        } else if targets.ignores_aborts(spec_id) {
-            ProofStatus::IgnoreAborts
-        } else {
-            ProofStatus::SuccessfulProof
-        }
+fn determine_spec_status(spec_id: &QualifiedId<FunId>, targets: &PackageTargets) -> ProofStatus {
+    if targets.skipped_specs().contains_key(spec_id) {
+        ProofStatus::Skipped
+    } else if !targets.is_verified_spec(spec_id) {
+        ProofStatus::NoProve
+    } else if targets.ignores_aborts(spec_id) {
+        ProofStatus::IgnoreAborts
     } else {
-        ProofStatus::NoSpec
+        ProofStatus::SuccessfulProof
     }
 }
 
@@ -106,7 +95,7 @@ fn determine_spec_status(func_env: &FunctionEnv, targets: &FunctionTargetsHolder
 /// - System/framework modules
 /// - Non-public functions
 /// - Test-only and spec-only functions
-pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) {
+pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
     println!("📊 Function Statistics\n");
 
     let excluded_addresses = [
@@ -157,10 +146,31 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &FunctionTargetsHolder) 
             let func_env = env.get_function(func_id);
             total_public_functions += 1;
 
-            let status = determine_spec_status(&func_env, targets);
-            *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
+            let specs = targets.get_specs(&func_env.get_qualified_id());
+            if specs.is_none() {
+                *stats_by_status
+                    .entry(format!("{}", ProofStatus::NoSpec))
+                    .or_insert(0) += 1;
+                println!("  {} {}", ProofStatus::NoSpec, func_env.get_name_str());
+            } else {
+                let statuses = specs
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|spec| {
+                        let status = determine_spec_status(spec, targets);
+                        *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
+                        let spec_module_name = env
+                            .get_module(spec.module_id)
+                            .get_name()
+                            .display(env.symbol_pool())
+                            .to_string();
+                        format!("{}: {}", spec_module_name, status)
+                    })
+                    .collect::<Vec<_>>();
 
-            println!("  {} {}", status, func_env.get_name_str());
+                println!("  [{}] {}", statuses.join(", "), func_env.get_name_str());
+            }
         }
 
         println!();

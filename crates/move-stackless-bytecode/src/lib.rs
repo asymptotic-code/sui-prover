@@ -47,6 +47,7 @@ pub mod no_abort_analysis;
 pub mod number_operation;
 pub mod number_operation_analysis;
 pub mod options;
+pub mod package_targets;
 pub mod packed_types_analysis;
 pub mod pipeline_factory;
 pub mod quantifier_iterator_analysis;

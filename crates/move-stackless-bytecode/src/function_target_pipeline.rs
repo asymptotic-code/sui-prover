@@ -5,7 +5,6 @@
 use bimap::btree::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use core::fmt;
-use move_binary_format::file_format::FunctionHandleIndex;
 use std::{
     any::Any,
     collections::{BTreeMap, BTreeSet},
@@ -15,32 +14,22 @@ use std::{
 
 use itertools::{Either, Itertools};
 use log::debug;
+use move_model::model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleId, QualifiedId};
 use petgraph::graph::DiGraph;
-
-use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_},
-    shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
-    },
-};
-
-use move_model::{
-    ast::ModuleName,
-    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
-};
 
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     options::ProverOptions,
+    package_targets::PackageTargets,
     print_targets_for_test,
     stackless_bytecode_generator::StacklessBytecodeGenerator,
     stackless_control_flow_graph::generate_cfg_in_dot_format,
-    target_filter::TargetFilterOptions,
 };
 
 #[derive(Debug, Clone)]
 pub enum FunctionHolderTarget {
-    None,
+    All,
+    FunctionsAbortCheck,
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -50,21 +39,10 @@ pub enum FunctionHolderTarget {
 #[derive(Debug, Clone)]
 pub struct FunctionTargetsHolder {
     targets: BTreeMap<QualifiedId<FunId>, BTreeMap<FunctionVariant, FunctionData>>,
+    package_targets: PackageTargets,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
-    no_verify_specs: BTreeSet<QualifiedId<FunId>>,
-    omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
-    skip_specs: BTreeMap<QualifiedId<FunId>, String>,
-    focus_specs: BTreeSet<QualifiedId<FunId>>,
-    ignore_aborts: BTreeSet<QualifiedId<FunId>>,
-    scenario_specs: BTreeSet<QualifiedId<FunId>>,
-    spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
-    spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
-    target_modules: BTreeSet<ModuleId>,
-    abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     target: FunctionHolderTarget,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
-    filter: TargetFilterOptions,
     prover_options: ProverOptions,
 }
 
@@ -199,71 +177,29 @@ pub struct FunctionTargetPipeline {
 impl FunctionTargetsHolder {
     pub fn new(
         prover_options: ProverOptions,
-        filter: TargetFilterOptions,
+        package_targets: &PackageTargets,
         target: FunctionHolderTarget,
     ) -> Self {
         Self {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
-            no_verify_specs: BTreeSet::new(),
-            omit_opaque_specs: BTreeSet::new(),
-            skip_specs: BTreeMap::new(),
-            focus_specs: BTreeSet::new(),
-            ignore_aborts: BTreeSet::new(),
-            scenario_specs: BTreeSet::new(),
-            spec_boogie_options: BTreeMap::new(),
-            spec_timeouts: BTreeMap::new(),
             datatype_invs: BiBTreeMap::new(),
-            target_modules: BTreeSet::new(),
-            abort_check_functions: BTreeSet::new(),
             prover_options,
-            filter,
             target,
-            loop_invariants: BTreeMap::new(),
+            package_targets: package_targets.clone(),
         }
     }
 
     pub fn new_dummy(&self) -> Self {
         Self::new(
             self.prover_options.clone(),
-            TargetFilterOptions::default(),
-            FunctionHolderTarget::None,
+            &self.package_targets,
+            self.target.clone(),
         )
     }
 
     pub fn prover_options(&self) -> &ProverOptions {
         &self.prover_options
-    }
-
-    /// Counts system specs dynamically based on their module addresses.
-    /// System specs are those from modules deployed at address 0x0:
-    /// - specs::* modules (sui-framework-specs package)
-    /// - prover::* modules (prover package)
-    fn count_system_specs(&self, env: &GlobalEnv) -> usize {
-        let mut system_specs_count = 0;
-        let system_address = &0u16.into(); // Address 0x0 used by system modules
-
-        // Count function specs from system modules
-        for spec_id in self
-            .function_specs
-            .left_values()
-            .chain(self.scenario_specs.iter())
-        {
-            let func_env = env.get_function(*spec_id);
-            let module_env = &func_env.module_env;
-            if module_env.get_name().addr() == system_address {
-                let module_name = module_env
-                    .get_name()
-                    .name()
-                    .display(env.symbol_pool())
-                    .to_string();
-                if GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str()) {
-                    system_specs_count += 1;
-                }
-            }
-        }
-
-        system_specs_count
     }
 
     /// Get an iterator for all functions this holder.
@@ -280,10 +216,6 @@ impl FunctionTargetsHolder {
             .flat_map(|(id, vs)| vs.keys().map(move |v| (*id, v.clone())))
     }
 
-    pub fn function_specs(&self) -> &BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>> {
-        &self.function_specs
-    }
-
     pub fn get_fun_by_spec(&self, id: &QualifiedId<FunId>) -> Option<&QualifiedId<FunId>> {
         self.function_specs.get_by_left(id)
     }
@@ -293,43 +225,30 @@ impl FunctionTargetsHolder {
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
-        if self.focus_specs.is_empty() {
-            Box::new(self.no_verify_specs.iter())
-        } else {
-            Box::new(self.specs().filter(|s| !self.focus_specs.contains(s)))
-        }
-    }
-
-    pub fn focus_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.focus_specs
+        Box::new(self.package_targets.no_verify_specs().iter().filter(|nvs| {
+            self.function_specs.contains_left(nvs)
+                || self.package_targets.scenario_specs().contains(nvs)
+        }))
     }
 
     pub fn ignore_aborts(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.ignore_aborts
+        &self.package_targets.ignore_aborts()
     }
 
     pub fn scenario_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.scenario_specs
-    }
-
-    pub fn target_modules(&self) -> &BTreeSet<ModuleId> {
-        &self.target_modules
+        &self.package_targets.scenario_specs()
     }
 
     pub fn ignores_aborts(&self, id: &QualifiedId<FunId>) -> bool {
-        self.ignore_aborts.contains(id)
-    }
-
-    pub fn abort_check_funs(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.abort_check_functions
+        self.package_targets.ignore_aborts().contains(id)
     }
 
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
-        self.abort_check_functions.contains(id)
+        self.package_targets.abort_check_functions().contains(id)
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.get_fun_by_spec(id).is_some() || self.scenario_specs.contains(id)
+        self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs().contains(id)
     }
 
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
@@ -341,44 +260,17 @@ impl FunctionTargetsHolder {
     }
 
     pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.scenario_specs.contains(id)
+        self.package_targets.scenario_specs().contains(id)
     }
 
     pub fn omits_opaque(&self, id: &QualifiedId<FunId>) -> bool {
-        self.omit_opaque_specs.contains(id)
-    }
-
-    pub fn skip_spec_txt(&self, id: &QualifiedId<FunId>) -> String {
-        self.skip_specs.get(id).cloned().unwrap_or_default()
-    }
-
-    pub fn skip_specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
-        self.skip_specs.keys()
+        self.package_targets.omit_opaque_specs().contains(id)
     }
 
     pub fn specs(&self) -> impl Iterator<Item = &QualifiedId<FunId>> {
         self.function_specs
             .left_values()
-            .chain(self.scenario_specs.iter())
-    }
-
-    pub fn specs_count(&self, env: &GlobalEnv) -> usize {
-        self.function_specs.len() + self.scenario_specs.len() - self.count_system_specs(env)
-    }
-
-    pub fn verify_specs_count(&self) -> usize {
-        self.function_specs.len() + self.scenario_specs.len() - self.no_verify_specs().count()
-    }
-
-    pub fn abort_checks_count(&self) -> usize {
-        self.abort_check_functions.len()
-    }
-
-    pub fn has_no_verify_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        match self.get_spec_by_fun(id) {
-            Some(spec_id) => self.no_verify_specs().contains(spec_id),
-            None => false,
-        }
+            .chain(self.package_targets.scenario_specs().iter())
     }
 
     pub fn get_inv_by_datatype(&self, id: &QualifiedId<DatatypeId>) -> Option<&QualifiedId<FunId>> {
@@ -394,32 +286,25 @@ impl FunctionTargetsHolder {
     }
 
     pub fn get_spec_boogie_options(&self, id: &QualifiedId<FunId>) -> Option<&String> {
-        self.spec_boogie_options.get(id)
-    }
-
-    pub fn has_spec_boogie_options(&self) -> bool {
-        !self.spec_boogie_options.is_empty()
+        self.package_targets.spec_boogie_options().get(id)
     }
 
     pub fn get_spec_timeout(&self, id: &QualifiedId<FunId>) -> Option<&u64> {
-        self.spec_timeouts.get(id)
-    }
-
-    pub fn has_target_mode(&self) -> bool {
-        !matches!(self.target, FunctionHolderTarget::None)
+        self.package_targets.spec_timeouts().get(id)
     }
 
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
     ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
-        self.loop_invariants.get(id)
+        self.package_targets.loop_invariants().get(id)
     }
 
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
-        self.loop_invariants
+        self.package_targets
+            .loop_invariants()
             .iter()
             .map(|(target_fun_id, invs)| {
                 (
@@ -453,426 +338,93 @@ impl FunctionTargetsHolder {
         self.targets
             .entry(func_env.get_qualified_id())
             .or_default()
-            .insert(FunctionVariant::Baseline, data.clone());
+            .insert(FunctionVariant::Baseline, data);
 
-        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::External)
-            .map(|attr| &attr.value)
+        if let Some(spec) = self
+            .package_targets
+            .find_target_spec(&func_env.get_qualified_id())
         {
-            let abort_check = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string());
-            if abort_check {
-                self.abort_check_functions
-                    .insert(func_env.get_qualified_id());
-                self.target_modules.insert(func_env.module_env.get_id());
-            }
+            self.process_spec(func_env, &spec);
         }
 
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
-            focus,
-            prove,
-            skip,
-            target,
-            no_opaque,
-            ignore_abort,
-            boogie_opt,
-            timeout,
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::Spec)
-            .map(|attr| &attr.value)
+        if let Some(datatype_id) = self
+            .package_targets
+            .find_datatype_inv(&func_env.get_qualified_id())
         {
-            let targeted = match self.target {
-                FunctionHolderTarget::None => self.filter.is_targeted(func_env),
-                FunctionHolderTarget::Function(qid) => func_env.get_qualified_id() == qid,
-                FunctionHolderTarget::Module(mid) => func_env.module_env.get_id() == mid,
+            self.process_inv(func_env, &datatype_id);
+        }
+    }
+
+    fn process_spec(&mut self, spec_env: &FunctionEnv, target_id: &QualifiedId<FunId>) {
+        let env = spec_env.module_env.env;
+
+        if matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck) {
+            if !self
+                .package_targets
+                .is_system_spec(&spec_env.get_qualified_id())
+            {
+                return;
+            }
+        } else if matches!(self.target, FunctionHolderTarget::All) {
+            // pass
+        } else {
+            let target_module = match self.target {
+                FunctionHolderTarget::Function(qid) => qid.module_id,
+                FunctionHolderTarget::Module(mid) => mid,
+                FunctionHolderTarget::FunctionsAbortCheck | FunctionHolderTarget::All => {
+                    unreachable!()
+                }
             };
 
-            if let Some(opt) = boogie_opt {
-                self.spec_boogie_options
-                    .insert(func_env.get_qualified_id(), opt.clone());
-            }
-
-            if let Some(timeout) = timeout {
-                self.spec_timeouts
-                    .insert(func_env.get_qualified_id(), *timeout);
-            }
-
-            if *no_opaque {
-                self.omit_opaque_specs.insert(func_env.get_qualified_id());
-            }
-
-            if skip.is_some() {
-                self.skip_specs
-                    .insert(func_env.get_qualified_id(), skip.clone().unwrap());
-            }
-
-            if *ignore_abort {
-                self.ignore_aborts.insert(func_env.get_qualified_id());
-            }
-
-            if skip.is_some() || !targeted {
-                self.no_verify_specs.insert(func_env.get_qualified_id());
-            } else {
-                if *focus {
-                    if self.prover_options.ci {
-                        func_env.module_env.env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            "The 'focus' attribute is restricted in CI mode.",
-                        );
-                        return;
-                    }
-                    self.focus_specs.insert(func_env.get_qualified_id());
-                } else if !*prove {
-                    self.no_verify_specs.insert(func_env.get_qualified_id());
-                }
-            }
-
-            if target.is_some() {
-                let env = func_env.module_env.env;
-
-                match Self::parse_module_access(target.as_ref().unwrap(), env, &func_env.module_env)
-                {
-                    Some((module_name, fun_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-                        Self::process_spec(
-                            func_env,
-                            &module_env,
-                            env,
-                            &mut self.function_specs,
-                            fun_name,
-                        );
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-            } else {
-                let target_func_env_opt =
-                    func_env
-                        .get_name_str()
-                        .strip_suffix("_spec")
-                        .and_then(|name| {
-                            func_env
-                                .module_env
-                                .find_function(func_env.symbol_pool().make(name))
-                        });
-                match target_func_env_opt {
-                    Some(target_func_env) => {
-                        self.function_specs.insert(
-                            func_env.get_qualified_id(),
-                            target_func_env.get_qualified_id(),
-                        );
-                    }
-                    None => {
-                        // scenario specs either ignore aborts or do not have any asserts
-                        if !*ignore_abort
-                            && func_env
-                                .get_called_functions()
-                                .iter()
-                                .any(|f| *f == func_env.module_env.env.asserts_qid())
-                        {
-                            func_env.module_env.env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                "Scenario specs either ignore aborts or do not have any asserts.",
-                            );
-                            return;
-                        }
-                        self.scenario_specs.insert(func_env.get_qualified_id());
-                    }
-                }
-            }
-
-            self.target_modules.insert(func_env.module_env.get_id());
-        }
-
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
-            inv_target,
-            loop_inv,
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
-        {
-            if func_env.get_name_str().contains("type_inv") {
-                return;
-            }
-
-            let env = func_env.module_env.env;
-
-            if let Some(loop_inv) = loop_inv {
-                match Self::parse_module_access(&loop_inv.target, env, &func_env.module_env) {
-                    Some((module_name, fun_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-                        self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-                return;
-            }
-
-            if inv_target.is_some() {
-                match Self::parse_module_access(
-                    inv_target.as_ref().unwrap(),
-                    env,
-                    &func_env.module_env,
-                ) {
-                    Some((module_name, struct_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-
-                        Self::process_inv(
-                            func_env,
-                            &module_env,
-                            env,
-                            &mut self.datatype_invs,
-                            struct_name,
-                        );
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-            } else {
-                func_env
-                    .get_name_str()
-                    .strip_suffix("_inv")
-                    .map(|struct_name: &str| {
-                        let module_env = &func_env.module_env;
-                        Self::process_inv(
-                            func_env,
-                            module_env,
-                            env,
-                            &mut self.datatype_invs,
-                            struct_name.to_string(),
-                        );
-                    });
-            }
-        }
-    }
-
-    fn parse_module_access(
-        function_spec: &ModuleAccess,
-        env: &GlobalEnv,
-        current_module: &ModuleEnv,
-    ) -> Option<(ModuleName, String)> {
-        match &function_spec.value {
-            ModuleAccess_::Name(name) => {
-                // TODO: Still will not work with other instances, like types or structs (for spec_only edge cases)
-                let function_name = name.value.to_string();
-                let function_symbol = env.symbol_pool().make(&function_name);
-
-                // First try to find the function in the current module
-                if current_module.find_function(function_symbol).is_some() {
-                    return Some((current_module.get_name().clone(), function_name));
-                }
-
-                let handle_index = current_module
-                    .data
-                    .module
-                    .function_handles()
-                    .iter()
-                    .enumerate()
-                    .find_map(|(h_index, handle)| {
-                        if function_name
-                            == current_module
-                                .data
-                                .module
-                                .identifier_at(handle.name)
-                                .to_string()
-                        {
-                            Some(FunctionHandleIndex(h_index.try_into().unwrap()))
-                        } else {
-                            None
-                        }
-                    });
-
-                if handle_index.is_some() {
-                    let func_env = current_module.get_used_function(handle_index.unwrap());
-                    Some((func_env.module_env.get_name().clone(), function_name))
-                } else {
-                    None
-                }
-            }
-            ModuleAccess_::ModuleAccess(module_ident, name) => {
-                let address = module_ident.value.address;
-                let module = &module_ident.value.module;
-
-                let addr_bytes = address.into_addr_bytes();
-                let module_name = ModuleName::from_address_bytes_and_name(
-                    addr_bytes,
-                    env.symbol_pool().make(&module.to_string()),
-                );
-
-                let function_name = name.value.to_string();
-                Some((module_name, function_name))
-            }
-            ModuleAccess_::Variant(_, _) => {
-                // Variant access is not supported in this context
-                None
-            }
-        }
-    }
-
-    fn process_spec(
-        func_env: &FunctionEnv<'_>,
-        module_env: &ModuleEnv<'_>,
-        env: &GlobalEnv,
-        function_specs: &mut BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
-        func_name: String,
-    ) {
-        if let Some(target_func_env) =
-            module_env.find_function(func_env.symbol_pool().make(func_name.as_str()))
-        {
-            let target_id = target_func_env.get_qualified_id();
-
-            if function_specs.contains_right(&target_id) {
-                let env = func_env.module_env.env;
-                env.diag(
-                    Severity::Error,
-                    &func_env.get_loc(),
-                    &format!("Duplicate target function: {}", func_name),
-                );
-            } else {
-                function_specs.insert(func_env.get_qualified_id(), target_id);
-            }
-        } else {
-            env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                &format!(
-                    "Target function '{}' not found in module '{}'",
-                    func_name,
-                    module_env.get_full_name_str()
-                ),
-            );
-        }
-    }
-
-    fn process_loop_inv(
-        &mut self,
-        func_env: &FunctionEnv<'_>,
-        module_env: &ModuleEnv<'_>,
-        fun_name: String,
-        label: usize,
-    ) {
-        let env = module_env.env;
-
-        if let Some(target_func_env) =
-            module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
-        {
-            if let Some(existing) = self
-                .loop_invariants
-                .get_mut(&target_func_env.get_qualified_id())
+            if spec_env.module_env.get_id() != target_module
+                && !self.package_targets.is_belongs_to_module_explicit_specs(
+                    &env.get_module(target_module),
+                    spec_env.get_qualified_id(),
+                )
+                && !self
+                    .package_targets
+                    .is_system_spec(&spec_env.get_qualified_id())
             {
-                match existing.insert(func_env.get_qualified_id(), label) {
-                    bimap::Overwritten::Neither => {}
-                    bimap::Overwritten::Left(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} in {}",
-                                func_env.get_full_name_str(),
-                                fun_name
-                            ),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Right(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} and Label {} in {}",
-                                func_env.get_full_name_str(),
-                                label,
-                                fun_name
-                            ),
-                        );
-                    }
-                }
-            } else {
-                self.loop_invariants
-                    .insert(target_func_env.get_qualified_id(), {
-                        let mut map = BiBTreeMap::new();
-                        map.insert(func_env.get_qualified_id(), label);
-                        map
-                    });
+                return;
             }
-        } else {
-            env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                &format!("Invalid Loop Invariant Function Provided: {}", fun_name),
-            );
         }
-    }
 
-    fn process_inv(
-        func_env: &FunctionEnv<'_>,
-        module_env: &ModuleEnv<'_>,
-        env: &GlobalEnv,
-        datatype_invs: &mut BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
-        struct_name: String,
-    ) {
-        if let Some(struct_env) =
-            module_env.find_struct(env.symbol_pool().make(struct_name.as_str()))
-        {
-            if datatype_invs.contains_left(&struct_env.get_qualified_id()) {
+        if let Some(qid) = self.function_specs.get_by_right(&target_id) {
+            if !self.package_targets.is_system_spec(qid) {
                 env.diag(
                     Severity::Error,
-                    &func_env.get_loc(),
+                    &spec_env.get_loc(),
                     &format!(
-                        "Duplicate invariant declaration for struct: {}",
-                        struct_name
+                        "Duplicate target function: {}",
+                        env.get_function(*target_id).get_name_str()
                     ),
                 );
-            } else {
-                datatype_invs.insert(struct_env.get_qualified_id(), func_env.get_qualified_id());
+                return;
             }
-        } else {
-            let module_name = func_env.module_env.get_full_name_str();
+        }
 
-            env.diag(
+        self.function_specs
+            .insert(spec_env.get_qualified_id(), *target_id);
+    }
+
+    fn process_inv(&mut self, func_env: &FunctionEnv, sid: &QualifiedId<DatatypeId>) {
+        if self.datatype_invs.contains_left(sid) {
+            func_env.module_env.env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
                 &format!(
-                    "Target struct '{}' not found in module '{}'",
-                    struct_name, module_name
+                    "Duplicate invariant declaration for struct: {}",
+                    func_env
+                        .module_env
+                        .env
+                        .get_struct(*sid)
+                        .get_name()
+                        .display(func_env.module_env.env.symbol_pool()),
                 ),
             );
+        } else {
+            self.datatype_invs
+                .insert(sid.clone(), func_env.get_qualified_id());
         }
     }
 
@@ -996,22 +548,20 @@ impl FunctionTargetsHolder {
         processor: &dyn FunctionTargetProcessor,
         scc_opt: Option<&[FunctionEnv]>,
     ) {
-        let id = func_env.get_qualified_id();
-
         // Check if this function exists in targets before processing
-        if !self.targets.contains_key(&id) {
+        if !self.targets.contains_key(&func_env.get_qualified_id()) {
             // Function was removed from targets, skip processing
             return;
         }
 
         for variant in self.get_target_variants(func_env) {
             // Remove data so we can own it.
-            let data = self.remove_target_data(&id, &variant);
+            let data = self.remove_target_data(&func_env.get_qualified_id(), &variant);
             if let Some(processed_data) =
                 processor.process_and_maybe_remove(self, func_env, data, scc_opt)
             {
                 // Put back processed data.
-                self.insert_target_data(&id, variant, processed_data);
+                self.insert_target_data(&func_env.get_qualified_id(), variant, processed_data);
             }
         }
     }
@@ -1040,20 +590,16 @@ impl FunctionTargetsHolder {
                 env.get_function(*fun).get_full_name_str()
             )?;
         }
-        writeln!(f, "Focus specs:")?;
-        for spec in self.focus_specs.iter() {
-            writeln!(f, "  {}", env.get_function(*spec).get_full_name_str())?;
-        }
         writeln!(f, "No verify specs:")?;
-        for spec in self.no_verify_specs.iter() {
+        for spec in self.no_verify_specs() {
             writeln!(f, "  {}", env.get_function(*spec).get_full_name_str())?;
         }
         writeln!(f, "No asserts specs:")?;
-        for spec in self.ignore_aborts.iter() {
+        for spec in self.ignore_aborts() {
             writeln!(f, "  {}", env.get_function(*spec).get_full_name_str())?;
         }
         writeln!(f, "Scenario specs:")?;
-        for spec in self.scenario_specs.iter() {
+        for spec in self.scenario_specs() {
             writeln!(f, "  {}", env.get_function(*spec).get_full_name_str())?;
         }
         writeln!(f, "Datatype invariants:")?;
