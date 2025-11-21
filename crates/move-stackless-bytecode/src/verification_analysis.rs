@@ -514,7 +514,11 @@ impl VerificationAnalysisProcessor {
     ///
     /// NOTE: This does not apply to opaque, native, or intrinsic functions.
     fn mark_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
-        if fun_env.is_native() {
+        let keep_list = [
+            fun_env.module_env.env.prover_vec_sum_qid(),
+            fun_env.module_env.env.prover_vec_sum_range_qid(),
+        ];
+        if fun_env.is_native() && !keep_list.contains(&fun_env.get_qualified_id()) {
             return;
         }
 

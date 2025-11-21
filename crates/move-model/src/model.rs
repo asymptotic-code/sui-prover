@@ -1594,6 +1594,7 @@ impl GlobalEnv {
     const PROVER_BEGIN_SUM_MAP_RANGE_LAMBDA: &'static str = "begin_sum_map_range_lambda";
     const PROVER_END_SUM_MAP_LAMBDA: &'static str = "end_sum_map_lambda";
     const PROVER_VEC_SUM: &'static str = "sum";
+    const PROVER_VEC_SUM_RANGE: &'static str = "sum_range";
     const PROVER_VEC_SLICE: &'static str = "slice";
 
     // vector function names
@@ -2057,6 +2058,10 @@ impl GlobalEnv {
 
     pub fn prover_vec_sum_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
+    }
+
+    pub fn prover_vec_sum_range_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM_RANGE)
     }
 
     pub fn prover_vec_slice_qid(&self) -> QualifiedId<FunId> {
@@ -3442,6 +3447,7 @@ impl GlobalEnv {
             self.prover_begin_sum_map_range_lambda_qid(),
             self.prover_end_sum_map_lambda_qid(),
             self.prover_vec_sum_qid(),
+            self.prover_vec_sum_range_qid(),
             self.prover_vec_slice_qid(),
         ]);
 
@@ -3674,6 +3680,7 @@ impl GlobalEnv {
             self.prover_begin_sum_map_range_lambda_qid(),
             self.prover_end_sum_map_lambda_qid(),
             self.prover_vec_sum_qid(),
+            self.prover_vec_sum_range_qid(),
             self.prover_vec_slice_qid(),
         ]);
 
