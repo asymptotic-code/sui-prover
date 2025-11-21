@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 
+use crate::boogie_backend::bytecode_translator::AssertsMode;
 use crate::boogie_backend::{
     boogie_wrapper::BoogieWrapper, bytecode_translator::BoogieTranslator, lib::add_prelude,
     options::BoogieFileMode,
@@ -162,7 +163,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
     let start_time = Instant::now();
     let files = targets_modules
         .iter()
-        .map(|mid| generate_module_bpl(env, &options, error_writer, targets, mid))
+        .map(|mid| generate_module_bpl(env, &options, error_writer, targets, mid, AssertsMode::Check))
         .collect::<Result<Vec<_>, _>>()?;
 
     let elapsed = start_time.elapsed();
@@ -205,7 +206,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &targets)?;
+    let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check)?;
     check_errors(
         env,
         &options,
@@ -249,10 +250,15 @@ fn generate_function_bpl<W: WriteColor>(
     error_writer: &mut W,
     package_targets: &PackageTargets,
     qid: &QualifiedId<FunId>,
+    asserts_mode: AssertsMode,
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = env.get_function(*qid).get_full_name_str();
+    let file_name = format!(
+        "{}_{:?}",
+        env.get_function(*qid).get_full_name_str(),
+        asserts_mode
+    );
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 
@@ -263,7 +269,7 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets)?;
+    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
 
     check_errors(
         env,
@@ -288,10 +294,15 @@ fn generate_module_bpl<W: WriteColor>(
     error_writer: &mut W,
     package_targets: &PackageTargets,
     mid: &ModuleId,
+    asserts_mode: AssertsMode,
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = env.get_module(*mid).get_full_name_str();
+    let file_name = format!(
+        "{}_{:?}",
+        env.get_module(*mid).get_full_name_str(),
+        asserts_mode
+    );
     let target_type = FunctionHolderTarget::Module(*mid);
 
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
@@ -303,7 +314,7 @@ fn generate_module_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets)?;
+    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
 
     check_errors(
         env,
@@ -390,16 +401,44 @@ pub async fn run_prover<W: WriteColor>(
     }
 
     let files = match options.backend.boogie_file_mode {
-        BoogieFileMode::Function => targets
-            .target_specs()
-            .iter()
-            .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid))
-            .collect::<Result<Vec<_>, _>>()?,
-        BoogieFileMode::Module => targets
-            .target_modules()
-            .iter()
-            .map(|mid| generate_module_bpl(env, options, error_writer, targets, mid))
-            .collect::<Result<Vec<_>, _>>()?,
+        BoogieFileMode::Function => {
+            let mut result = Vec::new();
+            result.extend(
+                targets
+                    .target_specs()
+                    .iter()
+                    .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid, AssertsMode::Assume))
+                    .collect::<Result<Vec<_>, _>>()?
+            );
+            result.extend(
+                targets
+                    .target_specs()
+                    .iter()
+                    .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid, AssertsMode::Check))
+                    .collect::<Result<Vec<_>, _>>()?
+            );
+
+            result
+        }
+        BoogieFileMode::Module => {
+            let mut result = Vec::new();
+            result.extend(
+                targets
+                    .target_modules()
+                    .iter()
+                    .map(|mid| generate_module_bpl(env, options, error_writer, targets, mid, AssertsMode::Assume))
+                    .collect::<Result<Vec<_>, _>>()?
+            );
+            result.extend(
+                targets
+                    .target_modules()
+                    .iter()
+                    .map(|mid| generate_module_bpl(env, options, error_writer, targets, mid, AssertsMode::Check))
+                    .collect::<Result<Vec<_>, _>>()?
+            );
+
+            result
+        }
     };
 
     let has_errors = verify_batch(options, env, error_writer, files).await?;
@@ -473,11 +512,19 @@ pub fn generate_boogie(
     env: &GlobalEnv,
     options: &Options,
     targets: &FunctionTargetsHolder,
+    asserts_mode: AssertsMode,
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
     add_prelude(env, targets, &options.backend, &writer)?;
-    let mut translator = BoogieTranslator::new(env, &options.backend, targets, &writer, &types);
+    let mut translator = BoogieTranslator::new(
+        env,
+        &options.backend,
+        targets,
+        &writer,
+        &types,
+        asserts_mode,
+    );
     translator.translate();
     Ok((writer, types.into_inner()))
 }
