@@ -333,29 +333,36 @@ impl FunctionTargetsHolder {
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
     pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
-        let func_id = func_env.get_qualified_id();
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets
-            .entry(func_id)
+            .entry(func_env.get_qualified_id())
             .or_default()
             .insert(FunctionVariant::Baseline, data);
 
-        for spec in self.package_targets.get_specs(&func_id) {
+        if let Some(spec) = self
+            .package_targets
+            .find_target_spec(&func_env.get_qualified_id())
+        {
             self.process_spec(func_env, &spec);
         }
 
-        for datatype_id in self.package_targets.get_datatype_invs(&func_id) {
+        if let Some(datatype_id) = self
+            .package_targets
+            .find_datatype_inv(&func_env.get_qualified_id())
+        {
             self.process_inv(func_env, &datatype_id);
         }
     }
 
     fn process_spec(&mut self, spec_env: &FunctionEnv, target_id: &QualifiedId<FunId>) {
         let env = spec_env.module_env.env;
-        let spec_id = spec_env.get_qualified_id();
 
         if matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck) {
-            if !self.package_targets.is_system_spec(&spec_id) {
+            if !self
+                .package_targets
+                .is_system_spec(&spec_env.get_qualified_id())
+            {
                 return;
             }
         } else if matches!(self.target, FunctionHolderTarget::All) {
@@ -370,10 +377,13 @@ impl FunctionTargetsHolder {
             };
 
             if spec_env.module_env.get_id() != target_module
+                && !self.package_targets.is_belongs_to_module_explicit_specs(
+                    &env.get_module(target_module),
+                    spec_env.get_qualified_id(),
+                )
                 && !self
                     .package_targets
-                    .is_belongs_to_module_explicit_specs(&env.get_module(target_module), spec_id)
-                && !self.package_targets.is_system_spec(&spec_id)
+                    .is_system_spec(&spec_env.get_qualified_id())
             {
                 return;
             }
@@ -393,7 +403,8 @@ impl FunctionTargetsHolder {
             }
         }
 
-        self.function_specs.insert(spec_id, *target_id);
+        self.function_specs
+            .insert(spec_env.get_qualified_id(), *target_id);
     }
 
     fn process_inv(&mut self, func_env: &FunctionEnv, sid: &QualifiedId<DatatypeId>) {
@@ -537,22 +548,20 @@ impl FunctionTargetsHolder {
         processor: &dyn FunctionTargetProcessor,
         scc_opt: Option<&[FunctionEnv]>,
     ) {
-        let id = func_env.get_qualified_id();
-
         // Check if this function exists in targets before processing
-        if !self.targets.contains_key(&id) {
+        if !self.targets.contains_key(&func_env.get_qualified_id()) {
             // Function was removed from targets, skip processing
             return;
         }
 
         for variant in self.get_target_variants(func_env) {
             // Remove data so we can own it.
-            let data = self.remove_target_data(&id, &variant);
+            let data = self.remove_target_data(&func_env.get_qualified_id(), &variant);
             if let Some(processed_data) =
                 processor.process_and_maybe_remove(self, func_env, data, scc_opt)
             {
                 // Put back processed data.
-                self.insert_target_data(&id, variant, processed_data);
+                self.insert_target_data(&func_env.get_qualified_id(), variant, processed_data);
             }
         }
     }

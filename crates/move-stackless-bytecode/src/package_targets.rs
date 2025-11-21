@@ -34,8 +34,8 @@ pub struct PackageTargets {
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
-    all_specs: BTreeSet<(QualifiedId<FunId>, QualifiedId<FunId>)>,
-    all_datatypes_invs: BTreeSet<(QualifiedId<DatatypeId>, QualifiedId<FunId>)>,
+    all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
+    all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
     ci_mode: bool,
 }
@@ -55,8 +55,8 @@ impl PackageTargets {
             spec_timeouts: BTreeMap::new(),
             loop_invariants: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
-            all_specs: BTreeSet::new(),
-            all_datatypes_invs: BTreeSet::new(),
+            all_specs: BTreeMap::new(),
+            all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
             ci_mode,
         };
@@ -65,16 +65,27 @@ impl PackageTargets {
     }
 
     fn process_spec(&mut self, spec_func_env: &FunctionEnv<'_>, target_func_env: &FunctionEnv<'_>) {
-        if !self.all_specs.insert((
-            target_func_env.get_qualified_id(),
-            spec_func_env.get_qualified_id(),
-        )) {
+        if self
+            .all_specs
+            .get(&target_func_env.get_qualified_id())
+            .is_none()
+        {
+            self.all_specs
+                .insert(target_func_env.get_qualified_id(), BTreeSet::new());
+        }
+
+        if !self
+            .all_specs
+            .get_mut(&target_func_env.get_qualified_id())
+            .unwrap()
+            .insert(spec_func_env.get_qualified_id())
+        {
             let env = spec_func_env.module_env.env;
             env.diag(
                 Severity::Error,
                 &target_func_env.get_loc(),
                 &format!(
-                    "Duplicate target function: {}",
+                    "Duplicate spec function: {}",
                     target_func_env.get_name_str()
                 ),
             );
@@ -216,9 +227,20 @@ impl PackageTargets {
         if let Some(struct_env) =
             module_env.find_struct(env.symbol_pool().make(struct_name.as_str()))
         {
+            if self
+                .all_datatypes_invs
+                .get(&struct_env.get_qualified_id())
+                .is_none()
+            {
+                self.all_datatypes_invs
+                    .insert(struct_env.get_qualified_id(), BTreeSet::new());
+            }
+
             if !self
                 .all_datatypes_invs
-                .insert((struct_env.get_qualified_id(), func_env.get_qualified_id()))
+                .get_mut(&struct_env.get_qualified_id())
+                .unwrap()
+                .insert(func_env.get_qualified_id())
             {
                 env.diag(
                     Severity::Error,
@@ -344,26 +366,26 @@ impl PackageTargets {
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
-            let qid = func_env.get_qualified_id();
-
-            if Self::system_spec(&qid, env) {
-                self.system_specs.insert(qid);
+            if Self::system_spec(&func_env.get_qualified_id(), env) {
+                self.system_specs.insert(func_env.get_qualified_id());
             }
 
             if let Some(opt) = boogie_opt {
-                self.spec_boogie_options.insert(qid, opt.clone());
+                self.spec_boogie_options
+                    .insert(func_env.get_qualified_id(), opt.clone());
             }
 
             if let Some(timeout) = timeout {
-                self.spec_timeouts.insert(qid, *timeout);
+                self.spec_timeouts
+                    .insert(func_env.get_qualified_id(), *timeout);
             }
 
             if *no_opaque {
-                self.omit_opaque_specs.insert(qid);
+                self.omit_opaque_specs.insert(func_env.get_qualified_id());
             }
 
             if *ignore_abort {
-                self.ignore_aborts.insert(qid);
+                self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
             if !func_env.module_env.is_target()
@@ -371,7 +393,7 @@ impl PackageTargets {
                 || !filter.is_targeted(func_env)
                 || (!*prove && !*focus)
             {
-                self.no_verify_specs.insert(qid);
+                self.no_verify_specs.insert(func_env.get_qualified_id());
             } else {
                 if *focus {
                     if self.ci_mode {
@@ -382,9 +404,9 @@ impl PackageTargets {
                         );
                         return;
                     }
-                    self.focus_specs.insert(qid);
+                    self.focus_specs.insert(func_env.get_qualified_id());
                 }
-                self.target_specs.insert(qid);
+                self.target_specs.insert(func_env.get_qualified_id());
             }
 
             if target.is_some() {
@@ -473,23 +495,29 @@ impl PackageTargets {
         self.target_specs.contains(func_id) || self.no_verify_specs.contains(func_id)
     }
 
-    pub fn get_specs(&self, func_id: &QualifiedId<FunId>) -> BTreeSet<QualifiedId<FunId>> {
-        self.all_specs
-            .iter()
-            .filter(|(_, f)| f == func_id)
-            .map(|(s, _)| *s)
-            .collect()
+    pub fn get_specs(&self, func_id: &QualifiedId<FunId>) -> Option<BTreeSet<QualifiedId<FunId>>> {
+        self.all_specs.get(func_id).cloned()
     }
 
-    pub fn get_datatype_invs(
+    pub fn find_target_spec(&self, spec_id: &QualifiedId<FunId>) -> Option<QualifiedId<FunId>> {
+        for (target_id, specs) in &self.all_specs {
+            if specs.contains(spec_id) {
+                return Some(*target_id);
+            }
+        }
+        None
+    }
+
+    pub fn find_datatype_inv(
         &self,
-        func_id: &QualifiedId<FunId>,
-    ) -> BTreeSet<QualifiedId<DatatypeId>> {
-        self.all_datatypes_invs
-            .iter()
-            .filter(|(_, qid)| qid == func_id)
-            .map(|(sid, _)| *sid)
-            .collect()
+        fun_id: &QualifiedId<FunId>,
+    ) -> Option<QualifiedId<DatatypeId>> {
+        for (struct_id, funs) in &self.all_datatypes_invs {
+            if funs.contains(fun_id) {
+                return Some(*struct_id);
+            }
+        }
+        None
     }
 
     fn system_spec(qid: &QualifiedId<FunId>, env: &GlobalEnv) -> bool {
