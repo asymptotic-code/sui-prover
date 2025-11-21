@@ -163,7 +163,16 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
     let start_time = Instant::now();
     let files = targets_modules
         .iter()
-        .map(|mid| generate_module_bpl(env, &options, error_writer, targets, mid, AssertsMode::Check))
+        .map(|mid| {
+            generate_module_bpl(
+                env,
+                &options,
+                error_writer,
+                targets,
+                mid,
+                AssertsMode::Check,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     let elapsed = start_time.elapsed();
@@ -407,15 +416,33 @@ pub async fn run_prover<W: WriteColor>(
                 targets
                     .target_specs()
                     .iter()
-                    .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid, AssertsMode::Assume))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|qid| {
+                        generate_function_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            qid,
+                            AssertsMode::Assume,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             result.extend(
                 targets
                     .target_specs()
                     .iter()
-                    .map(|qid| generate_function_bpl(env, options, error_writer, targets, qid, AssertsMode::Check))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|qid| {
+                        generate_function_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            qid,
+                            AssertsMode::Check,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
             );
 
             result
@@ -426,15 +453,33 @@ pub async fn run_prover<W: WriteColor>(
                 targets
                     .target_modules()
                     .iter()
-                    .map(|mid| generate_module_bpl(env, options, error_writer, targets, mid, AssertsMode::Assume))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|mid| {
+                        generate_module_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            mid,
+                            AssertsMode::Assume,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             result.extend(
                 targets
                     .target_modules()
                     .iter()
-                    .map(|mid| generate_module_bpl(env, options, error_writer, targets, mid, AssertsMode::Check))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|mid| {
+                        generate_module_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            mid,
+                            AssertsMode::Check,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
             );
 
             result
