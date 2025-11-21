@@ -64,6 +64,9 @@ public native fun end_sum_map_lambda<T>(): Integer;
 public native fun sum<T>(v: &vector<T>): Integer;
 
 #[spec_only]
+public native fun sum_range<T>(v: &vector<T>, start: u64, end: u64): Integer;
+
+#[spec_only]
 public native fun slice<T>(v: &vector<T>, start: u64, end: u64): &vector<T>;
 
 // advanced macros patterns over vectors
