@@ -75,6 +75,10 @@ pub struct TheoremFunction {
     /// Mutual recursion group ID (None if not mutually recursive)
     /// Functions with the same group ID are mutually recursive and must be defined together
     pub mutual_group_id: Option<usize>,
+
+    /// Whether this function is native (has no bytecode implementation)
+    /// Native functions should be provided by backend-specific implementations
+    pub is_native: bool,
 }
 
 impl TheoremFunction {

@@ -1,4 +1,5 @@
-use crate::{Expression, LoopVariable, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
+use crate::{CallConvention, ConstantValue, Expression, LoopVariable, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
+use std::mem;
 
 /// Phi variable for merging values from control flow branches
 #[derive(Debug, Clone)]
@@ -11,6 +12,15 @@ pub struct PhiVariable {
     pub else_value: Expression,
 }
 
+/// Loop condition with recomputation
+#[derive(Debug, Clone)]
+pub struct LoopCondition {
+    /// Statements that recompute values needed for the loop condition
+    pub recompute: Box<Statement>,
+    /// The actual condition variable
+    pub condition_var: TempId,
+}
+
 /// Structured statement (high-level control flow)
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -21,7 +31,7 @@ pub enum Statement {
     Let {
         results: Vec<TempId>,
         operation: Expression,
-        result_types: Vec<TheoremType>,  // One type per result
+        result_types: Vec<TheoremType>, // One type per result
     },
 
     /// Conditional: if cond then body1 else body2
@@ -43,21 +53,17 @@ pub enum Statement {
     While {
         /// Loop-carried variables with phi-node information
         loop_vars: Vec<LoopVariable>,
-        /// The loop condition expression
-        condition: Expression,
+        /// The loop condition with recomputation statements
+        condition: LoopCondition,
         /// Loop body
         body: Box<Statement>,
     },
 
     /// Return from function
-    Return {
-        values: Vec<Expression>,
-    },
+    Return { values: Vec<Expression> },
 
     /// Abort execution
-    Abort {
-        code: Expression,
-    },
+    Abort { code: Expression },
 
     /// Update a struct field (functional update via with-expression)
     /// Translates WriteRef to a field borrow: *(&mut struct.field) = value
@@ -79,204 +85,245 @@ pub enum Statement {
     },
 
     /// Requires (precondition assertion)
-    Requires {
-        condition: Expression,
-    },
+    Requires { condition: Expression },
 
     /// Ensures (postcondition assertion)
-    Ensures {
-        condition: Expression,
-    },
+    Ensures { condition: Expression },
+}
+
+impl Default for Statement {
+    fn default() -> Self {
+        Statement::Sequence(Vec::new())
+    }
+}
+
+#[macro_export]
+macro_rules! traverse_statement {
+    ($target:expr, ($($mutability:tt)*), $action:expr) => {
+        match $target {
+            Statement::Sequence(statements) => {
+                for statement in statements {
+                    $action(statement);
+                }
+            }
+            Statement::If { then_branch, else_branch, .. } => {
+                $action($($mutability)* **then_branch);
+                $action($($mutability)* **else_branch);
+            }
+            Statement::While { condition: LoopCondition { recompute, .. }, body, .. } => {
+                $action($($mutability)* **recompute);
+                $action($($mutability)* **body);
+            }
+            _ => {}
+        }
+    };
+}
+
+macro_rules! traverse_expression {
+    ($target:expr, ($($ref_pattern:tt)*), ($($mutability:tt)*), $recurse:expr, $action:expr) => {
+        // First: Recurse to child statements (direct call, no closure!)
+        traverse_statement!($target, ($($mutability)*), $recurse);
+
+        // Second: Extract expressions from current statement
+        match $target {
+            Statement::Let { $($ref_pattern)* operation, .. } => $action(operation),
+            Statement::If { $($ref_pattern)* condition, $($ref_pattern)* phi_vars, .. } => {
+                $action(condition);
+                for phi in phi_vars {
+                    $action($($mutability)* phi.then_value);
+                    $action($($mutability)* phi.else_value);
+                }
+            }
+            Statement::Return { $($ref_pattern)* values } => {
+                for expr in values {
+                    $action(expr);
+                }
+            }
+            Statement::Abort { $($ref_pattern)* code } => $action(code),
+            Statement::UpdateField { $($ref_pattern)* target, $($ref_pattern)* new_value, .. } => {
+                $action(target);
+                $action(new_value);
+            }
+            Statement::UpdateVectorElement { $($ref_pattern)* target, $($ref_pattern)* index, $($ref_pattern)* new_value } => {
+                $action(target);
+                $action(index);
+                $action(new_value);
+            }
+            Statement::Requires { $($ref_pattern)* condition } | Statement::Ensures { $($ref_pattern)* condition } => $action(condition),
+            _ => {}
+        }
+    };
 }
 
 impl Statement {
-    // ========================================================================
-    // Functional Traversal API
-    // ========================================================================
-
-    /// Fold over all statements in the tree (pre-order traversal)
-    /// The closure receives the accumulator and a reference to each statement
-    pub fn fold<T>(&self, init: T, mut f: impl FnMut(T, &Statement) -> T) -> T {
-        self.fold_impl(init, &mut f)
+    /// Mutably traverse the statement tree
+    pub fn traverse_mut<F: Fn(&mut Statement)>(&mut self, f: F) {
+        traverse_statement!(self, (&mut), |child: &mut Statement| child.traverse_mut(&f));
+        f(self);
     }
 
-    fn fold_impl<T>(&self, acc: T, f: &mut impl FnMut(T, &Statement) -> T) -> T {
-        // First apply function to current statement
-        let acc = f(acc, self);
+    /// Map over the statement tree, transforming each statement (consuming)
+    pub fn map<F: Fn(Statement) -> Statement>(mut self, f: F) -> Statement {
+        traverse_statement!(&mut self, (&mut), |child: &mut Statement| *child = f(mem::take(child)));
+        f(self)
+    }
 
-        // Then recursively fold over children
-        match self {
-            Statement::Sequence(stmts) => {
-                stmts.iter().fold(acc, |acc, stmt| stmt.fold_impl(acc, f))
-            }
-            Statement::If { then_branch, else_branch, .. } => {
-                let acc = then_branch.fold_impl(acc, f);
-                else_branch.fold_impl(acc, f)
-            }
-            Statement::While { condition: _, body, .. } => {
-                body.fold_impl(acc, f)
-            }
-            Statement::Let { .. } | Statement::Return { .. } | Statement::Abort { .. } |
-            Statement::UpdateField { .. } | Statement::UpdateVectorElement { .. } |
-            Statement::Requires { .. } | Statement::Ensures { .. } => {
-                // Leaf nodes, just return accumulator
-                acc
-            }
+    /// Mutably traverse the expressions in the statement tree
+    pub fn traverse_expressions_mut<F: Fn(&mut Expression)>(&mut self, f: F) {
+        traverse_expression!(self, (ref mut), (&mut), |s: &mut Statement| s.traverse_expressions_mut(&f), |expr: &mut Expression| f(expr));
+    }
+    
+    /// Map over the statement tree, transforming each expression (consuming)
+    pub fn map_expressions<F: Fn(Expression) -> Expression + Copy>(mut self, f: F) -> Statement {
+        traverse_expression!(&mut self, (ref mut), (&mut), |s: &mut Statement| { *s = mem::take(s).map_expressions(f); }, |expr: &mut Expression| {
+            *expr = f(mem::replace(expr, Expression::Constant(ConstantValue::Bool(false))));
+        });
+        self
+    }
+
+    /// Iterate over all statements in the tree (depth-first)
+    pub fn iter(&self) -> StatementIter<'_> {
+        StatementIter {
+            stack: vec![self]
         }
     }
 
-    /// Map over the statement tree, transforming each statement
-    pub fn map(&self, f: &impl Fn(&Statement) -> Statement) -> Statement {
-        let transformed = match self {
-            Statement::Sequence(stmts) => {
-                Statement::Sequence(stmts.iter().map(|s| s.map(f)).collect())
-            }
-            Statement::Let { results, operation, result_types } => {
-                Statement::Let {
-                    results: results.clone(),
-                    operation: operation.clone(),
-                    result_types: result_types.clone(),
-                }
-            }
-            Statement::If { condition, then_branch, else_branch, phi_vars } => {
-                Statement::If {
-                    condition: condition.clone(),
-                    then_branch: Box::new(then_branch.map(f)),
-                    else_branch: Box::new(else_branch.map(f)),
-                    phi_vars: phi_vars.clone(),
-                }
-            }
-            Statement::While { loop_vars, condition, body } => {
-                Statement::While {
-                    loop_vars: loop_vars.clone(),
-                    condition: condition.clone(),
-                    body: Box::new(body.map(f)),
-                }
-            }
-            Statement::Return { values } => {
-                Statement::Return { values: values.clone() }
-            }
-            Statement::Abort { code } => {
-                Statement::Abort { code: code.clone() }
-            }
-            Statement::UpdateField { target, struct_id, field_index, new_value } => {
-                Statement::UpdateField {
-                    target: target.clone(),
-                    struct_id: *struct_id,
-                    field_index: *field_index,
-                    new_value: new_value.clone(),
-                }
-            }
-            Statement::UpdateVectorElement { target, index, new_value } => {
-                Statement::UpdateVectorElement {
-                    target: target.clone(),
-                    index: index.clone(),
-                    new_value: new_value.clone(),
-                }
-            }
-            Statement::Requires { condition } => {
-                Statement::Requires { condition: condition.clone() }
-            }
-            Statement::Ensures { condition } => {
-                Statement::Ensures { condition: condition.clone() }
-            }
-        };
-
-        // Apply transformation function to the result
-        f(&transformed)
-    }
-
-    /// Iterator over all operations (expressions) in the statement tree
-    pub fn operations(&self) -> impl Iterator<Item = &Expression> {
-        let mut ops = Vec::new();
-        self.collect_operations_impl(&mut ops);
-        ops.into_iter()
-    }
-
-    fn collect_operations_impl<'a>(&'a self, ops: &mut Vec<&'a Expression>) {
-        match self {
-            Statement::Let { operation, .. } => {
-                ops.push(operation);
-            }
-            Statement::Sequence(stmts) => {
-                for stmt in stmts {
-                    stmt.collect_operations_impl(ops);
-                }
-            }
-            Statement::If { condition, then_branch, else_branch, phi_vars } => {
-                ops.push(condition);
-                for phi in phi_vars {
-                    ops.push(&phi.then_value);
-                    ops.push(&phi.else_value);
-                }
-                then_branch.collect_operations_impl(ops);
-                else_branch.collect_operations_impl(ops);
-            }
-            Statement::While { condition, body, .. } => {
-                ops.push(condition);
-                body.collect_operations_impl(ops);
-            }
-            Statement::Return { values } => {
-                for expr in values {
-                    ops.push(expr);
-                }
-            }
-            Statement::Abort { code } => {
-                ops.push(code);
-            }
-            Statement::UpdateField { target, new_value, .. } => {
-                ops.push(target);
-                ops.push(new_value);
-            }
-            Statement::UpdateVectorElement { target, index, new_value } => {
-                ops.push(target);
-                ops.push(index);
-                ops.push(new_value);
-            }
-            Statement::Requires { condition } => {
-                ops.push(condition);
-            }
-            Statement::Ensures { condition } => {
-                ops.push(condition);
-            }
+    /// Iterate over all expressions in the statement tree
+    pub fn iter_expressions(&self) -> ExpressionIter<'_> {
+        ExpressionIter {
+            stmt_iter: self.iter(),
+            expressions: Vec::new(),
         }
     }
 
-    /// Iterator over all function calls in the statement tree
-    /// Returns function IDs
-    pub fn calls(&self) -> impl Iterator<Item = TheoremFunctionID> {
-        self.operations()
-            .filter_map(|op| {
-                if let Expression::Call { function, .. } = op {
-                    Some(*function)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
+    /// Get all function calls
+    pub fn calls(&self) -> impl Iterator<Item = TheoremFunctionID> + '_ {
+        self.iter_expressions()
+            .filter_map(|expr| expr.called_function())
     }
 
-    /// Check if any statement satisfies a predicate
-    pub fn any(&self, mut predicate: impl FnMut(&Statement) -> bool) -> bool {
-        self.fold(false, |acc, stmt| acc || predicate(stmt))
-    }
-
-    /// Check if all statements satisfy a predicate
-    pub fn all(&self, mut predicate: impl FnMut(&Statement) -> bool) -> bool {
-        self.fold(true, |acc, stmt| acc && predicate(stmt))
-    }
-
-    /// Check if this statement or any nested statement contains monadic operations
-    /// A statement is monadic if any Let has a ProgramState result type,
-    /// or if it's a While, Return, or Abort (which always use ProgramState monad)
+    /// Check if this statement contains any monadic operations
     pub fn is_monadic(&self) -> bool {
-        self.any(|stmt| {
-            if let Statement::Let { result_types, .. } = stmt {
-                // Check if any result type is ProgramState
-                return result_types.iter().any(|ty| ty.is_monad());
-            }
-            matches!(stmt, Statement::While { .. } | Statement::Return { .. } | Statement::Abort { .. })
+        self.iter_expressions().any(|expr| {
+            matches!(expr, Expression::Call { convention: CallConvention::Monadic, .. })
         })
+    }
+
+    /// Check if this statement terminates (contains a Return or Abort)
+    pub fn terminates(&self) -> bool {
+        self.iter().any(|stmt| {
+            matches!(stmt, Statement::Return { .. } | Statement::Abort { .. })
+        })
+    }
+
+    /// Collect all function call IDs from expressions in this statement
+    pub fn collect_function_calls(&self) -> Vec<TheoremFunctionID> {
+        self.iter_expressions()
+            .filter_map(|expr| expr.called_function())
+            .collect()
+    }
+
+    /// Collect all struct IDs from pack/unpack expressions in this statement
+    pub fn collect_struct_references(&self) -> Vec<TheoremStructID> {
+        self.iter_expressions()
+            .filter_map(|expr| expr.struct_reference())
+            .collect()
+    }
+
+    /// Collect all struct IDs from types in expressions in this statement
+    pub fn collect_type_struct_ids(&self) -> Vec<TheoremStructID> {
+        self.iter_expressions()
+            .flat_map(|expr| expr.collect_type_struct_ids())
+            .collect()
+    }
+
+    pub fn combine(self, other: Statement) -> Statement {
+        match (self, other) {
+            (Statement::Sequence(mut first), Statement::Sequence(second)) => {
+                first.extend(second);
+                Statement::Sequence(first)
+            }
+            (Statement::Sequence(mut first), second) => {
+                first.push(second);
+                Statement::Sequence(first)
+            }
+            (first, Statement::Sequence(mut second)) => {
+                second.insert(0, first);
+                Statement::Sequence(second)
+            }
+            (first, second) => Statement::Sequence(vec![first, second]),
+        }
+        .collapse()
+    }
+
+    pub fn collapse(mut self) -> Statement {
+        if let Statement::Sequence(inner) = &mut self {
+            if inner.len() == 1 {
+                return inner.pop().unwrap();
+            }
+        }
+        self
+    }
+}
+
+pub struct StatementIter<'a> {
+    stack: Vec<&'a Statement>,
+}
+
+impl<'a> Iterator for StatementIter<'a> {
+    type Item = &'a Statement;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        let statement = self.stack.pop()?;
+        
+        traverse_statement!(statement, (&), |statement| self.stack.push(statement));
+        
+        Some(statement)
+    }
+}
+
+pub struct ExpressionIter<'a> {
+    stmt_iter: StatementIter<'a>,
+    expressions: Vec<&'a Expression>,
+}
+
+impl<'a> Iterator for ExpressionIter<'a> {
+    type Item = &'a Expression;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // Return queued expressions first
+            if let Some(expression) = self.expressions.pop() {
+                return Some(expression);
+            }
+
+            // Get next statement and extract its immediate expressions
+            let stmt = self.stmt_iter.next()?;
+            match stmt {
+                Statement::Let { operation, .. } => self.expressions.push(operation),
+                Statement::If { condition, phi_vars, .. } => {
+                    self.expressions.push(condition);
+                    for phi in phi_vars {
+                        self.expressions.push(&phi.then_value);
+                        self.expressions.push(&phi.else_value);
+                    }
+                }
+                Statement::Return { values } => self.expressions.extend(values),
+                Statement::Abort { code } => self.expressions.push(code),
+                Statement::UpdateField { target, new_value, .. } => {
+                    self.expressions.push(target);
+                    self.expressions.push(new_value);
+                }
+                Statement::UpdateVectorElement { target, index, new_value } => {
+                    self.expressions.push(target);
+                    self.expressions.push(index);
+                    self.expressions.push(new_value);
+                }
+                Statement::Requires { condition } | Statement::Ensures { condition } => {
+                    self.expressions.push(condition);
+                }
+                _ => {}
+            }
+        }
     }
 }

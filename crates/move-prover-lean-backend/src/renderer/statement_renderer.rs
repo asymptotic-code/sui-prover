@@ -3,7 +3,7 @@
 
 //! Renders Statement IR to Lean syntax
 
-use intermediate_theorem_format::{Statement, VariableRegistry, TheoremProgram, PhiVariable, TheoremModuleID};
+use intermediate_theorem_format::{Statement, VariableRegistry, TheoremProgram, PhiVariable, TheoremModuleID, TheoremType};
 use super::expression_renderer::ExpressionRenderer;
 use super::type_renderer::TypeRenderer;
 use super::lean_writer::LeanWriter;
@@ -11,7 +11,7 @@ use super::lean_writer::LeanWriter;
 pub struct StatementRenderer {
     expr_renderer: ExpressionRenderer,
     type_renderer: TypeRenderer,
-    expected_return_type: Option<String>,
+    expected_return_type: Option<TheoremType>,
 }
 
 impl StatementRenderer {
@@ -23,7 +23,7 @@ impl StatementRenderer {
         }
     }
 
-    pub fn with_return_type(return_type: String) -> Self {
+    pub fn with_return_type(return_type: TheoremType) -> Self {
         Self {
             expr_renderer: ExpressionRenderer::new(),
             type_renderer: TypeRenderer,
@@ -70,7 +70,9 @@ impl StatementRenderer {
                 if stmts.is_empty() {
                     // For native/empty functions, use sorry if return type is not Unit
                     if let Some(ret_type) = &self.expected_return_type {
-                        if ret_type != "Unit" {
+                        // Check if it's not an empty tuple (unit type)
+                        let is_unit = matches!(ret_type, TheoremType::Tuple(v) if v.is_empty());
+                        if !is_unit {
                             writer.emit("sorry");
                             return;
                         }
@@ -160,7 +162,7 @@ impl StatementRenderer {
                     format!("({})", updated_vals.join(", "))
                 };
 
-                let cond_str = self.render_expression_to_string(condition, registry, program, current_module_id, writer.name_manager);
+                let cond_str = registry.get_display_name(condition.condition_var);
 
                 writer.emit(&format!("let {} ← (whileLoop (fun state => pure {}) (fun state =>\n", phi_pattern, cond_str));
                 writer.with_indent(|| {
@@ -195,18 +197,9 @@ impl StatementRenderer {
                 // Use dot notation .toNat which works for all UInt types
                 // Wrap in extra parens to prevent line breaks in formatting
                 let code_nat = format!("(({}).toNat)", code_str);
-                if let Some(ret_type) = &self.expected_return_type {
-                    let inner_type = if ret_type.starts_with("(ProgramState ") && ret_type.ends_with(")") {
-                        &ret_type[14..ret_type.len()-1]
-                    } else if ret_type.starts_with("ProgramState ") {
-                        &ret_type[13..]
-                    } else {
-                        ret_type.as_str()
-                    };
-                    writer.emit(&format!("(@abort {} {})", inner_type, code_nat));
-                } else {
-                    writer.emit(&format!("abort {}", code_nat));
-                }
+                // Use ProgramState.Aborted directly instead of the abort helper
+                // This avoids type inference issues with qualified struct names
+                writer.emit(&format!("ProgramState.Aborted {}", code_nat));
             }
 
             Statement::UpdateField { target, struct_id, field_index, new_value } => {

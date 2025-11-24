@@ -371,6 +371,78 @@ procedure {:inline 1} $1_vector_skip{{S}}(v: Vec ({{T}}), n: int) returns (res: 
 function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
+
+procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
+    res := SliceVec(v, start, end);
+}
+
+{%- if instance.is_number -%}
+{%- if include_vec_sum -%}
+
+function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
+
+{%- if instance.is_bv -%}
+{# Different axioms for bit vectors #}
+
+// the sum over an empty range is zero
+axiom (forall v: Vec ({{T}}), start: int, end: int ::
+      { $0_vec_$sum{{S}}(v, start, end)}
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv{{instance.bit_width}}));
+
+// the sum of a range can be split in two
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
+  0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
+    $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
+
+// the sum over a singleton range is the vector element there
+axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+  { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
+  0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
+
+// for vectors nested ranges have sums bounded by the larger
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+    $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+
+{%- else -%}
+
+// the sum over an empty range is zero
+axiom (forall v: Vec ({{T}}), start: int, end: int ::
+      { $0_vec_$sum{{S}}(v, start, end)}
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0));
+
+// the sum of a range can be split in two
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
+  0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
+    $0_vec_$sum{{S}}(v, a, b) + $0_vec_$sum{{S}}(v, c, d) ==  $0_vec_$sum{{S}}(v, a, d)) ;
+
+// the sum over a singleton range is the vector element there
+axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+  { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
+  0 <= a && a < LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
+
+// for vectors nested ranges have sums bounded by the larger
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+    $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
+
+{%- endif %}
+
+procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
+    res := $0_vec_$sum{{S}}(v, 0, LenVec(v));
+}
+
+procedure {:inline 1} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: {{T}}) {
+    res := $0_vec_$sum{{S}}(v, start, end);
+}
+
+{%- endif %}
+{%- endif %}
+
 {% endmacro vector_module %}
 
 {# VecSet
@@ -471,17 +543,6 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
         (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
 
-function {:inline} $2_vec_map_get_idx_opt{{S}}(
-    m: $2_vec_map_VecMap{{S}},
-    k: {{K}}
-): $1_option_Option'u64' {
-    (var idx := $IndexOfVecMap{{S}}(m->$contents, k);
-     if idx >= 0 then 
-         $1_option_Option'u64'(MakeVec1(idx))
-     else 
-         $1_option_Option'u64'(EmptyVec()))
-}
-
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
 axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
     (var keys := $VecMapKeys{{S}}(v);
@@ -527,6 +588,60 @@ procedure {:inline 1} $2_vec_map_from_keys_values{{S}}(keys: Vec ({{K}}), values
         return;
     }
     res := $2_vec_map_VecMap{{S}}(entries);
+}
+
+procedure {:inline 1} $2_vec_map_remove{{S}}(m: $Mutation ($2_vec_map_VecMap{{S}}), key: {{K}}) returns (res0: {{K}}, res1: {{V}}, m': $Mutation ($2_vec_map_VecMap{{S}})) {
+    var idx: int;
+    var entry: $2_vec_map_Entry{{S}};
+    var v: Vec ($2_vec_map_Entry{{S}});
+
+    v := $Dereference(m)->$contents;
+
+    idx := $IndexOfVecMap{{S}}(v, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+    
+    entry := ReadVec(v, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+
+    m' := $UpdateMutation(m, $2_vec_map_VecMap{{S}}(RemoveAtVec(v, idx)));
+}
+
+function {:inline} $2_vec_map_contains{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): bool {
+    $ContainsVecMap{{S}}(vm->$contents, key)
+}
+
+procedure {:inline 1} $2_vec_map_get{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
+    var idx: int;
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+
+    res := ReadVec(vm->$contents, idx)->$value;
+}
+
+procedure {:inline 1} $2_vec_map_get_idx{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (idx: int) {
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+}
+
+function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $1_option_Option'u64' {
+    (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+     if idx >= 0 then
+         $1_option_Option'u64'(MakeVec1(idx))
+     else 
+         $1_option_Option'u64'(EmptyVec()))
 }
 
 {% endmacro vec_map_module %}

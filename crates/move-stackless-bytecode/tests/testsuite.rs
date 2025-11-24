@@ -225,7 +225,11 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
                 processor,
             }
             .to_string();
+<<<<<<< HEAD
             
+=======
+
+>>>>>>> origin/main
             // For control_flow_reconstruction tests, add reconstruction output after pipeline
             if dir_name == "control_flow_reconstruction" {
                 text += "\n============ Control Flow Reconstruction ================\n";
@@ -233,7 +237,12 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
                     for func_env in module_env.get_functions() {
                         for (variant, target) in targets.get_targets(&func_env) {
                             if !target.data.code.is_empty() {
+<<<<<<< HEAD
                                 text += &format!("\n[variant {}]\nfun {}::{}\n", 
+=======
+                                text += &format!(
+                                    "\n[variant {}]\nfun {}::{}\n",
+>>>>>>> origin/main
                                     variant,
                                     func_env.module_env.get_name().display(env.symbol_pool()),
                                     func_env.get_name().display(func_env.symbol_pool())

@@ -58,10 +58,6 @@ impl ProgramRenderer {
 
         // Render each module
         for (&module_id, module) in &program.modules {
-            // Skip native modules - they've already been copied
-            if program.is_native_module(&module.package_name, &module.name) {
-                continue;
-            }
             let mut module_output = String::new();
 
             module_output.push_str(&format!("-- Module: {}\n\n", module.name));
@@ -79,6 +75,16 @@ impl ProgramRenderer {
                     module_output.push_str(&format!("import {}\n", import_path));
                 }
             }
+
+            // If this module has native functions, import the natives file
+            // (except for MoveStdlib which handles natives differently)
+            let has_native_functions = program.functions.values()
+                .any(|f| f.module_id == module_id && f.is_native);
+            if has_native_functions && &module.package_name != "MoveStdlib" {
+                let namespace_name = Self::capitalize_first(&module.name);
+                module_output.push_str(&format!("import Impls.{}.{}Natives\n", module.package_name, namespace_name));
+            }
+
             module_output.push('\n');
 
             // Capitalize module name for Lean namespace
@@ -105,9 +111,7 @@ impl ProgramRenderer {
             }
 
             // Render all functions in this module
-            // Skip functions that have both native implementations AND bytecode bodies
-            // The native impl takes precedence
-            // Also skip functions that were not translated (have empty bodies)
+            // Native functions are rendered with axiom/sorry stubs by the function renderer
             // Functions are already globally sorted by DependencyOrderPass
             let mut rendered_functions = std::collections::HashSet::new();
             for (_, func) in &program.functions {
@@ -121,11 +125,8 @@ impl ProgramRenderer {
                     continue;
                 }
 
-                // Skip functions that were not translated (have empty body)
-                // Empty body is Statement::Sequence(vec![])
-                use intermediate_theorem_format::Statement;
-                let is_empty = matches!(func.body, Statement::Sequence(ref stmts) if stmts.is_empty());
-                if is_empty {
+                // Skip native functions - they should be provided by lemmas files
+                if func.is_native {
                     continue;
                 }
 
@@ -211,7 +212,11 @@ impl ProgramRenderer {
 
         // For each module in the program
         for module in program.modules.values() {
-            if !program.is_native_module(&module.package_name, &module.name) {
+            // Check if this module has any native functions
+            let has_native_functions = program.functions.values()
+                .any(|f| f.module_id == module.id && f.is_native);
+
+            if !has_native_functions {
                 continue;
             }
 
@@ -236,7 +241,13 @@ impl ProgramRenderer {
             } else {
                 &Self::capitalize_first(&module.name)
             };
-            let dest_path = output_dir.join(&module.package_name).join(format!("{}.lean", namespace));
+            // MoveStdlib goes to package root, all others go to Impls/Package/
+            // Native files use Natives suffix to avoid overwriting generated files
+            let dest_path = if &module.package_name == "MoveStdlib" {
+                output_dir.join(&module.package_name).join(format!("{}.lean", namespace))
+            } else {
+                output_dir.join("Impls").join(&module.package_name).join(format!("{}Natives.lean", namespace))
+            };
 
             // Create parent directory
             if let Some(parent) = dest_path.parent() {
@@ -254,7 +265,6 @@ impl ProgramRenderer {
 
     /// Get the path to a native lemma file relative to lemmas directory
     fn get_native_lemma_path(&self, package_name: &str, module_name: &str) -> String {
-        // MoveStdlib maps to Prelude
         match package_name {
             "MoveStdlib" => {
                 // Map module names to their Prelude files
@@ -263,8 +273,8 @@ impl ProgramRenderer {
                     _ => format!("Prelude/{}.lean", Self::capitalize_first(module_name)),
                 }
             }
-            // Other packages would go here
-            _ => format!("Impls/{}/{}.lean", package_name, Self::capitalize_first(module_name)),
+            // All other packages use the natives/ directory structure
+            _ => format!("natives/{}/{}.lean", package_name, Self::capitalize_first(module_name)),
         }
     }
 }

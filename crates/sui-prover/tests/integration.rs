@@ -96,12 +96,16 @@ integration-test = "0x9"
                 options.backend.vc_timeout = DEFAULT_EXECUTION_TIMEOUT_SECONDS;
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
+                options.backend.keep_artifacts = true;
 
                 if is_conditionals_test {
-                    // Keep generated .bpl files and dump to temp dir
                     options.prover.enable_conditional_merge_insertion = true;
-                    options.backend.keep_artifacts = true;
-                    options.output_path = tmp_dir.join("output").to_string_lossy().to_string();
+                    options.prover.skip_spec_no_abort = true; // for better extracting of Boogie code
+                    options.output_path = Path::new(&options.output_path)
+                        .join("conditionals")
+                        .join(file_path.file_name().unwrap())
+                        .to_string_lossy()
+                        .to_string();
                 }
 
                 // Use a buffer to capture output instead of stderr

@@ -99,32 +99,17 @@ pub struct TheoremProgram {
 
     /// Name manager for rendering
     pub name_manager: NameManager,
-
-    /// Modules that have native-only implementations
-    /// Key: (package_name, module_name), e.g., ("MoveStdlib", "vector")
-    /// Functions in these modules should not be translated
-    pub native_modules: std::collections::HashSet<(String, String)>,
 }
 
 impl TheoremProgram {
     /// Create a new empty program IR
     pub fn new() -> Self {
-        let mut native_modules = std::collections::HashSet::new();
-        // MoveStdlib::vector has native implementation in Prelude/Vector.lean
-        native_modules.insert(("MoveStdlib".to_string(), "vector".to_string()));
-
         Self {
             modules: BTreeMap::new(),
             functions: IndexMap::new(),
             structs: IndexMap::new(),
             name_manager: NameManager::new(),
-            native_modules,
         }
-    }
-
-    /// Check if a module is native-only
-    pub fn is_native_module(&self, package_name: &str, module_name: &str) -> bool {
-        self.native_modules.contains(&(package_name.to_string(), module_name.to_string()))
     }
 
     /// Get a function by ID
@@ -135,6 +120,101 @@ impl TheoremProgram {
     /// Get a module by ID
     pub fn get_module(&self, id: TheoremModuleID) -> Option<&TheoremModule> {
         self.modules.get(&id)
+    }
+
+    /// Get a mutable reference to a module by ID
+    pub fn get_module_mut(&mut self, id: TheoremModuleID) -> &mut TheoremModule {
+        self.modules.get_mut(&id).expect("Module should exist")
+    }
+
+    /// Get the module ID for a struct
+    pub fn get_struct_module(&self, struct_id: TheoremStructID) -> TheoremModuleID {
+        self.structs.get(&struct_id).expect("Struct should exist").module_id
+    }
+
+    /// Get the module ID for a function
+    pub fn get_function_module(&self, function_id: TheoremFunctionID) -> TheoremModuleID {
+        self.functions.get(&function_id).expect("Function should exist").module_id
+    }
+
+    /// Iterator over all modules
+    pub fn modules(&self) -> impl Iterator<Item = &TheoremModule> {
+        self.modules.values()
+    }
+
+    /// Iterator over all functions
+    pub fn functions(&self) -> impl Iterator<Item = &functions::TheoremFunction> {
+        self.functions.values()
+    }
+
+    /// Iterator over all structs
+    pub fn structs(&self) -> impl Iterator<Item = &structure::TheoremStruct> {
+        self.structs.values()
+    }
+
+    /// Create TheoremProgram from LazyIdBuilder
+    ///
+    /// This converts construction data into final IR and runs analysis passes
+    pub fn from_builder(builder: crate::lazy_builder::LazyIdBuilder) -> Self {
+        use crate::analysis::{DependencyOrderPass, ImportCollectionPass};
+
+        let mut program = Self::new();
+        program.name_manager = builder.name_manager;
+
+        // Build modules
+        for (module_id, construction) in builder.modules {
+            let module = TheoremModule {
+                id: module_id,
+                name: construction.name,
+                package_name: construction.package_name,
+                required_imports: Vec::new(), // Filled by ImportCollectionPass
+            };
+            program.modules.insert(module_id, module);
+        }
+
+        // Build structs
+        for (struct_id, construction) in builder.structs {
+            let theorem_struct = structure::TheoremStruct {
+                id: struct_id,
+                module_id: builder.module_structs.iter()
+                    .find(|(_, structs)| structs.contains(&struct_id))
+                    .map(|(mid, _)| *mid)
+                    .expect("Every struct should belong to a module"),
+                name: construction.name,
+                qualified_name: construction.qualified_name,
+                type_params: construction.type_params,
+                fields: construction.fields,
+                mutual_group_id: None, // Filled by DependencyOrderPass
+            };
+            program.structs.insert(struct_id, theorem_struct);
+        }
+
+        // Build functions
+        for (function_id, construction) in builder.functions {
+            let theorem_function = functions::TheoremFunction {
+                id: function_id,
+                module_id: builder.module_functions.iter()
+                    .find(|(_, functions)| functions.contains(&function_id))
+                    .map(|(mid, _)| *mid)
+                    .expect("Every function should belong to a module"),
+                name: construction.name,
+                signature: construction.signature,
+                body: construction.body,
+                ssa_registry: construction.ssa_registry,
+                mutual_group_id: None, // Filled by DependencyOrderPass
+                is_native: construction.is_native,
+            };
+            program.functions.insert(function_id, theorem_function);
+        }
+
+        // Run analysis passes
+        eprintln!("Running DependencyOrderPass...");
+        DependencyOrderPass::run(&mut program);
+        eprintln!("Running ImportCollectionPass...");
+        ImportCollectionPass::run(&mut program);
+        eprintln!("Analysis passes complete!");
+
+        program
     }
 }
 

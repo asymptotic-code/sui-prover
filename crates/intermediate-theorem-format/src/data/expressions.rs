@@ -143,4 +143,41 @@ pub enum VectorOp {
     Swap,
 }
 
+impl Expression {
+    /// Extract function ID if this is a Call expression
+    pub fn called_function(&self) -> Option<TheoremFunctionID> {
+        match self {
+            Expression::Call { function, .. } => Some(*function),
+            _ => None,
+        }
+    }
+
+    /// Extract struct ID if this is a Pack or Unpack expression
+    pub fn struct_reference(&self) -> Option<TheoremStructID> {
+        match self {
+            Expression::Pack { struct_id, .. }
+            | Expression::Unpack { struct_id, .. }
+            | Expression::UnpackAll { struct_id, .. } => Some(*struct_id),
+            _ => None,
+        }
+    }
+
+    /// Collect all struct IDs from types in this expression
+    pub fn collect_type_struct_ids(&self) -> Vec<TheoremStructID> {
+        let mut result = Vec::new();
+        match self {
+            Expression::Cast { target_type, .. } => {
+                result.extend(target_type.collect_struct_ids());
+            }
+            Expression::Call { type_args, .. } => {
+                for ty in type_args {
+                    result.extend(ty.collect_struct_ids());
+                }
+            }
+            _ => {}
+        }
+        result
+    }
+}
+
 

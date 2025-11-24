@@ -6,7 +6,6 @@
 //! Takes TheoremProgram and renders to Lean files.
 //! ZERO logic, pure rendering.
 
-use intermediate_theorem_format::TranslationPipeline;
 use crate::renderer::ProgramRenderer;
 use crate::runtime::run_lake_build;
 use crate::lemma::LemmaFileGenerator;
@@ -22,8 +21,7 @@ pub async fn run_backend(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     // Run translation pipeline
-    let pipeline = TranslationPipeline::new(env);
-    let program = pipeline.run(targets);
+    let program = stackless_to_intermediate::translate_program(env, targets);
 
     // Clear output directory if it exists
     if output_dir.exists() {

@@ -8,8 +8,9 @@
 //! that responsibility belongs to backend crates (move-prover-lean-backend, etc.).
 
 mod data;
-pub mod translation;
 pub mod analysis;
+mod construction;
+mod lazy_builder;
 
 // Public API exports
 pub use analysis::DependencyOrderPass;
@@ -27,7 +28,7 @@ pub use data::structure::{TheoremStruct, TheoremField};
 pub use data::functions::{TheoremFunction, FunctionSignature, Parameter, LoopVariable};
 
 // Statement definitions (from data/statements.rs)
-pub use data::statements::{Statement, PhiVariable};
+pub use data::statements::{Statement, PhiVariable, LoopCondition, StatementIter, ExpressionIter};
 
 // Type definitions (from data/types.rs)
 pub use data::types::{TheoremType, TempId};
@@ -38,5 +39,8 @@ pub use data::expressions::{Expression, BinOp, UnOp, CallConvention, VectorOp, C
 // Variable registry (from data/variables.rs)
 pub use data::variables::VariableRegistry;
 
-// Translation pipeline (from translation/mod.rs)
-pub use translation::{ProgramBuilder, FunctionTranslator, TranslationPipeline};
+// Construction types (for building IR)
+pub use construction::{FunctionConstruction, ModuleConstruction, StructConstruction};
+
+// Lazy builder (for ID allocation during construction)
+pub use lazy_builder::LazyIdBuilder;

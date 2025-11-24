@@ -7,5 +7,7 @@
 //! that operate on the complete TheoremProgram IR.
 
 mod dependency_order;
+mod import_collection;
 
 pub use dependency_order::DependencyOrderPass;
+pub use import_collection::ImportCollectionPass;

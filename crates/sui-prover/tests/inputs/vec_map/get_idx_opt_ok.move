@@ -13,4 +13,5 @@ fun bar_spec(m: &mut vec_map::VecMap<u64, u8>) {
   requires(!m.contains(&10));
   foo(m);
   ensures(m.get(&10) == 0);
+  ensures(m.get_idx_opt(&10) == option::some(0));
 }

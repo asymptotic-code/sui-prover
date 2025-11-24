@@ -53,17 +53,22 @@ impl FunctionRenderer {
         }
 
         // Use signature return type (it's always correct - no inference needed)
-        let return_type = self.compute_return_type_string(&func.signature.return_types, &program.name_manager);
+        let return_type = self.compute_return_type(&func.signature.return_types);
 
         // All functions return ProgramState-wrapped values
         // But don't double-wrap if already wrapped
         writer.emit(" : ");
-        if return_type.starts_with("ProgramState ") || return_type.starts_with("(ProgramState ") {
-            writer.emit(&return_type);
-        } else {
-            writer.emit("(ProgramState ");
-            writer.emit(&return_type);
-            writer.emit(")");
+        match &return_type {
+            intermediate_theorem_format::TheoremType::ProgramState(_) => {
+                // Already wrapped, just render it
+                self.type_renderer.render(&return_type, writer);
+            }
+            _ => {
+                // Not wrapped yet, wrap it
+                writer.emit("(ProgramState ");
+                self.type_renderer.render(&return_type, writer);
+                writer.emit(")");
+            }
         }
         writer.emit(" :=\n");
 
@@ -81,24 +86,16 @@ impl FunctionRenderer {
         writer.emit("\n");
     }
 
-    /// Helper to compute return type string from signature return types
-    fn compute_return_type_string<'a>(&self, return_types: &[intermediate_theorem_format::TheoremType], name_manager: &'a intermediate_theorem_format::NameManager) -> String {
+    /// Helper to compute return type from signature return types
+    fn compute_return_type(&self, return_types: &[intermediate_theorem_format::TheoremType]) -> intermediate_theorem_format::TheoremType {
+        use intermediate_theorem_format::TheoremType;
+
         if return_types.is_empty() {
-            "Unit".to_string()
+            TheoremType::Tuple(vec![])
         } else if return_types.len() == 1 {
-            let writer = LeanWriter::new(name_manager);
-            self.type_renderer.render(&return_types[0], &writer);
-            writer.extract_result()
+            return_types[0].clone()
         } else {
-            let types = return_types.iter()
-                .map(|t| {
-                    let writer = LeanWriter::new(name_manager);
-                    self.type_renderer.render(t, &writer);
-                    writer.extract_result()
-                })
-                .collect::<Vec<_>>()
-                .join(" × ");
-            format!("({})", types)
+            TheoremType::Tuple(return_types.to_vec())
         }
     }
 }
