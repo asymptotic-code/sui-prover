@@ -90,7 +90,7 @@ pub fn build_model_with_target(
         ));
     }
 
-    let package_targets = PackageTargets::new(&model, Default::default(), false);
+    let package_targets = PackageTargets::new(&model, Default::default(), true);
     let mut targets = FunctionTargetsHolder::new(
         Default::default(),
         &package_targets,

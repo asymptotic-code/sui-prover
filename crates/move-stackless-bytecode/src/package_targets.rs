@@ -37,11 +37,11 @@ pub struct PackageTargets {
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
-    ci_mode: bool,
+    allow_focus_attr: bool,
 }
 
 impl PackageTargets {
-    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions, ci_mode: bool) -> Self {
+    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions, allow_focus_attr: bool) -> Self {
         let mut s = Self {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
@@ -58,7 +58,7 @@ impl PackageTargets {
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
-            ci_mode,
+            allow_focus_attr,
         };
         s.collect_targets(env, filter);
         s
@@ -396,7 +396,7 @@ impl PackageTargets {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             } else {
                 if *focus {
-                    if self.ci_mode {
+                    if !self.allow_focus_attr {
                         env.diag(
                             Severity::Error,
                             &func_env.get_loc(),

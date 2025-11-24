@@ -81,7 +81,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     // TODO: delete duplicate diagnostics reporting
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let targets = PackageTargets::new(&env, options.filter.clone(), options.prover.ci);
+    let targets = PackageTargets::new(&env, options.filter.clone(), !options.prover.ci);
 
     // Until this point, prover and docgen have same code. Here we part ways.
     if options.run_docgen {

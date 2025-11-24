@@ -187,7 +187,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Initialize and print function targets
         let mut text = String::new();
-        let package_targets = PackageTargets::new(&env, Default::default(), false);
+        let package_targets = PackageTargets::new(&env, Default::default(), true);
         let mut targets =
             FunctionTargetsHolder::new(options, &package_targets, FunctionHolderTarget::All);
         for module_env in env.get_modules() {

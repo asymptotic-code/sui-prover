@@ -65,7 +65,7 @@ pub async fn run_prover_function_mode<W: WriteColor>(
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
 
-    let package_targets = PackageTargets::new(&env, Default::default(), options.prover.ci);
+    let package_targets = PackageTargets::new(&env, Default::default(), !options.prover.ci);
     for target in package_targets.target_specs() {
         env.cleanup();
 

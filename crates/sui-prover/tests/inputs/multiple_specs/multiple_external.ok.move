@@ -32,7 +32,7 @@ module 0x42::bar_specs {
   }
 }
 
-#[spec_only(explicit_spec_module = 0x42::foo_specs, explicit_spec_module = 0x42::bar_specs)]
+#[spec_only(include_module = 0x42::foo_specs, include_module = 0x42::bar_specs)]
 module 0x42::foobar_specs_1 {
   use prover::prover::ensures;
   use 0x42::fb::foobar;
@@ -44,7 +44,7 @@ module 0x42::foobar_specs_1 {
   }
 }
 
-#[spec_only(explicit_spec = 0x42::foo_specs::foo_spec, explicit_spec = 0x42::bar_specs::bar_spec)]
+#[spec_only(include = 0x42::foo_specs::foo_spec, include = 0x42::bar_specs::bar_spec)]
 module 0x42::foobar_specs_2 {
   use prover::prover::ensures;
   use 0x42::fb::foobar;

@@ -188,7 +188,7 @@ pub async fn execute(
     if general_config.stats {
         function_stats::display_function_stats(
             &model,
-            &PackageTargets::new(&model, filter.clone(), general_config.ci),
+            &PackageTargets::new(&model, filter.clone(), !general_config.ci),
         );
         return Ok(());
     }
