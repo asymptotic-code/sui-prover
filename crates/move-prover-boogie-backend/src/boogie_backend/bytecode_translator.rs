@@ -2547,11 +2547,7 @@ impl<'env> FunctionTranslator<'env> {
                 if qt.is_find_or_find_index() {
                     has_find = true;
                 }
-                if *qt == QuantifierType::Count
-                    || *qt == QuantifierType::CountRange
-                    || *qt == QuantifierType::SumMap
-                    || *qt == QuantifierType::SumMapRange
-                {
+                if qt.requires_sum() {
                     has_quantifier_sum_temp_vec = true;
                 }
             }

@@ -197,6 +197,16 @@ impl QuantifierType {
                 | QuantifierType::FindIndexRange
         )
     }
+
+    pub fn requires_sum(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::SumMap
+                | QuantifierType::SumMapRange
+                | QuantifierType::Count
+                | QuantifierType::CountRange
+        )
+    }
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
