@@ -20,6 +20,7 @@ use move_stackless_bytecode::{
     memory_instrumentation::MemoryInstrumentationProcessor,
     mut_ref_instrumentation::MutRefInstrumenter,
     options::ProverOptions,
+    package_targets::PackageTargets,
     reaching_def_analysis::ReachingDefProcessor,
 };
 use regex::Regex;
@@ -186,8 +187,9 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
 
         // Initialize and print function targets
         let mut text = String::new();
+        let package_targets = PackageTargets::new(&env, Default::default(), true);
         let mut targets =
-            FunctionTargetsHolder::new(options, Default::default(), FunctionHolderTarget::None);
+            FunctionTargetsHolder::new(options, &package_targets, FunctionHolderTarget::All);
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
                 targets.add_target(&func_env);
