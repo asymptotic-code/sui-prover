@@ -95,8 +95,10 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         };
     }
 
-    // Check correct backend versions.
-    options.backend.check_tool_versions()?;
+    if options.remote.is_none() {
+        // Check correct backend versions.
+        options.backend.check_tool_versions()?;
+    }
 
     // Check Filter Correctness
     if let Some(err) = options.filter.check_filter_correctness(env) {
