@@ -20,7 +20,7 @@ module 0x42::foo_specs {
   }
 }
 
-#[spec_only(include_module = 0x42::foo_specs)]
+#[spec_only(include = 0x42::foo_specs)]
 module 0x42::bar_specs_double_foo_imported_module {
   use prover::prover::ensures;
   use 0x42::fb::{foo, bar};

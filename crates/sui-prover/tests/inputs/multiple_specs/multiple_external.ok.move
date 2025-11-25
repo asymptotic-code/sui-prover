@@ -32,7 +32,7 @@ module 0x42::bar_specs {
   }
 }
 
-#[spec_only(include_module = 0x42::foo_specs, include_module = 0x42::bar_specs)]
+#[spec_only(include = 0x42::foo_specs, include = 0x42::bar_specs)]
 module 0x42::foobar_specs_1 {
   use prover::prover::ensures;
   use 0x42::fb::foobar;
