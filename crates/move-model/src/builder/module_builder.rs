@@ -88,6 +88,7 @@ impl<'env, 'translator> ModuleBuilder<'env, 'translator> {
         self.populate_env_from_result(
             loc,
             attributes,
+            module_def.attributes,
             compiled_module,
             source_map,
             &function_infos,
@@ -516,6 +517,7 @@ impl ModuleBuilder<'_, '_> {
         &mut self,
         loc: Loc,
         attributes: Vec<Attribute>,
+        toplevel_attributes: EA::Attributes,
         module: CompiledModule,
         source_map: SourceMap,
         function_infos: &UniqueMap<PA::FunctionName, FunctionInfo>,
@@ -657,6 +659,7 @@ ot in AST",
         self.parent.env.add(
             loc,
             attributes,
+            toplevel_attributes,
             module,
             source_map,
             named_constants,
