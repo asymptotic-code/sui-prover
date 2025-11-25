@@ -69,7 +69,7 @@ use crate::boogie_backend::{
         boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
         FunctionTranslationStyle, TypeIdentToken,
     },
-    options::{BoogieFileMode, BoogieOptions},
+    options::BoogieOptions,
     spec_translator::SpecTranslator,
 };
 
@@ -387,9 +387,7 @@ impl<'env> BoogieTranslator<'env> {
                         }
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All
-                        {
+                        if !self.options.spec_no_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -413,9 +411,7 @@ impl<'env> BoogieTranslator<'env> {
                         }
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All
-                        {
+                        if !self.options.spec_no_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -518,18 +514,14 @@ impl<'env> BoogieTranslator<'env> {
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
-        if self.options.boogie_file_mode == BoogieFileMode::All
-            || self.targets.is_verified_spec(&fun_env.get_qualified_id())
-        {
+        if self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-        if !self.options.spec_no_abort_check_only
-            && self.options.boogie_file_mode != BoogieFileMode::All
-        {
+        if !self.options.spec_no_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }

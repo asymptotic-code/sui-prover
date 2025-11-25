@@ -133,7 +133,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
             if (targets.is_verified_spec(&fun_env.get_qualified_id())
-                || targets.is_spec(&fun_env.get_qualified_id()) && !targets.has_target_mode())
+                || targets.is_spec(&fun_env.get_qualified_id()))
                 && Self::is_within_verification_scope(fun_env, &targets)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
