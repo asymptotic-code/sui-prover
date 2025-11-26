@@ -2532,14 +2532,24 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn create_quantifiers_temp_vars(&self) {
+        let mut has_find = false;
+        let mut has_quantifier_sum_temp_vec = false;
         for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
                 if qt.is_find_or_find_index() {
-                    emitln!(self.parent.writer, "var $find_i: int;");
-                    emitln!(self.parent.writer, "var $find_exists: bool;");
-                    return;
+                    has_find = true;
+                }
+                if qt.requires_sum() {
+                    has_quantifier_sum_temp_vec = true;
                 }
             }
+        }
+        if has_find {
+            emitln!(self.parent.writer, "var $find_i: int;");
+            emitln!(self.parent.writer, "var $find_exists: bool;");
+        }
+        if has_quantifier_sum_temp_vec {
+            emitln!(self.parent.writer, "var $quantifier_sum_temp_vec: Vec int;");
         }
     }
 
@@ -4682,6 +4692,30 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "} else {");
                                 emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
                                 emitln!(self.writer(), "}");
+                            }
+                            QuantifierType::Count => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::CountRange => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) == (if {}({}) then 1 else 0));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::SumMap => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::SumMapRange => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
                             }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }

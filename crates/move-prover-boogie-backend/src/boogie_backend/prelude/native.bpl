@@ -406,6 +406,12 @@ axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
 
+// equal vectors have equal sums over the same range
+axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  $IsEqual'vec{{S}}'(u, v) &&
+   0 <= from && from <= to && to <= LenVec(u) ==>
+   $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
 {%- else -%}
 
 // the sum over an empty range is zero
@@ -429,6 +435,12 @@ axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
+
+// equal vectors have equal sums over the same range
+axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  $IsEqual'vec{{S}}'(u, v) &&
+   0 <= from && from <= to && to <= LenVec(u) ==>
+   $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
 
 {%- endif %}
 
