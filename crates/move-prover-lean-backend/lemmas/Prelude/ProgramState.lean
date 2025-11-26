@@ -84,15 +84,17 @@ theorem aborted_eq_iff {α : Type} (m : ProgramState α) (n : Nat) :
 end ProgramState
 
 -- While loop combinator for ProgramState monad
--- Takes a condition function, body function, and initial loop state
+-- Takes a condition function that receives current state,
+-- a body function that receives and returns state,
+-- and initial loop state
 -- Returns the final loop state after the condition becomes false
 partial def whileLoop {α : Type}
-  (cond : Unit → ProgramState Bool)
-  (body : Unit → ProgramState α)
+  (cond : α → ProgramState Bool)
+  (body : α → ProgramState α)
   (init : α) : ProgramState α := do
-  let c ← cond ()
+  let c ← cond init
   if c then
-    let state' ← body ()
+    let state' ← body init
     whileLoop cond body state'
   else
     pure init

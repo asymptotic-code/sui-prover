@@ -9,24 +9,12 @@ use crate::{package_utils, translation::function_translator};
 use intermediate_theorem_format::{
     FunctionConstruction, FunctionSignature, LazyIdBuilder, ModuleConstruction, Parameter,
     StructConstruction, StructNames, TheoremField, TheoremFunctionID, TheoremModuleID,
-    TheoremStructID, TheoremType, VariableRegistry, Statement,
+    TheoremStructID, TheoremType, VariableRegistry,
 };
 use move_model::model::{
     DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, QualifiedId,
 };
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant};
-
-/// Count total phi variables in a statement tree
-fn count_phi_vars_in_body(stmt: &Statement) -> usize {
-    match stmt {
-        Statement::Sequence(stmts) => stmts.iter().map(|s| count_phi_vars_in_body(s)).sum(),
-        Statement::If { then_branch, else_branch, phi_vars, .. } => {
-            phi_vars.len() + count_phi_vars_in_body(then_branch) + count_phi_vars_in_body(else_branch)
-        }
-        Statement::While { body, .. } => count_phi_vars_in_body(body),
-        _ => 0,
-    }
-}
 
 /// Builds the complete program IR structure
 pub struct ProgramBuilder<'env> {
@@ -44,6 +32,13 @@ impl<'env> ProgramBuilder<'env> {
 
     pub fn env(&self) -> &GlobalEnv {
         self.env
+    }
+
+    /// Check if a function is native (has no bytecode implementation)
+    pub fn is_function_native(&self, module_id: move_model::model::ModuleId, fun_id: FunId) -> bool {
+        let module_env = self.env.get_module(module_id);
+        let fun_env = module_env.get_function(fun_id);
+        fun_env.is_native()
     }
 
     /// Get or create a module ID, adding the module if it doesn't exist
@@ -205,12 +200,9 @@ impl<'env> ProgramBuilder<'env> {
                 .display(self.env.symbol_pool())
                 .to_string();
 
+            eprintln!("PROGRAM_BUILDER: Translating function '{}'...", func_env.get_name().display(self.env.symbol_pool()));
             let mut registry = VariableRegistry::new();
             let body = function_translator::translate_function(self, &target, &mut registry, &parameters);
-
-            // Debug: Count phi variables before storing
-            let phi_count = count_phi_vars_in_body(&body);
-            eprintln!("PROGRAM_BUILDER: Storing function '{}' with {} phi variables", func_env.get_name().display(self.env.symbol_pool()), phi_count);
 
             let construction = FunctionConstruction {
                 name,

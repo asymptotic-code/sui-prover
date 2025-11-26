@@ -111,7 +111,7 @@ pub fn translate_operation(
             let qualified_id = module_id.qualified(*struct_id);
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
-            Some(Expression::Unpack {
+            Some(Expression::FieldAccess {
                 struct_id: struct_id_ir,
                 field_index: *field_idx,
                 operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
@@ -129,7 +129,7 @@ pub fn translate_operation(
             // Get or create struct ID
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
-            Some(Expression::Unpack {
+            Some(Expression::FieldAccess {
                 struct_id: struct_id_ir,
                 field_index: *field_index,
                 operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
@@ -155,11 +155,18 @@ pub fn translate_operation(
                 .map(|ty| builder.convert_type(ty))
                 .collect();
 
+            // Native functions are pure (don't return ProgramState), all others are monadic
+            let convention = if builder.is_function_native(*module_id, *fun_id) {
+                CallConvention::Pure
+            } else {
+                CallConvention::Monadic
+            };
+
             Some(Expression::Call {
                 function: function_id,
                 args,
                 type_args: type_args_ir,
-                convention: CallConvention::Monadic,
+                convention,
             })
         }
 

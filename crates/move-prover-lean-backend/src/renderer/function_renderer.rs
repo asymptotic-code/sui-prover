@@ -27,12 +27,24 @@ impl FunctionRenderer {
         writer.emit("partial def ");
         writer.emit(&escaped_name);
 
-        // Render type parameters (no typeclass constraints needed - Move doesn't support generic equality)
+        // Render type parameters with their constraints
+        // In Move's spec language, all types support equality and have default values
+        // So we add BEq and Inhabited constraints to all type parameters
         if !func.signature.type_params.is_empty() {
             for tp in &func.signature.type_params {
                 writer.emit(" (");
                 writer.emit(tp);
                 writer.emit(" : Type)");
+
+                // Add BEq for equality comparisons (used in spec contexts)
+                writer.emit(" [BEq ");
+                writer.emit(tp);
+                writer.emit("]");
+
+                // Add Inhabited for fresh() calls and default values
+                writer.emit(" [Inhabited ");
+                writer.emit(tp);
+                writer.emit("]");
             }
         }
 
@@ -76,6 +88,7 @@ impl FunctionRenderer {
         // Pass return type to help with abort type inference
         // All functions return ProgramState, so use 'do' notation
         writer.emit("  do\n");
+
         let mut stmt_renderer = StatementRenderer::with_return_type(return_type.clone());
         // Start with 2 levels of indentation (inside function's do-block)
         writer.indent();

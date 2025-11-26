@@ -31,7 +31,7 @@ pub fn translate(
     match &ctx.code[offset as usize] {
         // Simple assignment
         Bytecode::Assign(_, dest, src, _) => {
-            register_temp(*dest, ctx.registry);
+            register_temp(*dest, &ctx.registry);
             make_let(
                 vec![*dest as TempId],
                 expression_translator::make_temporary(*src),
@@ -41,7 +41,7 @@ pub fn translate(
 
         // Load constant
         Bytecode::Load(_, dest, constant) => {
-            register_temp(*dest, ctx.registry);
+            register_temp(*dest, &ctx.registry);
             make_let(
                 vec![*dest as TempId],
                 expression_translator::make_constant(constant),
@@ -88,9 +88,9 @@ fn translate_call(
     srcs: &[usize],
     offset: CodeOffset,
 ) -> Statement {
-    // Register all destination temps
+    // Verify all destination temps are registered
     for &dest in dests {
-        register_temp(dest, ctx.registry);
+        register_temp(dest, &ctx.registry);
     }
 
     match operation {
@@ -105,7 +105,7 @@ fn translate_call(
 
             make_let(
                 dests.iter().map(|&d| d as TempId).collect(),
-                Expression::UnpackAll {
+                Expression::Unpack {
                     struct_id: struct_id_ir,
                     operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
                 },
@@ -125,7 +125,7 @@ fn translate_call(
 
             make_let(
                 dests.iter().map(|&d| d as TempId).collect(),
-                Expression::UnpackAll {
+                Expression::Unpack {
                     struct_id: struct_id_ir,
                     operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
                 },
@@ -333,9 +333,14 @@ fn make_let(
                 .cloned()
                 .unwrap();
 
-            // If the operation is a function call, wrap result type in ProgramState
-            if matches!(operation, Expression::Call { .. }) {
-                base_type.wrap_in_monad()
+            // If the operation is a monadic function call, wrap result type in ProgramState
+            // Pure calls (native functions) don't need wrapping
+            if let Expression::Call { convention, .. } = &operation {
+                if *convention == intermediate_theorem_format::CallConvention::Monadic {
+                    base_type.wrap_in_monad()
+                } else {
+                    base_type
+                }
             } else {
                 base_type
             }
@@ -348,10 +353,15 @@ fn make_let(
     }
 }
 
-/// Register a temp in the SSA registry
-fn register_temp(temp: usize, registry: &mut VariableRegistry) {
+/// Ensure a temp is registered in the SSA registry
+/// All bytecode temps should already be registered by populate_types
+fn register_temp(temp: usize, registry: &VariableRegistry) {
     let temp_id = temp as TempId;
-    if registry.get_name(temp_id).is_none() {
-        registry.set_name(temp_id, format!("t{}", temp));
-    }
+    // All bytecode temps should be pre-registered by populate_types
+    // If not, it's a bug in the translation pipeline
+    debug_assert!(
+        registry.get_name(temp_id).is_some() || registry.has_bytecode_temp(temp_id),
+        "BUG: temp {} not registered - populate_types should have registered all bytecode temps",
+        temp
+    );
 }

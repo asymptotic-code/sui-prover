@@ -1,62 +1,23 @@
-use crate::{CallConvention, ConstantValue, Expression, LoopVariable, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
+use crate::{CallConvention, ConstantValue, Expression, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
 use std::mem;
 
-/// Phi variable for merging values from control flow branches
-#[derive(Debug, Clone)]
-pub struct PhiVariable {
-    /// The variable that receives the merged value
-    pub result: TempId,
-    /// Value from the then branch
-    pub then_value: Expression,
-    /// Value from the else branch
-    pub else_value: Expression,
-}
-
-/// Loop condition with recomputation
-#[derive(Debug, Clone)]
-pub struct LoopCondition {
-    /// Statements that recompute values needed for the loop condition
-    pub recompute: Box<Statement>,
-    /// The actual condition variable
-    pub condition_var: TempId,
-}
-
 /// Structured statement (high-level control flow)
+///
+/// NOTE: If and While are now expressions (Expression::IfExpr, Expression::WhileExpr).
+/// Statement-level control flow only exists for side-effect-only branches (rare).
 #[derive(Debug, Clone)]
 pub enum Statement {
     /// Sequence of statements
     Sequence(Vec<Statement>),
 
     /// Assignment: let var := expr (or let (var1, var2, ...) := expr for tuples)
+    /// This is the primary way to bind values, including if/while expressions:
+    ///   let (x, y) := if cond then (a, b) else (c, d)
+    ///   let (x, y) := while cond { ... } with initial (a, b)
     Let {
         results: Vec<TempId>,
         operation: Expression,
-        result_types: Vec<TheoremType>, // One type per result
-    },
-
-    /// Conditional: if cond then body1 else body2
-    /// If phi_vars is non-empty, this is a value-producing if-expression.
-    /// Renders as: let (phi1, phi2, ...) := if cond then (val1, val2, ...) else (val3, val4, ...)
-    /// If phi_vars is empty, this is a statement-level if for control flow.
-    If {
-        condition: Expression,
-        then_branch: Box<Statement>,
-        else_branch: Box<Statement>,
-        /// Phi variables that merge values from both branches (empty for statement-level if)
-        phi_vars: Vec<PhiVariable>,
-    },
-
-    /// While loop: while cond do body
-    ///
-    /// Loop-carried variables are represented with proper SSA phi-nodes.
-    /// Each LoopVariable captures the SSA values flowing through the loop.
-    While {
-        /// Loop-carried variables with phi-node information
-        loop_vars: Vec<LoopVariable>,
-        /// The loop condition with recomputation statements
-        condition: LoopCondition,
-        /// Loop body
-        body: Box<Statement>,
+        result_types: Vec<TheoremType>,
     },
 
     /// Return from function
@@ -97,6 +58,7 @@ impl Default for Statement {
     }
 }
 
+/// Traverse child statements (only Sequence has children now)
 #[macro_export]
 macro_rules! traverse_statement {
     ($target:expr, ($($mutability:tt)*), $action:expr) => {
@@ -106,34 +68,20 @@ macro_rules! traverse_statement {
                     $action(statement);
                 }
             }
-            Statement::If { then_branch, else_branch, .. } => {
-                $action($($mutability)* **then_branch);
-                $action($($mutability)* **else_branch);
-            }
-            Statement::While { condition: LoopCondition { recompute, .. }, body, .. } => {
-                $action($($mutability)* **recompute);
-                $action($($mutability)* **body);
-            }
             _ => {}
         }
     };
 }
 
+/// Traverse expressions in a statement (including nested in Let operations)
 macro_rules! traverse_expression {
     ($target:expr, ($($ref_pattern:tt)*), ($($mutability:tt)*), $recurse:expr, $action:expr) => {
-        // First: Recurse to child statements (direct call, no closure!)
+        // First: Recurse to child statements
         traverse_statement!($target, ($($mutability)*), $recurse);
 
         // Second: Extract expressions from current statement
         match $target {
             Statement::Let { $($ref_pattern)* operation, .. } => $action(operation),
-            Statement::If { $($ref_pattern)* condition, $($ref_pattern)* phi_vars, .. } => {
-                $action(condition);
-                for phi in phi_vars {
-                    $action($($mutability)* phi.then_value);
-                    $action($($mutability)* phi.else_value);
-                }
-            }
             Statement::Return { $($ref_pattern)* values } => {
                 for expr in values {
                     $action(expr);
@@ -163,8 +111,9 @@ impl Statement {
     }
 
     /// Map over the statement tree, transforming each statement (consuming)
-    pub fn map<F: Fn(Statement) -> Statement>(mut self, f: F) -> Statement {
-        traverse_statement!(&mut self, (&mut), |child: &mut Statement| *child = f(mem::take(child)));
+    /// Applies f to children first (post-order), then to self.
+    pub fn map<F: Fn(Statement) -> Statement + Copy>(mut self, f: F) -> Statement {
+        traverse_statement!(&mut self, (&mut), |child: &mut Statement| *child = mem::take(child).map(f));
         f(self)
     }
 
@@ -196,31 +145,153 @@ impl Statement {
         }
     }
 
-    /// Get all function calls
+    /// Get all function calls (recursively including nested blocks)
     pub fn calls(&self) -> impl Iterator<Item = TheoremFunctionID> + '_ {
-        self.iter_expressions()
-            .filter_map(|expr| expr.called_function())
+        self.collect_all_calls().into_iter()
+    }
+
+    /// Recursively collect all function calls, including those in nested IfExpr/WhileExpr blocks
+    fn collect_all_calls(&self) -> Vec<TheoremFunctionID> {
+        let mut calls = Vec::new();
+        self.collect_calls_recursive(&mut calls);
+        calls
+    }
+
+    /// Helper to recursively collect calls
+    fn collect_calls_recursive(&self, calls: &mut Vec<TheoremFunctionID>) {
+        match self {
+            Statement::Sequence(stmts) => {
+                for s in stmts {
+                    s.collect_calls_recursive(calls);
+                }
+            }
+            Statement::Let { operation, .. } => {
+                Self::collect_calls_from_expr(operation, calls);
+            }
+            Statement::Return { values } => {
+                for v in values {
+                    Self::collect_calls_from_expr(v, calls);
+                }
+            }
+            Statement::Abort { code } => {
+                Self::collect_calls_from_expr(code, calls);
+            }
+            Statement::UpdateField { target, new_value, .. } => {
+                Self::collect_calls_from_expr(target, calls);
+                Self::collect_calls_from_expr(new_value, calls);
+            }
+            Statement::UpdateVectorElement { target, index, new_value } => {
+                Self::collect_calls_from_expr(target, calls);
+                Self::collect_calls_from_expr(index, calls);
+                Self::collect_calls_from_expr(new_value, calls);
+            }
+            Statement::Requires { condition } | Statement::Ensures { condition } => {
+                Self::collect_calls_from_expr(condition, calls);
+            }
+        }
+    }
+
+    /// Recursively collect calls from an expression
+    fn collect_calls_from_expr(expr: &Expression, calls: &mut Vec<TheoremFunctionID>) {
+        match expr {
+            Expression::Call { function, args, .. } => {
+                calls.push(*function);
+                for arg in args {
+                    Self::collect_calls_from_expr(arg, calls);
+                }
+            }
+            Expression::BinOp { lhs, rhs, .. } => {
+                Self::collect_calls_from_expr(lhs, calls);
+                Self::collect_calls_from_expr(rhs, calls);
+            }
+            Expression::UnOp { operand, .. } => {
+                Self::collect_calls_from_expr(operand, calls);
+            }
+            Expression::Cast { value, .. } => {
+                Self::collect_calls_from_expr(value, calls);
+            }
+            Expression::Pack { fields, .. } => {
+                for f in fields {
+                    Self::collect_calls_from_expr(f, calls);
+                }
+            }
+            Expression::FieldAccess { operand, .. } => {
+                Self::collect_calls_from_expr(operand, calls);
+            }
+            Expression::Unpack { operand, .. } => {
+                Self::collect_calls_from_expr(operand, calls);
+            }
+            Expression::VecOp { operands, .. } => {
+                for o in operands {
+                    Self::collect_calls_from_expr(o, calls);
+                }
+            }
+            Expression::Tuple(exprs) => {
+                for e in exprs {
+                    Self::collect_calls_from_expr(e, calls);
+                }
+            }
+            Expression::IfExpr { condition, then_block, else_block } => {
+                Self::collect_calls_from_expr(condition, calls);
+                // Recurse into block statements
+                for s in &then_block.statements {
+                    s.collect_calls_recursive(calls);
+                }
+                Self::collect_calls_from_expr(&then_block.result, calls);
+                for s in &else_block.statements {
+                    s.collect_calls_recursive(calls);
+                }
+                Self::collect_calls_from_expr(&else_block.result, calls);
+            }
+            Expression::WhileExpr { condition, body, state } => {
+                for s in &condition.statements {
+                    s.collect_calls_recursive(calls);
+                }
+                Self::collect_calls_from_expr(&condition.result, calls);
+                for s in &body.statements {
+                    s.collect_calls_recursive(calls);
+                }
+                Self::collect_calls_from_expr(&body.result, calls);
+                for init in &state.initial {
+                    Self::collect_calls_from_expr(init, calls);
+                }
+            }
+            Expression::Temporary(_) | Expression::Constant(_) => {}
+        }
     }
 
     /// Check if this statement contains any monadic operations
     pub fn is_monadic(&self) -> bool {
+        // Abort statements are inherently monadic
+        if matches!(self, Statement::Abort { .. }) {
+            return true;
+        }
+        // Check if any expression is a monadic call
         self.iter_expressions().any(|expr| {
             matches!(expr, Expression::Call { convention: CallConvention::Monadic, .. })
         })
     }
 
-    /// Check if this statement terminates (contains a Return or Abort)
+    /// Check if this statement terminates (all execution paths lead to Return or Abort)
     pub fn terminates(&self) -> bool {
-        self.iter().any(|stmt| {
-            matches!(stmt, Statement::Return { .. } | Statement::Abort { .. })
-        })
+        match self {
+            // These statements always terminate
+            Statement::Return { .. } | Statement::Abort { .. } => true,
+            // Sequence terminates if any statement in it terminates
+            // (because once we hit a terminator, the rest is unreachable)
+            Statement::Sequence(stmts) => stmts.iter().any(|s| s.terminates()),
+            // Let with IfExpr: terminates if both branches terminate
+            Statement::Let { operation: Expression::IfExpr { then_block, else_block, .. }, .. } => {
+                then_block.terminates() && else_block.terminates()
+            }
+            // All other statements don't terminate
+            _ => false,
+        }
     }
 
-    /// Collect all function call IDs from expressions in this statement
+    /// Collect all function call IDs from expressions in this statement (recursively)
     pub fn collect_function_calls(&self) -> Vec<TheoremFunctionID> {
-        self.iter_expressions()
-            .filter_map(|expr| expr.called_function())
-            .collect()
+        self.collect_all_calls()
     }
 
     /// Collect all struct IDs from pack/unpack expressions in this statement
@@ -299,31 +370,14 @@ impl<'a> Iterator for ExpressionIter<'a> {
 
             // Get next statement and extract its immediate expressions
             let stmt = self.stmt_iter.next()?;
-            match stmt {
-                Statement::Let { operation, .. } => self.expressions.push(operation),
-                Statement::If { condition, phi_vars, .. } => {
-                    self.expressions.push(condition);
-                    for phi in phi_vars {
-                        self.expressions.push(&phi.then_value);
-                        self.expressions.push(&phi.else_value);
-                    }
-                }
-                Statement::Return { values } => self.expressions.extend(values),
-                Statement::Abort { code } => self.expressions.push(code),
-                Statement::UpdateField { target, new_value, .. } => {
-                    self.expressions.push(target);
-                    self.expressions.push(new_value);
-                }
-                Statement::UpdateVectorElement { target, index, new_value } => {
-                    self.expressions.push(target);
-                    self.expressions.push(index);
-                    self.expressions.push(new_value);
-                }
-                Statement::Requires { condition } | Statement::Ensures { condition } => {
-                    self.expressions.push(condition);
-                }
-                _ => {}
-            }
+            let exprs = &mut self.expressions;
+            traverse_expression!(
+                stmt,
+                (ref),
+                (&),
+                |_: &Statement| {},
+                |e| exprs.push(e)
+            );
         }
     }
 }

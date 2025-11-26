@@ -35,8 +35,11 @@ impl ProgramRenderer {
         // Render all functions
         for func in program.functions.values() {
             let writer = LeanWriter::new(&program.name_manager);
+            println!("RENDERER: Rendering function: {} in module {}", func.name, func.module_id);
             self.function_renderer.render(func, program, &writer);
-            output.push_str(&writer.extract_result());
+            let result = writer.extract_result();
+            println!("RENDERER: Function {} rendered ({} chars)", func.name, result.len());
+            output.push_str(&result);
             output.push_str("\n");
         }
 
@@ -53,11 +56,15 @@ impl ProgramRenderer {
     pub fn render_to_directory(&self, program: &TheoremProgram, output_dir: &Path, prelude_imports: &[String]) -> anyhow::Result<()> {
         fs::create_dir_all(output_dir)?;
 
+        println!("RENDERER: Copying native packages...");
         // Copy native package implementations from lemmas directory
         self.copy_native_packages(program, output_dir)?;
+        println!("RENDERER: Native packages copied.");
 
+        println!("RENDERER: Rendering {} modules...", program.modules.len());
         // Render each module
         for (&module_id, module) in &program.modules {
+            println!("RENDERER: Rendering module: {}", module.name);
             let mut module_output = String::new();
 
             module_output.push_str(&format!("-- Module: {}\n\n", module.name));
@@ -76,24 +83,25 @@ impl ProgramRenderer {
                 }
             }
 
-            // If this module has native functions, import the natives file
+            // If this module has native functions AND a natives file exists, import it
             // (except for MoveStdlib which handles natives differently)
             let has_native_functions = program.functions.values()
                 .any(|f| f.module_id == module_id && f.is_native);
             if has_native_functions && &module.package_name != "MoveStdlib" {
                 let namespace_name = Self::capitalize_first(&module.name);
-                module_output.push_str(&format!("import Impls.{}.{}Natives\n", module.package_name, namespace_name));
+                // Check if natives file actually exists before importing it
+                // Note: output_dir is the Impls directory
+                let natives_path = output_dir.join(&module.package_name).join(format!("{}Natives.lean", namespace_name));
+                if natives_path.exists() {
+                    module_output.push_str(&format!("import Impls.{}.{}Natives\n", module.package_name, namespace_name));
+                }
             }
 
             module_output.push('\n');
 
             // Capitalize module name for Lean namespace
             // Avoid conflicts with Lean built-in types/modules
-            let namespace_name = if module.name == "vector" {
-                "MoveVector".to_string()
-            } else {
-                Self::capitalize_first(&module.name)
-            };
+            let namespace_name = Self::module_name_to_namespace(&module.name);
 
             // Open namespace for this module
             module_output.push_str(&format!("namespace {}\n\n", namespace_name));
@@ -130,9 +138,11 @@ impl ProgramRenderer {
                     continue;
                 }
 
+                println!("RENDERER: Rendering function: {} in module {}", func.name, module.name);
                 let writer = LeanWriter::with_module(&program.name_manager, namespace_name.clone());
                 self.function_renderer.render(func, program, &writer);
                 let rendered = writer.extract_result();
+                println!("RENDERER: Function {} rendered ({} chars)", func.name, rendered.len());
                 // Only add non-empty functions to avoid malformed output
                 if !rendered.trim().is_empty() {
                     module_output.push_str(&rendered);
@@ -166,11 +176,7 @@ impl ProgramRenderer {
 
     /// Get module file path from TheoremModule data
     fn get_module_file_path_from_module(&self, module: &intermediate_theorem_format::TheoremModule) -> String {
-        let namespace = if module.name == "vector" {
-            "MoveVector"
-        } else {
-            &Self::capitalize_first(&module.name)
-        };
+        let namespace = Self::module_name_to_namespace(&module.name);
         format!("{}/{}.lean", module.package_name, namespace)
     }
 
@@ -179,12 +185,17 @@ impl ProgramRenderer {
         &self,
         module: &intermediate_theorem_format::TheoremModule,
     ) -> String {
-        let namespace = if module.name == "vector" {
-            "MoveVector".to_string()
-        } else {
-            Self::capitalize_first(&module.name)
-        };
+        let namespace = Self::module_name_to_namespace(&module.name);
         format!("Impls.{}.{}", module.package_name, namespace)
+    }
+
+    /// Convert a Move module name to a Lean namespace name (avoiding built-in conflicts)
+    fn module_name_to_namespace(module_name: &str) -> String {
+        match module_name {
+            "vector" => "MoveVector".to_string(),
+            "option" => "MoveOption".to_string(),
+            _ => Self::capitalize_first(module_name),
+        }
     }
 
     /// Capitalize the first letter of a string (for Lean naming conventions)
@@ -236,17 +247,14 @@ impl ProgramRenderer {
             }
 
             // Determine destination path in output
-            let namespace = if module.name == "vector" {
-                "MoveVector"
-            } else {
-                &Self::capitalize_first(&module.name)
-            };
-            // MoveStdlib goes to package root, all others go to Impls/Package/
+            let namespace = Self::module_name_to_namespace(&module.name);
+            // MoveStdlib goes to package root, all others go to Package/
             // Native files use Natives suffix to avoid overwriting generated files
+            // Note: output_dir is already the Impls directory
             let dest_path = if &module.package_name == "MoveStdlib" {
                 output_dir.join(&module.package_name).join(format!("{}.lean", namespace))
             } else {
-                output_dir.join("Impls").join(&module.package_name).join(format!("{}Natives.lean", namespace))
+                output_dir.join(&module.package_name).join(format!("{}Natives.lean", namespace))
             };
 
             // Create parent directory

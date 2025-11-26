@@ -13,11 +13,15 @@ use tokio::process::Command;
 pub async fn run_lake_build(project_dir: &str) -> Result<String> {
     debug!("running lake build in {}", project_dir);
 
-    let output = Command::new("lake")
-        .arg("build")
-        .current_dir(project_dir)
-        .output()
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        Command::new("lake")
+            .arg("build")
+            .current_dir(project_dir)
+            .output()
+    )
         .await
+        .map_err(|_| anyhow!("lake build timed out after 30 seconds"))?
         .map_err(|e| anyhow!("failed to execute lake: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();

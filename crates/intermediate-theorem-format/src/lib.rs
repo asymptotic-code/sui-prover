@@ -25,19 +25,19 @@ pub use data::{TheoremFunctionID, TheoremModuleID, TheoremStructID};
 pub use data::structure::{TheoremStruct, TheoremField};
 
 // Function definitions (from data/functions.rs)
-pub use data::functions::{TheoremFunction, FunctionSignature, Parameter, LoopVariable};
+pub use data::functions::{TheoremFunction, FunctionSignature, Parameter};
 
 // Statement definitions (from data/statements.rs)
-pub use data::statements::{Statement, PhiVariable, LoopCondition, StatementIter, ExpressionIter};
+pub use data::statements::{Statement, StatementIter, ExpressionIter};
 
 // Type definitions (from data/types.rs)
 pub use data::types::{TheoremType, TempId};
 
 // Expression definitions (from data/expressions.rs)
-pub use data::expressions::{Expression, BinOp, UnOp, CallConvention, VectorOp, ConstantValue};
+pub use data::expressions::{Expression, BinOp, UnOp, CallConvention, VectorOp, ConstantValue, Block, LoopState};
 
 // Variable registry (from data/variables.rs)
-pub use data::variables::VariableRegistry;
+pub use data::variables::{VariableRegistry, TempKind, TempData};
 
 // Construction types (for building IR)
 pub use construction::{FunctionConstruction, ModuleConstruction, StructConstruction};

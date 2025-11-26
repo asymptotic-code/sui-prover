@@ -42,14 +42,19 @@ pub async fn run_backend(
     let prelude_imports = lemma_gen.get_prelude_imports()?;
 
     // Render to Lean in Impls/ directory with module organization
+    println!("BACKEND: Starting render_to_directory...");
     let renderer = ProgramRenderer::new();
     let impls_dir = output_dir.join("Impls");
     renderer.render_to_directory(&program, &impls_dir, &prelude_imports)?;
+    println!("BACKEND: render_to_directory completed.");
 
     // Generate lakefile and manifest
+    println!("BACKEND: Writing lakefile...");
     crate::write_lakefile(output_dir, "sui_prover_output")?;
+    println!("BACKEND: Lakefile written.");
 
     // Run lake build
+    println!("BACKEND: Running lake build...");
     let output_str = output_dir.to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid output path"))?;
 

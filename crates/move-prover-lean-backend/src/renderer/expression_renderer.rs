@@ -362,7 +362,7 @@ impl ExpressionRenderer {
                 writer.emit(")");
             }
 
-            Expression::Unpack { struct_id, field_index, operand } => {
+            Expression::FieldAccess { struct_id, field_index, operand } => {
                 let struct_def = program.structs.get(struct_id)
                     .unwrap_or_else(|| panic!("Missing struct definition for struct ID: {}", struct_id));
                 let struct_name = escape::escape_struct_name(&struct_def.name);
@@ -379,7 +379,7 @@ impl ExpressionRenderer {
                 writer.emit(")");
             }
 
-            Expression::UnpackAll { struct_id, operand } => {
+            Expression::Unpack { struct_id, operand } => {
                 let struct_def = program.structs.get(struct_id)
                     .unwrap_or_else(|| panic!("Missing struct definition for struct ID: {}", struct_id));
                 let struct_name = escape::escape_struct_name(&struct_def.name);
@@ -441,6 +441,36 @@ impl ExpressionRenderer {
                         writer.emit(")");
                     }
                 }
+            }
+
+            // Tuple expression - render as Lean tuple
+            Expression::Tuple(exprs) => {
+                if exprs.is_empty() {
+                    writer.emit("()");
+                } else if exprs.len() == 1 {
+                    self.render(&exprs[0], registry, program, current_module_id, writer);
+                } else {
+                    writer.emit("(");
+                    for (i, e) in exprs.iter().enumerate() {
+                        self.render(e, registry, program, current_module_id, writer);
+                        if i < exprs.len() - 1 {
+                            writer.emit(", ");
+                        }
+                    }
+                    writer.emit(")");
+                }
+            }
+
+            // IfExpr and WhileExpr are handled specially in statement_renderer
+            // They should be bound via Let statements, not rendered as pure expressions
+            Expression::IfExpr { .. } => {
+                // This should be handled by statement_renderer.render_if_expr
+                writer.emit("/* IfExpr should be bound via Let */");
+            }
+
+            Expression::WhileExpr { .. } => {
+                // This should be handled by statement_renderer.render_while_expr
+                writer.emit("/* WhileExpr should be bound via Let */");
             }
         }
     }

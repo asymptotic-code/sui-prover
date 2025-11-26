@@ -37,7 +37,9 @@ pub struct StacklessControlFlowGraph {
     entry_block_id: BlockId,
     blocks: Map<BlockId, Block>,
     backward: bool,
-    ignore_aborts: bool,
+    /// When true, edges to abort handlers from Call instructions are ignored.
+    /// Explicit Abort instructions still go to DUMMY_EXIT.
+    ignore_call_aborts: bool,
 }
 
 const DUMMY_ENTRANCE: BlockId = 0;
@@ -48,12 +50,16 @@ impl StacklessControlFlowGraph {
         Self::new_forward_with_options(code, false)
     }
 
-    pub fn new_forward_with_options(code: &[Bytecode], ignore_aborts: bool) -> Self {
+    /// Create a forward CFG.
+    ///
+    /// If `ignore_call_aborts` is true, edges to abort handlers from Call instructions
+    /// are omitted from the CFG. Explicit Abort instructions still terminate at DUMMY_EXIT.
+    pub fn new_forward_with_options(code: &[Bytecode], ignore_call_aborts: bool) -> Self {
         Self {
             entry_block_id: DUMMY_ENTRANCE,
-            blocks: Self::collect_blocks(code, ignore_aborts),
+            blocks: Self::collect_blocks(code, ignore_call_aborts),
             backward: false,
-            ignore_aborts,
+            ignore_call_aborts,
         }
     }
 
@@ -62,13 +68,17 @@ impl StacklessControlFlowGraph {
     pub fn new_backward(code: &[Bytecode], from_all_blocks: bool) -> Self {
         Self::new_backward_with_options(code, from_all_blocks, false)
     }
-    
+
+    /// Create a backward CFG.
+    ///
+    /// If `ignore_call_aborts` is true, edges to abort handlers from Call instructions
+    /// are omitted from the CFG. Explicit Abort instructions still terminate at DUMMY_EXIT.
     pub fn new_backward_with_options(
         code: &[Bytecode],
         from_all_blocks: bool,
-        ignore_aborts: bool,
+        ignore_call_aborts: bool,
     ) -> Self {
-        let blocks = Self::collect_blocks(code, ignore_aborts);
+        let blocks = Self::collect_blocks(code, ignore_call_aborts);
         let mut block_id_to_predecessors: Map<BlockId, Vec<BlockId>> =
             blocks.keys().map(|block_id| (*block_id, vec![])).collect();
         for (block_id, block) in &blocks {
@@ -103,7 +113,7 @@ impl StacklessControlFlowGraph {
                 })
                 .collect(),
             backward: true,
-            ignore_aborts,
+            ignore_call_aborts,
         }
     }
 
@@ -143,11 +153,11 @@ impl StacklessControlFlowGraph {
             entry_block_id: DUMMY_ENTRANCE,
             blocks,
             backward: false,
-            ignore_aborts: false,
+            ignore_call_aborts: false,
         }
     }
 
-    fn collect_blocks(code: &[Bytecode], ignore_aborts: bool) -> Map<BlockId, Block> {
+    fn collect_blocks(code: &[Bytecode], ignore_call_aborts: bool) -> Map<BlockId, Block> {
         // First go through and collect basic block offsets.
         // Need to do this first in order to handle backwards edges.
         let label_offsets = Bytecode::label_offsets(code);
@@ -176,20 +186,15 @@ impl StacklessControlFlowGraph {
                     co_pc,
                     code,
                     &label_offsets,
-                    ignore_aborts,
+                    ignore_call_aborts,
                 );
                 for successor in successors.iter_mut() {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);
                 }
                 // Add DUMMY_EXIT edge for exit instructions
-                // When ignore_aborts=true, only Ret goes to DUMMY_EXIT
-                let should_add_exit = match &code[co_pc as usize] {
-                    Bytecode::Ret(..) => true,
-                    Bytecode::Abort(..) => !ignore_aborts,
-                    _ => false,
-                };
-                if should_add_exit {
+                // Both Ret and explicit Abort always go to DUMMY_EXIT.
+                if matches!(&code[co_pc as usize], Bytecode::Ret(..) | Bytecode::Abort(..)) {
                     successors.push(DUMMY_EXIT);
                 }
                 let bb = BlockContent::Basic {

@@ -12,19 +12,6 @@ use crate::data::Dependable;
 /// Unique identifier for a function in the program
 pub type TheoremFunctionID = usize;
 
-/// Represents a loop-carried variable with SSA phi-node values.
-#[derive(Debug, Clone)]
-pub struct LoopVariable {
-    /// The SSA value representing this variable within the loop (phi node result)
-    pub phi_result: TempId,
-    /// The SSA value before entering the loop (phi node input from outside)
-    pub initial_value: TempId,
-    /// The SSA value produced by the loop body (phi node input from loop)
-    pub updated_value: TempId,
-    /// The type of this variable
-    pub var_type: TheoremType,
-}
-
 /// Function parameter
 #[derive(Debug, Clone)]
 pub struct Parameter {

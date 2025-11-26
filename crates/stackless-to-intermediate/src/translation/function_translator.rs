@@ -51,44 +51,43 @@ fn populate_types(
 
     for local_idx in 0..local_count {
         let temp_id = local_idx as TempId;
+
+        // Skip if already registered
+        if registry.has_bytecode_temp(temp_id) {
+            continue;
+        }
+
         let move_type = target.get_local_type(local_idx);
         let theorem_type = builder.convert_type(move_type);
-
-        // Set type in registry
-        registry.set_type(temp_id, theorem_type);
 
         // Get the name from FunctionTarget
         let symbol = target.get_local_name(local_idx);
         let compiler_name = symbol.display(builder.env().symbol_pool()).to_string();
 
-        // Set name: for parameters, use the human-readable name from the signature
+        // Determine name: for parameters, use the human-readable name from the signature
         // For other locals, use the compiler-generated name from FunctionTarget
-        if registry.get_name(temp_id).is_none() {
-            let mut name = if local_idx < param_count {
-                // This is a parameter - use the human-readable name from signature
-                parameters.get(local_idx)
-                    .map(|p| p.name.clone())
-                    .unwrap_or_else(|| compiler_name.clone())
-            } else {
-                // This is a local variable - use the compiler name
-                compiler_name
-            };
+        let mut name = if local_idx < param_count {
+            parameters.get(local_idx)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| compiler_name.clone())
+        } else {
+            compiler_name
+        };
 
-            // Sanitize name for Lean: replace invalid characters
-            // Lean identifiers can only contain: a-z A-Z 0-9 _ '
-            // Move uses: $ # in compiler-generated names
-            name = name
-                .replace('$', "_")  // Replace $ with _
-                .replace('#', "_")  // Replace # with _
-                .replace('.', "_"); // Replace . with _ (for fully qualified names)
+        // Sanitize name for Lean: replace invalid characters
+        // Lean identifiers can only contain: a-z A-Z 0-9 _ '
+        // Move uses: $ # in compiler-generated names
+        name = name
+            .replace('$', "_")
+            .replace('#', "_")
+            .replace('.', "_");
 
-            // Remove leading underscore if the name starts with one after sanitization
-            // (Lean allows leading underscores but it's cleaner without)
-            if name.starts_with('_') && name.len() > 1 {
-                name = name[1..].to_string();
-            }
-
-            registry.set_name(temp_id, name);
+        // Remove leading underscore if the name starts with one after sanitization
+        if name.starts_with('_') && name.len() > 1 {
+            name = name[1..].to_string();
         }
+
+        // Register bytecode temp with all metadata at once
+        registry.register_bytecode_temp(temp_id, name, theorem_type);
     }
 }
