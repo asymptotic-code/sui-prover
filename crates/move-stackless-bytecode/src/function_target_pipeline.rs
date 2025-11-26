@@ -203,6 +203,10 @@ impl FunctionTargetsHolder {
         &self.prover_options
     }
 
+    pub fn func_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
+    }
+
     /// Get an iterator for all functions this holder.
     pub fn get_funs(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.targets.keys().cloned()

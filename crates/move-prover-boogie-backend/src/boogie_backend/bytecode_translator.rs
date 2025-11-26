@@ -2633,10 +2633,6 @@ impl<'env> FunctionTranslator<'env> {
             Load(_, _, _) => true,
             Call(_, _, op, _, _) => {
                 match op {
-                    Operation::Function(mid, fid, _) => {
-                        // Allow function calls if they're marked as pure
-                        self.can_callee_be_function(mid, fid)
-                    }
                     Operation::Quantifier(_, _, _, _) => false, // quantifiers not allowed in pure functions yet
                     _ => true,
                 }
@@ -2669,7 +2665,12 @@ impl<'env> FunctionTranslator<'env> {
             Call(_, _, op, _, _) => {
                 if let Operation::Function(mid, fid, _) = op {
                     // Allow function calls if the callee can be emitted as a Boogie function
-                    if !self.can_callee_be_function(mid, fid) {
+                    if !self.can_callee_be_function(mid, fid)
+                        && !self.parent.env.should_be_used_as_func(&mid.qualified(*fid))
+                        && !self
+                            .special_pure_functions_map()
+                            .contains_key(&mid.qualified(*fid))
+                    {
                         panic!(
                             "Function calls should be filtered out before function emission: {}",
                             bytecode
@@ -2700,6 +2701,15 @@ impl<'env> FunctionTranslator<'env> {
             Constant::AddressArray(val) => boogie_address_blob(self.parent.options, val),
             Constant::Vector(val) => boogie_constant_blob(self.parent.options, val),
         }
+    }
+
+    fn special_pure_functions_map(&self) -> BTreeMap<QualifiedId<FunId>, String> {
+        let mut special_funcs = BTreeMap::new();
+        special_funcs.insert(
+            self.parent.env.std_vector_borrow_qid().unwrap(),
+            "ReadVec".to_string(),
+        );
+        special_funcs
     }
 
     /// Generate Boogie pure function body using let/var expression nesting
@@ -2770,8 +2780,10 @@ impl<'env> FunctionTranslator<'env> {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
                         } else if let Function(mid, fid, inst) = op {
+                            let native_fn =
+                                self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
                             // Handle function calls for functions that can be emitted as Boogie functions
-                            if self.can_callee_be_function(mid, fid) {
+                            if self.can_callee_be_function(mid, fid) || native_fn {
                                 let env = fun_target.global_env();
                                 let module_env = env.get_module(*mid);
                                 let callee_env = module_env.get_function(*fid);
@@ -2779,8 +2791,17 @@ impl<'env> FunctionTranslator<'env> {
                                 let fun_name = boogie_function_name(
                                     &callee_env,
                                     inst,
-                                    FunctionTranslationStyle::Pure,
+                                    if native_fn {
+                                        FunctionTranslationStyle::Default
+                                    } else {
+                                        FunctionTranslationStyle::Pure
+                                    },
                                 );
+                                let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                format!("{}({})", fun_name, args)
+                            } else if let Some(fun_name) =
+                                self.special_pure_functions_map().get(&mid.qualified(*fid))
+                            {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else {
@@ -2850,6 +2871,17 @@ impl<'env> FunctionTranslator<'env> {
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
                 VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) | Call(..) => {
+                    match bytecode {
+                        Call(_, _, op, _, _) => {
+                            if let Operation::Function(mid, fid, _) = op {
+                                println!(
+                                        "Function calls should be filtered out before function emission: {}",
+                                        self.parent.env.get_function(mid.qualified(*fid)).get_full_name_str()
+                                    );
+                            }
+                        }
+                        _ => {}
+                    };
                     panic!(
                         "Unsupported bytecode for #[ext(pure)] target: {:?}",
                         bytecode

@@ -5,7 +5,7 @@ module 0x42::quantifiers_complex_usage;
 use prover::prover::{exists, ensures, requires, invariant};
 use prover::vector_iter::map;
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
     if (j < u.length() && i < v.length()) {
         j <= i && u[j] > v[i]
