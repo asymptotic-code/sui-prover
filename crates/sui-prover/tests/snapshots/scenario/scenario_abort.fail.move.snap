@@ -4,9 +4,9 @@ expression: output
 ---
 exiting with verification errors
 error: code should not abort
-   ┌─ tests/inputs/scenario/scenario_abort.fail.move:16:1
+   ┌─ tests/inputs/scenario/scenario_abort.fail.move:13:5
    │
-16 │ }
-   │ ^
+13 │     assert!(false);
+   │     ^^^^^^^^^^^^^^
    │
    =     at tests/inputs/scenario/scenario_abort.fail.move:11: scenario
