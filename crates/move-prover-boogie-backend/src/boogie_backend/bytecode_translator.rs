@@ -2659,6 +2659,7 @@ impl<'env> FunctionTranslator<'env> {
                         // Allow function calls if they're marked as pure
                         self.can_callee_be_function(mid, fid)
                     }
+                    Operation::Quantifier(_, _, _, _) => false, // quantifiers not allowed in pure functions yet
                     _ => true,
                 }
             }
