@@ -330,6 +330,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
             return data; // Do not touch specs
         }
         if !targets.prover_options().enable_conditional_merge_insertion
+            && !self.debug
             && !(targets.is_pure_fun(&func_env.get_qualified_id())
                 && !targets.func_abort_check_mode())
         {
