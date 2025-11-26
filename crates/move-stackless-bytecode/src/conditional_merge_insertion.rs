@@ -29,7 +29,6 @@ use crate::{
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph},
 };
-use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::FunctionEnv;
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
@@ -330,12 +329,10 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         if targets.is_spec(&func_env.get_qualified_id()) {
             return data; // Do not touch specs
         }
-        if func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .is_some()
+        if !targets.prover_options().enable_conditional_merge_insertion
+            && !targets.is_pure_fun(&func_env.get_qualified_id())
         {
-            return data; // Do not touch spec_only
+            return data; // Skip if option not set, but keep for pure
         }
 
         let mut builder = FunctionDataBuilder::new(func_env, data);

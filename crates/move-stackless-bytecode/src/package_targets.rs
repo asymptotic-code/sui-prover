@@ -25,6 +25,7 @@ pub struct PackageTargets {
     target_specs: BTreeSet<QualifiedId<FunId>>,
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
+    pure_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
@@ -45,6 +46,7 @@ impl PackageTargets {
         let mut s = Self {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
+            pure_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
@@ -481,12 +483,18 @@ impl PackageTargets {
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
         {
-            let abort_check = attrs
+            if attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string());
-            if abort_check {
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string())
+            {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
+            }
+            if attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "pure".to_string())
+            {
+                self.pure_functions.insert(func_env.get_qualified_id());
             }
         }
     }
@@ -635,8 +643,8 @@ impl PackageTargets {
         (self.target_specs.len() + self.no_verify_specs.len() - self.system_specs.len()) > 0
     }
 
-    pub fn has_abort_checks(&self) -> bool {
-        !self.abort_check_functions.is_empty()
+    pub fn has_functions_checks(&self) -> bool {
+        !self.abort_check_functions.is_empty() || !self.pure_functions.is_empty()
     }
 
     pub fn ignores_aborts(&self, func_id: &QualifiedId<FunId>) -> bool {
@@ -673,6 +681,10 @@ impl PackageTargets {
 
     pub fn abort_check_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.abort_check_functions
+    }
+
+    pub fn pure_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.pure_functions
     }
 
     pub fn skipped_specs(&self) -> &BTreeMap<QualifiedId<FunId>, String> {

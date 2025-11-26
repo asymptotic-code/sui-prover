@@ -228,7 +228,8 @@ impl QuantifierIteratorAnalysisProcessor {
         let func_env = env.get_function(qid);
         let data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-        if !no_abort_analysis::get_info(data).does_not_abort && !targets.is_abort_check_fun(&qid) {
+        if !no_abort_analysis::get_info(data).does_not_abort && !targets.is_abort_checked_fun(&qid)
+        {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),

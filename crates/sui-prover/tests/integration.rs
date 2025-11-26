@@ -98,7 +98,6 @@ integration-test = "0x9"
                 options.backend.keep_artifacts = true;
 
                 if is_conditionals_test {
-                    options.prover.enable_conditional_merge_insertion = true;
                     options.prover.skip_spec_no_abort = true; // for better extracting of Boogie code
                     options.output_path = Path::new(&options.output_path)
                         .join("conditionals")

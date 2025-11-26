@@ -123,7 +123,7 @@ impl MoveLoopInvariantsProcessor {
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
             if !no_abort_analysis::get_info(inv_data).does_not_abort
-                && !targets.is_abort_check_fun(&qid)
+                && !targets.is_abort_checked_fun(&qid)
             {
                 env.diag(
                     Severity::Error,

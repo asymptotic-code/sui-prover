@@ -24,10 +24,10 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
-        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleId,
+        NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
     },
-    pragmas::{ADDITION_OVERFLOW_UNCHECKED_PRAGMA, PURE_PRAGMA},
+    pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
 };
 use move_stackless_bytecode::{
@@ -51,6 +51,7 @@ use move_stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind, QuantifierType,
     },
+    stackless_control_flow_graph::StacklessControlFlowGraph,
     verification_analysis,
 };
 
@@ -339,7 +340,9 @@ impl<'env> BoogieTranslator<'env> {
                 }
 
                 if self.options.func_abort_check_only
-                    && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                    && self
+                        .targets
+                        .should_generate_abort_check(&fun_env.get_qualified_id())
                 {
                     self.translate_function_no_abort(fun_env);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
@@ -386,8 +389,10 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only {
+                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+                        if !self.options.spec_no_abort_check_only
+                            && !self.options.func_abort_check_only
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -410,8 +415,10 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only {
+                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+                        if !self.options.spec_no_abort_check_only
+                            && !self.options.func_abort_check_only
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -520,10 +527,47 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
-        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-        if !self.options.spec_no_abort_check_only {
+        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+        if !self.options.spec_no_abort_check_only && !self.options.func_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
+    }
+
+    fn eliminate_unreachable_bytecode(code: Vec<Bytecode>) -> Vec<Bytecode> {
+        if code.is_empty() {
+            return code;
+        }
+
+        let cfg = StacklessControlFlowGraph::new_forward(&code);
+        let mut reachable_blocks = BTreeSet::new();
+        let mut worklist = vec![cfg.entry_block()];
+
+        while let Some(block_id) = worklist.pop() {
+            if !reachable_blocks.insert(block_id) {
+                continue;
+            }
+
+            for successor in cfg.successors(block_id) {
+                if !reachable_blocks.contains(successor) {
+                    worklist.push(*successor);
+                }
+            }
+        }
+
+        let mut reachable_offsets = BTreeSet::new();
+        for block_id in reachable_blocks {
+            if let Some(instr_iter) = cfg.instr_indexes(block_id) {
+                for offset in instr_iter {
+                    reachable_offsets.insert(offset as usize);
+                }
+            }
+        }
+
+        code.into_iter()
+            .enumerate()
+            .filter(|(offset, _)| reachable_offsets.contains(offset))
+            .map(|(_, bc)| bc)
+            .collect()
     }
 
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
@@ -665,21 +709,7 @@ impl<'env> BoogieTranslator<'env> {
                             }) =>
                     {
                         // Check if this call will use $pure
-                        let callee_env = self.env.get_function(module_id.qualified(fun_id));
-                        let callee_has_pure = {
-                            let baseline_target = self
-                                .targets
-                                .get_target(&callee_env, &FunctionVariant::Baseline);
-                            let translator = FunctionTranslator::new(
-                                self,
-                                &baseline_target,
-                                inst,
-                                FunctionTranslationStyle::Pure,
-                            );
-                            translator.is_pure_function()
-                        };
-
-                        if callee_has_pure {
+                        if self.targets.is_pure_fun(&module_id.qualified(fun_id)) {
                             // No abort checking needed - $pure functions have abort-freedom proven separately
                             builder.emit(bc.update_abort_action(|_| None))
                         } else {
@@ -856,7 +886,8 @@ impl<'env> BoogieTranslator<'env> {
                     ),
                 },
                 FunctionTranslationStyle::Pure => {
-                    builder.emit(bc);
+                    // workaround: for pure functions, we just remove all casts via relacing with assigns
+                    builder.emit(bc.update_abort_action(|_| None).replace_cast_with_assign());
                 }
             }
         }
@@ -884,6 +915,10 @@ impl<'env> BoogieTranslator<'env> {
                 _ => builder.emit(bc),
             }
         }
+
+        // Eliminate unreachable bytecode created by setting abort actions to None
+        builder.data.code =
+            Self::eliminate_unreachable_bytecode(std::mem::take(&mut builder.data.code));
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
@@ -917,7 +952,9 @@ impl<'env> BoogieTranslator<'env> {
             }
 
             if self.options.func_abort_check_only
-                && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                && self
+                    .targets
+                    .should_generate_abort_check(&fun_env.get_qualified_id())
                 && style == FunctionTranslationStyle::Opaque
             {
                 mono_analysis::get_info(self.env)
@@ -2584,7 +2621,9 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn is_pure_function(&self) -> bool {
-        self.check_ext_attribute(&self.fun_target.func_env, PURE_PRAGMA)
+        self.parent
+            .targets
+            .is_pure_fun(&self.fun_target.func_env.get_qualified_id())
     }
 
     /// Check if a function has an #[ext(...)] attribute with the given name.
@@ -2616,12 +2655,11 @@ impl<'env> FunctionTranslator<'env> {
             Load(_, _, _) => true,
             Call(_, _, op, _, _) => {
                 match op {
-                    Operation::IfThenElse => true,
                     Operation::Function(mid, fid, _) => {
                         // Allow function calls if they're marked as pure
-                        self.can_callee_be_function(*mid, *fid)
+                        self.can_callee_be_function(mid, fid)
                     }
-                    _ => !op.can_abort(), // Allow non-aborting operations
+                    _ => true,
                 }
             }
             Ret(_, _) => true,
@@ -2640,18 +2678,8 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
-    /// Check if a callee function can be used as a Boogie function (not procedure)
-    fn can_callee_be_function(
-        &self,
-        mid: move_model::model::ModuleId,
-        fid: move_model::model::FunId,
-    ) -> bool {
-        let env = self.fun_target.global_env();
-        let module_env = env.get_module(mid);
-        let callee_env = module_env.get_function(fid);
-
-        // Check if callee is marked with #[ext(pure)]
-        self.check_ext_attribute(&callee_env, PURE_PRAGMA)
+    fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
+        self.parent.targets.is_pure_fun(&mid.qualified(*fid))
     }
 
     /// Panic if we encounter bytecode operations that should have been filtered out
@@ -2662,7 +2690,7 @@ impl<'env> FunctionTranslator<'env> {
             Call(_, _, op, _, _) => {
                 if let Operation::Function(mid, fid, _) = op {
                     // Allow function calls if the callee can be emitted as a Boogie function
-                    if !self.can_callee_be_function(*mid, *fid) {
+                    if !self.can_callee_be_function(mid, fid) {
                         panic!(
                             "Function calls should be filtered out before function emission: {}",
                             bytecode
@@ -2764,7 +2792,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                         } else if let Function(mid, fid, inst) = op {
                             // Handle function calls for functions that can be emitted as Boogie functions
-                            if self.can_callee_be_function(*mid, *fid) {
+                            if self.can_callee_be_function(mid, fid) {
                                 let env = fun_target.global_env();
                                 let module_env = env.get_module(*mid);
                                 let callee_env = module_env.get_function(*fid);
@@ -3278,7 +3306,7 @@ impl<'env> FunctionTranslator<'env> {
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
                         // Check if callee is marked as pure
-                        let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
+                        let callee_is_pure = self.can_callee_be_function(mid, fid);
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
@@ -4572,7 +4600,7 @@ impl<'env> FunctionTranslator<'env> {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fun_name =
-                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
+                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
 
                         let param_types = fun_env.get_parameter_types();
                         let loc_type = param_types[0].skip_reference().instantiate(inst);
