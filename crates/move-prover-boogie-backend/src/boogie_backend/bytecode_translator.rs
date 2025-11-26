@@ -929,8 +929,10 @@ impl<'env> BoogieTranslator<'env> {
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
-            let translator = FunctionTranslator::new(self, &fun_target, &[], style);
-            if !translator.is_pure_function() {
+            if !self
+                .targets
+                .is_pure_fun(&fun_target.func_env.get_qualified_id())
+            {
                 return; // Only emit if #[ext(pure)] is present
             }
         }
@@ -2620,30 +2622,6 @@ impl<'env> FunctionTranslator<'env> {
         dinfo.is_deterministic && correct_style
     }
 
-    fn is_pure_function(&self) -> bool {
-        self.parent
-            .targets
-            .is_pure_fun(&self.fun_target.func_env.get_qualified_id())
-    }
-
-    /// Check if a function has an #[ext(...)] attribute with the given name.
-    fn check_ext_attribute(&self, func_env: &FunctionEnv, attr_name: &str) -> bool {
-        let toplevel_attrs = func_env.get_toplevel_attributes();
-        for (_loc, _kind, known_attr) in toplevel_attrs.iter() {
-            if let move_compiler::shared::known_attributes::KnownAttribute::External(ext_attr) =
-                &known_attr.value
-            {
-                for (_entry_loc, entry_name, _entry) in ext_attr.attrs.iter() {
-                    if entry_name.as_str() == attr_name {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
-    }
-
     /// Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
     /// Control flow instructions (jumps, branches, labels) are silently skipped since
     /// if_then_else expressions have already summarized their effects.
@@ -3455,19 +3433,11 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    let callee_has_pure = {
-                                        let baseline_target = self
-                                            .parent
-                                            .targets
-                                            .get_target(&callee_env, &FunctionVariant::Baseline);
-                                        let translator = FunctionTranslator::new(
-                                            self.parent,
-                                            &baseline_target,
-                                            inst,
-                                            FunctionTranslationStyle::Pure,
-                                        );
-                                        translator.is_pure_function()
-                                    };
+                                    let callee_has_pure =
+                                        self.parent.targets.is_pure_fun(&QualifiedId {
+                                            module_id: *mid,
+                                            id: *fid,
+                                        });
 
                                     if callee_has_pure {
                                         fun_name = format!("{}{}", fun_name, "$pure");
