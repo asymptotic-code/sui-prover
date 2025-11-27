@@ -204,6 +204,13 @@ async fn run_prover_abort_check<W: WriteColor>(
         FunctionHolderTarget::FunctionsAbortCheck,
     );
 
+    check_errors(
+        env,
+        &options,
+        error_writer,
+        "exiting with bytecode transformation errors",
+    )?;
+
     if !package_targets
         .abort_check_functions()
         .iter()
@@ -215,13 +222,6 @@ async fn run_prover_abort_check<W: WriteColor>(
 
     let file_name = "funs_abort_check";
     println!("🔄 {file_name}");
-
-    check_errors(
-        env,
-        &options,
-        error_writer,
-        "exiting with bytecode transformation errors",
-    )?;
 
     let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check)?;
     check_errors(
