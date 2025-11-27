@@ -24,10 +24,10 @@ use move_model::{
     code_writer::CodeWriter,
     emit, emitln,
     model::{
-        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, NodeId,
-        QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
+        DatatypeId, EnclosingEnv, EnumEnv, FieldId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleId,
+        NodeId, QualifiedId, QualifiedInstId, RefType, StructEnv, StructOrEnumEnv, VariantEnv,
     },
-    pragmas::{ADDITION_OVERFLOW_UNCHECKED_PRAGMA, PURE_PRAGMA},
+    pragmas::ADDITION_OVERFLOW_UNCHECKED_PRAGMA,
     ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
 };
 use move_stackless_bytecode::{
@@ -45,6 +45,7 @@ use move_stackless_bytecode::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
     },
+    pure_function_analysis::PureFunctionAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     spec_global_variable_analysis::{self},
     stackless_bytecode::{
@@ -339,7 +340,9 @@ impl<'env> BoogieTranslator<'env> {
                 }
 
                 if self.options.func_abort_check_only
-                    && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                    && self
+                        .targets
+                        .should_generate_abort_check(&fun_env.get_qualified_id())
                 {
                     self.translate_function_no_abort(fun_env);
                     self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
@@ -386,8 +389,10 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only {
+                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+                        if !self.options.spec_no_abort_check_only
+                            && !self.options.func_abort_check_only
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -410,8 +415,10 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only {
+                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+                        if !self.options.spec_no_abort_check_only
+                            && !self.options.func_abort_check_only
+                        {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -520,8 +527,8 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
-        // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-        if !self.options.spec_no_abort_check_only {
+        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+        if !self.options.spec_no_abort_check_only && !self.options.func_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }
@@ -665,21 +672,7 @@ impl<'env> BoogieTranslator<'env> {
                             }) =>
                     {
                         // Check if this call will use $pure
-                        let callee_env = self.env.get_function(module_id.qualified(fun_id));
-                        let callee_has_pure = {
-                            let baseline_target = self
-                                .targets
-                                .get_target(&callee_env, &FunctionVariant::Baseline);
-                            let translator = FunctionTranslator::new(
-                                self,
-                                &baseline_target,
-                                inst,
-                                FunctionTranslationStyle::Pure,
-                            );
-                            translator.is_pure_function()
-                        };
-
-                        if callee_has_pure {
+                        if self.targets.is_pure_fun(&module_id.qualified(fun_id)) {
                             // No abort checking needed - $pure functions have abort-freedom proven separately
                             builder.emit(bc.update_abort_action(|_| None))
                         } else {
@@ -855,7 +848,8 @@ impl<'env> BoogieTranslator<'env> {
                     ),
                 },
                 FunctionTranslationStyle::Pure => {
-                    builder.emit(bc);
+                    // workaround: for pure functions, we just remove all casts via relacing with assigns
+                    builder.emit(bc.update_abort_action(|_| None).replace_cast_with_assign());
                 }
             }
         }
@@ -884,6 +878,9 @@ impl<'env> BoogieTranslator<'env> {
             }
         }
 
+        // Eliminate unreachable bytecode created by setting abort actions to None
+        builder.eliminate_unreachable_bytecode();
+
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
@@ -893,8 +890,10 @@ impl<'env> BoogieTranslator<'env> {
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
-            let translator = FunctionTranslator::new(self, &fun_target, &[], style);
-            if !translator.is_pure_function() {
+            if !self
+                .targets
+                .is_pure_fun(&fun_target.func_env.get_qualified_id())
+            {
                 return; // Only emit if #[ext(pure)] is present
             }
         }
@@ -916,7 +915,9 @@ impl<'env> BoogieTranslator<'env> {
             }
 
             if self.options.func_abort_check_only
-                && self.targets.is_abort_check_fun(&fun_env.get_qualified_id())
+                && self
+                    .targets
+                    .should_generate_abort_check(&fun_env.get_qualified_id())
                 && style == FunctionTranslationStyle::Opaque
             {
                 mono_analysis::get_info(self.env)
@@ -2436,13 +2437,6 @@ impl<'env> FunctionTranslator<'env> {
         let code = fun_target.get_bytecode();
 
         if emit_pure_in_place {
-            // First validate all bytecode is compatible with function generation
-            for bytecode in code.iter() {
-                // Check for disallowed operations that should panic
-                self.check_disallowed_for_function(bytecode);
-            }
-
-            // Generate function body using let expressions instead of statements
             self.generate_pure_expression(code);
         } else {
             // For procedures: emit all bytecodes as normal
@@ -2581,99 +2575,8 @@ impl<'env> FunctionTranslator<'env> {
         dinfo.is_deterministic && correct_style
     }
 
-    fn is_pure_function(&self) -> bool {
-        self.check_ext_attribute(&self.fun_target.func_env, PURE_PRAGMA)
-    }
-
-    /// Check if a function has an #[ext(...)] attribute with the given name.
-    fn check_ext_attribute(&self, func_env: &FunctionEnv, attr_name: &str) -> bool {
-        let toplevel_attrs = func_env.get_toplevel_attributes();
-        for (_loc, _kind, known_attr) in toplevel_attrs.iter() {
-            if let move_compiler::shared::known_attributes::KnownAttribute::External(ext_attr) =
-                &known_attr.value
-            {
-                for (_entry_loc, entry_name, _entry) in ext_attr.attrs.iter() {
-                    if entry_name.as_str() == attr_name {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
-    }
-
-    /// Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
-    /// Control flow instructions (jumps, branches, labels) are silently skipped since
-    /// if_then_else expressions have already summarized their effects.
-    fn is_straightline_bytecode(&self, bytecode: &Bytecode) -> bool {
-        use Bytecode::*;
-        match bytecode {
-            // Allowed: assignments, loads, pure calls, returns
-            Assign(_, _, _, _) => true,
-            Load(_, _, _) => true,
-            Call(_, _, op, _, _) => {
-                match op {
-                    Operation::IfThenElse => true,
-                    Operation::Function(mid, fid, _) => {
-                        // Allow function calls if they're marked as pure
-                        self.can_callee_be_function(*mid, *fid)
-                    }
-                    _ => !op.can_abort(), // Allow non-aborting operations
-                }
-            }
-            Ret(_, _) => true,
-            Nop(_) => true,
-
-            // Silently skip: control flow (summarized in if_then_else)
-            Jump(_, _) => false,
-            Branch(_, _, _, _) => false,
-            Label(_, _) => false,
-            VariantSwitch(_, _, _) => false,
-
-            // Skip: other operations
-            Abort(_, _) => false,
-            SaveMem(_, _, _) => false,
-            Prop(_, _, _) => false,
-        }
-    }
-
-    /// Check if a callee function can be used as a Boogie function (not procedure)
-    fn can_callee_be_function(
-        &self,
-        mid: move_model::model::ModuleId,
-        fid: move_model::model::FunId,
-    ) -> bool {
-        let env = self.fun_target.global_env();
-        let module_env = env.get_module(mid);
-        let callee_env = module_env.get_function(fid);
-
-        // Check if callee is marked with #[ext(pure)]
-        self.check_ext_attribute(&callee_env, PURE_PRAGMA)
-    }
-
-    /// Panic if we encounter bytecode operations that should have been filtered out
-    /// but could compromise translation fidelity if silently ignored.
-    fn check_disallowed_for_function(&self, bytecode: &Bytecode) {
-        use Bytecode::*;
-        match bytecode {
-            Call(_, _, op, _, _) => {
-                if let Operation::Function(mid, fid, _) = op {
-                    // Allow function calls if the callee can be emitted as a Boogie function
-                    if !self.can_callee_be_function(*mid, *fid) {
-                        panic!(
-                            "Function calls should be filtered out before function emission: {}",
-                            bytecode
-                                .display(self.fun_target, &std::collections::BTreeMap::default())
-                        );
-                    }
-                }
-            }
-            Abort(_, _) => {
-                // Skip abort operations - they will be ignored in function body generation
-            }
-            _ => {} // Other operations are fine to skip or translate
-        }
+    fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
+        self.parent.targets.is_pure_fun(&mid.qualified(*fid))
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -2747,7 +2650,7 @@ impl<'env> FunctionTranslator<'env> {
                 Load(_, dest, constant) => {
                     bindings.push((*dest, self.format_constant(constant)));
                 }
-                Call(_, dests, op, srcs, _) if self.is_straightline_bytecode(bytecode) => {
+                Call(_, dests, op, srcs, _) => {
                     if let [dest] = dests.as_slice() {
                         let expr = if let IfThenElse = op {
                             if let [cond, then_val, else_val] = srcs.as_slice() {
@@ -2761,8 +2664,10 @@ impl<'env> FunctionTranslator<'env> {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
                         } else if let Function(mid, fid, inst) = op {
+                            let native_fn =
+                                self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
                             // Handle function calls for functions that can be emitted as Boogie functions
-                            if self.can_callee_be_function(*mid, *fid) {
+                            if self.can_callee_be_function(mid, fid) || native_fn {
                                 let env = fun_target.global_env();
                                 let module_env = env.get_module(*mid);
                                 let callee_env = module_env.get_function(*fid);
@@ -2770,8 +2675,20 @@ impl<'env> FunctionTranslator<'env> {
                                 let fun_name = boogie_function_name(
                                     &callee_env,
                                     inst,
-                                    FunctionTranslationStyle::Pure,
+                                    if native_fn {
+                                        FunctionTranslationStyle::Default
+                                    } else {
+                                        FunctionTranslationStyle::Pure
+                                    },
                                 );
+                                let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                                format!("{}({})", fun_name, args)
+                            } else if let Some(fun_name) =
+                                PureFunctionAnalysisProcessor::special_pure_functions_map(
+                                    self.parent.env,
+                                )
+                                .get(&mid.qualified(*fid))
+                            {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else {
@@ -2840,7 +2757,7 @@ impl<'env> FunctionTranslator<'env> {
                     }
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
-                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) | Call(..) => {
+                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) => {
                     panic!(
                         "Unsupported bytecode for #[ext(pure)] target: {:?}",
                         bytecode
@@ -3276,7 +3193,7 @@ impl<'env> FunctionTranslator<'env> {
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
                         // Check if callee is marked as pure
-                        let callee_is_pure = self.check_ext_attribute(&callee_env, PURE_PRAGMA);
+                        let callee_is_pure = self.can_callee_be_function(mid, fid);
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
@@ -3424,19 +3341,11 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    let callee_has_pure = {
-                                        let baseline_target = self
-                                            .parent
-                                            .targets
-                                            .get_target(&callee_env, &FunctionVariant::Baseline);
-                                        let translator = FunctionTranslator::new(
-                                            self.parent,
-                                            &baseline_target,
-                                            inst,
-                                            FunctionTranslationStyle::Pure,
-                                        );
-                                        translator.is_pure_function()
-                                    };
+                                    let callee_has_pure =
+                                        self.parent.targets.is_pure_fun(&QualifiedId {
+                                            module_id: *mid,
+                                            id: *fid,
+                                        });
 
                                     if callee_has_pure {
                                         fun_name = format!("{}{}", fun_name, "$pure");
@@ -4570,7 +4479,7 @@ impl<'env> FunctionTranslator<'env> {
                         let fun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fun_name =
-                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Default);
+                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
 
                         let param_types = fun_env.get_parameter_types();
                         let loc_type = param_types[0].skip_reference().instantiate(inst);

@@ -7,17 +7,17 @@ use prover::prover::ensures;
 #[spec_only]
 use prover::vector_iter::{find, find_index};
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_is_10(x: &u64): bool {
     *x == 10
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_is_20(x: &u64): bool {
     *x == 20
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_is_greater_than_100(x: &u64): bool {
     *x > 100
 }

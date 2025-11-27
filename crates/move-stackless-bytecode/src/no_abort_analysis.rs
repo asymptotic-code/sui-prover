@@ -55,7 +55,7 @@ pub fn does_not_abort(
         && has_no_abort_spec(targets, callee_env);
     no_abort_info.does_not_abort
         || use_no_abort_spec
-        || targets.is_abort_check_fun(&callee_env.get_qualified_id())
+        || targets.is_abort_checked_fun(&callee_env.get_qualified_id())
 }
 
 pub struct NoAbortAnalysisProcessor();

@@ -6,7 +6,7 @@ use prover::prover::requires;
 #[spec_only]
 use prover::vector_iter::{all, any};
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_is_10(x: &u64): bool {
     x == 10
 }
