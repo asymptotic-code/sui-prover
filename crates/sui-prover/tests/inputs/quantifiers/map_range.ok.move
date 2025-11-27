@@ -7,7 +7,7 @@ use prover::prover::ensures;
 #[spec_only]
 use prover::vector_iter::map_range;
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_plus_10(x: &u64): u64 {
     if (*x < std::u64::max_value!() - 10) {
         *x + 10

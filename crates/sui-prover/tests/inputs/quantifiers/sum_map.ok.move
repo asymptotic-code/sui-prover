@@ -7,7 +7,7 @@ use prover::prover::ensures;
 #[spec_only]
 use prover::vector_iter::{sum_map, sum_map_range};
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_plus_10(x: &u64): u64 {
     if (*x > std::u64::max_value!() - 10) {
         std::u64::max_value!()
@@ -16,7 +16,7 @@ fun x_plus_10(x: &u64): u64 {
     }
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_minus_5(x: &u64): u64 {
     if (*x < 5) {
         0

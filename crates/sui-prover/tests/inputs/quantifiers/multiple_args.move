@@ -15,17 +15,17 @@ fun get_g(s: S): u64 {
     s.g
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun is_greater_or_equal(a: u64, x: u64, b: u64): bool {
     x >= a && x >= b
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun sum3(a: u64, b: u64, c: u64): u128 {
     (a as u128) + (b  as u128) + (c as u128)
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun all_is_positive(a: u64, x: u64, b: u64): bool {
     a >= 0 && b >= 0 && x >= 0
 }

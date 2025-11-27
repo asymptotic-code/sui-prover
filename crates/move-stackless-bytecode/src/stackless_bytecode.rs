@@ -207,6 +207,10 @@ impl QuantifierType {
                 | QuantifierType::CountRange
         )
     }
+
+    pub fn requires_filter_indices(&self) -> bool {
+        matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
+    }
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
@@ -907,6 +911,20 @@ impl Bytecode {
             }
             _ => self.clone(),
         }
+    }
+
+    pub fn replace_cast_with_assign(&self) -> Self {
+        use Bytecode::*;
+        use Operation::*;
+        if let Call(attr_id, dests, op, srcs, aa) = self {
+            if matches!(
+                op,
+                CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256
+            ) {
+                return Assign(*attr_id, dests[0], srcs[0], AssignKind::Store);
+            }
+        }
+        self.clone()
     }
 
     pub fn get_called_function(&self) -> Option<QualifiedId<FunId>> {

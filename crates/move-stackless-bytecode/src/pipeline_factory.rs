@@ -22,6 +22,7 @@ use crate::{
     no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
+    pure_function_analysis::PureFunctionAnalysisProcessor,
     quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     replacement_analysis::ReplacementAnalysisProcessor,
@@ -55,13 +56,11 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         MemoryInstrumentationProcessor::new(),
     ];
 
-    if options.enable_conditional_merge_insertion {
-        // Rerun liveness analysis and its dependencies after MemoryInstrumentation
-        // to ensure fresh liveness annotations for ConditionalMergeInsertion
-        processors.push(ReachingDefProcessor::new());
-        processors.push(LiveVarAnalysisProcessor::new());
-        processors.push(ConditionalMergeInsertionProcessor::new());
-    }
+    // Rerun liveness analysis and its dependencies after MemoryInstrumentation
+    // to ensure fresh liveness annotations for ConditionalMergeInsertion
+    processors.push(ReachingDefProcessor::new());
+    processors.push(LiveVarAnalysisProcessor::new());
+    processors.push(ConditionalMergeInsertionProcessor::new());
 
     processors.append(&mut vec![
         CleanAndOptimizeProcessor::new(),
@@ -70,6 +69,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecWellFormedAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
+        PureFunctionAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
