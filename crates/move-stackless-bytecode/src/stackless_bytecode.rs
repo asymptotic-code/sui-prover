@@ -207,6 +207,13 @@ impl QuantifierType {
                 | QuantifierType::CountRange
         )
     }
+
+    pub fn requires_filter_indices(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::Filter | QuantifierType::FilterRange
+        )
+    }
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
