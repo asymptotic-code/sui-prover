@@ -15,9 +15,6 @@ use move_stackless_bytecode::stackless_bytecode::{Bytecode, Label};
 use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-/// Maximum recursion depth before panic (indicates infinite recursion bug)
-const MAX_RECURSION_DEPTH: usize = 200;
-
 /// Result of discovering a region - includes both the statement and what it defines
 struct DiscoveryResult {
     statement: Statement,
@@ -28,27 +25,13 @@ struct DiscoveryResult {
 }
 
 impl DiscoveryResult {
-    fn empty() -> Self {
-        Self {
-            statement: Statement::default(),
-            final_defs: BTreeMap::new(),
-            substitutions: BTreeMap::new(),
-        }
-    }
-
     fn with_defs(statement: Statement, defs: BTreeMap<String, TempId>) -> Self {
         Self { statement, final_defs: defs, substitutions: BTreeMap::new() }
-    }
-
-    fn with_defs_and_subs(statement: Statement, defs: BTreeMap<String, TempId>, subs: BTreeMap<TempId, TempId>) -> Self {
-        Self { statement, final_defs: defs, substitutions: subs }
     }
 }
 
 /// State passed through the recursive discovery process
 struct DiscoveryState {
-    /// Current recursion depth
-    depth: usize,
     /// Tracks (start, stop) pairs currently being processed to detect cycles
     call_stack: HashSet<(BlockId, BlockId)>,
     /// Current variable definitions (name -> temp ID) - flowing into current region
@@ -60,7 +43,6 @@ struct DiscoveryState {
 impl DiscoveryState {
     fn new() -> Self {
         Self {
-            depth: 0,
             call_stack: HashSet::new(),
             current_defs: BTreeMap::new(),
             substitutions: BTreeMap::new(),
@@ -69,30 +51,17 @@ impl DiscoveryState {
 
     /// Enter a recursive call, returns false if cycle detected
     fn enter(&mut self, start: BlockId, stop: BlockId) -> bool {
-        self.depth += 1;
-        if self.depth > MAX_RECURSION_DEPTH {
-            panic!(
-                "Recursion depth exceeded {}: start={}, stop={} - this indicates infinite recursion",
-                MAX_RECURSION_DEPTH, start, stop
-            );
-        }
         self.call_stack.insert((start, stop))
     }
 
     /// Exit a recursive call
     fn exit(&mut self, start: BlockId, stop: BlockId) {
-        self.depth -= 1;
         self.call_stack.remove(&(start, stop));
     }
 
     /// Create a fresh copy of defs for a branch/loop body
     fn fork_defs(&self) -> BTreeMap<String, TempId> {
         self.current_defs.clone()
-    }
-
-    /// Record a substitution: whenever `old_temp` appears, replace with `new_temp`
-    fn add_substitution(&mut self, old_temp: TempId, new_temp: TempId) {
-        self.substitutions.insert(old_temp, new_temp);
     }
 
     /// Apply all recorded substitutions to a statement
@@ -145,6 +114,152 @@ fn collect_defs_from_statement(
         }
         _ => {}
     }
+}
+
+/// Get the type of an expression if we can determine it
+/// For complex expressions, recursively try to find a type from sub-expressions
+fn get_expression_type(expr: &Expression, registry: &VariableRegistry) -> Option<TheoremType> {
+    match expr {
+        Expression::Temporary(t) => registry.get_type(*t).cloned(),
+        Expression::Pack { struct_id, type_args, .. } => Some(TheoremType::Struct {
+            struct_id: *struct_id,
+            type_args: type_args.clone(),
+        }),
+        Expression::Cast { target_type, .. } => Some(target_type.clone()),
+        Expression::FieldAccess { operand, .. } => {
+            // Try to get type from the operand's temp
+            get_expression_type(operand, registry)
+        },
+        Expression::Call { .. } => {
+            // For calls, we can't easily know the return type without function info
+            None
+        },
+        // For other expressions, we'd need more complex type inference
+        // For now, return None and let other fallbacks handle it
+        _ => None,
+    }
+}
+
+/// Collect temps that are directly assigned in a statement (not recursively through nested control flow)
+/// Returns a map of canonical name -> assigned expression
+fn collect_direct_assignments(
+    stmt: &Statement,
+    registry: &VariableRegistry,
+) -> BTreeMap<String, Expression> {
+    let mut assignments = BTreeMap::new();
+    collect_direct_assignments_impl(stmt, registry, &mut assignments);
+    assignments
+}
+
+fn collect_direct_assignments_impl(
+    stmt: &Statement,
+    registry: &VariableRegistry,
+    assignments: &mut BTreeMap<String, Expression>,
+) {
+    match stmt {
+        Statement::Let { results, operation, .. } => {
+            // For single result, track the assignment
+            if results.len() == 1 {
+                if let Some(name) = registry.canonical_name(results[0]) {
+                    // Store the expression that's being assigned
+                    assignments.insert(name.to_string(), operation.clone());
+                }
+            }
+            // For multi-result (tuple unpacking), track each result
+            else if results.len() > 1 {
+                for temp in results.iter() {
+                    if let Some(name) = registry.canonical_name(*temp) {
+                        // For tuple unpacking, we'd need the tuple element
+                        // For now, just mark it as assigned with a placeholder
+                        assignments.insert(name.to_string(), Expression::Temporary(*temp));
+                    }
+                }
+            }
+            // Don't recurse into nested IfExpr/WhileExpr - we want direct assignments only
+        }
+        Statement::Sequence(stmts) => {
+            for s in stmts {
+                collect_direct_assignments_impl(s, registry, assignments);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Result of extracting final assignments
+struct ExtractedAssignments {
+    /// The expression that was assigned
+    expr: Expression,
+    /// The type of the result (if we can determine it)
+    ty: Option<TheoremType>,
+}
+
+/// Check if a statement is a single-result Let that assigns to a merge variable
+fn try_extract_merge_assignment(
+    stmt: &Statement,
+    merge_set: &BTreeSet<&String>,
+    found_vars: &BTreeSet<String>,
+    registry: &VariableRegistry,
+) -> Option<(String, ExtractedAssignments)> {
+    let Statement::Let { results, operation, result_types } = stmt else {
+        return None;
+    };
+
+    if results.len() != 1 {
+        return None;
+    }
+
+    let name = registry.canonical_name(results[0])?;
+    let name_string = name.to_string();
+
+    if !merge_set.contains(&name_string) || found_vars.contains(&name_string) {
+        return None;
+    }
+
+    let ty = registry.get_type(results[0]).cloned()
+        .or_else(|| result_types.first().cloned());
+
+    Some((name_string, ExtractedAssignments {
+        expr: operation.clone(),
+        ty,
+    }))
+}
+
+/// Convert a vec of statements back to a single Statement
+fn stmts_to_statement(stmts: Vec<Statement>) -> Statement {
+    match stmts.len() {
+        0 => Statement::default(),
+        1 => stmts.into_iter().next().unwrap(),
+        _ => Statement::Sequence(stmts),
+    }
+}
+
+/// Extract final assignments to the given variables from a statement.
+/// Returns (filtered_statement, final_values) where:
+/// - filtered_statement has the final assignments removed
+/// - final_values maps variable name to the expression and type that was assigned
+fn extract_final_assignments(
+    stmt: &Statement,
+    merge_vars: &[String],
+    registry: &VariableRegistry,
+) -> (Statement, BTreeMap<String, ExtractedAssignments>) {
+    let mut final_values: BTreeMap<String, ExtractedAssignments> = BTreeMap::new();
+    let merge_set: BTreeSet<&String> = merge_vars.iter().collect();
+    let mut found_vars: BTreeSet<String> = BTreeSet::new();
+    let mut filtered_stmts: Vec<Statement> = Vec::new();
+
+    // Process in reverse order to find the LAST assignment to each variable
+    for s in flatten_to_stmts(stmt.clone()).into_iter().rev() {
+        if let Some((name, extracted)) = try_extract_merge_assignment(&s, &merge_set, &found_vars, registry) {
+            found_vars.insert(name.clone());
+            final_values.insert(name, extracted);
+        } else {
+            filtered_stmts.push(s);
+        }
+    }
+
+    filtered_stmts.reverse();
+    (stmts_to_statement(filtered_stmts), final_values)
 }
 
 /// Collect defs from expressions (for nested control flow)
@@ -360,6 +475,89 @@ fn handle_branch(
     )
 }
 
+/// Build an if statement that produces no values (side-effect only or terminating)
+fn build_side_effect_if(cond_temp: TempId, then_stmt: Statement, else_stmt: Statement) -> Statement {
+    let then_block = Block::new(flatten_to_stmts(then_stmt), Expression::Tuple(vec![]));
+    let else_block = Block::new(flatten_to_stmts(else_stmt), Expression::Tuple(vec![]));
+
+    let if_expr = Expression::IfExpr {
+        condition: Box::new(Expression::Temporary(cond_temp)),
+        then_block,
+        else_block,
+    };
+
+    Statement::Let {
+        results: vec![],
+        operation: if_expr,
+        result_types: vec![],
+    }
+}
+
+/// Find variables that need to be merged at an if-else join point
+fn find_merge_variables(
+    then_assignments: &BTreeMap<String, Expression>,
+    else_assignments: &BTreeMap<String, Expression>,
+    incoming_defs: &BTreeMap<String, TempId>,
+) -> BTreeSet<String> {
+    let mut merge_vars = BTreeSet::new();
+
+    // Case 1: Variable existed before if, assigned in one or both branches (reassignment)
+    // Case 2: Variable defined in BOTH branches but not before (new phi node)
+    for name in then_assignments.keys() {
+        if incoming_defs.contains_key(name) || else_assignments.contains_key(name) {
+            merge_vars.insert(name.clone());
+        }
+    }
+    for name in else_assignments.keys() {
+        if incoming_defs.contains_key(name) {
+            merge_vars.insert(name.clone());
+        }
+    }
+
+    merge_vars
+}
+
+/// Convert a vector of result expressions to a single expression (Tuple if multiple)
+fn results_to_expr(mut results: Vec<Expression>) -> Expression {
+    if results.len() == 1 {
+        results.pop().unwrap()
+    } else {
+        Expression::Tuple(results)
+    }
+}
+
+/// Get value for a merge variable from extracted assignments or fallback to incoming
+fn get_merge_value(
+    name: &str,
+    extracted: Option<&ExtractedAssignments>,
+    incoming_temp: Option<TempId>,
+) -> Expression {
+    extracted.map(|e| e.expr.clone())
+        .or_else(|| incoming_temp.map(Expression::Temporary))
+        .unwrap_or_else(|| panic!("BUG: Variable '{}' must be defined in branch or have incoming value", name))
+}
+
+/// Get type for a merge variable from various sources
+fn get_merge_type(
+    name: &str,
+    incoming_temp: Option<TempId>,
+    then_extracted: Option<&ExtractedAssignments>,
+    else_extracted: Option<&ExtractedAssignments>,
+    then_value: &Expression,
+    else_value: &Expression,
+    registry: &VariableRegistry,
+) -> TheoremType {
+    incoming_temp.and_then(|t| registry.get_type(t).cloned())
+        .or_else(|| then_extracted.and_then(|e| e.ty.clone()))
+        .or_else(|| else_extracted.and_then(|e| e.ty.clone()))
+        .or_else(|| get_expression_type(then_value, registry))
+        .or_else(|| get_expression_type(else_value, registry))
+        .unwrap_or_else(|| panic!(
+            "BUG: No type found for merge variable '{}' in if-expression. then_value={:?}, else_value={:?}",
+            name, then_value, else_value
+        ))
+}
+
 /// Build an if-expression wrapped in a Let statement
 fn build_if_expr(
     ctx: &mut DiscoveryContext,
@@ -367,152 +565,69 @@ fn build_if_expr(
     then_stmt: Statement,
     else_stmt: Statement,
     incoming_defs: &BTreeMap<String, TempId>,
-    then_final_defs: &BTreeMap<String, TempId>,
-    else_final_defs: &BTreeMap<String, TempId>,
+    _then_final_defs: &BTreeMap<String, TempId>,
+    _else_final_defs: &BTreeMap<String, TempId>,
     state: &DiscoveryState,
 ) -> DiscoveryResult {
-    let then_terminates = then_stmt.terminates();
-    let else_terminates = else_stmt.terminates();
-
     // Apply substitution to condition temp if needed
     let cond_temp = state.substitutions.get(&branch_info.cond_temp)
         .copied()
         .unwrap_or(branch_info.cond_temp);
 
     // If both branches terminate, no values need to be merged
-    if then_terminates && else_terminates {
-        // Just return the if as a statement (both branches return/abort)
-        let then_block = Block::new(flatten_to_stmts(then_stmt), Expression::Tuple(vec![]));
-        let else_block = Block::new(flatten_to_stmts(else_stmt), Expression::Tuple(vec![]));
-
-        let if_expr = Expression::IfExpr {
-            condition: Box::new(Expression::Temporary(cond_temp)),
-            then_block,
-            else_block,
-        };
-
-        // No results since both branches terminate
-        let stmt = Statement::Let {
-            results: vec![],
-            operation: if_expr,
-            result_types: vec![],
-        };
-
+    if then_stmt.terminates() && else_stmt.terminates() {
+        let stmt = build_side_effect_if(cond_temp, then_stmt, else_stmt);
         return DiscoveryResult::with_defs(stmt, incoming_defs.clone());
     }
 
-    // Find variables that need to be merged (assigned in at least one branch)
-    let mut merge_vars: BTreeSet<String> = BTreeSet::new();
-
-    // Collect all variables assigned in either branch
-    for name in then_final_defs.keys().chain(else_final_defs.keys()) {
-        let then_temp = then_final_defs.get(name);
-        let else_temp = else_final_defs.get(name);
-        let incoming_temp = incoming_defs.get(name);
-
-        // Need merge if assigned in at least one branch and differs from incoming
-        let then_changed = then_temp.map(|t| Some(t) != incoming_temp).unwrap_or(false);
-        let else_changed = else_temp.map(|t| Some(t) != incoming_temp).unwrap_or(false);
-
-        if then_changed || else_changed {
-            merge_vars.insert(name.clone());
-        }
-    }
+    // Collect direct assignments and find variables that need merging
+    let then_assignments = collect_direct_assignments(&then_stmt, ctx.registry);
+    let else_assignments = collect_direct_assignments(&else_stmt, ctx.registry);
+    let merge_vars = find_merge_variables(&then_assignments, &else_assignments, incoming_defs);
 
     // If no variables need merging, just emit a side-effect if
     if merge_vars.is_empty() {
-        let then_block = Block::new(flatten_to_stmts(then_stmt), Expression::Tuple(vec![]));
-        let else_block = Block::new(flatten_to_stmts(else_stmt), Expression::Tuple(vec![]));
-
-        let if_expr = Expression::IfExpr {
-            condition: Box::new(Expression::Temporary(branch_info.cond_temp)),
-            then_block,
-            else_block,
-        };
-
-        let stmt = Statement::Let {
-            results: vec![],
-            operation: if_expr,
-            result_types: vec![],
-        };
-
+        let stmt = build_side_effect_if(cond_temp, then_stmt, else_stmt);
         return DiscoveryResult::with_defs(stmt, incoming_defs.clone());
     }
 
-    // Build result temps and expressions for each branch
+    // Extract final assignments that will become if-expression results
     let merge_names: Vec<String> = merge_vars.into_iter().collect();
+    let (then_stmt_filtered, then_final_values) = extract_final_assignments(&then_stmt, &merge_names, ctx.registry);
+    let (else_stmt_filtered, else_final_values) = extract_final_assignments(&else_stmt, &merge_names, ctx.registry);
+
+    // Build merge results
     let mut result_temps = Vec::new();
     let mut result_types = Vec::new();
     let mut then_results = Vec::new();
     let mut else_results = Vec::new();
     let mut final_defs = incoming_defs.clone();
-    let mut substitutions: BTreeMap<TempId, TempId> = BTreeMap::new();
 
     for name in &merge_names {
-        // Get the temp from each branch (or incoming if not assigned in that branch)
-        let then_temp = then_final_defs.get(name)
-            .or_else(|| incoming_defs.get(name))
-            .copied();
-        let else_temp = else_final_defs.get(name)
-            .or_else(|| incoming_defs.get(name))
-            .copied();
+        let incoming_temp = incoming_defs.get(name).copied();
+        let then_extracted = then_final_values.get(name);
+        let else_extracted = else_final_values.get(name);
 
-        // Skip if we can't find valid temps for both branches
-        // (This shouldn't happen if tracking is correct, but let's be safe)
-        let (then_val, else_val) = match (then_temp, else_temp, then_terminates, else_terminates) {
-            // Normal case: both branches have values
-            (Some(t), Some(e), false, false) => (t, e),
-            // Then branch terminates: use else value for both (then value is unreachable)
-            (_, Some(e), true, false) => (e, e),
-            // Else branch terminates: use then value for both (else value is unreachable)
-            (Some(t), _, false, true) => (t, t),
-            // Both terminate: skip this variable (values are unreachable)
-            (_, _, true, true) => continue,
-            // Missing temp: skip this merge (shouldn't happen with correct tracking)
-            _ => continue,
-        };
+        let then_value = get_merge_value(name, then_extracted, incoming_temp);
+        let else_value = get_merge_value(name, else_extracted, incoming_temp);
 
-        // Get type from one of the temps
-        let ty = ctx.registry.get_type(then_val)
-            .or_else(|| ctx.registry.get_type(else_val))
-            .cloned()
-            .unwrap_or(TheoremType::Bool); // Fallback (shouldn't happen)
+        let ty = get_merge_type(
+            name, incoming_temp, then_extracted, else_extracted,
+            &then_value, &else_value, ctx.registry,
+        );
 
-        // Allocate a new temp for the merge result
-        let result_temp = ctx.registry.alloc_local(format!("phi_{}", name), ty.clone());
+        let result_temp = ctx.registry.alloc_local(name.clone(), ty.clone());
 
         result_temps.push(result_temp);
         result_types.push(ty);
-        then_results.push(Expression::Temporary(then_val));
-        else_results.push(Expression::Temporary(else_val));
-
-        // Update final defs to point to the merge result
+        then_results.push(then_value);
+        else_results.push(else_value);
         final_defs.insert(name.clone(), result_temp);
-
-        // Record substitutions: original temps should be replaced with phi result
-        // Both then_val and else_val should map to result_temp for subsequent code
-        if then_val != result_temp {
-            substitutions.insert(then_val, result_temp);
-        }
-        if else_val != result_temp && else_val != then_val {
-            substitutions.insert(else_val, result_temp);
-        }
     }
 
-    // Build blocks with result expressions
-    let then_result_expr = if then_results.len() == 1 {
-        then_results.pop().unwrap()
-    } else {
-        Expression::Tuple(then_results)
-    };
-    let else_result_expr = if else_results.len() == 1 {
-        else_results.pop().unwrap()
-    } else {
-        Expression::Tuple(else_results)
-    };
-
-    let then_block = Block::new(flatten_to_stmts(then_stmt), then_result_expr);
-    let else_block = Block::new(flatten_to_stmts(else_stmt), else_result_expr);
+    // Build blocks and if expression
+    let then_block = Block::new(flatten_to_stmts(then_stmt_filtered), results_to_expr(then_results));
+    let else_block = Block::new(flatten_to_stmts(else_stmt_filtered), results_to_expr(else_results));
 
     let if_expr = Expression::IfExpr {
         condition: Box::new(Expression::Temporary(cond_temp)),
@@ -526,7 +641,7 @@ fn build_if_expr(
         result_types,
     };
 
-    DiscoveryResult::with_defs_and_subs(stmt, final_defs, substitutions)
+    DiscoveryResult::with_defs(stmt, final_defs)
 }
 
 /// Check if jumping to target from current block is a back edge
@@ -568,92 +683,62 @@ fn build_while_loop(
         ctx.registry,
     );
 
-    // Find loop-carried variables: assigned in body and used before assignment
-    let mut loop_vars: Vec<(String, TempId, TempId)> = Vec::new(); // (name, initial, updated)
+    // Find loop-carried variables: assigned in body and different from initial value
+    let loop_vars: Vec<_> = body_final_defs.iter()
+        .filter_map(|(name, updated)| {
+            branch_info.incoming_defs.get(name)
+                .filter(|initial| *initial != updated)
+                .map(|initial| (name.clone(), *initial, *updated))
+        })
+        .collect();
 
-    for (name, updated_temp) in &body_final_defs {
-        if let Some(initial_temp) = branch_info.incoming_defs.get(name) {
-            // Variable was defined before loop and updated in body
-            if initial_temp != updated_temp {
-                loop_vars.push((name.clone(), *initial_temp, *updated_temp));
-            }
-        }
-    }
-
-    // If no loop variables, emit a simple while (rare but possible for side-effect-only loops)
-    if loop_vars.is_empty() {
-        let condition_block = Block::new(
-            flatten_to_stmts(condition_stmt),
-            Expression::Temporary(branch_info.cond_temp),
-        );
-        let body_block = Block::new(
-            flatten_to_stmts(body_result.statement),
-            Expression::Tuple(vec![]),
-        );
-
-        let while_expr = Expression::WhileExpr {
-            condition: condition_block,
-            body: body_block,
-            state: LoopState {
-                vars: vec![],
-                types: vec![],
-                initial: vec![],
-            },
-        };
-
-        let stmt = Statement::Let {
-            results: vec![],
-            operation: while_expr,
-            result_types: vec![],
-        };
-
-        return DiscoveryResult::with_defs(stmt, branch_info.incoming_defs.clone());
-    }
-
-    // Build loop state
-    let mut state_vars = Vec::new();
-    let mut state_types = Vec::new();
-    let mut initial_exprs = Vec::new();
-    let mut result_temps = Vec::new();
-    let mut updated_exprs = Vec::new();
-    let mut final_defs = branch_info.incoming_defs.clone();
-
-    for (name, initial_temp, updated_temp) in &loop_vars {
-        let ty = ctx.registry.get_type(*initial_temp)
-            .or_else(|| ctx.registry.get_type(*updated_temp))
-            .cloned()
-            .unwrap_or(TheoremType::Bool); // Fallback (shouldn't happen)
-
-        // Allocate a state variable for the loop
-        let state_var = ctx.registry.alloc_local(format!("loop_{}", name), ty.clone());
-
-        state_vars.push(state_var);
-        state_types.push(ty.clone());
-        initial_exprs.push(Expression::Temporary(*initial_temp));
-        updated_exprs.push(Expression::Temporary(*updated_temp));
-
-        // Allocate result temp for after the loop
-        let result_temp = ctx.registry.alloc_local(format!("loop_result_{}", name), ty);
-        result_temps.push(result_temp);
-
-        final_defs.insert(name.clone(), result_temp);
-    }
-
-    // Build condition block - needs to use loop state vars
+    // Build condition block
     let condition_block = Block::new(
         flatten_to_stmts(condition_stmt),
         Expression::Temporary(branch_info.cond_temp),
     );
 
-    // Build body block - result is the updated state
-    let body_result_expr = if updated_exprs.len() == 1 {
-        updated_exprs.pop().unwrap()
-    } else {
-        Expression::Tuple(updated_exprs)
-    };
+    // If no loop variables, emit a simple while (rare but possible for side-effect-only loops)
+    if loop_vars.is_empty() {
+        let body_block = Block::new(flatten_to_stmts(body_result.statement), Expression::Tuple(vec![]));
+        let while_expr = Expression::WhileExpr {
+            condition: condition_block,
+            body: body_block,
+            state: LoopState { vars: vec![], types: vec![], initial: vec![] },
+        };
+        let stmt = Statement::Let { results: vec![], operation: while_expr, result_types: vec![] };
+        return DiscoveryResult::with_defs(stmt, branch_info.incoming_defs.clone());
+    }
+
+    // Build loop state from loop variables
+    let mut final_defs = branch_info.incoming_defs.clone();
+    let (state_vars, state_types, initial_exprs, updated_exprs, result_temps): (Vec<_>, Vec<_>, Vec<_>, Vec<_>, Vec<_>) =
+        loop_vars.iter()
+            .map(|(name, initial_temp, updated_temp)| {
+                let ty = ctx.registry.get_type(*initial_temp)
+                    .or_else(|| ctx.registry.get_type(*updated_temp))
+                    .cloned()
+                    .unwrap_or_else(|| panic!("BUG: No type for loop variable '{}'", name));
+
+                let state_var = ctx.registry.alloc_local(format!("loop_{}", name), ty.clone());
+                let result_temp = ctx.registry.alloc_local(format!("loop_result_{}", name), ty.clone());
+                final_defs.insert(name.clone(), result_temp);
+
+                (state_var, ty, Expression::Temporary(*initial_temp), Expression::Temporary(*updated_temp), result_temp)
+            })
+            .fold((vec![], vec![], vec![], vec![], vec![]), |mut acc, (sv, ty, init, upd, rt)| {
+                acc.0.push(sv);
+                acc.1.push(ty);
+                acc.2.push(init);
+                acc.3.push(upd);
+                acc.4.push(rt);
+                acc
+            });
+
+    // Build body block with updated state as result
     let body_block = Block::new(
         flatten_to_stmts(body_result.statement),
-        body_result_expr,
+        results_to_expr(updated_exprs),
     );
 
     let while_expr = Expression::WhileExpr {

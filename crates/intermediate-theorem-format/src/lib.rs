@@ -28,7 +28,10 @@ pub use data::structure::{TheoremStruct, TheoremField};
 pub use data::functions::{TheoremFunction, FunctionSignature, Parameter};
 
 // Statement definitions (from data/statements.rs)
-pub use data::statements::{Statement, StatementIter, ExpressionIter};
+pub use data::statements::{Statement, StatementIter, StatementExpressionIter};
+
+// Expression iterator (from data/expressions.rs)
+pub use data::expressions::ExpressionIter;
 
 // Type definitions (from data/types.rs)
 pub use data::types::{TheoremType, TempId};

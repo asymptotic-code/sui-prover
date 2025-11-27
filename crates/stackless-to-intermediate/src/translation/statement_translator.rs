@@ -146,10 +146,14 @@ fn translate_call(
             let module_env = ctx.builder.env().get_module(*module_id);
             let func_env = module_env.get_function(*fun_id);
             let func_name = func_env.get_name().display(ctx.builder.env().symbol_pool()).to_string();
-            let module_name = module_env.get_full_name_str();
+            let module_name = module_env.get_name().display(ctx.builder.env().symbol_pool()).to_string();
 
             // Handle Prover::requires and Prover::ensures specially
-            if module_name.ends_with("::prover") || module_name.ends_with("::Prover") {
+            // The prover module is at address 0x0 with name "prover"
+            let is_prover_module = module_name == "prover" &&
+                module_env.self_address() == &move_core_types::account_address::AccountAddress::ZERO;
+
+            if is_prover_module {
                 if func_name == "requires" && srcs.len() == 1 {
                     return Statement::Requires {
                         condition: Expression::Temporary(srcs[0] as TempId),
@@ -181,9 +185,9 @@ fn translate_call(
         // Destroy - no statement needed
         Operation::Destroy => Statement::default(),
 
-        // Global operations skipped for pure functions
+        // Global operations don't exist in modern Sui - all state is object-based
         Operation::GetGlobal(..) | Operation::MoveFrom(..) | Operation::MoveTo(..) |
-        Operation::Exists(..) => Statement::default(),
+        Operation::Exists(..) => unreachable!("Global operations don't exist in modern Sui - all state is object-based"),
 
         // BorrowField and BorrowLoc that return identity - need special handling
         Operation::BorrowField(..) | Operation::BorrowLoc | Operation::BorrowGlobal(..) |
@@ -230,16 +234,7 @@ fn translate_write_ref(
     let borrow_annotation = ctx.target.get_annotations().get::<BorrowAnnotation>();
 
     if borrow_annotation.is_none() {
-        // No borrow annotation - fall back to simple assignment
-        let local_type = ctx.registry.get_type(ref_temp as TempId)
-            .cloned()
-            .unwrap();
-
-        return Statement::Let {
-            results: vec![ref_temp as TempId],
-            operation: Expression::Temporary(value_temp as TempId),
-            result_types: vec![local_type],
-        };
+        panic!("BUG: WriteRef requires borrow annotation but none found for function {:?}", ctx.target.get_name());
     }
 
     let borrow_info_at_offset = borrow_annotation
@@ -333,7 +328,7 @@ fn make_let(
                 .cloned()
                 .unwrap();
 
-            // If the operation is a monadic function call, wrap result type in ProgramState
+            // If the operation is a monadic function call, wrap result type in Except
             // Pure calls (native functions) don't need wrapping
             if let Expression::Call { convention, .. } = &operation {
                 if *convention == intermediate_theorem_format::CallConvention::Monadic {
@@ -359,7 +354,7 @@ fn register_temp(temp: usize, registry: &VariableRegistry) {
     let temp_id = temp as TempId;
     // All bytecode temps should be pre-registered by populate_types
     // If not, it's a bug in the translation pipeline
-    debug_assert!(
+    assert!(
         registry.get_name(temp_id).is_some() || registry.has_bytecode_temp(temp_id),
         "BUG: temp {} not registered - populate_types should have registered all bytecode temps",
         temp

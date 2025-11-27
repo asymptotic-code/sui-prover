@@ -1,4 +1,4 @@
-use crate::{CallConvention, ConstantValue, Expression, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
+use crate::{ConstantValue, Expression, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
 use std::mem;
 
 /// Structured statement (high-level control flow)
@@ -58,47 +58,35 @@ impl Default for Statement {
     }
 }
 
-/// Traverse child statements (only Sequence has children now)
-#[macro_export]
-macro_rules! traverse_statement {
-    ($target:expr, ($($mutability:tt)*), $action:expr) => {
+/// Traverse expressions in a statement.
+/// Takes a ref pattern (`(ref)` or `(ref mut)`), a statement recurse action, and an expression action.
+macro_rules! traverse_stmt_expression {
+    ($target:expr, ($($ref_pattern:tt)*), $stmt_recurse:expr, $expr_action:expr) => {
         match $target {
-            Statement::Sequence(statements) => {
-                for statement in statements {
-                    $action(statement);
+            // First handle Sequence to recurse into child statements
+            Statement::Sequence($($ref_pattern)* statements) => {
+                for stmt in statements {
+                    $stmt_recurse(stmt);
                 }
             }
-            _ => {}
-        }
-    };
-}
-
-/// Traverse expressions in a statement (including nested in Let operations)
-macro_rules! traverse_expression {
-    ($target:expr, ($($ref_pattern:tt)*), ($($mutability:tt)*), $recurse:expr, $action:expr) => {
-        // First: Recurse to child statements
-        traverse_statement!($target, ($($mutability)*), $recurse);
-
-        // Second: Extract expressions from current statement
-        match $target {
-            Statement::Let { $($ref_pattern)* operation, .. } => $action(operation),
+            // Then extract expressions from each statement variant
+            Statement::Let { $($ref_pattern)* operation, .. } => $expr_action(operation),
             Statement::Return { $($ref_pattern)* values } => {
                 for expr in values {
-                    $action(expr);
+                    $expr_action(expr);
                 }
             }
-            Statement::Abort { $($ref_pattern)* code } => $action(code),
+            Statement::Abort { $($ref_pattern)* code } => $expr_action(code),
             Statement::UpdateField { $($ref_pattern)* target, $($ref_pattern)* new_value, .. } => {
-                $action(target);
-                $action(new_value);
+                $expr_action(target);
+                $expr_action(new_value);
             }
             Statement::UpdateVectorElement { $($ref_pattern)* target, $($ref_pattern)* index, $($ref_pattern)* new_value } => {
-                $action(target);
-                $action(index);
-                $action(new_value);
+                $expr_action(target);
+                $expr_action(index);
+                $expr_action(new_value);
             }
-            Statement::Requires { $($ref_pattern)* condition } | Statement::Ensures { $($ref_pattern)* condition } => $action(condition),
-            _ => {}
+            Statement::Requires { $($ref_pattern)* condition } | Statement::Ensures { $($ref_pattern)* condition } => $expr_action(condition),
         }
     };
 }
@@ -106,27 +94,43 @@ macro_rules! traverse_expression {
 impl Statement {
     /// Mutably traverse the statement tree
     pub fn traverse_mut<F: Fn(&mut Statement)>(&mut self, f: F) {
-        traverse_statement!(self, (&mut), |child: &mut Statement| child.traverse_mut(&f));
+        if let Statement::Sequence(statements) = self {
+            for stmt in statements {
+                stmt.traverse_mut(&f);
+            }
+        }
         f(self);
     }
 
     /// Map over the statement tree, transforming each statement (consuming)
     /// Applies f to children first (post-order), then to self.
     pub fn map<F: Fn(Statement) -> Statement + Copy>(mut self, f: F) -> Statement {
-        traverse_statement!(&mut self, (&mut), |child: &mut Statement| *child = mem::take(child).map(f));
+        if let Statement::Sequence(statements) = &mut self {
+            *statements = mem::take(statements).into_iter().map(|s| s.map(f)).collect();
+        }
         f(self)
     }
 
-    /// Mutably traverse the expressions in the statement tree
-    pub fn traverse_expressions_mut<F: Fn(&mut Expression)>(&mut self, f: F) {
-        traverse_expression!(self, (ref mut), (&mut), |s: &mut Statement| s.traverse_expressions_mut(&f), |expr: &mut Expression| f(expr));
+    /// Mutably traverse all expressions in the statement tree (recursively into expression children)
+    pub fn traverse_expressions_mut<F: Fn(&mut Expression)>(&mut self, f: &F) {
+        traverse_stmt_expression!(
+            self,
+            (ref mut),
+            |s: &mut Statement| s.traverse_expressions_mut(f),
+            |expr: &mut Expression| expr.traverse_mut(f)
+        );
     }
-    
-    /// Map over the statement tree, transforming each expression (consuming)
+
+    /// Map over the statement tree, transforming each expression (consuming, recursively into expression children)
     pub fn map_expressions<F: Fn(Expression) -> Expression + Copy>(mut self, f: F) -> Statement {
-        traverse_expression!(&mut self, (ref mut), (&mut), |s: &mut Statement| { *s = mem::take(s).map_expressions(f); }, |expr: &mut Expression| {
-            *expr = f(mem::replace(expr, Expression::Constant(ConstantValue::Bool(false))));
-        });
+        traverse_stmt_expression!(
+            &mut self,
+            (ref mut),
+            |s: &mut Statement| { *s = mem::take(s).map_expressions(f); },
+            |expr: &mut Expression| {
+                *expr = mem::replace(expr, Expression::Constant(ConstantValue::Bool(false))).map(f);
+            }
+        );
         self
     }
 
@@ -137,127 +141,23 @@ impl Statement {
         }
     }
 
-    /// Iterate over all expressions in the statement tree
-    pub fn iter_expressions(&self) -> ExpressionIter<'_> {
-        ExpressionIter {
+    /// Iterate over direct expressions in the statement tree (one per statement slot).
+    /// Does NOT recurse into expression children - use `iter_all_expressions` for that.
+    pub fn iter_expressions(&self) -> StatementExpressionIter<'_> {
+        StatementExpressionIter {
             stmt_iter: self.iter(),
             expressions: Vec::new(),
         }
     }
 
+    /// Iterate over ALL expressions in the statement tree (recursively into Expression children and blocks)
+    pub fn iter_all_expressions(&self) -> impl Iterator<Item = &Expression> {
+        self.iter_expressions().flat_map(|expr| expr.iter())
+    }
+
     /// Get all function calls (recursively including nested blocks)
     pub fn calls(&self) -> impl Iterator<Item = TheoremFunctionID> + '_ {
-        self.collect_all_calls().into_iter()
-    }
-
-    /// Recursively collect all function calls, including those in nested IfExpr/WhileExpr blocks
-    fn collect_all_calls(&self) -> Vec<TheoremFunctionID> {
-        let mut calls = Vec::new();
-        self.collect_calls_recursive(&mut calls);
-        calls
-    }
-
-    /// Helper to recursively collect calls
-    fn collect_calls_recursive(&self, calls: &mut Vec<TheoremFunctionID>) {
-        match self {
-            Statement::Sequence(stmts) => {
-                for s in stmts {
-                    s.collect_calls_recursive(calls);
-                }
-            }
-            Statement::Let { operation, .. } => {
-                Self::collect_calls_from_expr(operation, calls);
-            }
-            Statement::Return { values } => {
-                for v in values {
-                    Self::collect_calls_from_expr(v, calls);
-                }
-            }
-            Statement::Abort { code } => {
-                Self::collect_calls_from_expr(code, calls);
-            }
-            Statement::UpdateField { target, new_value, .. } => {
-                Self::collect_calls_from_expr(target, calls);
-                Self::collect_calls_from_expr(new_value, calls);
-            }
-            Statement::UpdateVectorElement { target, index, new_value } => {
-                Self::collect_calls_from_expr(target, calls);
-                Self::collect_calls_from_expr(index, calls);
-                Self::collect_calls_from_expr(new_value, calls);
-            }
-            Statement::Requires { condition } | Statement::Ensures { condition } => {
-                Self::collect_calls_from_expr(condition, calls);
-            }
-        }
-    }
-
-    /// Recursively collect calls from an expression
-    fn collect_calls_from_expr(expr: &Expression, calls: &mut Vec<TheoremFunctionID>) {
-        match expr {
-            Expression::Call { function, args, .. } => {
-                calls.push(*function);
-                for arg in args {
-                    Self::collect_calls_from_expr(arg, calls);
-                }
-            }
-            Expression::BinOp { lhs, rhs, .. } => {
-                Self::collect_calls_from_expr(lhs, calls);
-                Self::collect_calls_from_expr(rhs, calls);
-            }
-            Expression::UnOp { operand, .. } => {
-                Self::collect_calls_from_expr(operand, calls);
-            }
-            Expression::Cast { value, .. } => {
-                Self::collect_calls_from_expr(value, calls);
-            }
-            Expression::Pack { fields, .. } => {
-                for f in fields {
-                    Self::collect_calls_from_expr(f, calls);
-                }
-            }
-            Expression::FieldAccess { operand, .. } => {
-                Self::collect_calls_from_expr(operand, calls);
-            }
-            Expression::Unpack { operand, .. } => {
-                Self::collect_calls_from_expr(operand, calls);
-            }
-            Expression::VecOp { operands, .. } => {
-                for o in operands {
-                    Self::collect_calls_from_expr(o, calls);
-                }
-            }
-            Expression::Tuple(exprs) => {
-                for e in exprs {
-                    Self::collect_calls_from_expr(e, calls);
-                }
-            }
-            Expression::IfExpr { condition, then_block, else_block } => {
-                Self::collect_calls_from_expr(condition, calls);
-                // Recurse into block statements
-                for s in &then_block.statements {
-                    s.collect_calls_recursive(calls);
-                }
-                Self::collect_calls_from_expr(&then_block.result, calls);
-                for s in &else_block.statements {
-                    s.collect_calls_recursive(calls);
-                }
-                Self::collect_calls_from_expr(&else_block.result, calls);
-            }
-            Expression::WhileExpr { condition, body, state } => {
-                for s in &condition.statements {
-                    s.collect_calls_recursive(calls);
-                }
-                Self::collect_calls_from_expr(&condition.result, calls);
-                for s in &body.statements {
-                    s.collect_calls_recursive(calls);
-                }
-                Self::collect_calls_from_expr(&body.result, calls);
-                for init in &state.initial {
-                    Self::collect_calls_from_expr(init, calls);
-                }
-            }
-            Expression::Temporary(_) | Expression::Constant(_) => {}
-        }
+        self.iter_all_expressions().filter_map(|expr| expr.called_function())
     }
 
     /// Check if this statement contains any monadic operations
@@ -266,10 +166,8 @@ impl Statement {
         if matches!(self, Statement::Abort { .. }) {
             return true;
         }
-        // Check if any expression is a monadic call
-        self.iter_expressions().any(|expr| {
-            matches!(expr, Expression::Call { convention: CallConvention::Monadic, .. })
-        })
+        // Check if any expression is monadic
+        self.iter_all_expressions().any(|expr| expr.is_monadic())
     }
 
     /// Check if this statement terminates (all execution paths lead to Return or Abort)
@@ -291,20 +189,20 @@ impl Statement {
 
     /// Collect all function call IDs from expressions in this statement (recursively)
     pub fn collect_function_calls(&self) -> Vec<TheoremFunctionID> {
-        self.collect_all_calls()
+        self.calls().collect()
     }
 
     /// Collect all struct IDs from pack/unpack expressions in this statement
     pub fn collect_struct_references(&self) -> Vec<TheoremStructID> {
-        self.iter_expressions()
+        self.iter_all_expressions()
             .filter_map(|expr| expr.struct_reference())
             .collect()
     }
 
     /// Collect all struct IDs from types in expressions in this statement
     pub fn collect_type_struct_ids(&self) -> Vec<TheoremStructID> {
-        self.iter_expressions()
-            .flat_map(|expr| expr.collect_type_struct_ids())
+        self.iter_all_expressions()
+            .flat_map(Expression::collect_type_struct_ids)
             .collect()
     }
 
@@ -343,22 +241,28 @@ pub struct StatementIter<'a> {
 
 impl<'a> Iterator for StatementIter<'a> {
     type Item = &'a Statement;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         let statement = self.stack.pop()?;
-        
-        traverse_statement!(statement, (&), |statement| self.stack.push(statement));
-        
+
+        if let Statement::Sequence(statements) = statement {
+            for stmt in statements {
+                self.stack.push(stmt);
+            }
+        }
+
         Some(statement)
     }
 }
 
-pub struct ExpressionIter<'a> {
+/// Iterator over direct expressions in statements (does not recurse into Expression children).
+/// Use with `flat_map(|e| e.iter())` to get all expressions recursively.
+pub struct StatementExpressionIter<'a> {
     stmt_iter: StatementIter<'a>,
     expressions: Vec<&'a Expression>,
 }
 
-impl<'a> Iterator for ExpressionIter<'a> {
+impl<'a> Iterator for StatementExpressionIter<'a> {
     type Item = &'a Expression;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -371,10 +275,9 @@ impl<'a> Iterator for ExpressionIter<'a> {
             // Get next statement and extract its immediate expressions
             let stmt = self.stmt_iter.next()?;
             let exprs = &mut self.expressions;
-            traverse_expression!(
+            traverse_stmt_expression!(
                 stmt,
                 (ref),
-                (&),
                 |_: &Statement| {},
                 |e| exprs.push(e)
             );

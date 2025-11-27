@@ -105,23 +105,6 @@ impl<'env> ProgramBuilder<'env> {
         let module_id = self.get_or_create_module_id(module_env);
 
         for struct_env in module_env.get_structs() {
-            let qualified_id = QualifiedId {
-                module_id: module_env.get_id(),
-                id: struct_env.get_id(),
-            };
-
-            let struct_id = self.builder.get_or_create_struct_id(qualified_id);
-
-            // Skip if already added
-            if self.builder.structs.contains_key(&struct_id) {
-                continue;
-            }
-
-            let name = struct_env
-                .get_name()
-                .display(self.env.symbol_pool())
-                .to_string();
-
             let fields = struct_env
                 .get_fields()
                 .map(|field| TheoremField {
@@ -130,49 +113,65 @@ impl<'env> ProgramBuilder<'env> {
                 })
                 .collect();
 
-            let type_params = self.sanitize_type_params(&struct_env.get_type_parameters());
-
-            let construction = StructConstruction {
-                name: name.clone(),
-                qualified_name: struct_env.get_full_name_str(),
-                type_params,
+            self.build_datatype(
+                module_id,
+                module_env,
+                struct_env.get_id(),
+                struct_env.get_name(),
+                struct_env.get_full_name_str(),
+                &struct_env.get_type_parameters(),
                 fields,
-            };
-
-            self.builder.add_struct(struct_id, module_id, construction);
-            self.register_struct_name(module_env, struct_id, &name);
+            );
         }
 
         for enum_env in module_env.get_enums() {
-            let qualified_id = QualifiedId {
-                module_id: module_env.get_id(),
-                id: enum_env.get_id(),
-            };
-
-            let enum_id = self.builder.get_or_create_struct_id(qualified_id);
-
-            // Skip if already added
-            if self.builder.structs.contains_key(&enum_id) {
-                continue;
-            }
-
-            let name = enum_env
-                .get_name()
-                .display(self.env.symbol_pool())
-                .to_string();
-
-            let type_params = self.sanitize_type_params(&enum_env.get_type_parameters());
-
-            let construction = StructConstruction {
-                name: name.clone(),
-                qualified_name: enum_env.get_full_name_str(),
-                type_params,
-                fields: vec![],
-            };
-
-            self.builder.add_struct(enum_id, module_id, construction);
-            self.register_struct_name(module_env, enum_id, &name);
+            self.build_datatype(
+                module_id,
+                module_env,
+                enum_env.get_id(),
+                enum_env.get_name(),
+                enum_env.get_full_name_str(),
+                &enum_env.get_type_parameters(),
+                vec![],
+            );
         }
+    }
+
+    /// Build a single datatype (struct or enum) and register it
+    fn build_datatype(
+        &mut self,
+        module_id: TheoremModuleID,
+        module_env: &ModuleEnv,
+        datatype_id: DatatypeId,
+        name_symbol: move_model::symbol::Symbol,
+        qualified_name: String,
+        type_parameters: &[move_model::model::TypeParameter],
+        fields: Vec<TheoremField>,
+    ) {
+        let qualified_id = QualifiedId {
+            module_id: module_env.get_id(),
+            id: datatype_id,
+        };
+
+        let struct_id = self.builder.get_or_create_struct_id(qualified_id);
+
+        // Skip if already added
+        if self.builder.structs.contains_key(&struct_id) {
+            return;
+        }
+
+        let name = name_symbol.display(self.env.symbol_pool()).to_string();
+        let type_params = self.sanitize_type_params(type_parameters);
+
+        let construction = StructConstruction {
+            name: name.clone(),
+            qualified_name,
+            type_params,
+            fields,
+        };
+
+        self.builder.add_struct(struct_id, module_id, construction);
+        self.register_struct_name(module_env, struct_id, &name);
     }
 
     /// Build all function definitions in a module
@@ -204,12 +203,18 @@ impl<'env> ProgramBuilder<'env> {
             let mut registry = VariableRegistry::new();
             let body = function_translator::translate_function(self, &target, &mut registry, &parameters);
 
+            // A function is considered "native" (requiring external implementation) if:
+            // 1. It's declared as native in Move, OR
+            // 2. It has no bytecode (e.g., stdlib functions without available bytecode)
+            let has_no_bytecode = target.get_bytecode().is_empty();
+            let is_native = func_env.is_native() || has_no_bytecode;
+
             let construction = FunctionConstruction {
                 name,
                 signature,
                 body,
                 ssa_registry: registry,
-                is_native: func_env.is_native(),
+                is_native,
             };
 
             self.builder.add_function(function_id, module_id, construction);
@@ -303,7 +308,7 @@ impl<'env> ProgramBuilder<'env> {
             .collect()
     }
 
-    /// Build return types wrapped in ProgramState monad
+    /// Build return types wrapped in Except monad
     fn build_return_types(&mut self, func_env: &FunctionEnv) -> Vec<TheoremType> {
         let return_types: Vec<TheoremType> = func_env
             .get_return_types()

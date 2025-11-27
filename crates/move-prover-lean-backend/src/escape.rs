@@ -1,21 +1,92 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
-//! Centralized escaping utilities for Lean identifiers and names
+//! Centralized escaping and naming utilities for Lean code generation
 //!
-//! This module provides functions to escape Move identifiers that conflict
-//! with Lean reserved words or built-in types.
+//! This module provides functions to:
+//! - Escape Move identifiers that conflict with Lean reserved words
+//! - Handle type/struct name conflicts with Lean standard library
+//! - Convert module names to Lean namespace conventions
+
+/// Lean standard library types that conflict with Move type names
+/// If a Move type matches one of these, we prefix it with "Move"
+const LEAN_BUILTIN_TYPES: &[&str] = &[
+    // Core types
+    "Option",
+    "Result",
+    "List",
+    "Array",
+    "String",
+    "Vector",
+    "Nat",
+    "Int",
+    "Bool",
+    "Unit",
+    "Char",
+    "Float",
+    // Common Lean types
+    "Sum",
+    "Prod",
+    "Sigma",
+    "Subtype",
+    "Quotient",
+    "IO",
+    "Task",
+    "HashMap",
+    "HashSet",
+    "RBMap",
+    "RBSet",
+];
+
+/// Lean standard modules/namespaces that conflict with Move module names
+/// If a Move module matches one of these, we prefix it with "Move"
+const LEAN_BUILTIN_MODULES: &[&str] = &[
+    "vector",
+    "option",
+    "string",
+    "list",
+    "array",
+    "nat",
+    "int",
+    "bool",
+    "io",
+    "system",
+];
 
 /// Escape struct/type names that conflict with Lean built-ins
-///
-/// Note: Option is intentionally NOT escaped - we use Lean's Option type
+/// Prefixes conflicting names with "Move"
 pub fn escape_struct_name(name: &str) -> String {
-    match name {
-        "Result" => "MoveResult".to_string(),
-        "List" => "MoveList".to_string(),
-        "String" => "MoveString".to_string(),
-        "Vector" => "MoveVector".to_string(),
-        _ => name.to_string(),
+    if LEAN_BUILTIN_TYPES.contains(&name) {
+        format!("Move{}", name)
+    } else {
+        name.to_string()
+    }
+}
+
+/// Check if a type name is a Lean built-in that we intentionally use directly
+/// (without namespace qualification because we're using Lean's type, not Move's)
+pub fn is_lean_builtin(name: &str) -> bool {
+    // Integer is used for spec-level integers (Lean's Integer type)
+    // Note: Option is NOT here because we use Move's Option (MoveOption.MoveOption)
+    matches!(name, "Integer")
+}
+
+/// Convert a Move module name to a Lean namespace name
+/// Handles name conflicts with Lean standard modules and capitalizes
+pub fn module_name_to_namespace(module_name: &str) -> String {
+    if LEAN_BUILTIN_MODULES.contains(&module_name) {
+        format!("Move{}", capitalize_first(module_name))
+    } else {
+        capitalize_first(module_name)
+    }
+}
+
+/// Capitalize first character of a string
+pub fn capitalize_first(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
 
@@ -104,18 +175,4 @@ pub fn escape_identifier(name: &str) -> String {
 
         _ => name.to_string(),
     }
-}
-
-/// Capitalize first character
-pub fn capitalize_first(name: &str) -> String {
-    let mut chars = name.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-    }
-}
-
-/// Check if a type is a Lean built-in that shouldn't be namespace-qualified
-pub fn is_lean_builtin(name: &str) -> bool {
-    matches!(name, "Option" | "Integer")
 }
