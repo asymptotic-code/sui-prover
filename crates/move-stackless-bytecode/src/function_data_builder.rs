@@ -5,6 +5,8 @@
 //! Provides a builder for `FunctionData`, including building expressions and rewriting
 //! bytecode.
 
+use std::collections::BTreeSet;
+
 use crate::{
     ast::{Exp, TempIndex},
     exp_generator::ExpGenerator,
@@ -12,6 +14,7 @@ use crate::{
     function_target_pipeline::FunctionVariant,
     number_operation::GlobalNumberOperationState,
     stackless_bytecode::{AttrId, Bytecode, HavocKind, Label, Operation, PropKind},
+    stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 use move_model::{
     model::{FunctionEnv, Loc},
@@ -358,6 +361,46 @@ impl<'env> FunctionDataBuilder<'env> {
 
         code.iter()
             .map(|bc| bc.substitute_labels(&label_subst))
+            .collect()
+    }
+
+    pub fn eliminate_unreachable_bytecode(&mut self) {
+        if self.data.code.is_empty() {
+            return;
+        }
+
+        let code = std::mem::take(&mut self.data.code);
+
+        let cfg = StacklessControlFlowGraph::new_forward(&code);
+        let mut reachable_blocks = BTreeSet::new();
+        let mut worklist = vec![cfg.entry_block()];
+
+        while let Some(block_id) = worklist.pop() {
+            if !reachable_blocks.insert(block_id) {
+                continue;
+            }
+
+            for successor in cfg.successors(block_id) {
+                if !reachable_blocks.contains(successor) {
+                    worklist.push(*successor);
+                }
+            }
+        }
+
+        let mut reachable_offsets = BTreeSet::new();
+        for block_id in reachable_blocks {
+            if let Some(instr_iter) = cfg.instr_indexes(block_id) {
+                for offset in instr_iter {
+                    reachable_offsets.insert(offset as usize);
+                }
+            }
+        }
+
+        self.data.code = code
+            .into_iter()
+            .enumerate()
+            .filter(|(offset, _)| reachable_offsets.contains(offset))
+            .map(|(_, bc)| bc)
             .collect()
     }
 }

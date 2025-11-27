@@ -45,13 +45,13 @@ use move_stackless_bytecode::{
         FuncOperationMap, GlobalNumberOperationState,
         NumOperation::{self, Bitwise, Bottom},
     },
+    pure_function_analysis::PureFunctionAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     spec_global_variable_analysis::{self},
     stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
         Operation, PropKind, QuantifierType,
     },
-    stackless_control_flow_graph::StacklessControlFlowGraph,
     verification_analysis,
 };
 
@@ -533,43 +533,6 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
-    fn eliminate_unreachable_bytecode(code: Vec<Bytecode>) -> Vec<Bytecode> {
-        if code.is_empty() {
-            return code;
-        }
-
-        let cfg = StacklessControlFlowGraph::new_forward(&code);
-        let mut reachable_blocks = BTreeSet::new();
-        let mut worklist = vec![cfg.entry_block()];
-
-        while let Some(block_id) = worklist.pop() {
-            if !reachable_blocks.insert(block_id) {
-                continue;
-            }
-
-            for successor in cfg.successors(block_id) {
-                if !reachable_blocks.contains(successor) {
-                    worklist.push(*successor);
-                }
-            }
-        }
-
-        let mut reachable_offsets = BTreeSet::new();
-        for block_id in reachable_blocks {
-            if let Some(instr_iter) = cfg.instr_indexes(block_id) {
-                for offset in instr_iter {
-                    reachable_offsets.insert(offset as usize);
-                }
-            }
-        }
-
-        code.into_iter()
-            .enumerate()
-            .filter(|(offset, _)| reachable_offsets.contains(offset))
-            .map(|(_, bc)| bc)
-            .collect()
-    }
-
     fn translate_function_style(&self, fun_env: &FunctionEnv, style: FunctionTranslationStyle) {
         use Bytecode::*;
 
@@ -917,8 +880,7 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         // Eliminate unreachable bytecode created by setting abort actions to None
-        builder.data.code =
-            Self::eliminate_unreachable_bytecode(std::mem::take(&mut builder.data.code));
+        builder.eliminate_unreachable_bytecode();
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
@@ -2477,13 +2439,6 @@ impl<'env> FunctionTranslator<'env> {
         let code = fun_target.get_bytecode();
 
         if emit_pure_in_place {
-            // First validate all bytecode is compatible with function generation
-            for bytecode in code.iter() {
-                // Check for disallowed operations that should panic
-                self.check_disallowed_for_function(bytecode);
-            }
-
-            // Generate function body using let expressions instead of statements
             self.generate_pure_expression(code);
         } else {
             // For procedures: emit all bytecodes as normal
@@ -2622,68 +2577,8 @@ impl<'env> FunctionTranslator<'env> {
         dinfo.is_deterministic && correct_style
     }
 
-    /// Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
-    /// Control flow instructions (jumps, branches, labels) are silently skipped since
-    /// if_then_else expressions have already summarized their effects.
-    fn is_straightline_bytecode(&self, bytecode: &Bytecode) -> bool {
-        use Bytecode::*;
-        match bytecode {
-            // Allowed: assignments, loads, pure calls, returns
-            Assign(_, _, _, _) => true,
-            Load(_, _, _) => true,
-            Call(_, _, op, _, _) => {
-                match op {
-                    Operation::Quantifier(_, _, _, _) => false, // quantifiers not allowed in pure functions yet
-                    _ => true,
-                }
-            }
-            Ret(_, _) => true,
-            Nop(_) => true,
-
-            // Silently skip: control flow (summarized in if_then_else)
-            Jump(_, _) => false,
-            Branch(_, _, _, _) => false,
-            Label(_, _) => false,
-            VariantSwitch(_, _, _) => false,
-
-            // Skip: other operations
-            Abort(_, _) => false,
-            SaveMem(_, _, _) => false,
-            Prop(_, _, _) => false,
-        }
-    }
-
     fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
         self.parent.targets.is_pure_fun(&mid.qualified(*fid))
-    }
-
-    /// Panic if we encounter bytecode operations that should have been filtered out
-    /// but could compromise translation fidelity if silently ignored.
-    fn check_disallowed_for_function(&self, bytecode: &Bytecode) {
-        use Bytecode::*;
-        match bytecode {
-            Call(_, _, op, _, _) => {
-                if let Operation::Function(mid, fid, _) = op {
-                    // Allow function calls if the callee can be emitted as a Boogie function
-                    if !self.can_callee_be_function(mid, fid)
-                        && !self.parent.env.should_be_used_as_func(&mid.qualified(*fid))
-                        && !self
-                            .special_pure_functions_map()
-                            .contains_key(&mid.qualified(*fid))
-                    {
-                        panic!(
-                            "Function calls should be filtered out before function emission: {}",
-                            bytecode
-                                .display(self.fun_target, &std::collections::BTreeMap::default())
-                        );
-                    }
-                }
-            }
-            Abort(_, _) => {
-                // Skip abort operations - they will be ignored in function body generation
-            }
-            _ => {} // Other operations are fine to skip or translate
-        }
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -2701,15 +2596,6 @@ impl<'env> FunctionTranslator<'env> {
             Constant::AddressArray(val) => boogie_address_blob(self.parent.options, val),
             Constant::Vector(val) => boogie_constant_blob(self.parent.options, val),
         }
-    }
-
-    fn special_pure_functions_map(&self) -> BTreeMap<QualifiedId<FunId>, String> {
-        let mut special_funcs = BTreeMap::new();
-        special_funcs.insert(
-            self.parent.env.std_vector_borrow_qid().unwrap(),
-            "ReadVec".to_string(),
-        );
-        special_funcs
     }
 
     /// Generate Boogie pure function body using let/var expression nesting
@@ -2766,7 +2652,7 @@ impl<'env> FunctionTranslator<'env> {
                 Load(_, dest, constant) => {
                     bindings.push((*dest, self.format_constant(constant)));
                 }
-                Call(_, dests, op, srcs, _) if self.is_straightline_bytecode(bytecode) => {
+                Call(_, dests, op, srcs, _) => {
                     if let [dest] = dests.as_slice() {
                         let expr = if let IfThenElse = op {
                             if let [cond, then_val, else_val] = srcs.as_slice() {
@@ -2800,7 +2686,10 @@ impl<'env> FunctionTranslator<'env> {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else if let Some(fun_name) =
-                                self.special_pure_functions_map().get(&mid.qualified(*fid))
+                                PureFunctionAnalysisProcessor::special_pure_functions_map(
+                                    self.parent.env,
+                                )
+                                .get(&mid.qualified(*fid))
                             {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
@@ -2870,18 +2759,7 @@ impl<'env> FunctionTranslator<'env> {
                     }
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
-                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) | Call(..) => {
-                    match bytecode {
-                        Call(_, _, op, _, _) => {
-                            if let Operation::Function(mid, fid, _) = op {
-                                println!(
-                                        "Function calls should be filtered out before function emission: {}",
-                                        self.parent.env.get_function(mid.qualified(*fid)).get_full_name_str()
-                                    );
-                            }
-                        }
-                        _ => {}
-                    };
+                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) => {
                     panic!(
                         "Unsupported bytecode for #[ext(pure)] target: {:?}",
                         bytecode

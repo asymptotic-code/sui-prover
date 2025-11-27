@@ -22,6 +22,7 @@ use crate::{
     no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
+    pure_function_analysis::PureFunctionAnalysisProcessor,
     quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     replacement_analysis::ReplacementAnalysisProcessor,
@@ -68,6 +69,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecWellFormedAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
+        PureFunctionAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
