@@ -41,8 +41,9 @@ pub enum TheoremType {
     TypeParameter(u16),
     /// Tuple
     Tuple(Vec<TheoremType>),
-    /// ProgramState monad wrapping a type (for abort handling)
-    ProgramState(Box<TheoremType>),
+    /// Except monad wrapping a type (for abort handling)
+    /// Represents `Except AbortCode α` in Lean
+    Except(Box<TheoremType>),
 }
 
 impl TheoremType {
@@ -104,20 +105,20 @@ impl TheoremType {
         }
     }
 
-    /// Wrap this type in ProgramState monad
+    /// Wrap this type in Except monad
     pub fn wrap_in_monad(self) -> Self {
-        TheoremType::ProgramState(Box::new(self))
+        TheoremType::Except(Box::new(self))
     }
 
-    /// Check if this is a ProgramState type
+    /// Check if this is an Except type
     pub fn is_monad(&self) -> bool {
-        matches!(self, TheoremType::ProgramState(_))
+        matches!(self, TheoremType::Except(_))
     }
 
-    /// Unwrap the inner type from ProgramState, if applicable
+    /// Unwrap the inner type from Except, if applicable
     pub fn unwrap_monad(&self) -> Option<&TheoremType> {
         match self {
-            TheoremType::ProgramState(inner) => Some(inner),
+            TheoremType::Except(inner) => Some(inner),
             _ => None,
         }
     }
@@ -158,7 +159,7 @@ impl TheoremType {
             TheoremType::Vector(inner) |
             TheoremType::Reference(inner) |
             TheoremType::MutableReference(inner) |
-            TheoremType::ProgramState(inner) => {
+            TheoremType::Except(inner) => {
                 inner.fold_impl(acc, f)
             }
             TheoremType::Tuple(types) => {
@@ -193,8 +194,8 @@ impl TheoremType {
             TheoremType::MutableReference(inner) => {
                 TheoremType::MutableReference(Box::new(inner.map(f)))
             }
-            TheoremType::ProgramState(inner) => {
-                TheoremType::ProgramState(Box::new(inner.map(f)))
+            TheoremType::Except(inner) => {
+                TheoremType::Except(Box::new(inner.map(f)))
             }
             TheoremType::Tuple(types) => {
                 TheoremType::Tuple(types.iter().map(|t| t.map(f)).collect())
@@ -227,7 +228,7 @@ impl TheoremType {
             TheoremType::Vector(inner) |
             TheoremType::Reference(inner) |
             TheoremType::MutableReference(inner) |
-            TheoremType::ProgramState(inner) => {
+            TheoremType::Except(inner) => {
                 inner.for_each_impl(f);
             }
             TheoremType::Tuple(types) => {

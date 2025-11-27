@@ -2,11 +2,71 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::data::structure::TheoremStructID;
+use crate::data::statements::Statement;
 use crate::data::types::{TempId, TheoremType};
 use crate::TheoremFunctionID;
 use ethnum::U256;
 use num::BigUint;
 use serde::{Deserialize, Serialize};
+
+/// Traverse child expressions of an expression.
+/// Takes a ref pattern (`(ref)` or `(ref mut)`), an expression action, a vec action, and a block action.
+macro_rules! traverse_expr {
+    ($target:expr, (ref), $expr_action:expr, $vec_action:expr, $block_action:expr) => {
+        match $target {
+            Expression::BinOp { ref lhs, ref rhs, .. } => {
+                $expr_action(lhs);
+                $expr_action(rhs);
+            }
+            Expression::UnOp { operand: ref operand, .. } => $expr_action(operand),
+            Expression::Cast { value: ref value, .. } => $expr_action(value),
+            Expression::FieldAccess { operand: ref operand, .. } => $expr_action(operand),
+            Expression::Unpack { operand: ref operand, .. } => $expr_action(operand),
+            Expression::Call { args: ref args, .. } => $vec_action(args),
+            Expression::Pack { fields: ref fields, .. } => $vec_action(fields),
+            Expression::VecOp { operands: ref operands, .. } => $vec_action(operands),
+            Expression::Tuple(ref exprs) => $vec_action(exprs),
+            Expression::IfExpr { condition: ref condition, then_block: ref then_block, else_block: ref else_block } => {
+                $expr_action(condition);
+                $block_action(then_block);
+                $block_action(else_block);
+            }
+            Expression::WhileExpr { condition: ref condition, body: ref body, state: ref state } => {
+                $block_action(condition);
+                $block_action(body);
+                $vec_action(&state.initial);
+            }
+            Expression::Temporary(_) | Expression::Constant(_) => {}
+        }
+    };
+    ($target:expr, (ref mut), $expr_action:expr, $vec_action:expr, $block_action:expr) => {
+        match $target {
+            Expression::BinOp { ref mut lhs, ref mut rhs, .. } => {
+                $expr_action(lhs);
+                $expr_action(rhs);
+            }
+            Expression::UnOp { operand: ref mut operand, .. } => $expr_action(operand),
+            Expression::Cast { value: ref mut value, .. } => $expr_action(value),
+            Expression::FieldAccess { operand: ref mut operand, .. } => $expr_action(operand),
+            Expression::Unpack { operand: ref mut operand, .. } => $expr_action(operand),
+            Expression::Call { args: ref mut args, .. } => $vec_action(args),
+            Expression::Pack { fields: ref mut fields, .. } => $vec_action(fields),
+            Expression::VecOp { operands: ref mut operands, .. } => $vec_action(operands),
+            Expression::Tuple(ref mut exprs) => $vec_action(exprs),
+            Expression::IfExpr { condition: ref mut condition, then_block: ref mut then_block, else_block: ref mut else_block } => {
+                $expr_action(condition);
+                $block_action(then_block);
+                $block_action(else_block);
+            }
+            Expression::WhileExpr { condition: ref mut condition, body: ref mut body, state: ref mut state } => {
+                $block_action(condition);
+                $block_action(body);
+                $vec_action(&mut state.initial);
+            }
+            Expression::Temporary(_) | Expression::Constant(_) => {}
+        }
+    };
+}
 
 /// Constant value that can represent various numeric types
 #[derive(Debug, Clone)]
@@ -86,6 +146,8 @@ pub enum Expression {
     /// Pack (create struct)
     Pack {
         struct_id: TheoremStructID,
+        /// Type arguments for generic structs (e.g., Coin<SUI> has type_args = [SUI])
+        type_args: Vec<TheoremType>,
         fields: Vec<Expression>,
     },
 
@@ -171,14 +233,14 @@ pub enum VectorOp {
 #[derive(Debug, Clone)]
 pub struct Block {
     /// Statements to execute
-    pub statements: Vec<super::statements::Statement>,
+    pub statements: Vec<Statement>,
     /// The result expression (what the block evaluates to)
     pub result: Box<Expression>,
 }
 
 impl Block {
     /// Create a new block with statements and a result
-    pub fn new(statements: Vec<super::statements::Statement>, result: Expression) -> Self {
+    pub fn new(statements: Vec<Statement>, result: Expression) -> Self {
         Self { statements, result: Box::new(result) }
     }
 
@@ -190,7 +252,7 @@ impl Block {
     /// Check if this block contains monadic operations
     pub fn is_monadic(&self) -> bool {
         self.statements.iter().any(|s| s.is_monadic())
-            || matches!(&*self.result, Expression::Call { convention: CallConvention::Monadic, .. })
+            || self.result.is_monadic()
     }
 
     /// Check if this block terminates (ends with Return or Abort in statements)
@@ -206,6 +268,14 @@ impl Block {
                 .collect(),
             result: Box::new(self.result.map(f)),
         }
+    }
+
+    /// Mutably traverse all expressions in this block
+    pub fn traverse_expressions_mut<F: Fn(&mut Expression)>(&mut self, f: &F) {
+        for stmt in &mut self.statements {
+            stmt.traverse_expressions_mut(f);
+        }
+        self.result.traverse_mut(f);
     }
 
     /// Iterate over all expressions in this block (statements + result)
@@ -246,39 +316,69 @@ impl Expression {
         }
     }
 
-    /// Collect all struct IDs from types in this expression
-    pub fn collect_type_struct_ids(&self) -> Vec<TheoremStructID> {
-        let mut result = Vec::new();
+    /// Check if this expression produces a monadic result (requires ← binding).
+    /// Recursively checks nested blocks for monadic operations.
+    pub fn is_monadic(&self) -> bool {
         match self {
-            Expression::Cast { target_type, .. } => {
-                result.extend(target_type.collect_struct_ids());
+            Expression::Call { convention: CallConvention::Monadic, .. } => true,
+            Expression::WhileExpr { .. } => true,
+            Expression::IfExpr { then_block, else_block, .. } => {
+                then_block.is_monadic() || else_block.is_monadic()
             }
-            Expression::Call { type_args, .. } => {
-                for ty in type_args {
-                    result.extend(ty.collect_struct_ids());
-                }
-            }
-            _ => {}
+            _ => false,
         }
-        result
+    }
+
+    /// Iterate over this expression and all sub-expressions (depth-first).
+    /// Includes expressions inside blocks (IfExpr, WhileExpr).
+    pub fn iter(&self) -> ExpressionIter<'_> {
+        ExpressionIter { stack: vec![self], block_stack: Vec::new() }
+    }
+
+    /// Collect all struct IDs from types in this expression (recursively)
+    pub fn collect_type_struct_ids(&self) -> Vec<TheoremStructID> {
+        self.iter().flat_map(|expr| {
+            match expr {
+                Expression::Cast { target_type, .. } => target_type.collect_struct_ids(),
+                Expression::Call { type_args, .. } |
+                Expression::Pack { type_args, .. } => {
+                    type_args.iter().flat_map(|ty| ty.collect_struct_ids()).collect()
+                }
+                _ => Vec::new(),
+            }
+        }).collect()
+    }
+
+    /// Collect all function calls in this expression (recursively)
+    pub fn collect_calls(&self) -> Vec<TheoremFunctionID> {
+        self.iter().filter_map(|expr| expr.called_function()).collect()
     }
 
     /// Map over this expression tree, transforming each sub-expression recursively.
     /// Applies f to children first (post-order), then to self.
     pub fn map<F: Fn(Expression) -> Expression + Copy>(self, f: F) -> Expression {
-        let transformed_children = match self {
+        let transformed = match self {
             Expression::BinOp { op, lhs, rhs } => Expression::BinOp {
                 op,
-                lhs: Box::new(lhs.map(f)),
-                rhs: Box::new(rhs.map(f)),
+                lhs: Box::new((*lhs).map(f)),
+                rhs: Box::new((*rhs).map(f)),
             },
             Expression::UnOp { op, operand } => Expression::UnOp {
                 op,
-                operand: Box::new(operand.map(f)),
+                operand: Box::new((*operand).map(f)),
             },
             Expression::Cast { value, target_type } => Expression::Cast {
-                value: Box::new(value.map(f)),
+                value: Box::new((*value).map(f)),
                 target_type,
+            },
+            Expression::FieldAccess { struct_id, field_index, operand } => Expression::FieldAccess {
+                struct_id,
+                field_index,
+                operand: Box::new((*operand).map(f)),
+            },
+            Expression::Unpack { struct_id, operand } => Expression::Unpack {
+                struct_id,
+                operand: Box::new((*operand).map(f)),
             },
             Expression::Call { function, args, type_args, convention } => Expression::Call {
                 function,
@@ -286,18 +386,10 @@ impl Expression {
                 type_args,
                 convention,
             },
-            Expression::Pack { struct_id, fields } => Expression::Pack {
+            Expression::Pack { struct_id, type_args, fields } => Expression::Pack {
                 struct_id,
+                type_args,
                 fields: fields.into_iter().map(|e| e.map(f)).collect(),
-            },
-            Expression::FieldAccess { struct_id, field_index, operand } => Expression::FieldAccess {
-                struct_id,
-                field_index,
-                operand: Box::new(operand.map(f)),
-            },
-            Expression::Unpack { struct_id, operand } => Expression::Unpack {
-                struct_id,
-                operand: Box::new(operand.map(f)),
             },
             Expression::VecOp { op, operands } => Expression::VecOp {
                 op,
@@ -307,7 +399,7 @@ impl Expression {
                 exprs.into_iter().map(|e| e.map(f)).collect(),
             ),
             Expression::IfExpr { condition, then_block, else_block } => Expression::IfExpr {
-                condition: Box::new(condition.map(f)),
+                condition: Box::new((*condition).map(f)),
                 then_block: then_block.map_expressions(f),
                 else_block: else_block.map_expressions(f),
             },
@@ -320,10 +412,22 @@ impl Expression {
                     initial: state.initial.into_iter().map(|e| e.map(f)).collect(),
                 },
             },
-            // Leaf nodes - no children to transform
             expr @ (Expression::Temporary(_) | Expression::Constant(_)) => expr,
         };
-        f(transformed_children)
+        f(transformed)
+    }
+
+    /// Mutably traverse this expression tree.
+    /// Applies f to children first (post-order), then to self.
+    pub fn traverse_mut<F: Fn(&mut Expression)>(&mut self, f: &F) {
+        traverse_expr!(
+            self,
+            (ref mut),
+            |e: &mut Box<Expression>| e.as_mut().traverse_mut(f),
+            |v: &mut Vec<Expression>| { for e in v { e.traverse_mut(f); } },
+            |b: &mut Block| b.traverse_expressions_mut(f)
+        );
+        f(self);
     }
 
     /// Substitute temporary variables according to a mapping.
@@ -339,7 +443,12 @@ impl Expression {
 
     /// Iterate over all temporary IDs referenced in this expression (recursive).
     pub fn iter_temps(&self) -> impl Iterator<Item = TempId> + '_ {
-        ExprTempIter { stack: vec![self] }
+        self.iter().filter_map(|expr| {
+            match expr {
+                Expression::Temporary(temp_id) => Some(*temp_id),
+                _ => None,
+            }
+        })
     }
 
     /// Collect all temporary IDs referenced in this expression.
@@ -348,47 +457,41 @@ impl Expression {
     }
 }
 
-/// Iterator over temporary IDs in an expression tree
-struct ExprTempIter<'a> {
+/// Iterator over expressions in an expression tree (depth-first).
+/// Includes all expressions inside blocks (IfExpr, WhileExpr).
+pub struct ExpressionIter<'a> {
     stack: Vec<&'a Expression>,
+    /// Blocks to process (we process block statements' expressions too)
+    block_stack: Vec<&'a Block>,
 }
 
-impl<'a> Iterator for ExprTempIter<'a> {
-    type Item = TempId;
+impl<'a> Iterator for ExpressionIter<'a> {
+    type Item = &'a Expression;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let expr = self.stack.pop()?;
-            match expr {
-                Expression::Temporary(temp_id) => return Some(*temp_id),
-                Expression::Constant(_) => continue,
-                Expression::BinOp { lhs, rhs, .. } => {
-                    self.stack.push(rhs);
-                    self.stack.push(lhs);
-                }
-                Expression::UnOp { operand, .. } => self.stack.push(operand),
-                Expression::Cast { value, .. } => self.stack.push(value),
-                Expression::Call { args, .. } => self.stack.extend(args.iter().rev()),
-                Expression::Pack { fields, .. } => self.stack.extend(fields.iter().rev()),
-                Expression::FieldAccess { operand, .. } => self.stack.push(operand),
-                Expression::Unpack { operand, .. } => self.stack.push(operand),
-                Expression::VecOp { operands, .. } => self.stack.extend(operands.iter().rev()),
-                Expression::Tuple(exprs) => self.stack.extend(exprs.iter().rev()),
-                Expression::IfExpr { condition, then_block, else_block } => {
-                    // Push result expressions from blocks
-                    self.stack.push(&else_block.result);
-                    self.stack.push(&then_block.result);
-                    self.stack.push(condition);
-                    // Note: statement temps would need a separate iterator
-                }
-                Expression::WhileExpr { condition, body, state } => {
-                    self.stack.push(&body.result);
-                    self.stack.push(&condition.result);
-                    self.stack.extend(state.initial.iter().rev());
+            // First try to get an expression from the stack
+            if let Some(expr) = self.stack.pop() {
+                traverse_expr!(
+                    expr,
+                    (ref),
+                    |e: &'a Box<Expression>| self.stack.push(e),
+                    |v: &'a Vec<Expression>| { for e in v { self.stack.push(e); } },
+                    |b: &'a Block| self.block_stack.push(b)
+                );
+                return Some(expr);
+            }
+
+            // If no expressions, try to get more from a block
+            let block = self.block_stack.pop()?;
+            // Push the result expression
+            self.stack.push(&block.result);
+            // Push all expressions from statements in the block
+            for stmt in &block.statements {
+                for expr in stmt.iter_expressions() {
+                    self.stack.push(expr);
                 }
             }
         }
     }
 }
-
-

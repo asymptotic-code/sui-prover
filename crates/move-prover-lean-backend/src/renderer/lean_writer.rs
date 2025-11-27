@@ -1,78 +1,135 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
-//! Writer wrapper for generating Lean code with proper indentation
+//! Simple line-based writer for generating Lean code with proper indentation.
 
-use move_model::code_writer::CodeWriter;
-use move_model::model::Loc;
-use intermediate_theorem_format::NameManager;
+use std::fmt::Write;
 
-/// Wrapper around CodeWriter for Lean-specific formatting
-/// Holds a reference to the NameManager for type rendering
-pub struct LeanWriter<'a> {
-    writer: CodeWriter,
-    /// Name manager for looking up struct/module names during rendering
-    pub name_manager: &'a NameManager,
-    /// Current module name (used to avoid redundant qualification)
-    pub current_module: Option<String>,
+/// Writer context for generating Lean code.
+/// Tracks indentation and handles line-based output.
+/// Supports both multi-line (indented) and inline (semicolon-separated) modes.
+pub struct LeanWriter<W: Write> {
+    out: W,
+    indent: usize,
+    at_line_start: bool,
+    inline: bool,
 }
 
-impl<'a> LeanWriter<'a> {
-    pub fn new(name_manager: &'a NameManager) -> Self {
-        // Use a dummy location since we don't track source locations in Lean output
-        // FileId is a simple wrapper around u32, safe to construct via MaybeUninit
-        let dummy_file_id: codespan::FileId = unsafe {
-            let mut file_id = std::mem::MaybeUninit::<codespan::FileId>::uninit();
-            // Write a valid u32 value (0) into the FileId
-            std::ptr::write(file_id.as_mut_ptr() as *mut u32, 0u32);
-            file_id.assume_init()
-        };
-        let dummy_span = codespan::Span::new(codespan::ByteIndex(0), codespan::ByteIndex(0));
-        let dummy_loc = Loc::new(dummy_file_id, dummy_span);
+impl<W: Write> LeanWriter<W> {
+    pub fn new(out: W) -> Self {
         Self {
-            writer: CodeWriter::new(dummy_loc),
-            name_manager,
-            current_module: None,
+            out,
+            indent: 0,
+            at_line_start: true,
+            inline: false,
         }
     }
 
-    /// Create a writer with a specific current module context
-    pub fn with_module(name_manager: &'a NameManager, module: String) -> Self {
-        let mut writer = Self::new(name_manager);
-        writer.current_module = Some(module);
-        writer
+    /// Create a new inline writer (semicolon-separated, no indentation).
+    pub fn new_inline(out: W) -> Self {
+        Self {
+            out,
+            indent: 0,
+            at_line_start: true,
+            inline: true,
+        }
     }
 
-    /// Emit a string without newline
-    pub fn emit(&self, s: &str) {
-        self.writer.emit(s);
+    /// Check if this writer is in inline mode.
+    pub fn is_inline(&self) -> bool {
+        self.inline
     }
 
-    /// Emit a string with newline
-    pub fn emit_line(&self, s: &str) {
-        self.writer.emit_line(s);
+    /// Write a string, handling indentation at line starts.
+    /// In inline mode, newlines become semicolons.
+    pub fn write(&mut self, s: &str) {
+        for c in s.chars() {
+            if c == '\n' {
+                if self.inline {
+                    write!(self.out, "; ").unwrap();
+                    self.at_line_start = false;
+                } else {
+                    write!(self.out, "\n").unwrap();
+                    self.at_line_start = true;
+                }
+            } else {
+                if self.at_line_start && !self.inline {
+                    for _ in 0..self.indent {
+                        write!(self.out, "  ").unwrap();
+                    }
+                }
+                self.at_line_start = false;
+                write!(self.out, "{}", c).unwrap();
+            }
+        }
     }
 
-    /// Increase indentation level
-    pub fn indent(&self) {
-        self.writer.indent();
+    /// Write a complete line (adds newline at end).
+    pub fn line(&mut self, s: &str) {
+        self.write(s);
+        self.write("\n");
     }
 
-    /// Decrease indentation level
-    pub fn unindent(&self) {
-        self.writer.unindent();
+    /// Increase indentation for subsequent lines.
+    /// No-op in inline mode.
+    pub fn indent(&mut self) {
+        if !self.inline {
+            self.indent += 1;
+        }
     }
 
-    /// Execute a function with increased indentation
-    pub fn with_indent<F>(&self, f: F)
-    where
-        F: FnMut(),
-    {
-        self.writer.with_indent(f);
+    /// Decrease indentation for subsequent lines.
+    /// No-op in inline mode.
+    pub fn dedent(&mut self) {
+        if !self.inline && self.indent > 0 {
+            self.indent -= 1;
+        }
     }
 
-    /// Extract the final output
-    pub fn extract_result(&self) -> String {
-        self.writer.extract_result()
+    /// Get the underlying writer (consumes self).
+    pub fn into_inner(self) -> W {
+        self.out
     }
+
+    /// Write a formatted string using format_args!.
+    /// Convenience method to avoid `w.write(&format!(...))`.
+    pub fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
+        self.write(&args.to_string());
+    }
+
+    /// Write a formatted line (adds newline at end).
+    /// Convenience method to avoid `w.line(&format!(...))`.
+    pub fn line_fmt(&mut self, args: std::fmt::Arguments<'_>) {
+        self.line(&args.to_string());
+    }
+
+    /// Write a space character.
+    pub fn space(&mut self) {
+        self.write(" ");
+    }
+
+    /// Write an empty line (just a newline).
+    pub fn newline(&mut self) {
+        self.write("\n");
+    }
+}
+
+/// Render to a string using multi-line mode.
+pub fn render_to_string<F>(f: F) -> String
+where
+    F: FnOnce(&mut LeanWriter<String>),
+{
+    let mut writer = LeanWriter::new(String::new());
+    f(&mut writer);
+    writer.into_inner()
+}
+
+/// Render to a string using inline mode (semicolon-separated).
+pub fn render_to_string_inline<F>(f: F) -> String
+where
+    F: FnOnce(&mut LeanWriter<String>),
+{
+    let mut writer = LeanWriter::new_inline(String::new());
+    f(&mut writer);
+    writer.into_inner()
 }

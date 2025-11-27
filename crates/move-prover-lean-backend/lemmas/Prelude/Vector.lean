@@ -3,7 +3,6 @@
 -- These provide concrete implementations for Move's 0x1::vector stdlib
 
 import Prelude.Helpers
-import Prelude.ProgramState
 import Prelude.TypeConversion
 import Prelude.UInt128
 import Prelude.UInt256

@@ -10,6 +10,10 @@
 use crate::data::types::{TempId, TheoremType};
 use std::collections::BTreeMap;
 
+/// Default base ID for VariableRegistry, high enough to avoid collision with bytecode temps.
+/// Move bytecode typically uses small integers (0, 1, 2, ...) for local temps.
+pub const DEFAULT_REGISTRY_BASE_ID: TempId = 1000;
+
 /// Kind of temporary variable - tracks phi relationships structurally
 #[derive(Debug, Clone)]
 pub enum TempKind {
@@ -65,11 +69,7 @@ pub struct VariableRegistry {
 impl VariableRegistry {
     /// Create a new empty registry with default base ID
     pub fn new() -> Self {
-        Self {
-            temps: Vec::new(),
-            base_id: 1000, // Start high to avoid collision with bytecode temps
-            bytecode_temps: BTreeMap::new(),
-        }
+        Self::with_base_id(DEFAULT_REGISTRY_BASE_ID)
     }
 
     /// Create a registry with a specific base ID

@@ -1,477 +1,422 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
-//! Renders Expression IR to Lean syntax
+//! Renders Expression IR to Lean syntax.
+//! Pure translation - pattern match IR nodes to Lean text.
 
-use intermediate_theorem_format::{Expression, BinOp, UnOp, VariableRegistry, TheoremProgram, ConstantValue, TheoremModuleID};
-use super::type_renderer::TypeRenderer;
+use std::fmt::Write;
+use intermediate_theorem_format::{
+    Expression, BinOp, UnOp, VectorOp, ConstantValue, TempId,
+    VariableRegistry, TheoremProgram, TheoremModuleID, Block, Statement,
+};
+use super::type_renderer::{render_type, uint_type_name, uint_cast_func};
+use super::statement_renderer::render_stmt;
 use super::lean_writer::LeanWriter;
 use crate::escape;
 
-pub struct ExpressionRenderer {
-    type_renderer: TypeRenderer,
+/// Rendering context - holds references needed during rendering.
+pub struct RenderCtx<'a> {
+    pub registry: &'a VariableRegistry,
+    pub program: &'a TheoremProgram,
+    pub current_module_id: TheoremModuleID,
+    pub current_module_namespace: Option<&'a str>,
 }
 
-impl ExpressionRenderer {
-    pub fn new() -> Self {
-        Self {
-            type_renderer: TypeRenderer,
+/// Render an expression to Lean syntax.
+pub fn render_expr<W: Write>(expr: &Expression, ctx: &RenderCtx, w: &mut W) {
+    match expr {
+        Expression::Temporary(temp_id) => {
+            write!(w, "{}", ctx.registry.get_display_name(*temp_id)).unwrap();
         }
-    }
 
-    /// Capitalize the first letter of a string (for Lean naming conventions)
-    fn capitalize_first(s: &str) -> String {
-        let mut chars = s.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => {
-                let mut result = first.to_uppercase().collect::<String>();
-                result.push_str(chars.as_str());
-                result
+        Expression::Constant(value) => {
+            render_constant(value, w);
+        }
+
+        Expression::BinOp { op, lhs, rhs } => {
+            render_binop(*op, lhs, rhs, ctx, w);
+        }
+
+        Expression::UnOp { op, operand } => {
+            render_unop(*op, operand, ctx, w);
+        }
+
+        Expression::Cast { value, target_type } => {
+            use intermediate_theorem_format::TheoremType;
+            if let TheoremType::UInt(bits) = target_type {
+                write!(w, "(").unwrap();
+                render_expr(value, ctx, w);
+                write!(w, ".{})", uint_cast_func(*bits as usize)).unwrap();
+            } else {
+                write!(w, "(cast ").unwrap();
+                render_expr(value, ctx, w);
+                write!(w, " : ").unwrap();
+                render_type(target_type, &ctx.program.name_manager, ctx.current_module_namespace, w);
+                write!(w, ")").unwrap();
             }
         }
-    }
 
-    /// Render expression to a writer
-    /// current_module_id: ID of the module we're currently rendering (for determining if function calls need qualification)
-    pub fn render(&self, expr: &Expression, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, writer: &LeanWriter) {
-        match expr {
-            Expression::Temporary(temp_id) => {
-                writer.emit(&registry.get_display_name(*temp_id));
-            }
-
-            Expression::Constant(value) => {
-                // CRITICAL: UInt constants need type annotations to prevent Lean from
-                // inferring them as Nat, which causes type errors in operations
-                // Always annotate to preserve exact Move types
-                match value {
-                    ConstantValue::UInt { bits, value: v } => {
-                        // Map bit width to Lean type name
-                        let type_name = match bits {
-                            8 => "UInt8",
-                            16 => "UInt16",
-                            32 => "UInt32",
-                            64 => "UInt64",
-                            128 => "UInt128",
-                            256 => "UInt256",
-                            _ => unreachable!(),
-                        };
-
-                        // Always annotate all UInt constants to preserve Move type information
-                        writer.emit("(");
-                        writer.emit(&v.to_string());
-                        writer.emit(" : ");
-                        writer.emit(type_name);
-                        writer.emit(")");
-                    }
-                    _ => {
-                        writer.emit(&value.to_string());
-                    }
-                }
-            }
-
-            Expression::BinOp { op, lhs, rhs } => {
-                match op {
-                    // Arithmetic operators - infix notation
-                    BinOp::Add => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" + ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Sub => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" - ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Mul => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" * ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Div => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" / ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Mod => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" % ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-
-                    // Bitwise operators - use &&& ||| ^^^ for bit operations
-                    BinOp::BitAnd => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" &&& ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::BitOr => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" ||| ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::BitXor => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" ^^^ ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    // Shift operators - use HShiftLeft/HShiftRight instances from Helpers.lean
-                    // These instances handle type conversion from Nat/UInt* to the appropriate shift amount
-                    BinOp::Shl => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" <<< ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Shr => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" >>> ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-
-                    // Logical operators - && and || work on Bool in Lean
-                    BinOp::And => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" && ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Or => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" || ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-
-                    // Comparison operators - use decidable equality (==, !=)
-                    // These produce Bool via the Decidable typeclass
-                    BinOp::Eq => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" == ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    BinOp::Neq => {
-                        writer.emit("(");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" != ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-
-                    // Ordering comparisons - use decidable comparisons
-                    // In Lean 4, < <= > >= on Nat/Int produce Prop, but we need Bool
-                    // Use decide to convert Prop to Bool for decidable instances
-                    BinOp::Lt => {
-                        writer.emit("(decide (");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" < ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit("))");
-                    }
-                    BinOp::Le => {
-                        writer.emit("(decide (");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" ≤ ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit("))");
-                    }
-                    BinOp::Gt => {
-                        writer.emit("(decide (");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" > ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit("))");
-                    }
-                    BinOp::Ge => {
-                        writer.emit("(decide (");
-                        self.render(lhs, registry, program, current_module_id, writer);
-                        writer.emit(" ≥ ");
-                        self.render(rhs, registry, program, current_module_id, writer);
-                        writer.emit("))");
-                    }
-                }
-            }
-
-            Expression::UnOp { op, operand } => {
-                match op {
-                    UnOp::Not => {
-                        writer.emit("(!");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU8 => {
-                        writer.emit("(toUInt8 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU16 => {
-                        writer.emit("(toUInt16 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU32 => {
-                        writer.emit("(toUInt32 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU64 => {
-                        writer.emit("(toUInt64 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU128 => {
-                        writer.emit("(toUInt128 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    UnOp::CastU256 => {
-                        writer.emit("(toUInt256 ");
-                        self.render(operand, registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                }
-            }
-
-            Expression::Cast { value, target_type } => {
-                // Use toUIntXXX conversion functions with dot notation
-                // NOTE: This works for primitive types (UInt8.toUInt128 is defined in TypeConversion.lean)
-                // For struct types, the IR should have already generated field access before the cast
-                use intermediate_theorem_format::TheoremType;
-                let func_name = match target_type {
-                    TheoremType::UInt(8) => Some("toUInt8"),
-                    TheoremType::UInt(16) => Some("toUInt16"),
-                    TheoremType::UInt(32) => Some("toUInt32"),
-                    TheoremType::UInt(64) => Some("toUInt64"),
-                    TheoremType::UInt(128) => Some("toUInt128"),
-                    TheoremType::UInt(256) => Some("toUInt256"),
-                    _ => None,
-                };
-
-                if let Some(func) = func_name {
-                    // Use dot notation: value.toUInt128
-                    writer.emit("(");
-                    self.render(value, registry, program, current_module_id, writer);
-                    writer.emit(".");
-                    writer.emit(func);
-                    writer.emit(")");
-                } else {
-                    // For non-UInt types, fall back to cast with type annotation
-                    writer.emit("(cast ");
-                    self.render(value, registry, program, current_module_id, writer);
-                    writer.emit(" : ");
-                    self.type_renderer.render(target_type, writer);
-                    writer.emit(")");
-                }
-            }
-
-            Expression::Call { function, args, type_args, .. } => {
-                // Get function name
-                let func_name = if let Some(func) = program.get_function(*function) {
-                    // Escape the function name for Lean reserved words
-                    let escaped_func_name = escape::escape_identifier(&func.name);
-
-                    // Try to get the module for this function to qualify the call
-                    if let Some(module) = program.get_module(func.module_id) {
-                        // Check if we're calling a function in the same module
-                        if func.module_id == current_module_id {
-                            // Same module - use unqualified name
-                            escaped_func_name
-                        } else {
-                            // Cross-module call: use Module.function format
-                            // Handle name conflicts like "vector" -> "MoveVector"
-                            let capitalized_module = if module.name == "vector" {
-                                "MoveVector".to_string()
-                            } else {
-                                Self::capitalize_first(&module.name)
-                            };
-                            format!("{}.{}", capitalized_module, escaped_func_name)
-                        }
+        Expression::Call { function, args, type_args, .. } => {
+            let func_name = ctx.program.get_function(*function)
+                .map(|func| {
+                    let escaped = escape::escape_identifier(&func.name);
+                    if func.module_id == ctx.current_module_id {
+                        escaped
+                    } else if let Some(module) = ctx.program.get_module(func.module_id) {
+                        let namespace = escape::module_name_to_namespace(&module.name);
+                        format!("{}.{}", namespace, escaped)
                     } else {
-                        // Module not found, use unqualified (escaped)
-                        escaped_func_name
+                        escaped
                     }
-                } else {
-                    // Function not found, use placeholder
-                    format!("func_{}", function)
-                };
+                })
+                .unwrap_or_else(|| format!("func_{}", function));
 
-                // All Move functions take explicit type parameters
-                // Unlike Lean's implicit type inference, Move functions have type params in their signatures
-                // So we always pass type args first, then value args
-                let has_args = !type_args.is_empty() || !args.is_empty();
-
-                if has_args {
-                    writer.emit("(");
-                    writer.emit(&func_name);
-
-                    // Render type arguments
-                    for ty in type_args {
-                        writer.emit(" ");
-                        self.type_renderer.render(ty, writer);
-                    }
-
-                    // Render value arguments
-                    for arg in args {
-                        writer.emit(" ");
-                        self.render(arg, registry, program, current_module_id, writer);
-                    }
-
-                    writer.emit(")");
-                } else {
-                    writer.emit(&func_name);
+            let has_args = !type_args.is_empty() || !args.is_empty();
+            if has_args {
+                write!(w, "({}", func_name).unwrap();
+                for ty in type_args {
+                    write!(w, " ").unwrap();
+                    render_type(ty, &ctx.program.name_manager, ctx.current_module_namespace, w);
                 }
-            }
-
-            Expression::Pack { struct_id, fields } => {
-                let struct_def = program.structs.get(struct_id)
-                    .unwrap_or_else(|| panic!("Missing struct definition for struct ID: {}", struct_id));
-                let struct_name = escape::escape_struct_name(&struct_def.name);
-
-                writer.emit("(");
-                writer.emit(&struct_name);
-                writer.emit(".mk");
-
-                for field in fields {
-                    writer.emit(" ");
-                    self.render(field, registry, program, current_module_id, writer);
+                for arg in args {
+                    write!(w, " ").unwrap();
+                    render_expr(arg, ctx, w);
                 }
-
-                writer.emit(")");
-            }
-
-            Expression::FieldAccess { struct_id, field_index, operand } => {
-                let struct_def = program.structs.get(struct_id)
-                    .unwrap_or_else(|| panic!("Missing struct definition for struct ID: {}", struct_id));
-                let struct_name = escape::escape_struct_name(&struct_def.name);
-                let field = struct_def.fields.get(*field_index)
-                    .unwrap_or_else(|| panic!("Missing field at index {} in struct {}", field_index, struct_def.name));
-                let field_name = escape::escape_identifier(&field.name);
-
-                writer.emit("(");
-                writer.emit(&struct_name);
-                writer.emit(".");
-                writer.emit(&field_name);
-                writer.emit(" ");
-                self.render(operand, registry, program, current_module_id, writer);
-                writer.emit(")");
-            }
-
-            Expression::Unpack { struct_id, operand } => {
-                let struct_def = program.structs.get(struct_id)
-                    .unwrap_or_else(|| panic!("Missing struct definition for struct ID: {}", struct_id));
-                let struct_name = escape::escape_struct_name(&struct_def.name);
-
-                // Generate tuple of field accesses: ((Struct.field_name op), ...)
-                writer.emit("(");
-                for (i, field) in struct_def.fields.iter().enumerate() {
-                    if i > 0 {
-                        writer.emit(", ");
-                    }
-                    writer.emit("(");
-                    writer.emit(&struct_name);
-                    writer.emit(".");
-                    writer.emit(&escape::escape_identifier(&field.name));
-                    writer.emit(" ");
-                    self.render(operand, registry, program, current_module_id, writer);
-                    writer.emit(")");
-                }
-                writer.emit(")");
-            }
-
-            Expression::VecOp { op, operands } => {
-                use intermediate_theorem_format::VectorOp;
-                match op {
-                    VectorOp::Empty => {
-                        writer.emit("List.nil");
-                    }
-                    VectorOp::Length => {
-                        writer.emit("(List.length ");
-                        self.render(&operands[0], registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    VectorOp::Push => {
-                        writer.emit("(List.concat ");
-                        self.render(&operands[0], registry, program, current_module_id, writer);
-                        writer.emit(" [");
-                        self.render(&operands[1], registry, program, current_module_id, writer);
-                        writer.emit("])");
-                    }
-                    VectorOp::Pop => {
-                        writer.emit("(List.dropLast ");
-                        self.render(&operands[0], registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    VectorOp::Borrow | VectorOp::BorrowMut => {
-                        writer.emit("(List.get! ");
-                        self.render(&operands[0], registry, program, current_module_id, writer);
-                        writer.emit(" ");
-                        self.render(&operands[1], registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                    VectorOp::Swap => {
-                        writer.emit("(List.swap ");
-                        self.render(&operands[0], registry, program, current_module_id, writer);
-                        writer.emit(" ");
-                        self.render(&operands[1], registry, program, current_module_id, writer);
-                        writer.emit(" ");
-                        self.render(&operands[2], registry, program, current_module_id, writer);
-                        writer.emit(")");
-                    }
-                }
-            }
-
-            // Tuple expression - render as Lean tuple
-            Expression::Tuple(exprs) => {
-                if exprs.is_empty() {
-                    writer.emit("()");
-                } else if exprs.len() == 1 {
-                    self.render(&exprs[0], registry, program, current_module_id, writer);
-                } else {
-                    writer.emit("(");
-                    for (i, e) in exprs.iter().enumerate() {
-                        self.render(e, registry, program, current_module_id, writer);
-                        if i < exprs.len() - 1 {
-                            writer.emit(", ");
-                        }
-                    }
-                    writer.emit(")");
-                }
-            }
-
-            // IfExpr and WhileExpr are handled specially in statement_renderer
-            // They should be bound via Let statements, not rendered as pure expressions
-            Expression::IfExpr { .. } => {
-                // This should be handled by statement_renderer.render_if_expr
-                writer.emit("/* IfExpr should be bound via Let */");
-            }
-
-            Expression::WhileExpr { .. } => {
-                // This should be handled by statement_renderer.render_while_expr
-                writer.emit("/* WhileExpr should be bound via Let */");
+                write!(w, ")").unwrap();
+            } else {
+                write!(w, "{}", func_name).unwrap();
             }
         }
+
+        Expression::Pack { struct_id, type_args, fields } => {
+            let struct_def = ctx.program.structs.get(struct_id)
+                .unwrap_or_else(|| panic!("Missing struct definition for ID: {}", struct_id));
+            let struct_name = escape::escape_struct_name(&struct_def.name);
+
+            write!(w, "({}.mk", struct_name).unwrap();
+            // Render type arguments for generic structs
+            for ty in type_args {
+                write!(w, " ").unwrap();
+                render_type(ty, &ctx.program.name_manager, ctx.current_module_namespace, w);
+            }
+            for field in fields {
+                write!(w, " ").unwrap();
+                render_expr(field, ctx, w);
+            }
+            write!(w, ")").unwrap();
+        }
+
+        Expression::FieldAccess { struct_id, field_index, operand } => {
+            let struct_def = ctx.program.structs.get(struct_id)
+                .unwrap_or_else(|| panic!("Missing struct definition for ID: {}", struct_id));
+            let struct_name = escape::escape_struct_name(&struct_def.name);
+            let field = &struct_def.fields[*field_index];
+            let field_name = escape::escape_identifier(&field.name);
+
+            write!(w, "({}.{} ", struct_name, field_name).unwrap();
+            render_expr(operand, ctx, w);
+            write!(w, ")").unwrap();
+        }
+
+        Expression::Unpack { struct_id, operand } => {
+            let struct_def = ctx.program.structs.get(struct_id)
+                .unwrap_or_else(|| panic!("Missing struct definition for ID: {}", struct_id));
+            let struct_name = escape::escape_struct_name(&struct_def.name);
+
+            write!(w, "(").unwrap();
+            for (i, field) in struct_def.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(w, ", ").unwrap();
+                }
+                write!(w, "({}.{} ", struct_name, escape::escape_identifier(&field.name)).unwrap();
+                render_expr(operand, ctx, w);
+                write!(w, ")").unwrap();
+            }
+            write!(w, ")").unwrap();
+        }
+
+        Expression::VecOp { op, operands } => {
+            render_vec_op(*op, operands, ctx, w);
+        }
+
+        Expression::Tuple(exprs) => {
+            if exprs.is_empty() {
+                write!(w, "()").unwrap();
+            } else if exprs.len() == 1 {
+                render_expr(&exprs[0], ctx, w);
+            } else {
+                write!(w, "(").unwrap();
+                for (i, e) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(w, ", ").unwrap();
+                    }
+                    render_expr(e, ctx, w);
+                }
+                write!(w, ")").unwrap();
+            }
+        }
+
+        Expression::IfExpr { condition, then_block, else_block } => {
+            // Inline if expression: (if cond then block else block)
+            // Both branches must have the same type, so if either is monadic, both must be
+            let either_monadic = then_block.is_monadic() || then_block.result.is_monadic()
+                || else_block.is_monadic() || else_block.result.is_monadic();
+
+            write!(w, "(if ").unwrap();
+            render_expr(condition, ctx, w);
+            write!(w, " then ").unwrap();
+            render_block_inline_with_context(then_block, either_monadic, ctx, w);
+            write!(w, " else ").unwrap();
+            render_block_inline_with_context(else_block, either_monadic, ctx, w);
+            write!(w, ")").unwrap();
+        }
+
+        Expression::WhileExpr { condition, body, state } => {
+            // Inline while: (whileLoop (fun s => cond_block) (fun s => body_block) init)
+            let state_pattern = make_pattern(&state.vars, ctx.registry);
+
+            let mut init_str = String::new();
+            render_tuple_or_single(&state.initial, ctx, &mut init_str);
+
+            let mut cond_str = String::new();
+            render_block_inline(condition, ctx, &mut cond_str);
+
+            let mut body_str = String::new();
+            render_block_inline(body, ctx, &mut body_str);
+
+            write!(w, "(whileLoop (fun {} => {}) (fun {} => {}) {})",
+                state_pattern, cond_str, state_pattern, body_str, init_str).unwrap();
+        }
     }
+}
+
+/// Render a block inline as a single expression.
+/// For pure blocks: uses `(let x := e in result)` syntax
+/// For monadic blocks: uses `(do let x ← e; result)` syntax
+fn render_block_inline<W: Write>(block: &Block, ctx: &RenderCtx, w: &mut W) {
+    let need_monadic = block.is_monadic() || block.result.is_monadic();
+    render_block_inline_with_context(block, need_monadic, ctx, w);
+}
+
+/// Render a block inline with explicit monadic context.
+/// When `need_monadic` is true, renders using `do` notation.
+/// When false, renders using `Id.run do` for pure blocks.
+fn render_block_inline_with_context<W: Write>(block: &Block, need_monadic: bool, ctx: &RenderCtx, w: &mut W) {
+    let block_is_monadic = block.is_monadic() || block.result.is_monadic();
+
+    if block.statements.is_empty() {
+        // No statements - just render result
+        if block_is_monadic {
+            render_expr(&block.result, ctx, w);
+        } else if need_monadic {
+            // Need to lift pure result into monad
+            write!(w, "pure ").unwrap();
+            render_expr(&block.result, ctx, w);
+        } else {
+            // Pure context, pure result - use Id.run
+            write!(w, "(Id.run do pure ").unwrap();
+            render_expr(&block.result, ctx, w);
+            write!(w, ")").unwrap();
+        }
+    } else if need_monadic || block_is_monadic {
+        // Monadic block - use do notation
+        write!(w, "(do ").unwrap();
+
+        // Use inline writer for statements
+        let mut inline_writer = LeanWriter::new_inline(String::new());
+        for stmt in &block.statements {
+            render_stmt(stmt, ctx, &mut inline_writer);
+            inline_writer.write("\n"); // becomes "; " in inline mode
+        }
+        write!(w, "{}", inline_writer.into_inner()).unwrap();
+
+        if block.result.is_monadic() {
+            render_expr(&block.result, ctx, w);
+        } else {
+            write!(w, "pure ").unwrap();
+            render_expr(&block.result, ctx, w);
+        }
+        write!(w, ")").unwrap();
+    } else {
+        // Pure block in pure context - use Id.run do
+        write!(w, "(").unwrap();
+        render_pure_lets_inline(block, ctx, w);
+        write!(w, ")").unwrap();
+    }
+}
+
+/// Render pure Let statements inline using `Id.run do` syntax for Lean 4
+/// This allows using `let` statements in a pure context
+fn render_pure_lets_inline<W: Write>(block: &Block, ctx: &RenderCtx, w: &mut W) {
+    write!(w, "Id.run do ").unwrap();
+    for stmt in &block.statements {
+        if let Statement::Let { results, operation, .. } = stmt {
+            let pattern = make_pattern(results, ctx.registry);
+            write!(w, "let {} := ", pattern).unwrap();
+            render_expr(operation, ctx, w);
+            write!(w, "; ").unwrap();
+        }
+        // Skip non-Let statements in pure context (shouldn't happen)
+    }
+    write!(w, "pure ").unwrap();
+    render_expr(&block.result, ctx, w);
+}
+
+/// Render a constant value.
+fn render_constant<W: Write>(value: &ConstantValue, w: &mut W) {
+    match value {
+        ConstantValue::Bool(b) => write!(w, "{}", if *b { "true" } else { "false" }).unwrap(),
+        ConstantValue::UInt { bits, value: v } => {
+            write!(w, "({} : {})", v, uint_type_name(*bits)).unwrap();
+        }
+        ConstantValue::Address(addr) => write!(w, "{}", addr).unwrap(),
+        ConstantValue::Vector(elements) => {
+            write!(w, "[").unwrap();
+            for (i, e) in elements.iter().enumerate() {
+                if i > 0 {
+                    write!(w, ", ").unwrap();
+                }
+                render_constant(e, w);
+            }
+            write!(w, "]").unwrap();
+        }
+    }
+}
+
+/// Render a binary operation.
+fn render_binop<W: Write>(op: BinOp, lhs: &Expression, rhs: &Expression, ctx: &RenderCtx, w: &mut W) {
+    let (prefix, infix, suffix) = match op {
+        BinOp::Add => ("(", " + ", ")"),
+        BinOp::Sub => ("(", " - ", ")"),
+        BinOp::Mul => ("(", " * ", ")"),
+        BinOp::Div => ("(", " / ", ")"),
+        BinOp::Mod => ("(", " % ", ")"),
+        BinOp::BitAnd => ("(", " &&& ", ")"),
+        BinOp::BitOr => ("(", " ||| ", ")"),
+        BinOp::BitXor => ("(", " ^^^ ", ")"),
+        BinOp::Shl => ("(", " <<< ", ")"),
+        BinOp::Shr => ("(", " >>> ", ")"),
+        BinOp::And => ("(", " && ", ")"),
+        BinOp::Or => ("(", " || ", ")"),
+        BinOp::Eq => ("(", " == ", ")"),
+        BinOp::Neq => ("(", " != ", ")"),
+        BinOp::Lt => ("(decide (", " < ", "))"),
+        BinOp::Le => ("(decide (", " ≤ ", "))"),
+        BinOp::Gt => ("(decide (", " > ", "))"),
+        BinOp::Ge => ("(decide (", " ≥ ", "))"),
+    };
+
+    write!(w, "{}", prefix).unwrap();
+    render_expr(lhs, ctx, w);
+    write!(w, "{}", infix).unwrap();
+    render_expr(rhs, ctx, w);
+    write!(w, "{}", suffix).unwrap();
+}
+
+/// Render a unary operation.
+fn render_unop<W: Write>(op: UnOp, operand: &Expression, ctx: &RenderCtx, w: &mut W) {
+    match op {
+        UnOp::Not => {
+            write!(w, "(!").unwrap();
+            render_expr(operand, ctx, w);
+            write!(w, ")").unwrap();
+        }
+        UnOp::CastU8 | UnOp::CastU16 | UnOp::CastU32 | UnOp::CastU64 | UnOp::CastU128 | UnOp::CastU256 => {
+            let bits = match op {
+                UnOp::CastU8 => 8,
+                UnOp::CastU16 => 16,
+                UnOp::CastU32 => 32,
+                UnOp::CastU64 => 64,
+                UnOp::CastU128 => 128,
+                UnOp::CastU256 => 256,
+                _ => unreachable!(),
+            };
+            write!(w, "({} ", uint_cast_func(bits)).unwrap();
+            render_expr(operand, ctx, w);
+            write!(w, ")").unwrap();
+        }
+    }
+}
+
+/// Render a vector operation.
+fn render_vec_op<W: Write>(op: VectorOp, operands: &[Expression], ctx: &RenderCtx, w: &mut W) {
+    match op {
+        VectorOp::Empty => write!(w, "List.nil").unwrap(),
+        VectorOp::Length => {
+            write!(w, "(List.length ").unwrap();
+            render_expr(&operands[0], ctx, w);
+            write!(w, ")").unwrap();
+        }
+        VectorOp::Push => {
+            write!(w, "(List.concat ").unwrap();
+            render_expr(&operands[0], ctx, w);
+            write!(w, " [").unwrap();
+            render_expr(&operands[1], ctx, w);
+            write!(w, "])").unwrap();
+        }
+        VectorOp::Pop => {
+            write!(w, "(List.dropLast ").unwrap();
+            render_expr(&operands[0], ctx, w);
+            write!(w, ")").unwrap();
+        }
+        VectorOp::Borrow | VectorOp::BorrowMut => {
+            write!(w, "(List.get! ").unwrap();
+            render_expr(&operands[0], ctx, w);
+            write!(w, " ").unwrap();
+            render_expr(&operands[1], ctx, w);
+            write!(w, ")").unwrap();
+        }
+        VectorOp::Swap => {
+            write!(w, "(List.swap ").unwrap();
+            render_expr(&operands[0], ctx, w);
+            write!(w, " ").unwrap();
+            render_expr(&operands[1], ctx, w);
+            write!(w, " ").unwrap();
+            render_expr(&operands[2], ctx, w);
+            write!(w, ")").unwrap();
+        }
+    }
+}
+
+/// Make a binding pattern from temp IDs.
+pub fn make_pattern(temps: &[TempId], registry: &VariableRegistry) -> String {
+    if temps.is_empty() {
+        "_".to_string()
+    } else if temps.len() == 1 {
+        let name = registry.get_display_name(temps[0]);
+        if name == "()" { "_".to_string() } else { name }
+    } else {
+        let names: Vec<_> = temps.iter()
+            .map(|t| {
+                let name = registry.get_display_name(*t);
+                if name == "()" { "_".to_string() } else { name }
+            })
+            .collect();
+        format!("({})", names.join(", "))
+    }
+}
+
+/// Render a tuple or single expression.
+fn render_tuple_or_single<W: Write>(exprs: &[Expression], ctx: &RenderCtx, w: &mut W) {
+    if exprs.is_empty() {
+        write!(w, "()").unwrap();
+    } else if exprs.len() == 1 {
+        render_expr(&exprs[0], ctx, w);
+    } else {
+        write!(w, "(").unwrap();
+        for (i, e) in exprs.iter().enumerate() {
+            if i > 0 {
+                write!(w, ", ").unwrap();
+            }
+            render_expr(e, ctx, w);
+        }
+        write!(w, ")").unwrap();
+    }
+}
+
+/// Render an expression to a string.
+pub fn expr_to_string(expr: &Expression, ctx: &RenderCtx) -> String {
+    let mut s = String::new();
+    render_expr(expr, ctx, &mut s);
+    s
 }

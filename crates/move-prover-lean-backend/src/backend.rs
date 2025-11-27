@@ -6,7 +6,7 @@
 //! Takes TheoremProgram and renders to Lean files.
 //! ZERO logic, pure rendering.
 
-use crate::renderer::ProgramRenderer;
+use crate::renderer::render_to_directory;
 use crate::runtime::run_lake_build;
 use crate::lemma::LemmaFileGenerator;
 use move_model::model::GlobalEnv;
@@ -43,9 +43,8 @@ pub async fn run_backend(
 
     // Render to Lean in Impls/ directory with module organization
     println!("BACKEND: Starting render_to_directory...");
-    let renderer = ProgramRenderer::new();
     let impls_dir = output_dir.join("Impls");
-    renderer.render_to_directory(&program, &impls_dir, &prelude_imports)?;
+    render_to_directory(&program, &impls_dir, &prelude_imports)?;
     println!("BACKEND: render_to_directory completed.");
 
     // Generate lakefile and manifest

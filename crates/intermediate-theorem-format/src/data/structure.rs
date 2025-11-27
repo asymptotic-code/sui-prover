@@ -54,45 +54,12 @@ impl Dependable for TheoremStruct {
     type Id = TheoremStructID;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
-        // Collect all struct IDs from all fields, recursively through type constructors
-        let mut deps = Vec::new();
-        for field in &self.fields {
-            Self::collect_struct_deps(&field.field_type, &mut deps);
-        }
-        deps.into_iter()
+        self.fields.iter()
+            .flat_map(|field| field.field_type.collect_struct_ids())
     }
 
     fn with_mutual_group_id(mut self, group_id: usize) -> Self {
         self.mutual_group_id = Some(group_id);
         self
-    }
-}
-
-impl TheoremStruct {
-    /// Recursively collect all struct IDs from a type
-    fn collect_struct_deps(ty: &TheoremType, deps: &mut Vec<TheoremStructID>) {
-        match ty {
-            TheoremType::Struct { struct_id, type_args } => {
-                deps.push(*struct_id);
-                for arg in type_args {
-                    Self::collect_struct_deps(arg, deps);
-                }
-            }
-            TheoremType::Vector(elem) => {
-                Self::collect_struct_deps(elem, deps);
-            }
-            TheoremType::Reference(inner) | TheoremType::MutableReference(inner) => {
-                Self::collect_struct_deps(inner, deps);
-            }
-            TheoremType::Tuple(types) => {
-                for ty in types {
-                    Self::collect_struct_deps(ty, deps);
-                }
-            }
-            TheoremType::ProgramState(inner) => {
-                Self::collect_struct_deps(inner, deps);
-            }
-            _ => {}
-        }
     }
 }

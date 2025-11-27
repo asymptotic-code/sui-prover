@@ -68,7 +68,7 @@ pub fn translate_operation(
         }
 
         // Pack: create struct
-        Operation::Pack(module_id, struct_id, _type_args) => {
+        Operation::Pack(module_id, struct_id, type_args) => {
             let qualified_id = module_id.qualified(*struct_id);
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
@@ -76,25 +76,33 @@ pub fn translate_operation(
                 .map(|&temp| Expression::Temporary(temp as TempId))
                 .collect();
 
+            let type_args_ir = type_args.iter()
+                .map(|ty| builder.convert_type(ty))
+                .collect();
+
             Some(Expression::Pack {
                 struct_id: struct_id_ir,
+                type_args: type_args_ir,
                 fields,
             })
         }
 
         // PackVariant - treat like Pack
-        Operation::PackVariant(module_id, struct_id, _variant_id, _type_args) => {
+        Operation::PackVariant(module_id, struct_id, _variant_id, type_args) => {
             let qualified_id = module_id.qualified(*struct_id);
-
-            // Get or create struct ID
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
             let fields = srcs.iter()
                 .map(|&temp| Expression::Temporary(temp as TempId))
                 .collect();
 
+            let type_args_ir = type_args.iter()
+                .map(|ty| builder.convert_type(ty))
+                .collect();
+
             Some(Expression::Pack {
                 struct_id: struct_id_ir,
+                type_args: type_args_ir,
                 fields,
             })
         }
@@ -155,7 +163,7 @@ pub fn translate_operation(
                 .map(|ty| builder.convert_type(ty))
                 .collect();
 
-            // Native functions are pure (don't return ProgramState), all others are monadic
+            // Native functions are pure (don't return Except), all others are monadic
             let convention = if builder.is_function_native(*module_id, *fun_id) {
                 CallConvention::Pure
             } else {

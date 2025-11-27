@@ -15,14 +15,6 @@ use std::path::{Path, PathBuf};
 
 use crate::lemma::cache::{CachedLemma, LemmaCache};
 
-/// Type of lemma file to generate
-enum LemmaFileType {
-    /// Module dependency lemmas (with namespace, imports Impls)
-    Dependency,
-    /// Universal lemmas (no namespace, imports Prelude)
-    Universal,
-}
-
 /// Lemma file generator
 pub struct LemmaFileGenerator {
     /// Output directory (where Impls/ and Proofs/ are)
@@ -167,54 +159,65 @@ impl LemmaFileGenerator {
         module_name: &str,
         lemmas: &[&CachedLemma],
     ) -> Result<PathBuf> {
-        self.generate_lemma_file(module_name, lemmas, LemmaFileType::Dependency)
-    }
-
-    /// Generate imports for a proof file to include relevant lemmas
-    pub fn generate_lemma_imports(&self, module_name: &str) -> Vec<String> {
-        let mut imports = Vec::new();
-
-        // Check if dependency lemmas exist for this module
-        let dep_path = self
-            .output_dir
-            .join("Lemmas")
-            .join("Dependencies")
-            .join(module_name)
-            .join(format!("{}_properties.lean", module_name));
-
-        if dep_path.exists() {
-            imports.push(format!(
-                "import Lemmas.Dependencies.{}.{}_properties",
-                module_name.replace("/", "."),
-                module_name
-            ));
+        if lemmas.is_empty() {
+            return Ok(PathBuf::new());
         }
 
-        // Note: Universal lemma files removed - proofs should use Prelude types directly
-        // Auto-generated or dependency-specific lemmas can still be added via Dependencies/
+        let is_universal = module_name.starts_with("Universal/");
+        let module_path = module_name.replace("/", std::path::MAIN_SEPARATOR_STR);
 
-        imports
-    }
+        let module_dir = if is_universal {
+            let category = module_name.strip_prefix("Universal/").unwrap_or(module_name);
+            self.output_dir
+                .join("Lemmas")
+                .join("Universal")
+                .join(category)
+        } else {
+            self.output_dir
+                .join("Lemmas")
+                .join("Dependencies")
+                .join(&module_path)
+        };
 
-    /// Add lemma imports to an existing proof file content
-    pub fn add_imports_to_proof_file(
-        &self,
-        mut content: String,
-        module_name: &str,
-    ) -> String {
-        let imports = self.generate_lemma_imports(module_name);
+        fs::create_dir_all(&module_dir)
+            .context("Failed to create module lemma directory")?;
 
-        if imports.is_empty() {
-            return content;
+        let file_name = format!("{}_properties.lean", module_name.replace("/", "_"));
+        let file_path = module_dir.join(file_name);
+
+        let import_path = module_name.replace("/", ".");
+        let namespace = module_name.replace("/", "_");
+
+        let mut content = String::new();
+        content.push_str("-- Lemmas for dependency functions\n");
+        content.push_str(&format!("import Impls.{}\n\n", import_path));
+        content.push_str(&format!("namespace {}\n\n", namespace));
+
+        for lemma in lemmas {
+            content.push_str(&format!("-- {}\n", lemma.lemma_id));
+            content.push_str(&format!("-- Category: {}\n", lemma.category));
+            content.push_str(&format!("-- Generation: {:?}\n", lemma.generation_method));
+
+            if !lemma.dependencies.is_empty() {
+                content.push_str(&format!("-- Dependencies: {:?}\n", lemma.dependencies));
+            }
+
+            content.push_str(&lemma.statement);
+
+            if let Some(proof) = &lemma.proof {
+                content.push_str(" := by\n  ");
+                content.push_str(proof);
+                content.push_str("\n\n");
+            } else {
+                content.push_str(" := by\n  sorry\n\n");
+            }
         }
 
-        // Find the position after existing imports (before namespace)
-        if let Some(namespace_pos) = content.find("\nnamespace ") {
-            let import_section = imports.join("\n") + "\n";
-            content.insert_str(namespace_pos + 1, &import_section);
-        }
+        content.push_str(&format!("end {}\n", namespace));
 
-        content
+        fs::write(&file_path, content).context("Failed to write lemma file")?;
+
+        Ok(file_path)
     }
 
     /// Create the lemma registry JSON file
@@ -274,127 +277,6 @@ impl LemmaFileGenerator {
         fs::write(registry_path, content)?;
 
         Ok(())
-    }
-
-    /// Generate a universal lemma file (e.g., arithmetic.lean, monotonicity.lean)
-    pub fn generate_universal_lemma_file(
-        &self,
-        category: &str,
-        lemmas: &[&CachedLemma],
-    ) -> Result<PathBuf> {
-        self.generate_lemma_file(category, lemmas, LemmaFileType::Universal)
-    }
-
-    /// Internal unified lemma file generator
-    fn generate_lemma_file(
-        &self,
-        name: &str,
-        lemmas: &[&CachedLemma],
-        file_type: LemmaFileType,
-    ) -> Result<PathBuf> {
-        if lemmas.is_empty() {
-            return Ok(PathBuf::new());
-        }
-
-        let (file_path, header, imports, namespace) = match file_type {
-            LemmaFileType::Dependency => {
-                let is_universal = name.starts_with("Universal/");
-                let module_path = name.replace("/", std::path::MAIN_SEPARATOR_STR);
-
-                let module_dir = if is_universal {
-                    let category = name.strip_prefix("Universal/").unwrap_or(name);
-                    self.output_dir
-                        .join("Lemmas")
-                        .join("Universal")
-                        .join(category)
-                } else {
-                    self.output_dir
-                        .join("Lemmas")
-                        .join("Dependencies")
-                        .join(&module_path)
-                };
-
-                fs::create_dir_all(&module_dir)
-                    .context("Failed to create module lemma directory")?;
-
-                let file_name = format!("{}_properties.lean", name.replace("/", "_"));
-                let file_path = module_dir.join(file_name);
-
-                let import_path = name.replace("/", ".");
-                let namespace = Some(name.replace("/", "_"));
-
-                (
-                    file_path,
-                    "-- Lemmas for dependency functions".to_string(),
-                    vec![format!("import Impls.{}", import_path)],
-                    namespace,
-                )
-            }
-            LemmaFileType::Universal => {
-                let file_path = self
-                    .output_dir
-                    .join("Lemmas")
-                    .join(format!("{}.lean", name));
-
-                let imports = vec![
-                    "import Prelude.UInt128".to_string(),
-                    "import Prelude.UInt256".to_string(),
-                    "import Prelude.Helpers".to_string(),
-                    "import Prelude.ProgramState".to_string(),
-                ];
-
-                (
-                    file_path,
-                    format!("-- Universal {} lemmas", name),
-                    imports,
-                    None,
-                )
-            }
-        };
-
-        let mut content = String::new();
-        content.push_str(&header);
-        content.push('\n');
-        for import in &imports {
-            content.push_str(import);
-            content.push('\n');
-        }
-        content.push('\n');
-
-        if let Some(ref ns) = namespace {
-            content.push_str(&format!("namespace {}\n\n", ns));
-        }
-
-        for lemma in lemmas {
-            content.push_str(&format!("-- {}\n", lemma.lemma_id));
-
-            if matches!(file_type, LemmaFileType::Dependency) {
-                content.push_str(&format!("-- Category: {}\n", lemma.category));
-                content.push_str(&format!("-- Generation: {:?}\n", lemma.generation_method));
-            }
-
-            if !lemma.dependencies.is_empty() {
-                content.push_str(&format!("-- Dependencies: {:?}\n", lemma.dependencies));
-            }
-
-            content.push_str(&lemma.statement);
-
-            if let Some(proof) = &lemma.proof {
-                content.push_str(" := by\n  ");
-                content.push_str(proof);
-                content.push_str("\n\n");
-            } else {
-                content.push_str(" := by\n  sorry\n\n");
-            }
-        }
-
-        if let Some(ns) = namespace {
-            content.push_str(&format!("end {}\n", ns));
-        }
-
-        fs::write(&file_path, content).context("Failed to write lemma file")?;
-
-        Ok(file_path)
     }
 }
 

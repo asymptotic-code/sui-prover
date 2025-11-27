@@ -1,400 +1,264 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
-//! Renders Statement IR to Lean syntax
+//! Renders Statement IR to Lean syntax.
+//! Pure translation - pattern match IR nodes to Lean text.
+//!
+//! Uses LeanWriter which handles both multi-line (indented) and inline (semicolon-separated) modes.
 
-use intermediate_theorem_format::{Statement, VariableRegistry, TheoremProgram, TheoremModuleID, TheoremType, Expression, Block, CallConvention};
-use super::expression_renderer::ExpressionRenderer;
-use super::type_renderer::TypeRenderer;
+use std::fmt::Write;
+use intermediate_theorem_format::{Statement, Expression, Block, TempId, TheoremType, LoopState};
+use super::expression_renderer::{RenderCtx, expr_to_string, make_pattern};
 use super::lean_writer::LeanWriter;
 
-pub struct StatementRenderer {
-    expr_renderer: ExpressionRenderer,
-    type_renderer: TypeRenderer,
-    expected_return_type: Option<TheoremType>,
-    /// Track if we're at the top-level function body (true) or in a nested context (false)
-    is_top_level: bool,
-}
-
-impl StatementRenderer {
-    pub fn new() -> Self {
-        Self {
-            expr_renderer: ExpressionRenderer::new(),
-            type_renderer: TypeRenderer,
-            expected_return_type: None,
-            is_top_level: true,
-        }
-    }
-
-    pub fn with_return_type(return_type: TheoremType) -> Self {
-        Self {
-            expr_renderer: ExpressionRenderer::new(),
-            type_renderer: TypeRenderer,
-            expected_return_type: Some(return_type),
-            is_top_level: true,
-        }
-    }
-
-    /// Render an expression to a string
-    fn render_expression_to_string<'a>(&self, expr: &Expression, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, name_manager: &'a intermediate_theorem_format::NameManager) -> String {
-        let writer = LeanWriter::new(name_manager);
-        self.expr_renderer.render(expr, registry, program, current_module_id, &writer);
-        writer.extract_result()
-    }
-
-    /// Check if an expression contains monadic operations
-    fn expr_is_monadic(&self, expr: &Expression) -> bool {
-        match expr {
-            Expression::Call { convention: CallConvention::Monadic, .. } => true,
-            Expression::IfExpr { then_block, else_block, .. } => {
-                then_block.is_monadic() || else_block.is_monadic()
-            }
-            Expression::WhileExpr { .. } => true, // While is always monadic in our model
-            _ => false,
-        }
-    }
-
-    /// Check if a block contains monadic operations
-    fn block_is_monadic(&self, block: &Block) -> bool {
-        block.statements.iter().any(|s| s.is_monadic()) || self.expr_is_monadic(&block.result)
-    }
-
-    /// Render a statement to a LeanWriter
-    pub fn render<'a>(&mut self, stmt: &Statement, registry: &VariableRegistry, program: &TheoremProgram, current_module_id: TheoremModuleID, writer: &LeanWriter<'a>) {
-        match stmt {
-            Statement::Sequence(stmts) => {
-                if stmts.is_empty() {
-                    if self.is_top_level {
-                        if let Some(ret_type) = &self.expected_return_type {
-                            let is_unit = matches!(ret_type, TheoremType::Tuple(v) if v.is_empty());
-                            if !is_unit {
-                                writer.emit("sorry");
-                                return;
-                            }
-                        }
-                        writer.emit("()");
+/// Render a statement.
+/// In inline mode (LeanWriter::is_inline()), renders semicolon-separated without special if/while handling.
+/// In multi-line mode, renders with proper indentation and expands if/while to block form.
+pub fn render_stmt<W: Write>(stmt: &Statement, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
+    match stmt {
+        Statement::Sequence(stmts) => {
+            if stmts.is_empty() {
+                w.write("pure ()");
+            } else {
+                for (i, s) in stmts.iter().enumerate() {
+                    render_stmt(s, ctx, w);
+                    // Stop at terminators
+                    if matches!(s, Statement::Return { .. } | Statement::Abort { .. }) {
+                        break;
                     }
-                } else {
-                    for (i, s) in stmts.iter().enumerate() {
-                        self.render(s, registry, program, current_module_id, writer);
-                        if i < stmts.len() - 1 {
-                            writer.emit("\n");
-                        }
-                        if matches!(s, Statement::Return { .. } | Statement::Abort { .. }) {
-                            break;
-                        }
+                    if i < stmts.len() - 1 {
+                        w.write("\n");
                     }
                 }
             }
+        }
 
-            Statement::Let { results, operation, result_types } => {
-                // Check if operation is IfExpr or WhileExpr - these get special handling
+        Statement::Let { results, operation, result_types } => {
+            // In multi-line mode, if/while get special block rendering
+            if !w.is_inline() {
                 match operation {
                     Expression::IfExpr { condition, then_block, else_block } => {
-                        self.render_if_expr(results, result_types, condition, then_block, else_block, registry, program, current_module_id, writer);
+                        render_if_stmt(results, result_types, condition, then_block, else_block, ctx, w);
+                        return;
                     }
                     Expression::WhileExpr { condition, body, state } => {
-                        self.render_while_expr(results, result_types, condition, body, state, registry, program, current_module_id, writer);
+                        render_while_stmt(results, result_types, condition, body, state, ctx, w);
+                        return;
                     }
-                    _ => {
-                        // Normal let binding
-                        let results_str = if results.is_empty() {
-                            "_".to_string()
-                        } else if results.len() == 1 {
-                            let var_name = registry.get_display_name(results[0]);
-                            if var_name == "()" { "_".to_string() } else { var_name }
-                        } else {
-                            let temps = results.iter()
-                                .map(|r| {
-                                    let var_name = registry.get_display_name(*r);
-                                    if var_name == "()" { "_".to_string() } else { var_name }
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            format!("({})", temps)
-                        };
-
-                        let is_monadic = result_types.iter().any(|ty| ty.is_monad());
-
-                        if is_monadic {
-                            writer.emit(&format!("let {} ← ", results_str));
-                            self.expr_renderer.render(operation, registry, program, current_module_id, writer);
-                        } else {
-                            writer.emit(&format!("let {} := ", results_str));
-                            self.expr_renderer.render(operation, registry, program, current_module_id, writer);
-                        }
-                    }
+                    _ => {}
                 }
             }
 
-            Statement::Return { values } => {
-                if values.is_empty() {
-                    writer.emit("pure ()");
-                } else if values.len() == 1 {
-                    let val_str = self.render_expression_to_string(&values[0], registry, program, current_module_id, writer.name_manager);
-                    writer.emit(&format!("pure {}", val_str));
-                } else {
-                    let vals = values.iter()
-                        .map(|v| self.render_expression_to_string(v, registry, program, current_module_id, writer.name_manager))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    writer.emit(&format!("pure ({})", vals));
+            // Normal let binding (or inline mode for if/while)
+            let pattern = make_pattern(results, ctx.registry);
+            let is_monadic = result_types.iter().any(|ty| ty.is_monad()) || operation.is_monadic();
+            let bind_op = if is_monadic { "←" } else { ":=" };
+
+            w.write(&format!("let {} {} {}", pattern, bind_op, expr_to_string(operation, ctx)));
+        }
+
+        Statement::Return { values } => {
+            if values.is_empty() {
+                w.write("pure ()");
+            } else if values.len() == 1 {
+                w.write(&format!("pure {}", expr_to_string(&values[0], ctx)));
+            } else {
+                w.write("pure (");
+                for (i, v) in values.iter().enumerate() {
+                    if i > 0 {
+                        w.write(", ");
+                    }
+                    w.write(&expr_to_string(v, ctx));
                 }
-            }
-
-            Statement::Abort { code } => {
-                let code_str = self.render_expression_to_string(code, registry, program, current_module_id, writer.name_manager);
-                let code_nat = format!("(({}).toNat)", code_str);
-                writer.emit(&format!("ProgramState.Aborted {}", code_nat));
-            }
-
-            Statement::UpdateField { target, struct_id, field_index, new_value } => {
-                let target_str = self.render_expression_to_string(target, registry, program, current_module_id, writer.name_manager);
-                let value_str = self.render_expression_to_string(new_value, registry, program, current_module_id, writer.name_manager);
-
-                let struct_info = program.structs.get(struct_id);
-                let field_name = if let Some(info) = struct_info {
-                    info.fields.get(*field_index)
-                        .map(|f| f.name.clone())
-                        .unwrap_or_else(|| panic!("BUG: Field index {} out of bounds for struct", field_index))
-                } else {
-                    panic!("BUG: Missing struct info when unpacking struct field");
-                };
-
-                writer.emit(&format!("let {} := {{ {} with {} := {} }}",
-                    target_str,
-                    target_str,
-                    field_name,
-                    value_str));
-            }
-
-            Statement::UpdateVectorElement { target, index, new_value } => {
-                let target_str = self.render_expression_to_string(target, registry, program, current_module_id, writer.name_manager);
-                let index_str = self.render_expression_to_string(index, registry, program, current_module_id, writer.name_manager);
-                let value_str = self.render_expression_to_string(new_value, registry, program, current_module_id, writer.name_manager);
-
-                writer.emit(&format!("let {} := {}.set {} {}",
-                    target_str,
-                    target_str,
-                    index_str,
-                    value_str));
-            }
-
-            Statement::Requires { .. } => {
-                writer.emit("pure ()");
-            }
-
-            Statement::Ensures { .. } => {
-                writer.emit("pure ()");
-            }
-        }
-    }
-
-    /// Render an if expression bound to results
-    fn render_if_expr(
-        &mut self,
-        results: &[intermediate_theorem_format::TempId],
-        result_types: &[TheoremType],
-        condition: &Expression,
-        then_block: &Block,
-        else_block: &Block,
-        registry: &VariableRegistry,
-        program: &TheoremProgram,
-        current_module_id: TheoremModuleID,
-        writer: &LeanWriter,
-    ) {
-        let cond_str = self.render_expression_to_string(condition, registry, program, current_module_id, writer.name_manager);
-
-        // Check if any branch has monadic operations
-        let then_monadic = self.block_is_monadic(then_block);
-        let else_monadic = self.block_is_monadic(else_block);
-        let any_monadic = then_monadic || else_monadic;
-
-        // Check if both branches terminate (Return/Abort)
-        // In this case, don't bind to a variable - the if IS the return
-        let both_terminate = then_block.terminates() && else_block.terminates();
-
-        // Build the result pattern
-        let result_pattern = if results.is_empty() {
-            "_".to_string()
-        } else if results.len() == 1 {
-            registry.get_display_name(results[0])
-        } else {
-            let names = results.iter()
-                .map(|r| registry.get_display_name(*r))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({})", names)
-        };
-
-        // When both branches terminate, emit the if without binding
-        if both_terminate && results.is_empty() {
-            writer.emit(&format!("if {} then\n", cond_str));
-        } else {
-            // Use ← for monadic branches, := for pure branches
-            let binding_op = if any_monadic { "←" } else { ":=" };
-            writer.emit(&format!("let {} {} if {} then\n", result_pattern, binding_op, cond_str));
-        }
-
-        // Render then branch
-        writer.with_indent(|| {
-            if any_monadic {
-                writer.emit("do\n");
-                writer.with_indent(|| {
-                    self.render_block_contents(then_block, !then_block.terminates(), any_monadic, registry, program, current_module_id, writer);
-                });
-            } else {
-                // For pure branches, still don't emit result if block terminates
-                self.render_block_contents(then_block, !then_block.terminates(), false, registry, program, current_module_id, writer);
-            }
-        });
-
-        writer.emit("\nelse\n");
-
-        // Render else branch
-        writer.with_indent(|| {
-            if any_monadic {
-                writer.emit("do\n");
-                writer.with_indent(|| {
-                    self.render_block_contents(else_block, !else_block.terminates(), any_monadic, registry, program, current_module_id, writer);
-                });
-            } else {
-                // For pure branches, still don't emit result if block terminates
-                self.render_block_contents(else_block, !else_block.terminates(), false, registry, program, current_module_id, writer);
-            }
-        });
-    }
-
-    /// Render a while expression bound to results
-    fn render_while_expr(
-        &mut self,
-        results: &[intermediate_theorem_format::TempId],
-        result_types: &[TheoremType],
-        condition: &Block,
-        body: &Block,
-        state: &intermediate_theorem_format::LoopState,
-        registry: &VariableRegistry,
-        program: &TheoremProgram,
-        current_module_id: TheoremModuleID,
-        writer: &LeanWriter,
-    ) {
-        // Build the result pattern (loop outputs)
-        let result_pattern = if results.is_empty() {
-            "_".to_string()
-        } else if results.len() == 1 {
-            registry.get_display_name(results[0])
-        } else {
-            let names = results.iter()
-                .map(|r| registry.get_display_name(*r))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({})", names)
-        };
-
-        // Build state variable pattern
-        let state_pattern = if state.vars.is_empty() {
-            "_".to_string()
-        } else if state.vars.len() == 1 {
-            registry.get_display_name(state.vars[0])
-        } else {
-            let names = state.vars.iter()
-                .map(|v| registry.get_display_name(*v))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({})", names)
-        };
-
-        // Build initial values tuple
-        let init_tuple = if state.initial.is_empty() {
-            "()".to_string()
-        } else if state.initial.len() == 1 {
-            self.render_expression_to_string(&state.initial[0], registry, program, current_module_id, writer.name_manager)
-        } else {
-            let vals = state.initial.iter()
-                .map(|e| self.render_expression_to_string(e, registry, program, current_module_id, writer.name_manager))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({})", vals)
-        };
-
-        // Render the while loop
-        writer.emit(&format!("let {} ← (whileLoop (fun {} =>\n", result_pattern, state_pattern));
-        writer.with_indent(|| {
-            writer.emit("do\n");
-            writer.with_indent(|| {
-                // Render condition computation statements
-                self.render_block_statements(&condition.statements, registry, program, current_module_id, writer);
-                // Return the condition value
-                let cond_str = self.render_expression_to_string(&condition.result, registry, program, current_module_id, writer.name_manager);
-                writer.emit(&format!("\npure {}", cond_str));
-            });
-        });
-        writer.emit(&format!(") (fun {} =>\n", state_pattern));
-        writer.with_indent(|| {
-            writer.emit("do\n");
-            writer.with_indent(|| {
-                // Render body statements
-                self.render_block_statements(&body.statements, registry, program, current_module_id, writer);
-                // Return the updated state
-                let body_result_str = self.render_expression_to_string(&body.result, registry, program, current_module_id, writer.name_manager);
-                writer.emit(&format!("\npure {}", body_result_str));
-            });
-        });
-        writer.emit(&format!("\n) {})", init_tuple));
-    }
-
-    /// Render block contents (statements + result)
-    fn render_block_contents(
-        &mut self,
-        block: &Block,
-        emit_result: bool,
-        wrap_in_pure: bool,
-        registry: &VariableRegistry,
-        program: &TheoremProgram,
-        current_module_id: TheoremModuleID,
-        writer: &LeanWriter,
-    ) {
-        let old_is_top_level = self.is_top_level;
-        self.is_top_level = false;
-
-        // Render statements
-        self.render_block_statements(&block.statements, registry, program, current_module_id, writer);
-
-        // Render result if needed
-        if emit_result {
-            if !block.statements.is_empty() {
-                writer.emit("\n");
-            }
-            let result_str = self.render_expression_to_string(&block.result, registry, program, current_module_id, writer.name_manager);
-            if wrap_in_pure {
-                writer.emit(&format!("pure {}", result_str));
-            } else {
-                writer.emit(&result_str);
+                w.write(")");
             }
         }
 
-        self.is_top_level = old_is_top_level;
-    }
-
-    /// Render block statements (without the result)
-    fn render_block_statements(
-        &mut self,
-        statements: &[Statement],
-        registry: &VariableRegistry,
-        program: &TheoremProgram,
-        current_module_id: TheoremModuleID,
-        writer: &LeanWriter,
-    ) {
-        let old_is_top_level = self.is_top_level;
-        self.is_top_level = false;
-
-        for (i, stmt) in statements.iter().enumerate() {
-            self.render(stmt, registry, program, current_module_id, writer);
-            if i < statements.len() - 1 {
-                writer.emit("\n");
-            }
+        Statement::Abort { code } => {
+            w.write(&format!("Except.error ({}).toNat", expr_to_string(code, ctx)));
         }
 
-        self.is_top_level = old_is_top_level;
+        Statement::UpdateField { target, struct_id, field_index, new_value } => {
+            let target_str = expr_to_string(target, ctx);
+            let struct_info = ctx.program.structs.get(struct_id)
+                .unwrap_or_else(|| panic!("Missing struct info for ID: {}", struct_id));
+            let field_name = &struct_info.fields[*field_index].name;
+            let value_str = expr_to_string(new_value, ctx);
+
+            w.write(&format!("let {} := {{ {} with {} := {} }}", target_str, target_str, field_name, value_str));
+        }
+
+        Statement::UpdateVectorElement { target, index, new_value } => {
+            let target_str = expr_to_string(target, ctx);
+            let index_str = expr_to_string(index, ctx);
+            let value_str = expr_to_string(new_value, ctx);
+
+            w.write(&format!("let {} := {}.set {} {}", target_str, target_str, index_str, value_str));
+        }
+
+        Statement::Requires { .. } | Statement::Ensures { .. } => {
+            w.write("pure ()");
+        }
+    }
+}
+
+/// Render an if expression as a multi-line statement.
+fn render_if_stmt<W: Write>(
+    results: &[TempId],
+    _result_types: &[TheoremType],
+    condition: &Expression,
+    then_block: &Block,
+    else_block: &Block,
+    ctx: &RenderCtx,
+    w: &mut LeanWriter<W>,
+) {
+    let cond_str = expr_to_string(condition, ctx);
+    let pattern = make_pattern(results, ctx.registry);
+
+    // Check if any branch is monadic
+    let then_monadic = then_block.is_monadic() || then_block.result.is_monadic();
+    let else_monadic = else_block.is_monadic() || else_block.result.is_monadic();
+    let any_monadic = then_monadic || else_monadic;
+
+    // Check if both branches terminate
+    let both_terminate = then_block.terminates() && else_block.terminates();
+
+    // Determine binding operator
+    let bind_op = if any_monadic { "←" } else { ":=" };
+
+    if both_terminate && results.is_empty() {
+        // Terminating if - no binding needed
+        w.write(&format!("if {} then", cond_str));
+    } else {
+        w.write(&format!("let {} {} if {} then", pattern, bind_op, cond_str));
+    }
+    w.write("\n");
+
+    // Then branch
+    w.indent();
+    render_block(then_block, any_monadic, ctx, w);
+    w.dedent();
+
+    w.write("\nelse\n");
+
+    // Else branch
+    w.indent();
+    render_block(else_block, any_monadic, ctx, w);
+    w.dedent();
+}
+
+/// Render a while expression as a multi-line statement.
+fn render_while_stmt<W: Write>(
+    results: &[TempId],
+    _result_types: &[TheoremType],
+    condition: &Block,
+    body: &Block,
+    state: &LoopState,
+    ctx: &RenderCtx,
+    w: &mut LeanWriter<W>,
+) {
+    let pattern = make_pattern(results, ctx.registry);
+    let state_pattern = make_pattern(&state.vars, ctx.registry);
+
+    // Initial values
+    let init_str = if state.initial.is_empty() {
+        "()".to_string()
+    } else if state.initial.len() == 1 {
+        expr_to_string(&state.initial[0], ctx)
+    } else {
+        let vals: Vec<_> = state.initial.iter().map(|e| expr_to_string(e, ctx)).collect();
+        format!("({})", vals.join(", "))
+    };
+
+    w.write(&format!("let {} ← (whileLoop (fun {} =>", pattern, state_pattern));
+    w.write("\n");
+    w.indent();
+    w.write("do\n");
+    w.indent();
+
+    // Condition block
+    render_block_statements(&condition.statements, ctx, w);
+    if !condition.statements.is_empty() {
+        w.write("\n");
+    }
+    let cond_result = expr_to_string(&condition.result, ctx);
+    w.write(&format!("pure {}", cond_result));
+
+    w.dedent();
+    w.dedent();
+    w.write(&format!(") (fun {} =>", state_pattern));
+    w.write("\n");
+    w.indent();
+    w.write("do\n");
+    w.indent();
+
+    // Body block
+    render_block_statements(&body.statements, ctx, w);
+    if !body.statements.is_empty() {
+        w.write("\n");
+    }
+    let body_result = expr_to_string(&body.result, ctx);
+    w.write(&format!("pure {}", body_result));
+
+    w.dedent();
+    w.dedent();
+    w.write(&format!(") {})", init_str));
+}
+
+/// Render a block with proper indentation.
+fn render_block<W: Write>(block: &Block, need_monadic: bool, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
+    let block_is_monadic = block.is_monadic() || block.result.is_monadic();
+
+    if block.statements.is_empty() {
+        // Simple block - just result
+        if need_monadic && !block.result.is_monadic() {
+            w.write("pure ");
+        }
+        let result_str = expr_to_string(&block.result, ctx);
+        w.write(&result_str);
+    } else if need_monadic || block_is_monadic {
+        // Monadic block with statements - use do notation
+        w.write("do\n");
+        w.indent();
+
+        render_block_statements(&block.statements, ctx, w);
+
+        // Result
+        if !block.terminates() {
+            w.write("\n");
+            if !block.result.is_monadic() {
+                w.write("pure ");
+            }
+            let result_str = expr_to_string(&block.result, ctx);
+            w.write(&result_str);
+        }
+
+        w.dedent();
+    } else {
+        // Pure block with statements - use Id.run do
+        w.write("Id.run do\n");
+        w.indent();
+
+        render_block_statements(&block.statements, ctx, w);
+
+        // Result
+        if !block.terminates() {
+            w.write("\n");
+            w.write("pure ");
+            let result_str = expr_to_string(&block.result, ctx);
+            w.write(&result_str);
+        }
+
+        w.dedent();
+    }
+}
+
+/// Render block statements.
+fn render_block_statements<W: Write>(statements: &[Statement], ctx: &RenderCtx, w: &mut LeanWriter<W>) {
+    for (i, stmt) in statements.iter().enumerate() {
+        render_stmt(stmt, ctx, w);
+        if i < statements.len() - 1 {
+            w.write("\n");
+        }
     }
 }
