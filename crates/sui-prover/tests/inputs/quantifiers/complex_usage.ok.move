@@ -7,11 +7,7 @@ use prover::vector_iter::map;
 
 #[ext(pure)]
 fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
-    if (j < u.length() && i < v.length()) {
-        j <= i && u[j] > v[i]
-    } else {
-        false
-    }
+   j <= i && j < u.length() && i < v.length() && u[j] > v[i]
 }
 
 fun vec_leq(i: u64): bool { // for any i exists j <= i such that u[j] > v[j]
