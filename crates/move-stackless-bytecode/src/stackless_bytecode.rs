@@ -209,10 +209,7 @@ impl QuantifierType {
     }
 
     pub fn requires_filter_indices(&self) -> bool {
-        matches!(
-            self,
-            QuantifierType::Filter | QuantifierType::FilterRange
-        )
+        matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
     }
 }
 
