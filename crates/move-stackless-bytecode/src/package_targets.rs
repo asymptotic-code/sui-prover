@@ -643,7 +643,7 @@ impl PackageTargets {
         (self.target_specs.len() + self.no_verify_specs.len() - self.system_specs.len()) > 0
     }
 
-    pub fn has_functions_checks(&self) -> bool {
+    pub fn has_function_checks(&self) -> bool {
         !self.abort_check_functions.is_empty() || !self.pure_functions.is_empty()
     }
 

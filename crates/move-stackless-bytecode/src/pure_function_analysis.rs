@@ -75,7 +75,7 @@ impl PureFunctionAnalysisProcessor {
             return false;
         }
 
-        return true;
+        true
     }
 }
 
