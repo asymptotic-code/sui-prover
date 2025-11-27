@@ -96,15 +96,10 @@ integration-test = "0x9"
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
                 options.backend.keep_artifacts = true;
-
-                if is_conditionals_test {
-                    options.prover.skip_spec_no_abort = true; // for better extracting of Boogie code
-                    options.output_path = Path::new(&options.output_path)
-                        .join("conditionals")
-                        .join(file_path.file_name().unwrap())
-                        .to_string_lossy()
-                        .to_string();
-                }
+                options.output_path = Path::new(&options.output_path)
+                    .join(relative_path.with_extension(""))
+                    .to_string_lossy()
+                    .to_string();
 
                 // Use a buffer to capture output instead of stderr
                 let mut error_buffer = Buffer::no_color();
@@ -132,17 +127,14 @@ integration-test = "0x9"
                         }
                     };
 
-                    if is_conditionals_test {
-                        // Extract and append Boogie code for conditional tests.
-                        let boogie_code = extract_boogie_function(&options.output_path);
-                        if !boogie_code.is_empty() {
-                            format!(
-                                "{}\n\n== Generated Boogie Code ==\n{}",
-                                prover_result, boogie_code
-                            )
-                        } else {
-                            prover_result
-                        }
+                    // Extract and append Boogie code for conditional tests.
+                    let boogie_code =
+                        extract_boogie_function(&options.output_path, is_conditionals_test);
+                    if !boogie_code.is_empty() {
+                        format!(
+                            "{}\n\n== Generated Boogie Code ==\n{}",
+                            prover_result, boogie_code
+                        )
                     } else {
                         prover_result
                     }
@@ -185,17 +177,19 @@ fn post_process_output(output: String, sources_dir: PathBuf) -> String {
 }
 
 /// Helper for extracting boogie .bpl source: get implementation from file
-fn extract_boogie_function(output_dir: &str) -> String {
+fn extract_boogie_function(output_dir: &str, is_conditionals_test: bool) -> String {
     let output_path = Path::new(output_dir);
 
     // Try to find .bpl files in the output directory
     if let Ok(entries) = std::fs::read_dir(output_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "bpl") {
+            if path.extension().map_or(false, |ext| ext == "bpl")
+                && !path.ends_with("spec_no_abort_check.bpl")
+            {
                 if let Ok(content) = read_to_string(&path) {
                     // Look for both $impl and $pure functions
-                    let functions = extract_impl_and_pure_functions(&content);
+                    let functions = extract_impl_and_pure_functions(&content, is_conditionals_test);
                     if !functions.is_empty() {
                         return functions.join("\n");
                     }
@@ -208,7 +202,7 @@ fn extract_boogie_function(output_dir: &str) -> String {
 }
 
 /// Helper for extracting boogie .bpl source: get $impl and $pure function bodies
-fn extract_impl_and_pure_functions(bpl_content: &str) -> Vec<String> {
+fn extract_impl_and_pure_functions(bpl_content: &str, is_conditionals_test: bool) -> Vec<String> {
     let lines: Vec<&str> = bpl_content.lines().collect();
     let mut results = Vec::new();
     let mut in_target_function = false;
@@ -216,12 +210,20 @@ fn extract_impl_and_pure_functions(bpl_content: &str) -> Vec<String> {
     let mut function_lines = Vec::new();
 
     for line in lines {
-        if (line.contains("$impl") || line.contains("$pure"))
-            && (line.contains("procedure") || line.contains("function"))
+        if (line.contains("$pure") && line.contains("function"))
+            || (line.contains("$impl") && line.contains("procedure") && is_conditionals_test)
         {
             in_target_function = true;
             function_lines.push(line);
         } else if in_target_function {
+            if line.contains("// Begin Translation") {
+                results.push(function_lines.join("\n"));
+                in_target_function = false;
+                brace_count = 0;
+                function_lines.clear();
+                continue;
+            }
+
             function_lines.push(line);
 
             // Count braces :3
