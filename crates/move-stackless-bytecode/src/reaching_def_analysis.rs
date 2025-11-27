@@ -20,7 +20,7 @@ use crate::{
     dataflow_domains::{AbstractDomain, JoinResult},
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    stackless_bytecode::{AbortAction, BorrowNode, Bytecode, Operation},
+    stackless_bytecode::{BorrowNode, Bytecode, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 
@@ -234,9 +234,6 @@ impl TransferFunctions for ReachingDefAnalysis<'_> {
             Call(_, dests, oper, _, on_abort) => {
                 // generic kills
                 for dest in dests {
-                    state.kill(*dest);
-                }
-                if let Some(AbortAction::Jump(_, dest)) = on_abort {
                     state.kill(*dest);
                 }
                 // op-specific actions

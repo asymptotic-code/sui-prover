@@ -698,7 +698,6 @@ impl<'env> LeanTranslator<'env> {
                     _ => builder.emit(
                         bc.substitute_operations(&ensures_asserts_to_requires_subst)
                             .update_abort_action(|aa| match aa {
-                                Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
                                 Some(AbortAction::Check) => Some(AbortAction::Check),
                                 None => None,
                             }),
@@ -2152,7 +2151,6 @@ impl FunctionTranslator<'_> {
                     }
                 }
                 match aa {
-                    Some(AbortAction::Jump(target, code)) => {}
                     Some(AbortAction::Check) => {}
                     None => {}
                 }

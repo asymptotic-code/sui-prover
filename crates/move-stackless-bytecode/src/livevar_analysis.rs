@@ -18,7 +18,7 @@ use crate::{
     dataflow_domains::{AbstractDomain, JoinResult},
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    stackless_bytecode::{AbortAction, AttrId, Bytecode, Label, Operation},
+    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 
@@ -443,9 +443,6 @@ impl TransferFunctions for LiveVarAnalysis<'_> {
             Call(_, dsts, _, srcs, on_abort) => {
                 state.remove(dsts);
                 state.insert(srcs);
-                if let Some(AbortAction::Jump(_, dst)) = on_abort {
-                    state.remove(&[*dst]);
-                }
             }
             Ret(_, srcs) => {
                 state.insert(srcs);

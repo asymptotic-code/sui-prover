@@ -767,7 +767,6 @@ impl<'env> BoogieTranslator<'env> {
                     _ => builder.emit(
                         bc.substitute_operations(&ensures_asserts_to_requires_subst)
                             .update_abort_action(|aa| match aa {
-                                Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
                                 Some(AbortAction::Check) => Some(AbortAction::Check),
                                 None => None,
                             }),
@@ -976,7 +975,6 @@ impl<'env> BoogieTranslator<'env> {
         for bc in code.into_iter() {
             match bc {
                 _ => builder.emit(bc.update_abort_action(|aa| match aa {
-                    Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
                     Some(AbortAction::Check) => Some(AbortAction::Check),
                     None => None,
                 })),
@@ -4631,26 +4629,24 @@ impl<'env> FunctionTranslator<'env> {
                     }
                 }
                 match aa {
-                    Some(AbortAction::Check | AbortAction::Jump(..)) => {
-                        match self.parent.asserts_mode {
-                            AssertsMode::Check => {
-                                let message = if self.parent.options.func_abort_check_only {
-                                    "function code should not abort"
-                                } else {
-                                    "code should not abort"
-                                };
-                                emitln!(
-                                    self.writer(),
-                                    "assert {{:msg \"assert_failed{}: {}\"}} !$abort_flag;",
-                                    self.loc_str(&self.writer().get_loc()),
-                                    message,
-                                );
-                            }
-                            AssertsMode::Assume => {
-                                emitln!(self.writer(), "assume !$abort_flag;");
-                            }
+                    Some(AbortAction::Check) => match self.parent.asserts_mode {
+                        AssertsMode::Check => {
+                            let message = if self.parent.options.func_abort_check_only {
+                                "function code should not abort"
+                            } else {
+                                "code should not abort"
+                            };
+                            emitln!(
+                                self.writer(),
+                                "assert {{:msg \"assert_failed{}: {}\"}} !$abort_flag;",
+                                self.loc_str(&self.writer().get_loc()),
+                                message,
+                            );
                         }
-                    }
+                        AssertsMode::Assume => {
+                            emitln!(self.writer(), "assume !$abort_flag;");
+                        }
+                    },
                     None => {}
                 }
             }
