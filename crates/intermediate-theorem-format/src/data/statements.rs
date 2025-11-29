@@ -1,5 +1,38 @@
-use crate::{ConstantValue, Expression, TempId, TheoremFunctionID, TheoremStructID, TheoremType};
+use crate::{ConstantValue, Expression, TheoremFunctionID, TheoremStructID, TheoremType};
 use std::mem;
+
+/// Binding pattern for Let statements.
+/// Supports single names and tuple destructuring with shadowing semantics.
+#[derive(Debug, Clone)]
+pub enum LetPattern {
+    /// Single variable: `let x := ...`
+    Single(String),
+    /// Tuple destructuring: `let (a, b, c) := ...`
+    Tuple(Vec<String>),
+}
+
+impl LetPattern {
+    /// Get all variable names in this pattern
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            LetPattern::Single(name) => vec![name.as_str()],
+            LetPattern::Tuple(names) => names.iter().map(|s| s.as_str()).collect(),
+        }
+    }
+
+    /// Get the number of bindings in this pattern
+    pub fn len(&self) -> usize {
+        match self {
+            LetPattern::Single(_) => 1,
+            LetPattern::Tuple(names) => names.len(),
+        }
+    }
+
+    /// Check if this pattern is empty (no bindings)
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
 
 /// Structured statement (high-level control flow)
 ///
@@ -10,14 +43,18 @@ pub enum Statement {
     /// Sequence of statements
     Sequence(Vec<Statement>),
 
-    /// Assignment: let var := expr (or let (var1, var2, ...) := expr for tuples)
+    /// Assignment: `let var := expr` or `let (a, b) := expr`
+    /// Uses shadowing semantics: redefining a name shadows the outer definition.
     /// This is the primary way to bind values, including if/while expressions:
-    ///   let (x, y) := if cond then (a, b) else (c, d)
-    ///   let (x, y) := while cond { ... } with initial (a, b)
+    ///   let result := if cond then a else b
+    ///   let (x, y) := while cond { ... } (state, ...)
     Let {
-        results: Vec<TempId>,
-        operation: Expression,
-        result_types: Vec<TheoremType>,
+        /// The binding pattern (single name or tuple)
+        pattern: LetPattern,
+        /// The expression being bound
+        value: Expression,
+        /// Types of the bound values
+        types: Vec<TheoremType>,
     },
 
     /// Return from function
@@ -70,7 +107,7 @@ macro_rules! traverse_stmt_expression {
                 }
             }
             // Then extract expressions from each statement variant
-            Statement::Let { $($ref_pattern)* operation, .. } => $expr_action(operation),
+            Statement::Let { $($ref_pattern)* value, .. } => $expr_action(value),
             Statement::Return { $($ref_pattern)* values } => {
                 for expr in values {
                     $expr_action(expr);
@@ -179,7 +216,7 @@ impl Statement {
             // (because once we hit a terminator, the rest is unreachable)
             Statement::Sequence(stmts) => stmts.iter().any(|s| s.terminates()),
             // Let with IfExpr: terminates if both branches terminate
-            Statement::Let { operation: Expression::IfExpr { then_block, else_block, .. }, .. } => {
+            Statement::Let { value: Expression::IfExpr { then_block, else_block, .. }, .. } => {
                 then_block.terminates() && else_block.terminates()
             }
             // All other statements don't terminate

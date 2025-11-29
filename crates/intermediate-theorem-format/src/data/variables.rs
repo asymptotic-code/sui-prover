@@ -225,4 +225,39 @@ impl VariableRegistry {
     pub fn has_bytecode_temp(&self, temp: TempId) -> bool {
         temp < self.base_id && self.bytecode_temps.contains_key(&temp)
     }
+
+    /// Rename a bytecode temp to use a better name (e.g., from TraceLocal).
+    /// Only renames if the current name is a generic temp name like "t6".
+    /// Returns true if the rename was applied.
+    pub fn rename_bytecode_temp_if_generic(&mut self, temp: TempId, new_name: String) -> bool {
+        if let Some(data) = self.bytecode_temps.get_mut(&temp) {
+            // Only rename if current name is generic (starts with 't' followed by digits)
+            let is_generic = data.name.starts_with('t')
+                && data.name[1..].chars().all(|c| c.is_ascii_digit());
+            if is_generic {
+                data.name = new_name;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Find a TempId by its name.
+    /// Searches both bytecode temps and registry-allocated temps.
+    /// Returns the first match found.
+    pub fn find_temp_by_name(&self, name: &str) -> Option<TempId> {
+        // Check bytecode temps first
+        for (&id, data) in &self.bytecode_temps {
+            if data.name == name {
+                return Some(id);
+            }
+        }
+        // Check registry temps
+        for (i, data) in self.temps.iter().enumerate() {
+            if data.name == name {
+                return Some(self.base_id + i as TempId);
+            }
+        }
+        None
+    }
 }

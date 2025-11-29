@@ -4,6 +4,7 @@
 //! Renders complete TheoremProgram to Lean files.
 
 use intermediate_theorem_format::TheoremProgram;
+use intermediate_theorem_format::analysis::analyze_purity;
 use super::function_renderer::render_function;
 use super::struct_renderer::render_struct;
 use super::lean_writer::LeanWriter;
@@ -19,6 +20,9 @@ pub fn render_to_directory(program: &TheoremProgram, output_dir: &Path, prelude_
     println!("RENDERER: Copying native packages...");
     copy_native_packages(program, output_dir)?;
     println!("RENDERER: Native packages copied.");
+
+    // Analyze purity for all functions
+    let purity = analyze_purity(program);
 
     println!("RENDERER: Rendering {} modules...", program.modules.len());
 
@@ -81,7 +85,7 @@ pub fn render_to_directory(program: &TheoremProgram, output_dir: &Path, prelude_
 
             println!("RENDERER: Rendering function: {} in module {}", func.name, module.name);
             let mut writer = LeanWriter::new(String::new());
-            render_function(func, program, &namespace_name, &mut writer);
+            render_function(func, program, &namespace_name, &purity, &mut writer);
             let rendered = writer.into_inner();
             println!("RENDERER: Function {} rendered ({} chars)", func.name, rendered.len());
 

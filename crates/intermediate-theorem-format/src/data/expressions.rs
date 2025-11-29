@@ -3,7 +3,7 @@
 
 use crate::data::structure::TheoremStructID;
 use crate::data::statements::Statement;
-use crate::data::types::{TempId, TheoremType};
+use crate::data::types::TheoremType;
 use crate::TheoremFunctionID;
 use ethnum::U256;
 use num::BigUint;
@@ -12,58 +12,30 @@ use serde::{Deserialize, Serialize};
 /// Traverse child expressions of an expression.
 /// Takes a ref pattern (`(ref)` or `(ref mut)`), an expression action, a vec action, and a block action.
 macro_rules! traverse_expr {
-    ($target:expr, (ref), $expr_action:expr, $vec_action:expr, $block_action:expr) => {
+    ($target:expr, (ref $($mut:ident)?), $expr_action:expr, $vec_action:expr, $block_action:expr) => {
         match $target {
-            Expression::BinOp { ref lhs, ref rhs, .. } => {
+            Expression::BinOp { ref $($mut)? lhs, ref $($mut)? rhs, .. } => {
                 $expr_action(lhs);
                 $expr_action(rhs);
             }
-            Expression::UnOp { operand: ref operand, .. } => $expr_action(operand),
-            Expression::Cast { value: ref value, .. } => $expr_action(value),
-            Expression::FieldAccess { operand: ref operand, .. } => $expr_action(operand),
-            Expression::Unpack { operand: ref operand, .. } => $expr_action(operand),
-            Expression::Call { args: ref args, .. } => $vec_action(args),
-            Expression::Pack { fields: ref fields, .. } => $vec_action(fields),
-            Expression::VecOp { operands: ref operands, .. } => $vec_action(operands),
-            Expression::Tuple(ref exprs) => $vec_action(exprs),
-            Expression::IfExpr { condition: ref condition, then_block: ref then_block, else_block: ref else_block } => {
+            Expression::UnOp { operand: ref $($mut)? operand, .. } => $expr_action(operand),
+            Expression::Cast { value: ref $($mut)? value, .. } => $expr_action(value),
+            Expression::FieldAccess { operand: ref $($mut)? operand, .. } => $expr_action(operand),
+            Expression::Unpack { operand: ref $($mut)? operand, .. } => $expr_action(operand),
+            Expression::Call { args: ref $($mut)? args, .. } => $vec_action(args),
+            Expression::Pack { fields: ref $($mut)? fields, .. } => $vec_action(fields),
+            Expression::VecOp { operands: ref $($mut)? operands, .. } => $vec_action(operands),
+            Expression::Tuple(ref $($mut)? exprs) => $vec_action(exprs),
+            Expression::IfExpr { condition: ref $($mut)? condition, then_block: ref $($mut)? then_block, else_block: ref $($mut)? else_block } => {
                 $expr_action(condition);
                 $block_action(then_block);
                 $block_action(else_block);
             }
-            Expression::WhileExpr { condition: ref condition, body: ref body, state: ref state } => {
+            Expression::WhileExpr { condition: ref $($mut)? condition, body: ref $($mut)? body } => {
                 $block_action(condition);
                 $block_action(body);
-                $vec_action(&state.initial);
             }
-            Expression::Temporary(_) | Expression::Constant(_) => {}
-        }
-    };
-    ($target:expr, (ref mut), $expr_action:expr, $vec_action:expr, $block_action:expr) => {
-        match $target {
-            Expression::BinOp { ref mut lhs, ref mut rhs, .. } => {
-                $expr_action(lhs);
-                $expr_action(rhs);
-            }
-            Expression::UnOp { operand: ref mut operand, .. } => $expr_action(operand),
-            Expression::Cast { value: ref mut value, .. } => $expr_action(value),
-            Expression::FieldAccess { operand: ref mut operand, .. } => $expr_action(operand),
-            Expression::Unpack { operand: ref mut operand, .. } => $expr_action(operand),
-            Expression::Call { args: ref mut args, .. } => $vec_action(args),
-            Expression::Pack { fields: ref mut fields, .. } => $vec_action(fields),
-            Expression::VecOp { operands: ref mut operands, .. } => $vec_action(operands),
-            Expression::Tuple(ref mut exprs) => $vec_action(exprs),
-            Expression::IfExpr { condition: ref mut condition, then_block: ref mut then_block, else_block: ref mut else_block } => {
-                $expr_action(condition);
-                $block_action(then_block);
-                $block_action(else_block);
-            }
-            Expression::WhileExpr { condition: ref mut condition, body: ref mut body, state: ref mut state } => {
-                $block_action(condition);
-                $block_action(body);
-                $vec_action(&mut state.initial);
-            }
-            Expression::Temporary(_) | Expression::Constant(_) => {}
+            Expression::Var(_) | Expression::Constant(_) => {}
         }
     };
 }
@@ -107,11 +79,13 @@ pub enum CallConvention {
     Monadic,
 }
 
-/// SSA operation
+/// Expression in the IR.
+/// Uses named variables with shadowing semantics (like Lean's `let`).
 #[derive(Debug, Clone)]
 pub enum Expression {
-    /// Temporary value
-    Temporary(TempId),
+    /// Variable reference by name.
+    /// Uses shadowing semantics: inner definitions shadow outer ones.
+    Var(String),
 
     /// Constant value (supports U128, U256, and arbitrary precision)
     Constant(ConstantValue),
@@ -182,16 +156,14 @@ pub enum Expression {
         else_block: Block,
     },
 
-    /// While loop expression - evaluates to final loop state
-    /// The loop takes initial state, runs until condition is false,
-    /// and returns the final state values
+    /// While loop expression - executes body while condition is true.
+    /// Loop state variables are derived implicitly from assignments in the body.
+    /// Initial values are the current values of those variables in the outer scope.
     WhileExpr {
         /// Block that computes the loop condition (result should be bool)
         condition: Block,
-        /// Block that computes the next state (result should match state types)
+        /// Block that computes the next state
         body: Block,
-        /// Loop state: variables, their types, and initial values
-        state: LoopState,
     },
 }
 
@@ -270,6 +242,16 @@ impl Block {
         }
     }
 
+    /// Substitute variable names in all expressions in this block.
+    pub fn substitute_vars(self, subst_map: &std::collections::BTreeMap<String, String>) -> Block {
+        Block {
+            statements: self.statements.into_iter()
+                .map(|s| s.map_expressions(|e| e.substitute_vars(subst_map)))
+                .collect(),
+            result: Box::new(self.result.substitute_vars(subst_map)),
+        }
+    }
+
     /// Mutably traverse all expressions in this block
     pub fn traverse_expressions_mut<F: Fn(&mut Expression)>(&mut self, f: &F) {
         for stmt in &mut self.statements {
@@ -286,16 +268,6 @@ impl Block {
     }
 }
 
-/// Loop state specification for while loops
-#[derive(Debug, Clone)]
-pub struct LoopState {
-    /// Variables that carry state through the loop (their TempIds)
-    pub vars: Vec<TempId>,
-    /// Types of the loop state variables
-    pub types: Vec<TheoremType>,
-    /// Initial values for the state variables
-    pub initial: Vec<Expression>,
-}
 
 impl Expression {
     /// Extract function ID if this is a Call expression
@@ -318,14 +290,51 @@ impl Expression {
 
     /// Check if this expression produces a monadic result (requires ← binding).
     /// Recursively checks nested blocks for monadic operations.
+    /// For IfExpr, also checks if the condition contains monadic calls, since that
+    /// requires wrapping the whole if in a `do` block, making it monadic.
     pub fn is_monadic(&self) -> bool {
         match self {
             Expression::Call { convention: CallConvention::Monadic, .. } => true,
             Expression::WhileExpr { .. } => true,
-            Expression::IfExpr { then_block, else_block, .. } => {
-                then_block.is_monadic() || else_block.is_monadic()
+            Expression::IfExpr { condition, then_block, else_block } => {
+                // If condition contains monadic calls, the if needs `do` wrapper and becomes monadic
+                condition.contains_monadic()
+                    || then_block.is_monadic() || else_block.is_monadic()
+                    || then_block.result.contains_monadic() || else_block.result.contains_monadic()
             }
             _ => false,
+        }
+    }
+
+    /// Check if this expression contains any monadic subexpressions.
+    /// This recursively checks all children, not just the top level.
+    /// Used to determine if a let binding needs `←` when inlined monadic calls are present.
+    pub fn contains_monadic(&self) -> bool {
+        if self.is_monadic() {
+            return true;
+        }
+        match self {
+            Expression::BinOp { lhs, rhs, .. } => {
+                lhs.contains_monadic() || rhs.contains_monadic()
+            }
+            Expression::UnOp { operand, .. } | Expression::Cast { value: operand, .. } |
+            Expression::FieldAccess { operand, .. } | Expression::Unpack { operand, .. } => {
+                operand.contains_monadic()
+            }
+            Expression::Call { args, .. } => args.iter().any(|a| a.contains_monadic()),
+            Expression::Pack { fields, .. } => fields.iter().any(|f| f.contains_monadic()),
+            Expression::VecOp { operands, .. } => operands.iter().any(|o| o.contains_monadic()),
+            Expression::Tuple(exprs) => exprs.iter().any(|e| e.contains_monadic()),
+            Expression::IfExpr { condition, then_block, else_block } => {
+                condition.contains_monadic()
+                    || then_block.result.contains_monadic()
+                    || else_block.result.contains_monadic()
+            }
+            Expression::WhileExpr { condition, body } => {
+                condition.result.contains_monadic()
+                    || body.result.contains_monadic()
+            }
+            Expression::Var(_) | Expression::Constant(_) => false,
         }
     }
 
@@ -403,16 +412,11 @@ impl Expression {
                 then_block: then_block.map_expressions(f),
                 else_block: else_block.map_expressions(f),
             },
-            Expression::WhileExpr { condition, body, state } => Expression::WhileExpr {
+            Expression::WhileExpr { condition, body } => Expression::WhileExpr {
                 condition: condition.map_expressions(f),
                 body: body.map_expressions(f),
-                state: LoopState {
-                    vars: state.vars,
-                    types: state.types,
-                    initial: state.initial.into_iter().map(|e| e.map(f)).collect(),
-                },
             },
-            expr @ (Expression::Temporary(_) | Expression::Constant(_)) => expr,
+            expr @ (Expression::Var(_) | Expression::Constant(_)) => expr,
         };
         f(transformed)
     }
@@ -430,30 +434,33 @@ impl Expression {
         f(self);
     }
 
-    /// Substitute temporary variables according to a mapping.
-    /// This is a common operation used in SSA transformations.
-    pub fn substitute_temps(self, subst_map: &std::collections::BTreeMap<TempId, TempId>) -> Expression {
-        self.map(|expr| match expr {
-            Expression::Temporary(temp_id) => {
-                Expression::Temporary(*subst_map.get(&temp_id).unwrap_or(&temp_id))
+    /// Substitute variable names according to a mapping.
+    /// With named variables and shadowing, this is rarely needed -
+    /// typically only for renaming variables.
+    pub fn substitute_vars(self, subst_map: &std::collections::BTreeMap<String, String>) -> Expression {
+        self.map(|expr| {
+            match expr {
+                Expression::Var(name) => {
+                    Expression::Var(subst_map.get(&name).cloned().unwrap_or(name))
+                }
+                other => other,
             }
-            other => other,
         })
     }
 
-    /// Iterate over all temporary IDs referenced in this expression (recursive).
-    pub fn iter_temps(&self) -> impl Iterator<Item = TempId> + '_ {
+    /// Iterate over all variable names referenced in this expression (recursive).
+    pub fn iter_vars(&self) -> impl Iterator<Item = &str> + '_ {
         self.iter().filter_map(|expr| {
             match expr {
-                Expression::Temporary(temp_id) => Some(*temp_id),
+                Expression::Var(name) => Some(name.as_str()),
                 _ => None,
             }
         })
     }
 
-    /// Collect all temporary IDs referenced in this expression.
-    pub fn collect_temps(&self) -> Vec<TempId> {
-        self.iter_temps().collect()
+    /// Collect all variable names referenced in this expression.
+    pub fn collect_vars(&self) -> Vec<String> {
+        self.iter_vars().map(|s| s.to_string()).collect()
     }
 }
 

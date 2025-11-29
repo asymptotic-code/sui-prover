@@ -28,7 +28,7 @@ pub use data::structure::{TheoremStruct, TheoremField};
 pub use data::functions::{TheoremFunction, FunctionSignature, Parameter};
 
 // Statement definitions (from data/statements.rs)
-pub use data::statements::{Statement, StatementIter, StatementExpressionIter};
+pub use data::statements::{Statement, StatementIter, StatementExpressionIter, LetPattern};
 
 // Expression iterator (from data/expressions.rs)
 pub use data::expressions::ExpressionIter;
@@ -37,7 +37,7 @@ pub use data::expressions::ExpressionIter;
 pub use data::types::{TheoremType, TempId};
 
 // Expression definitions (from data/expressions.rs)
-pub use data::expressions::{Expression, BinOp, UnOp, CallConvention, VectorOp, ConstantValue, Block, LoopState};
+pub use data::expressions::{Expression, BinOp, UnOp, CallConvention, VectorOp, ConstantValue, Block};
 
 // Variable registry (from data/variables.rs)
 pub use data::variables::{VariableRegistry, TempKind, TempData};
