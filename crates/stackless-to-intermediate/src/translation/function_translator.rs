@@ -40,6 +40,19 @@ pub fn translate_function<'a, 'b, 'c>(
 }
 
 /// Populate SSA registry with type information from FunctionTarget
+///
+/// Note: Variable names are extracted from the Move source map. However, not all
+/// user-declared variable names will appear in the generated code because the Move
+/// compiler's SSA transformation optimizes away intermediate assignments. For example:
+///
+///   let abs_tick = i32::as_u32(i32::abs(tick));
+///
+/// May be compiled to bytecode that assigns directly to a temporary ($t6) without
+/// ever writing to the `abs_tick` slot. The source map still records `abs_tick` at
+/// its original index, but that index is never used in the bytecode.
+///
+/// Variables that ARE assigned via explicit `Assign` bytecode (like loop variables
+/// or variables that need to persist across control flow) will retain their names.
 fn populate_types(
     builder: &mut ProgramBuilder,
     target: &FunctionTarget,
@@ -60,7 +73,8 @@ fn populate_types(
         let move_type = target.get_local_type(local_idx);
         let theorem_type = builder.convert_type(move_type);
 
-        // Get the name from FunctionTarget
+        // Get the name from FunctionTarget - this queries the source map
+        // and returns original variable names for user-declared locals
         let symbol = target.get_local_name(local_idx);
         let compiler_name = symbol.display(builder.env().symbol_pool()).to_string();
 
@@ -73,6 +87,10 @@ fn populate_types(
         } else {
             compiler_name
         };
+
+        // Strip SSA suffix from Move compiler (e.g., "abs_tick#1#0" -> "abs_tick")
+        // The suffix is typically #<number>#<number> added by the SSA transformation
+        name = strip_ssa_suffix(&name);
 
         // Sanitize name for Lean: replace invalid characters
         // Lean identifiers can only contain: a-z A-Z 0-9 _ '
@@ -90,4 +108,58 @@ fn populate_types(
         // Register bytecode temp with all metadata at once
         registry.register_bytecode_temp(temp_id, name, theorem_type);
     }
+}
+
+/// Strip SSA suffix from Move compiler variable names.
+/// The Move compiler adds suffixes like `#1#0` to variable names during SSA transformation.
+/// For example: `abs_tick#1#0` -> `abs_tick`
+fn strip_ssa_suffix(name: &str) -> String {
+    // Pattern: name followed by #<digits>#<digits> at the end
+    // We want to strip the #<digits>#<digits> part
+    if let Some(pos) = name.find('#') {
+        // Check if everything after # is digits and more #digits
+        let suffix = &name[pos..];
+        if is_ssa_suffix(suffix) {
+            return name[..pos].to_string();
+        }
+    }
+    name.to_string()
+}
+
+/// Check if a string is an SSA suffix like `#1#0` or `#12#34`
+fn is_ssa_suffix(s: &str) -> bool {
+    let mut chars = s.chars().peekable();
+
+    // Must start with #
+    if chars.next() != Some('#') {
+        return false;
+    }
+
+    // Must have at least one digit
+    if !chars.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return false;
+    }
+
+    // Consume digits
+    while chars.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        chars.next();
+    }
+
+    // Must have another #
+    if chars.next() != Some('#') {
+        return false;
+    }
+
+    // Must have at least one digit
+    if !chars.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return false;
+    }
+
+    // Consume remaining digits
+    while chars.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        chars.next();
+    }
+
+    // Must be at end
+    chars.next().is_none()
 }

@@ -10,7 +10,7 @@ use super::utilities::resolve_struct_id;
 use super::expression_translator;
 use crate::control_flow_reconstruction::DiscoveryContext;
 use intermediate_theorem_format::VariableRegistry;
-use intermediate_theorem_format::{Expression, Statement, TempId};
+use intermediate_theorem_format::{Expression, LetPattern, Statement, TempId};
 use move_binary_format::file_format::CodeOffset;
 use move_stackless_bytecode::borrow_analysis::BorrowAnnotation;
 use move_stackless_bytecode::stackless_bytecode::{BorrowEdge, BorrowNode};
@@ -34,7 +34,7 @@ pub fn translate(
             register_temp(*dest, &ctx.registry);
             make_let(
                 vec![*dest as TempId],
-                expression_translator::make_temporary(*src),
+                expression_translator::make_temporary(*src, ctx.registry),
                 ctx.registry,
             )
         }
@@ -57,13 +57,13 @@ pub fn translate(
         // Control flow
         Bytecode::Ret(_, temps) => {
             Statement::Return {
-                values: temps.iter().map(|&t| Expression::Temporary(t as TempId)).collect(),
+                values: temps.iter().map(|&t| make_var(t as TempId, ctx.registry)).collect(),
             }
         }
 
         Bytecode::Abort(_, temp) => {
             Statement::Abort {
-                code: Expression::Temporary(*temp as TempId),
+                code: make_var(*temp as TempId, ctx.registry),
             }
         }
 
@@ -107,7 +107,7 @@ fn translate_call(
                 dests.iter().map(|&d| d as TempId).collect(),
                 Expression::Unpack {
                     struct_id: struct_id_ir,
-                    operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                    operand: Box::new(make_var(srcs[0] as TempId, ctx.registry)),
                 },
                 ctx.registry,
             )
@@ -127,7 +127,7 @@ fn translate_call(
                 dests.iter().map(|&d| d as TempId).collect(),
                 Expression::Unpack {
                     struct_id: struct_id_ir,
-                    operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                    operand: Box::new(make_var(srcs[0] as TempId, ctx.registry)),
                 },
                 ctx.registry,
             )
@@ -156,17 +156,17 @@ fn translate_call(
             if is_prover_module {
                 if func_name == "requires" && srcs.len() == 1 {
                     return Statement::Requires {
-                        condition: Expression::Temporary(srcs[0] as TempId),
+                        condition: make_var(srcs[0] as TempId, ctx.registry),
                     };
                 } else if func_name == "ensures" && srcs.len() == 1 {
                     return Statement::Ensures {
-                        condition: Expression::Temporary(srcs[0] as TempId),
+                        condition: make_var(srcs[0] as TempId, ctx.registry),
                     };
                 }
             }
 
             // Regular function call - use expression translator
-            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, operation, srcs) {
+            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, ctx.registry, operation, srcs) {
                 make_let(
                     dests.iter().map(|&d| d as TempId).collect(),
                     expr,
@@ -177,10 +177,30 @@ fn translate_call(
             }
         }
 
-        // Debug/trace operations - filter these out
-        Operation::TraceLocal(_) | Operation::TraceReturn(_) |
-        Operation::TraceAbort | Operation::TraceExp(_, _) |
-        Operation::TraceGlobalMem(_) => Statement::default(),
+        // TraceLocal tells us which user variable a temp corresponds to.
+        // Use this to rename generic temp names (like "t6") to meaningful names (like "abs_tick").
+        Operation::TraceLocal(local_idx) => {
+            if !srcs.is_empty() {
+                let temp_id = srcs[0] as TempId;
+                let local_id = *local_idx as TempId;
+
+                // Get the name of the user variable at local_idx
+                // The name is already sanitized by populate_types
+                if let Some(local_name) = ctx.registry.get_name(local_id) {
+                    // Only rename if local has a meaningful name (not a generic temp)
+                    // Generic temp patterns: "tN" (t followed by only digits), or "tmp__*"
+                    let is_generic = is_generic_temp_name(local_name);
+                    if !is_generic {
+                        ctx.registry.rename_bytecode_temp_if_generic(temp_id, local_name.to_string());
+                    }
+                }
+            }
+            Statement::default()
+        }
+
+        // Other debug/trace operations - filter out
+        Operation::TraceReturn(_) | Operation::TraceAbort |
+        Operation::TraceExp(_, _) | Operation::TraceGlobalMem(_) => Statement::default(),
 
         // Destroy - no statement needed
         Operation::Destroy => Statement::default(),
@@ -197,7 +217,7 @@ fn translate_call(
             }
 
             // Try expression translator first
-            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, operation, srcs) {
+            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, ctx.registry, operation, srcs) {
                 make_let(
                     dests.iter().map(|&d| d as TempId).collect(),
                     expr,
@@ -210,7 +230,7 @@ fn translate_call(
 
         // All other operations: try expression translator
         _ => {
-            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, operation, srcs) {
+            if let Some(expr) = expression_translator::translate_operation(&mut *ctx.builder, ctx.registry, operation, srcs) {
                 make_let(
                     dests.iter().map(|&d| d as TempId).collect(),
                     expr,
@@ -253,15 +273,11 @@ fn translate_write_ref(
     if incoming.is_empty() {
         // Reference parameter: function should return updated value
         if ref_temp < ctx.target.get_parameter_count() {
-            let param_type = ctx.registry.get_type(ref_temp as TempId)
-                .cloned()
-                .unwrap();
-
-            return Statement::Let {
-                results: vec![ref_temp as TempId],
-                operation: Expression::Temporary(value_temp as TempId),
-                result_types: vec![param_type],
-            };
+            return make_let(
+                vec![ref_temp as TempId],
+                make_var(value_temp as TempId, ctx.registry),
+                ctx.registry,
+            );
         } else {
             panic!("BUG: WriteRef to reference {} with no incoming edges and not a parameter", ref_temp);
         }
@@ -272,15 +288,11 @@ fn translate_write_ref(
     match (parent_node, edge) {
         (BorrowNode::LocalRoot(local_idx), BorrowEdge::Direct) => {
             // Direct borrow: &mut x
-            let local_type = ctx.registry.get_type(*local_idx as TempId)
-                .cloned()
-                .unwrap();
-
-            Statement::Let {
-                results: vec![*local_idx as TempId],
-                operation: Expression::Temporary(value_temp as TempId),
-                result_types: vec![local_type],
-            }
+            make_let(
+                vec![*local_idx as TempId],
+                make_var(value_temp as TempId, ctx.registry),
+                ctx.registry,
+            )
         }
 
         (BorrowNode::LocalRoot(local_idx), BorrowEdge::Field(struct_qid, field_idx)) => {
@@ -288,10 +300,10 @@ fn translate_write_ref(
             let struct_id = resolve_struct_id(&mut *ctx.builder, struct_qid.module_id, struct_qid.id);
 
             Statement::UpdateField {
-                target: Expression::Temporary(*local_idx as TempId),
+                target: make_var(*local_idx as TempId, ctx.registry),
                 struct_id,
                 field_index: *field_idx,
-                new_value: Expression::Temporary(value_temp as TempId),
+                new_value: make_var(value_temp as TempId, ctx.registry),
             }
         }
 
@@ -315,13 +327,33 @@ fn translate_write_ref(
     }
 }
 
-/// Helper: create Let statement with proper types
+/// Helper: create a Var expression from a TempId.
+/// Converts TempId to String variable name using the registry.
+fn make_var(temp_id: TempId, registry: &VariableRegistry) -> Expression {
+    Expression::Var(registry.get_display_name(temp_id))
+}
+
+/// Helper: create Let statement with proper types.
+/// Converts TempIds to String variable names using the registry.
 fn make_let(
     results: Vec<TempId>,
-    operation: Expression,
+    value: Expression,
     registry: &VariableRegistry,
 ) -> Statement {
-    let result_types = results.iter()
+    // Convert TempIds to names
+    let names: Vec<String> = results.iter()
+        .map(|&temp_id| registry.get_display_name(temp_id))
+        .collect();
+
+    // Build pattern
+    let pattern = if names.len() == 1 {
+        LetPattern::Single(names.into_iter().next().unwrap())
+    } else {
+        LetPattern::Tuple(names)
+    };
+
+    // Get types
+    let types = results.iter()
         .map(|&temp_id| {
             let base_type = registry
                 .get_type(temp_id)
@@ -330,7 +362,7 @@ fn make_let(
 
             // If the operation is a monadic function call, wrap result type in Except
             // Pure calls (native functions) don't need wrapping
-            if let Expression::Call { convention, .. } = &operation {
+            if let Expression::Call { convention, .. } = &value {
                 if *convention == intermediate_theorem_format::CallConvention::Monadic {
                     base_type.wrap_in_monad()
                 } else {
@@ -341,11 +373,26 @@ fn make_let(
             }
         })
         .collect();
+
     Statement::Let {
-        results,
-        operation,
-        result_types,
+        pattern,
+        value,
+        types,
     }
+}
+
+/// Check if a name is a generic temp name like "t0", "t123", "tmp__1"
+/// These are compiler-generated names, not user-declared variable names.
+fn is_generic_temp_name(name: &str) -> bool {
+    // Pattern: t followed by only digits (e.g., t0, t123)
+    if name.starts_with('t') && name.len() > 1 && name[1..].chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    // Pattern: tmp__ followed by anything
+    if name.starts_with("tmp__") {
+        return true;
+    }
+    false
 }
 
 /// Ensure a temp is registered in the SSA registry

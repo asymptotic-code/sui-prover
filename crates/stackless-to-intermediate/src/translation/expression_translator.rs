@@ -6,18 +6,25 @@
 //! Single responsibility: Convert bytecode operations into Expression IR nodes.
 //! Does NOT create Statement nodes - that's statement_translator's job.
 
-use intermediate_theorem_format::{Expression, CallConvention, TheoremType, TempId};
+use intermediate_theorem_format::{Expression, CallConvention, TheoremType, TempId, VariableRegistry};
 use move_stackless_bytecode::stackless_bytecode::Operation;
 use crate::program_builder::ProgramBuilder;
 use super::utilities::{convert_constant, convert_binop, convert_unop, resolve_function_id};
+
+/// Helper: create a Var expression from a TempId using the registry.
+fn make_var(temp: usize, registry: &VariableRegistry) -> Expression {
+    Expression::Var(registry.get_display_name(temp as TempId))
+}
 
 /// Translate an operation to an expression
 /// Returns None for operations that don't produce single-value expressions
 pub fn translate_operation(
     builder: &mut ProgramBuilder,
+    registry: &VariableRegistry,
     operation: &Operation,
     srcs: &[usize],
 ) -> Option<Expression> {
+
     match operation {
         // Binary operations
         Operation::Add | Operation::Sub | Operation::Mul | Operation::Div | Operation::Mod |
@@ -30,8 +37,8 @@ pub fn translate_operation(
             let bin_op = convert_binop(operation);
             Some(Expression::BinOp {
                 op: bin_op,
-                lhs: Box::new(Expression::Temporary(srcs[0] as TempId)),
-                rhs: Box::new(Expression::Temporary(srcs[1] as TempId)),
+                lhs: Box::new(make_var(srcs[0], registry)),
+                rhs: Box::new(make_var(srcs[1], registry)),
             })
         }
 
@@ -42,7 +49,7 @@ pub fn translate_operation(
             }
             Some(Expression::UnOp {
                 op: convert_unop(operation),
-                operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                operand: Box::new(make_var(srcs[0], registry)),
             })
         }
 
@@ -62,7 +69,7 @@ pub fn translate_operation(
                 _ => unreachable!(),
             };
             Some(Expression::Cast {
-                value: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                value: Box::new(make_var(srcs[0], registry)),
                 target_type,
             })
         }
@@ -73,7 +80,7 @@ pub fn translate_operation(
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
             let fields = srcs.iter()
-                .map(|&temp| Expression::Temporary(temp as TempId))
+                .map(|&temp| make_var(temp, registry))
                 .collect();
 
             let type_args_ir = type_args.iter()
@@ -93,7 +100,7 @@ pub fn translate_operation(
             let struct_id_ir = builder.get_or_reserve_struct_id(qualified_id);
 
             let fields = srcs.iter()
-                .map(|&temp| Expression::Temporary(temp as TempId))
+                .map(|&temp| make_var(temp, registry))
                 .collect();
 
             let type_args_ir = type_args.iter()
@@ -122,7 +129,7 @@ pub fn translate_operation(
             Some(Expression::FieldAccess {
                 struct_id: struct_id_ir,
                 field_index: *field_idx,
-                operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                operand: Box::new(make_var(srcs[0], registry)),
             })
         }
 
@@ -140,7 +147,7 @@ pub fn translate_operation(
             Some(Expression::FieldAccess {
                 struct_id: struct_id_ir,
                 field_index: *field_index,
-                operand: Box::new(Expression::Temporary(srcs[0] as TempId)),
+                operand: Box::new(make_var(srcs[0], registry)),
             })
         }
 
@@ -149,7 +156,7 @@ pub fn translate_operation(
             if srcs.is_empty() {
                 return None;
             }
-            Some(Expression::Temporary(srcs[0] as TempId))
+            Some(make_var(srcs[0], registry))
         }
 
         // Function calls
@@ -157,7 +164,7 @@ pub fn translate_operation(
             let function_id = resolve_function_id(builder, *module_id, *fun_id);
 
             let args = srcs.iter()
-                .map(|&temp| Expression::Temporary(temp as TempId))
+                .map(|&temp| make_var(temp, registry))
                 .collect();
             let type_args_ir = type_args.iter()
                 .map(|ty| builder.convert_type(ty))
@@ -195,7 +202,7 @@ pub fn make_constant(constant: &move_stackless_bytecode::stackless_bytecode::Con
     Expression::Constant(convert_constant(constant))
 }
 
-/// Create a temporary expression
-pub fn make_temporary(temp: usize) -> Expression {
-    Expression::Temporary(temp as TempId)
+/// Create a variable expression from a temp ID using the registry.
+pub fn make_temporary(temp: usize, registry: &VariableRegistry) -> Expression {
+    Expression::Var(registry.get_display_name(temp as TempId))
 }
