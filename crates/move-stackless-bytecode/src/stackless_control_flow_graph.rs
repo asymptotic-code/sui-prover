@@ -5,13 +5,16 @@
 //! Adapted from control_flow_graph for Bytecode, this module defines the control-flow graph on
 //! Stackless Bytecode used in analysis as part of Move prover.
 
-use crate::graph::DomRelation;
 use crate::{
     function_target::FunctionTarget,
     stackless_bytecode::{Bytecode, Label},
 };
 use move_binary_format::file_format::CodeOffset;
-use petgraph::{dot::Dot, graph::Graph};
+use petgraph::{
+    algo::{self, dominators},
+    dot::Dot,
+    graph::{self, DiGraph, Graph},
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 type Map<K, V> = BTreeMap<K, V>;
@@ -37,7 +40,7 @@ pub struct StacklessControlFlowGraph {
     entry_block_id: BlockId,
     blocks: Map<BlockId, Block>,
     backward: bool,
-    ignore_aborts: bool,
+    ignore_return_abort: bool,
 }
 
 const DUMMY_ENTRANCE: BlockId = 0;
@@ -48,12 +51,12 @@ impl StacklessControlFlowGraph {
         Self::new_forward_with_options(code, false)
     }
 
-    pub fn new_forward_with_options(code: &[Bytecode], ignore_aborts: bool) -> Self {
+    pub fn new_forward_with_options(code: &[Bytecode], ignore_return_abort: bool) -> Self {
         Self {
             entry_block_id: DUMMY_ENTRANCE,
-            blocks: Self::collect_blocks(code, ignore_aborts),
+            blocks: Self::collect_blocks(code, ignore_return_abort),
             backward: false,
-            ignore_aborts,
+            ignore_return_abort,
         }
     }
 
@@ -66,9 +69,9 @@ impl StacklessControlFlowGraph {
     pub fn new_backward_with_options(
         code: &[Bytecode],
         from_all_blocks: bool,
-        ignore_aborts: bool,
+        ignore_return_abort: bool,
     ) -> Self {
-        let blocks = Self::collect_blocks(code, ignore_aborts);
+        let blocks = Self::collect_blocks(code, ignore_return_abort);
         let mut block_id_to_predecessors: Map<BlockId, Vec<BlockId>> =
             blocks.keys().map(|block_id| (*block_id, vec![])).collect();
         for (block_id, block) in &blocks {
@@ -103,7 +106,7 @@ impl StacklessControlFlowGraph {
                 })
                 .collect(),
             backward: true,
-            ignore_aborts,
+            ignore_return_abort,
         }
     }
 
@@ -143,11 +146,11 @@ impl StacklessControlFlowGraph {
             entry_block_id: DUMMY_ENTRANCE,
             blocks,
             backward: false,
-            ignore_aborts: false,
+            ignore_return_abort: false,
         }
     }
 
-    fn collect_blocks(code: &[Bytecode], ignore_aborts: bool) -> Map<BlockId, Block> {
+    fn collect_blocks(code: &[Bytecode], ignore_return_abort: bool) -> Map<BlockId, Block> {
         // First go through and collect basic block offsets.
         // Need to do this first in order to handle backwards edges.
         let label_offsets = Bytecode::label_offsets(code);
@@ -159,15 +162,13 @@ impl StacklessControlFlowGraph {
                 code,
                 &mut bb_offsets,
                 &label_offsets,
-                ignore_aborts,
+                ignore_return_abort,
             );
         }
         // Now construct blocks
         let mut blocks = Map::new();
         // Maps basic block entry offsets to their key in blocks
         let mut offset_to_key = Map::new();
-        // Block counter starts at 2 because entry and exit will be block 0 and 1
-        let mut bcounter = 2;
         let mut block_entry = 0;
         for pc in 0..code.len() {
             let co_pc: CodeOffset = pc as CodeOffset;
@@ -175,21 +176,33 @@ impl StacklessControlFlowGraph {
             if StacklessControlFlowGraph::is_end_of_block(co_pc, code, &bb_offsets) {
                 let mut successors = Bytecode::get_successors(co_pc, code, &label_offsets);
                 for successor in successors.iter_mut() {
-                    *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
-                    bcounter = std::cmp::max(*successor + 1, bcounter);
+                    *successor = Self::get_block_id(&mut offset_to_key, *successor);
                 }
-                if code[co_pc as usize].is_exit()
-                    || !ignore_aborts
-                        && matches!(code[co_pc as usize], Bytecode::Call(_, _, _, _, Some(_)))
-                {
-                    successors.push(DUMMY_EXIT);
+                if !ignore_return_abort {
+                    if code[pc].is_exit() || matches!(code[pc], Bytecode::Call(_, _, _, _, Some(_)))
+                    {
+                        successors.push(DUMMY_EXIT);
+                    }
+                } else {
+                    assert_eq!(
+                        code[pc].is_exit() || pc + 1 == code.len(),
+                        successors.is_empty(),
+                        "code[{}]: {:?}",
+                        pc,
+                        code[pc]
+                    );
+                    if pc + 1 == code.len() {
+                        assert!(code[pc].is_exit() || !code[pc].is_branch());
+                        successors.push(DUMMY_EXIT);
+                    } else if code[pc].is_exit() {
+                        successors.push(Self::get_block_id(&mut offset_to_key, co_pc + 1));
+                    }
                 }
                 let bb = BlockContent::Basic {
                     lower: block_entry,
                     upper: co_pc,
                 };
-                let key = *offset_to_key.entry(block_entry).or_insert(bcounter);
-                bcounter = std::cmp::max(key + 1, bcounter);
+                let key = Self::get_block_id(&mut offset_to_key, block_entry);
                 blocks.insert(
                     key,
                     Block {
@@ -217,6 +230,13 @@ impl StacklessControlFlowGraph {
             },
         );
         blocks
+    }
+
+    fn get_block_id(offset_to_key: &mut Map<CodeOffset, BlockId>, offset: CodeOffset) -> BlockId {
+        // block counter starts at 2 because entry and exit will be block 0 and 1,
+        // so the next block id is the length of the map plus 2.
+        let next_block_id = (offset_to_key.len() + 2) as BlockId;
+        *offset_to_key.entry(offset).or_insert(next_block_id)
     }
 
     fn is_end_of_block(pc: CodeOffset, code: &[Bytecode], block_ids: &Set<BlockId>) -> bool {
@@ -262,57 +282,46 @@ impl StacklessControlFlowGraph {
         None
     }
 
-    pub fn find_immediate_post_dominator(
-        back_cfg: &StacklessControlFlowGraph,
+    pub fn find_immediate_dominator(
+        self: &StacklessControlFlowGraph,
         branch_block: BlockId,
     ) -> Option<BlockId> {
-        // Build reversed graph and compute dominators (postdominators of original CFG)
-        let entry = back_cfg.entry_block();
-        let nodes = back_cfg.blocks();
-        let edges: Vec<(BlockId, BlockId)> = nodes
-            .iter()
-            .flat_map(|x| {
-                back_cfg
-                    .successors(*x)
-                    .iter()
-                    .map(|y| (*x, *y))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let graph = crate::graph::Graph::new(entry, nodes.clone(), edges);
-        let dom_rev = DomRelation::new(&graph);
+        // Compute dominators using petgraph (on backward CFG this gives post-dominators)
+        let (graph, block_to_node) = self.as_directed_graph();
+        let dominators = dominators::simple_fast(&graph, block_to_node[&self.entry_block()]);
 
-        // Candidates are postdominators of branch_block (including itself and exit)
-        let candidates: Vec<BlockId> = nodes
-            .into_iter()
-            .filter(|b| {
-                *b != branch_block
-                    && dom_rev.is_reachable(*b)
-                    && dom_rev.is_dominated_by(branch_block, *b)
-            })
-            .collect();
+        // Get immediate dominator of branch_block
+        dominators
+            .immediate_dominator(block_to_node[&branch_block])
+            .map(|idom_node| graph[idom_node])
+    }
 
-        if candidates.is_empty() {
-            return None;
+    pub fn as_directed_graph(&self) -> (DiGraph<BlockId, ()>, BTreeMap<BlockId, graph::NodeIndex>) {
+        // Build petgraph DiGraph and create mappings between BlockId and NodeIndex
+        let mut graph: DiGraph<BlockId, ()> = DiGraph::new();
+        let mut block_to_node: BTreeMap<BlockId, graph::NodeIndex> = BTreeMap::new();
+
+        // Add nodes
+        for block_id in self.blocks() {
+            let node_index = graph.add_node(block_id);
+            block_to_node.insert(block_id, node_index);
         }
 
-        // Immediate postdominator is the next node required on any path to exit--
-        // i.e., deepest candidate: it should not dominate any other candidate.
-        for &c in &candidates {
-            let mut dominates_any = false;
-            for &o in &candidates {
-                if o != c && dom_rev.is_dominated_by(o, c) {
-                    // c dominates o in reversed graph => c is above; skip it
-                    dominates_any = true;
-                    break;
-                }
-            }
-            if !dominates_any {
-                return Some(c);
+        // Add edges
+        for block_id in self.blocks() {
+            let from_node = block_to_node[&block_id];
+            for succ in self.successors(block_id) {
+                let to_node = block_to_node[succ];
+                graph.add_edge(from_node, to_node, ());
             }
         }
-        // Fallback
-        candidates.into_iter().next()
+
+        (graph, block_to_node)
+    }
+
+    pub fn is_acyclic(&self) -> bool {
+        let (graph, _) = self.as_directed_graph();
+        !algo::is_cyclic_directed(&graph)
     }
 
     pub fn successors(&self, block_id: BlockId) -> &Vec<BlockId> {
