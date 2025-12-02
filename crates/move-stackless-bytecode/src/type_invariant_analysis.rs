@@ -70,7 +70,7 @@ fn analyze_type_invariants_r(
                     let mut new_nested = nested.clone();
                     new_nested.push(NestingPathEntry {
                         field_ty: field_ty.clone(),
-                        field_offset: field_offset,
+                        field_offset,
                     });
                     analyze_type_invariants_r(targets, env, new_nested, &field_ty, results);
                 });
