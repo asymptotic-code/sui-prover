@@ -4,13 +4,13 @@
 //! Renders TheoremStruct to Lean structure definitions.
 
 use std::fmt::Write;
-use intermediate_theorem_format::{TheoremStruct, NameManager};
+use intermediate_theorem_format::{TheoremProgram, TheoremStruct};
 use super::type_renderer::type_to_string;
 use super::lean_writer::LeanWriter;
 use crate::escape;
 
 /// Render a struct definition.
-pub fn render_struct<W: Write>(struct_def: &TheoremStruct, names: &NameManager, current_module: &str, w: &mut LeanWriter<W>) {
+pub fn render_struct<W: Write>(struct_def: &TheoremStruct, program: &TheoremProgram, current_module: &str, w: &mut LeanWriter<W>) {
     // Comment header
     w.line(&format!("-- Struct: {}", struct_def.qualified_name));
 
@@ -46,7 +46,7 @@ pub fn render_struct<W: Write>(struct_def: &TheoremStruct, names: &NameManager, 
 
     // Fields
     for field in &struct_def.fields {
-        let type_str = type_to_string(&field.field_type, names, Some(current_module));
+        let type_str = type_to_string(&field.field_type, program, Some(current_module));
         w.write(&format!("  {} : {}\n", escape::escape_identifier(&field.name), type_str));
     }
 

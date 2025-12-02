@@ -2,16 +2,54 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Translation utilities for Move bytecode to TheoremIR
-//!
-//! This module provides specialized translators:
-//! - utilities: Shared helper functions (constant/binop conversion, ID resolution)
-//! - expression_translator: Bytecode operations → Expression IR
-//! - statement_translator: Bytecode instructions → Statement IR
-//! - function_translator: Function body translation orchestration
 
-mod utilities;
-pub mod expression_translator;
-pub mod statement_translator;
-pub mod function_translator;
+use ethnum::U256;
+use intermediate_theorem_format::{BinOp, Const};
+use move_stackless_bytecode::stackless_bytecode::{Constant, Operation};
 
-pub use utilities::{convert_constant, convert_binop, resolve_function_id, resolve_struct_id};
+pub(crate) mod function_translator;
+pub(crate) mod ir_translator;
+
+pub fn convert_constant(constant: &Constant) -> Const {
+    match constant {
+        Constant::Bool(b) => Const::Bool(*b),
+        Constant::U8(v) => Const::UInt { bits: 8, value: U256::from(*v) },
+        Constant::U16(v) => Const::UInt { bits: 16, value: U256::from(*v) },
+        Constant::U32(v) => Const::UInt { bits: 32, value: U256::from(*v) },
+        Constant::U64(v) => Const::UInt { bits: 64, value: U256::from(*v) },
+        Constant::U128(v) => Const::UInt { bits: 128, value: U256::from(*v) },
+        Constant::U256(v) => Const::UInt { bits: 256, value: *v },
+        Constant::Address(addr) => Const::Address(addr.clone()),
+        Constant::ByteArray(bytes) => Const::Vector(
+            bytes.iter().map(|&b| Const::UInt { bits: 8, value: U256::from(b) }).collect(),
+        ),
+        Constant::Vector(elements) => Const::Vector(elements.iter().map(convert_constant).collect()),
+        Constant::AddressArray(addresses) => {
+            Const::Vector(addresses.iter().map(|addr| Const::Address(addr.clone())).collect())
+        }
+    }
+}
+
+pub fn convert_binop(op: &Operation) -> BinOp {
+    match op {
+        Operation::Add => BinOp::Add,
+        Operation::Sub => BinOp::Sub,
+        Operation::Mul => BinOp::Mul,
+        Operation::Div => BinOp::Div,
+        Operation::Mod => BinOp::Mod,
+        Operation::BitAnd => BinOp::BitAnd,
+        Operation::BitOr => BinOp::BitOr,
+        Operation::Xor => BinOp::BitXor,
+        Operation::Shl => BinOp::Shl,
+        Operation::Shr => BinOp::Shr,
+        Operation::And => BinOp::And,
+        Operation::Or => BinOp::Or,
+        Operation::Eq => BinOp::Eq,
+        Operation::Neq => BinOp::Neq,
+        Operation::Lt => BinOp::Lt,
+        Operation::Le => BinOp::Le,
+        Operation::Gt => BinOp::Gt,
+        Operation::Ge => BinOp::Ge,
+        _ => panic!("BUG: Unsupported binary operation {:?}", op),
+    }
+}

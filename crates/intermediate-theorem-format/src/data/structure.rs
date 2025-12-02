@@ -17,9 +17,6 @@ pub type TheoremStructID = usize;
 /// A struct definition
 #[derive(Debug, Clone)]
 pub struct TheoremStruct {
-    /// Unique identifier for this struct
-    pub id: TheoremStructID,
-
     /// The struct's module
     pub module_id: TheoremModuleID,
 
@@ -52,10 +49,11 @@ pub struct TheoremField {
 
 impl Dependable for TheoremStruct {
     type Id = TheoremStructID;
+    type MoveKey = move_model::model::QualifiedId<move_model::model::DatatypeId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
         self.fields.iter()
-            .flat_map(|field| field.field_type.collect_struct_ids())
+            .flat_map(|field| field.field_type.struct_ids())
     }
 
     fn with_mutual_group_id(mut self, group_id: usize) -> Self {

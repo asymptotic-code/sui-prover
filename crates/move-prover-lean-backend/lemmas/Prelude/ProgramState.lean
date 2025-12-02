@@ -84,3 +84,14 @@ partial def whileLoop {α : Type}
     whileLoop cond body state'
   else
     pure init
+
+-- Pure while loop combinator (for Id monad)
+-- Used when the loop body has no aborts or monadic operations
+partial def whileLoopPure {α : Type}
+  (cond : α → Id Bool)
+  (body : α → Id α)
+  (init : α) : Id α :=
+  if Id.run (cond init) then
+    whileLoopPure cond body (Id.run (body init))
+  else
+    pure init

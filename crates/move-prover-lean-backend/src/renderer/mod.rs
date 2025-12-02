@@ -17,3 +17,23 @@ mod program_renderer;
 
 pub use lean_writer::LeanWriter;
 pub use program_renderer::render_to_directory;
+
+/// Renders a tuple-like structure: empty→`empty`, single→element, multiple→`(a, b, c)`
+///
+/// - `items`: the elements to render
+/// - `empty`: what to emit for empty list (e.g., "()" or "_")
+/// - `sep`: separator between elements (e.g., ", " or " × ")
+/// - `render`: function to render each element to a string
+pub fn render_tuple_like<T, F>(items: &[T], empty: &str, sep: &str, render: F) -> String
+where
+    F: Fn(&T) -> String,
+{
+    match items {
+        [] => empty.to_string(),
+        [single] => render(single),
+        multiple => {
+            let rendered: Vec<_> = multiple.iter().map(render).collect();
+            format!("({})", rendered.join(sep))
+        }
+    }
+}

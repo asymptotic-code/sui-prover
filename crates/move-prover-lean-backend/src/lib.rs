@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-pub mod lemma;
+pub mod prelude;
 pub mod runtime;
 pub mod renderer;
 pub mod backend;
@@ -25,10 +25,6 @@ package «{}» where
 lean_lib Prelude where
   roots := #[`Prelude]
   globs := #[.submodules `Prelude]
-
-lean_lib Lemmas where
-  roots := #[`Lemmas]
-  globs := #[.submodules `Lemmas]
 
 @[default_target]
 lean_lib Impls where

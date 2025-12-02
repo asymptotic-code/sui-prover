@@ -71,6 +71,9 @@ instance : DecidableRel (fun a b : UInt128 => a ≤ b) :=
 instance : DecidableRel (fun a b : UInt128 => a < b) :=
   fun a b => decidable_of_iff (a.val < b.val) Iff.rfl
 
+instance : DecidableEq UInt128 :=
+  fun a b => decidable_of_iff (a.val = b.val) (by constructor <;> intro h <;> cases a <;> cases b <;> simp_all)
+
 def complement (a : UInt128) : UInt128 := ⟨0 - (a.val + 1)⟩
 
 def lnot (a : UInt128) : UInt128 := ofNat (UInt128.size - 1) - a

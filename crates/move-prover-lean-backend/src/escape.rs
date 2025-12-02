@@ -92,7 +92,18 @@ pub fn capitalize_first(name: &str) -> String {
 
 /// Escape identifiers (function names, field names, parameter names) that conflict with Lean reserved words
 pub fn escape_identifier(name: &str) -> String {
-    match name {
+    // Handle $ prefix (temps like $t0, $t1 etc.) - $ is special in Lean
+    // Also handle $ anywhere in the name (like tmp#$1 -> tmp_t_1)
+    let name = if name.starts_with('$') {
+        format!("t_{}", &name[1..])
+    } else {
+        name.replace('$', "_t_")
+    };
+
+    // Replace # with _ (used in loop variable renaming like sum#1#0)
+    let name = name.replace('#', "_");
+
+    match name.as_str() {
         // Basic control flow
         "if" => "if_".to_string(),
         "then" => "then_".to_string(),
@@ -173,6 +184,6 @@ pub fn escape_identifier(name: &str) -> String {
         "extern" => "extern_".to_string(),
         "constant" => "constant_".to_string(),
 
-        _ => name.to_string(),
+        _ => name,
     }
 }

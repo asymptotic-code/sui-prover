@@ -1,25 +1,39 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
-//! Analysis passes for TheoremIR
-//!
-//! This module contains various analysis and transformation passes
-//! that operate on the complete TheoremProgram IR.
+//! Analysis and optimization passes for TheoremIR
 
 mod cleanup;
 mod dead_code_removal;
 mod dependency_order;
 mod guard_clause;
 mod import_collection;
-mod purity;
-mod return_simplification;
+mod monadicity;
 mod temp_inlining;
 
-pub use cleanup::cleanup;
-pub use dead_code_removal::{remove_dead_code, collect_used_vars};
-pub use dependency_order::DependencyOrderPass;
-pub use guard_clause::extract_guard_clauses;
-pub use import_collection::ImportCollectionPass;
-pub use purity::{analyze_purity, PurityMap};
-pub use return_simplification::simplify_returns;
-pub use temp_inlining::{TempUsageInfo, inline_temps};
+pub use dependency_order::order_by_dependencies;
+pub use import_collection::collect_imports;
+pub use monadicity::analyze_monadicity;
+
+use crate::{IRNode, VariableRegistry};
+
+const MAX_FIXPOINT_ITERATIONS: usize = 100;
+
+pub fn optimize(mut node: IRNode, registry: &VariableRegistry) -> IRNode {
+    for _ in 0..MAX_FIXPOINT_ITERATIONS {
+        let next = optimize_single_pass(node.clone(), registry);
+        if next == node {
+            break;
+        }
+        node = next;
+    }
+    node
+}
+
+fn optimize_single_pass(node: IRNode, registry: &VariableRegistry) -> IRNode {
+    let node = temp_inlining::inline_temps(node, registry);
+    let node = dead_code_removal::remove_dead_code(node);
+    cleanup::cleanup(node)
+    // Disabled guard clause extraction - it was creating infinite nesting
+    // guard_clause::extract_guard_clauses(node)
+}

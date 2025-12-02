@@ -7,105 +7,70 @@ use crate::data::{Dependable, TheoremModuleID, TheoremProgram};
 use crate::TheoremFunction;
 use std::collections::HashSet;
 
-pub struct ImportCollectionPass;
+pub fn collect_imports(program: &mut TheoremProgram) {
+    let module_imports: Vec<_> = program
+        .modules
+        .iter_ids()
+        .map(|id| (id, collect_module_imports(program, id)))
+        .collect();
 
-impl ImportCollectionPass {
-    pub fn run(program: &mut TheoremProgram) {
-        // Collect imports for each module first (immutable borrow)
-        let mut module_imports = Vec::new();
-        for module in program.modules() {
-            let imports = Self::collect_module_imports(program, module.id);
-            module_imports.push((module.id, imports));
-        }
-
-        // Then update modules (mutable borrow)
-        for (module_id, imports) in module_imports {
-            program.get_module_mut(module_id).required_imports = imports;
-        }
+    for (module_id, imports) in module_imports {
+        program.modules.get_mut(module_id).required_imports = imports;
     }
+}
 
-    fn collect_module_imports(
-        program: &TheoremProgram,
-        module_id: TheoremModuleID,
-    ) -> Vec<TheoremModuleID> {
-        let struct_deps = Self::collect_struct_imports(program, module_id);
-        let function_deps = Self::collect_function_imports(program, module_id);
+fn collect_module_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> Vec<TheoremModuleID> {
+    let struct_deps = collect_struct_imports(program, module_id);
+    let function_deps = collect_function_imports(program, module_id);
 
-        struct_deps
-            .into_iter()
-            .chain(function_deps)
-            .filter(|m| *m != module_id)
-            .collect()
-    }
+    struct_deps
+        .into_iter()
+        .chain(function_deps)
+        .filter(|m| *m != module_id)
+        .collect()
+}
 
-    fn collect_struct_imports(
-        program: &TheoremProgram,
-        module_id: TheoremModuleID,
-    ) -> HashSet<TheoremModuleID> {
-        program
-            .structs()
-            .filter(|s| s.module_id == module_id)
-            .flat_map(|s| s.dependencies())
-            .map(|sid| program.get_struct_module(sid))
-            .collect()
-    }
+fn collect_struct_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> HashSet<TheoremModuleID> {
+    program
+        .structs
+        .values()
+        .filter(|s| s.module_id == module_id)
+        .flat_map(|s| s.dependencies())
+        .map(|sid| program.structs.get(sid).module_id)
+        .collect()
+}
 
-    fn collect_function_imports(
-        program: &TheoremProgram,
-        module_id: TheoremModuleID,
-    ) -> HashSet<TheoremModuleID> {
-        program
-            .functions()
-            .filter(|f| f.module_id == module_id)
-            .flat_map(|f| Self::collect_from_function(program, f))
-            .collect()
-    }
+fn collect_function_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> HashSet<TheoremModuleID> {
+    program
+        .functions
+        .values()
+        .filter(|f| f.module_id == module_id)
+        .flat_map(|f| collect_from_function(program, f))
+        .collect()
+}
 
-    fn collect_from_function<'a>(
-        program: &'a TheoremProgram,
-        function: &'a TheoremFunction,
-    ) -> impl Iterator<Item = TheoremModuleID> + 'a {
-        let sig_deps = Self::collect_from_signature(program, function);
-        let body_deps = Self::collect_from_body(program, function);
-        sig_deps.chain(body_deps)
-    }
+fn collect_from_function<'a>(
+    program: &'a TheoremProgram,
+    function: &'a TheoremFunction,
+) -> impl Iterator<Item = TheoremModuleID> + 'a {
+    let sig_deps = function
+        .signature
+        .parameters
+        .iter()
+        .map(|p| &p.param_type)
+        .chain(std::iter::once(&function.signature.return_type))
+        .flat_map(|t| t.struct_ids())
+        .filter_map(|sid| program.structs.try_get(sid).map(|s| s.module_id));
 
-    fn collect_from_signature<'a>(
-        program: &'a TheoremProgram,
-        function: &'a TheoremFunction,
-    ) -> impl Iterator<Item = TheoremModuleID> + 'a {
-        function
-            .signature
-            .parameters
-            .iter()
-            .map(|p| &p.param_type)
-            .chain(function.signature.return_types.iter())
-            .flat_map(|t| t.collect_struct_ids())
-            .map(|sid| program.get_struct_module(sid))
-    }
+    let body_deps = function.dependencies()
+        .filter_map(|fid| program.functions.try_get(fid).map(|f| f.module_id))
+        .chain(
+            function
+                .body
+                .iter_struct_references()
+                .chain(function.body.iter_type_struct_ids())
+                .filter_map(|sid| program.structs.try_get(sid).map(|s| s.module_id)),
+        );
 
-    fn collect_from_body<'a>(
-        program: &'a TheoremProgram,
-        function: &'a crate::data::functions::TheoremFunction,
-    ) -> impl Iterator<Item = TheoremModuleID> + 'a {
-        let fn_calls = function
-            .body
-            .collect_function_calls()
-            .into_iter()
-            .map(|fid| program.get_function_module(fid));
-
-        let struct_refs = function
-            .body
-            .collect_struct_references()
-            .into_iter()
-            .map(|sid| program.get_struct_module(sid));
-
-        let type_refs = function
-            .body
-            .collect_type_struct_ids()
-            .into_iter()
-            .map(|sid| program.get_struct_module(sid));
-
-        fn_calls.chain(struct_refs).chain(type_refs)
-    }
+    sig_deps.chain(body_deps)
 }

@@ -3,11 +3,12 @@
 
 //! Function IR data structures
 
+use move_model::model::{FunId, QualifiedId};
 use crate::data::variables::VariableRegistry;
 use crate::data::types::{TempId, TheoremType};
-use crate::data::statements::Statement;
-use crate::TheoremModuleID;
+use crate::{IRNode, TheoremModuleID};
 use crate::data::Dependable;
+use crate::analysis;
 
 /// Unique identifier for a function in the program
 pub type TheoremFunctionID = usize;
@@ -34,17 +35,14 @@ pub struct FunctionSignature {
     /// Parameters
     pub parameters: Vec<Parameter>,
 
-    /// Return types
-    pub return_types: Vec<TheoremType>,
+    /// Return type
+    pub return_type: TheoremType,
 }
 
 /// A function represented as structured control flow
 #[derive(Debug, Clone)]
 pub struct TheoremFunction {
-    /// TheoremIR function identifier (index in TheoremProgram.functions)
-    pub id: TheoremFunctionID,
-
-    /// TheoremIR module identifier (which module owns this function)
+    /// Module this function belongs to
     pub module_id: TheoremModuleID,
 
     /// Function name (e.g., "empty")
@@ -53,11 +51,11 @@ pub struct TheoremFunction {
     /// Function signature
     pub signature: FunctionSignature,
 
-    /// Function body as a structured statement
-    pub body: Statement,
+    /// Function body
+    pub body: IRNode,
 
-    /// SSA registry - single source of truth for all temporaries
-    pub ssa_registry: VariableRegistry,
+    /// All of the function's variables
+    pub variables: VariableRegistry,
 
     /// Mutual recursion group ID (None if not mutually recursive)
     /// Functions with the same group ID are mutually recursive and must be defined together
@@ -70,16 +68,25 @@ pub struct TheoremFunction {
 
 impl TheoremFunction {
     /// Get mutable access to SSA registry
-    pub fn ssa_registry_mut(&mut self) -> &mut VariableRegistry {
-        &mut self.ssa_registry
+    pub fn variable_registry(&mut self) -> &mut VariableRegistry {
+        &mut self.variables
+    }
+
+    /// Optimize the function body in place.
+    ///
+    /// This runs the complete optimization pipeline (see `analysis::optimize`):
+    /// The pipeline runs to fix-point automatically.
+    pub fn optimize(&mut self) {
+        self.body = analysis::optimize(self.body.clone(), &self.variables);
     }
 }
 
 impl Dependable for TheoremFunction {
     type Id = TheoremFunctionID;
+    type MoveKey = QualifiedId<FunId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
-        self.body.calls()
+        self.body.calls().into_iter()
     }
 
     fn with_mutual_group_id(mut self, group_id: usize) -> Self {
