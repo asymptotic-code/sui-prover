@@ -32,8 +32,8 @@ use crate::{
     reaching_def_analysis::ReachingDefProcessor,
     spec_translator::{SpecTranslator, TranslatedSpec},
     stackless_bytecode::{
-        AbortAction, AssignKind, AttrId, BorrowEdge, BorrowNode, Bytecode, HavocKind, Label,
-        Operation, PropKind,
+        AbortAction, AssignKind, AttrId, BorrowEdge, BorrowNode, Bytecode, HavocKind, Operation,
+        PropKind,
     },
     usage_analysis, verification_analysis,
 };
@@ -193,9 +193,6 @@ struct Instrumenter<'a> {
     targets: &'a FunctionTargetsHolder,
     options: &'a ProverOptions,
     builder: FunctionDataBuilder<'a>,
-    ret_locals: Vec<TempIndex>,
-    ret_label: Label,
-    can_return: bool,
     mem_info: &'a BTreeSet<QualifiedInstId<DatatypeId>>,
 }
 
@@ -220,19 +217,7 @@ impl<'a> Instrumenter<'a> {
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
-        // Create label and locals for unified return exit point. We translate each `Ret(t..)`
-        // instruction into `Assign(r.., t..); Jump(RetLab)`.
-        let ret_locals = builder
-            .data
-            .return_types
-            .clone()
-            .into_iter()
-            .map(|ty| builder.new_temp(ty))
-            .collect_vec();
-        let ret_label = builder.new_label();
-
-        // Translate the specification. This deals with elimination of `old(..)` expressions,
-        // as well as replaces `result_n` references with `ret_locals`.
+        // Translate the specification. This deals with elimination of `old(..)` expressions.
         let auto_trace = options.auto_trace_level.verified_functions()
             && builder.data.variant.is_verified()
             || options.auto_trace_level.functions();
@@ -243,7 +228,7 @@ impl<'a> Instrumenter<'a> {
             fun_env,
             &[],
             None,
-            &ret_locals,
+            &[],
         );
 
         // Translate inlined properties. This deals with elimination of `old(..)` expressions in
@@ -279,9 +264,6 @@ impl<'a> Instrumenter<'a> {
             targets,
             options,
             builder,
-            ret_locals,
-            ret_label,
-            can_return: false,
             mem_info: &mem_info,
         };
         instrumenter.instrument(&spec, &inlined_props);
@@ -379,11 +361,6 @@ impl<'a> Instrumenter<'a> {
         for bc in old_code {
             self.instrument_bytecode(spec, inlined_props, bc);
         }
-
-        // Generate return block
-        if self.can_return {
-            self.generate_return_block(spec);
-        }
     }
 
     fn instrument_bytecode(
@@ -427,15 +404,8 @@ impl<'a> Instrumenter<'a> {
 
         // Instrument bytecode.
         match bc {
-            Ret(id, results) => {
-                self.builder.set_loc_from_attr(id);
-                for (i, r) in self.ret_locals.clone().into_iter().enumerate() {
-                    self.builder
-                        .emit_with(|id| Assign(id, r, results[i], AssignKind::Move));
-                }
-                let ret_label = self.ret_label;
-                self.builder.emit_with(|id| Jump(id, ret_label));
-                self.can_return = true;
+            Ret(..) => {
+                self.builder.emit(bc);
             }
             Abort(..) => {
                 self.builder.emit(bc);
@@ -834,82 +804,6 @@ impl<'a> Instrumenter<'a> {
                 )
             });
         }
-    }
-
-    fn generate_return_block(&mut self, spec: &TranslatedSpec) {
-        use Bytecode::*;
-        use PropKind::*;
-
-        // Set the location to the function and emit label.
-        self.builder
-            .set_loc(self.builder.fun_env.get_loc().at_end());
-        let ret_label = self.ret_label;
-        self.builder.emit_with(|id| Label(id, ret_label));
-
-        // Emit specification variable updates. They are generated for both verified and inlined
-        // function variants, as the evolution of state updates is always the same.
-        let lets_emitted = if !spec.updates.is_empty() {
-            self.emit_lets(spec, true);
-            self.emit_updates(spec);
-            true
-        } else {
-            false
-        };
-
-        if self.is_verified() {
-            // Emit `let` bindings if not already emitted.
-            if !lets_emitted {
-                self.emit_lets(spec, true);
-            }
-
-            // Emit the negation of all aborts conditions.
-            for (loc, abort_cond, _) in &spec.aborts {
-                self.emit_traces(spec, abort_cond);
-                let exp = self.builder.mk_not(abort_cond.clone());
-                self.builder
-                    .set_loc_and_vc_info(loc.clone(), ABORTS_IF_FAILS_MESSAGE);
-                self.builder.emit_with(|id| Prop(id, Assert, exp))
-            }
-
-            // Emit all post-conditions which must hold as we do not abort.
-            for (loc, cond) in &spec.post {
-                self.emit_traces(spec, cond);
-                self.builder
-                    .set_loc_and_vc_info(loc.clone(), ENSURES_FAILS_MESSAGE);
-                self.builder
-                    .emit_with(move |id| Prop(id, Assert, cond.clone()))
-            }
-
-            // Emit all event `emits` checks.
-            for (loc, cond) in spec.emits_conditions(&self.builder) {
-                self.emit_traces(spec, &cond);
-                self.builder.set_loc_and_vc_info(loc, EMITS_FAILS_MESSAGE);
-                self.builder.emit_with(move |id| Prop(id, Assert, cond))
-            }
-
-            // let emits_is_partial = self
-            //     .builder
-            //     .fun_env
-            //     .is_pragma_true(EMITS_IS_PARTIAL_PRAGMA, || false);
-            // let emits_is_strict = self
-            //     .builder
-            //     .fun_env
-            //     .is_pragma_true(EMITS_IS_STRICT_PRAGMA, || false);
-            // if (!spec.emits.is_empty() && !emits_is_partial)
-            //     || (spec.emits.is_empty() && emits_is_strict)
-            // {
-            //     // If not partial, emit an assertion for the completeness of the emits specs.
-            //     let cond = spec.emits_completeness_condition(&self.builder);
-            //     let loc = self.builder.fun_env.get_spec_loc();
-            //     self.emit_traces(spec, &cond);
-            //     self.builder.set_loc_and_vc_info(loc, EMITS_NOT_COVERED);
-            //     self.builder.emit_with(move |id| Prop(id, Assert, cond));
-            // }
-        }
-
-        // Emit return
-        let ret_locals = self.ret_locals.clone();
-        self.builder.emit_with(move |id| Ret(id, ret_locals))
     }
 
     /// Generate a check whether the target can modify the given memory provided
