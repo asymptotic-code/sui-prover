@@ -729,15 +729,29 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             );
         }
 
-        for (_, datatype_function) in targets.get_datatype_invs() {
-            let func_env = env.get_function(datatype_function.clone());
+        for (datatype, datatype_function) in targets.get_datatype_invs() {
+            let func_env = env.get_function(*datatype_function);
             // disabled use of specs source functions in datatype invariants to prevent infinite recursion during verification
             for called in func_env.get_called_functions() {
-                if targets.is_spec(&called) || targets.get_spec_by_fun(&called).is_some() {
+                if env.option_qid().unwrap() == *datatype {
+                    continue;
+                }
+
+                if let Some(spec) = targets.get_spec_by_fun(&called) {
+                    if targets.is_system_spec(&spec) {
+                        continue;
+                    }
+
                     env.diag(
                         Severity::Error,
                         &func_env.get_loc(),
-                        "Consider avoiding spec functions in datatype invariants",
+                        "Consider avoiding functions with specs in datatype invariants",
+                    );
+                } else if targets.is_spec(&called) {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "Consider avoiding specs in datatype invariants",
                     );
                 }
             }
