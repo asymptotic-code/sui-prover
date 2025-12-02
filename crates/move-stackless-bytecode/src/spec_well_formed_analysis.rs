@@ -728,6 +728,21 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                 "Consider moving post-condition after target function call",
             );
         }
+
+        for (_, datatype_function) in targets.get_datatype_invs() {
+            let func_env = env.get_function(datatype_function.clone());
+            // disabled use of specs source functions in datatype invariants to prevent infinite recursion during verification
+            for called in func_env.get_called_functions() {
+                if targets.is_spec(&called) || targets.get_spec_by_fun(&called).is_some() {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "Consider avoiding spec functions in datatype invariants",
+                    );
+                }
+            }
+        }
+
         data
     }
 
