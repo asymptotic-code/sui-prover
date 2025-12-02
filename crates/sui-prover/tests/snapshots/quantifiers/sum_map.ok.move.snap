@@ -1,6 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 268
+assertion_line: 276
 expression: output
 ---
 Verification successful
@@ -15,8 +15,8 @@ function {:inline} $42_quantifiers_sum_map_ok_x_minus_5$pure(_$t0: int) returns 
     (var $t5 := $t4;
     (var $t6 := 5;
     (var $t7 := (_$t0 - $t6);
-    (var $t9 := (if $t3 then $t5 else $t7);
-    $t9)))))))
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
 }
 function {:inline} $42_quantifiers_sum_map_ok_x_plus_10$pure(_$t0: int) returns ($ret0: int)
 {
@@ -26,6 +26,6 @@ function {:inline} $42_quantifiers_sum_map_ok_x_plus_10$pure(_$t0: int) returns 
     (var $t5 := $t4;
     (var $t6 := 10;
     (var $t7 := (_$t0 + $t6);
-    (var $t9 := (if $t3 then $t5 else $t7);
-    $t9)))))))
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
 }
