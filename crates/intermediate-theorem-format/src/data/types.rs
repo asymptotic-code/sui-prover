@@ -87,11 +87,8 @@ impl Type {
             Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            Type::Bool
-            | Type::UInt(_)
-            | Type::SInt(_)
-            | Type::Address
-            | Type::TypeParameter(_) => {}
+            Type::Bool | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
+            }
         }
     }
 }

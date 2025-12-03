@@ -457,7 +457,7 @@ impl IRNode {
     }
 
     /// Collect all function calls
-    pub fn calls(&self) -> impl Iterator<Item =FunctionID> + '_ {
+    pub fn calls(&self) -> impl Iterator<Item = FunctionID> + '_ {
         self.iter().filter_map(|node| {
             if let IRNode::Call { function, .. } = node {
                 Some(*function)
@@ -575,7 +575,7 @@ impl IRNode {
     }
 
     /// Collect all struct IDs referenced in Pack, Unpack, Field, UpdateField operations
-    pub fn iter_struct_references(&self) -> impl Iterator<Item =StructID> + '_ {
+    pub fn iter_struct_references(&self) -> impl Iterator<Item = StructID> + '_ {
         self.iter().filter_map(|node| match node {
             IRNode::Pack { struct_id, .. }
             | IRNode::Unpack { struct_id, .. }
@@ -586,7 +586,7 @@ impl IRNode {
     }
 
     /// Collect all struct IDs referenced in type positions (type arguments)
-    pub fn iter_type_struct_ids(&self) -> impl Iterator<Item =StructID> + '_ {
+    pub fn iter_type_struct_ids(&self) -> impl Iterator<Item = StructID> + '_ {
         self.iter().flat_map(|node| match node {
             IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => type_args
                 .iter()

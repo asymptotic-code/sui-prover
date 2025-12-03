@@ -19,24 +19,20 @@ pub fn collect_imports(program: &mut Program) {
     }
 }
 
-fn collect_module_imports(
-    program: &Program,
-    module_id: ModuleID,
-) -> Vec<ModuleID> {
+fn collect_module_imports(program: &Program, module_id: ModuleID) -> Vec<ModuleID> {
     let struct_deps = collect_struct_imports(program, module_id);
     let function_deps = collect_function_imports(program, module_id);
 
-    struct_deps
+    let combined: HashSet<ModuleID> = struct_deps
         .into_iter()
         .chain(function_deps)
         .filter(|m| *m != module_id)
-        .collect()
+        .collect();
+
+    combined.into_iter().collect()
 }
 
-fn collect_struct_imports(
-    program: &Program,
-    module_id: ModuleID,
-) -> HashSet<ModuleID> {
+fn collect_struct_imports(program: &Program, module_id: ModuleID) -> HashSet<ModuleID> {
     program
         .structs
         .values()
@@ -46,10 +42,7 @@ fn collect_struct_imports(
         .collect()
 }
 
-fn collect_function_imports(
-    program: &Program,
-    module_id: ModuleID,
-) -> HashSet<ModuleID> {
+fn collect_function_imports(program: &Program, module_id: ModuleID) -> HashSet<ModuleID> {
     program
         .functions
         .values()
@@ -61,7 +54,7 @@ fn collect_function_imports(
 fn collect_from_function<'a>(
     program: &'a Program,
     function: &'a Function,
-) -> impl Iterator<Item =ModuleID> + 'a {
+) -> impl Iterator<Item = ModuleID> + 'a {
     let sig_deps = function
         .signature
         .parameters

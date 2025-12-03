@@ -99,8 +99,8 @@ fn translate_call(
                 .display(ctx.builder.env().symbol_pool())
                 .to_string();
 
-            let is_prover_module = module_name == "prover"
-                && module_env.self_address().iter().all(|val| *val == 0);
+            let is_prover_module =
+                module_name == "prover" && module_env.self_address().iter().all(|val| *val == 0);
 
             if is_prover_module && srcs.len() == 1 {
                 if func_name == "requires" {

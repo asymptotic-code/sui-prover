@@ -6,7 +6,7 @@
 use super::helpers::{block_bounds, resolve_label_block};
 use super::DiscoveryContext;
 use crate::translation::ir_translator;
-use intermediate_theorem_format::IRNode;
+use intermediate_theorem_format::{IRNode, UnOp};
 use move_stackless_bytecode::stackless_bytecode::Bytecode;
 use move_stackless_bytecode::stackless_control_flow_graph::BlockId;
 use std::collections::BTreeSet;
@@ -52,8 +52,17 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
 
                 let body_nodes = discover_region(ctx, body_start, cursor);
 
+                let cond = if !then_is_back {
+                    IRNode::UnOp {
+                        op: UnOp::Not,
+                        operand: Box::new(IRNode::Var(cond_name)),
+                    }
+                } else {
+                    IRNode::Var(cond_name)
+                };
+
                 nodes.push(IRNode::While {
-                    cond: Box::new(IRNode::Var(cond_name)),
+                    cond: Box::new(cond),
                     body: Box::new(IRNode::Block {
                         children: body_nodes,
                     }),

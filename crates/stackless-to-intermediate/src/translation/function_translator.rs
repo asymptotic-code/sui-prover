@@ -8,7 +8,7 @@ use crate::control_flow_reconstruction::structure_discovery::reconstruct_functio
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
 use intermediate_theorem_format::{
-    FunctionSignature, IRNode, Parameter, Function, Type, VariableRegistry,
+    Function, FunctionSignature, IRNode, Parameter, Type, VariableRegistry,
 };
 use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;

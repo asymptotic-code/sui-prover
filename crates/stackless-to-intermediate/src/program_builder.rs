@@ -8,10 +8,7 @@
 
 use crate::package_utils::extract_package_name;
 use crate::translation::function_translator::translate_function;
-use intermediate_theorem_format::{
-    Field, FunctionID, Module, Program, Struct, StructID,
-    Type,
-};
+use intermediate_theorem_format::{Field, FunctionID, Module, Program, Struct, StructID, Type};
 use move_model::model::{DatatypeId, FunId, GlobalEnv, ModuleEnv, QualifiedId, TypeParameter};
 use move_model::symbol::Symbol;
 use move_model::ty::Type as MoveType;
@@ -147,9 +144,7 @@ impl<'env> ProgramBuilder<'env> {
             MoveType::Vector(t) => Type::Vector(Box::new(self.convert_type(t))),
             MoveType::Reference(_, t) => Type::Reference(Box::new(self.convert_type(t))),
             MoveType::TypeParameter(idx) => Type::TypeParameter(*idx),
-            MoveType::Tuple(ts) => {
-                Type::Tuple(ts.iter().map(|t| self.convert_type(t)).collect())
-            }
+            MoveType::Tuple(ts) => Type::Tuple(ts.iter().map(|t| self.convert_type(t)).collect()),
             _ => unreachable!("Unsupported type: {:?}", ty),
         }
     }

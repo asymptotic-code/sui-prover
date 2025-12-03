@@ -3,10 +3,10 @@
 
 //! Struct IR data structures
 
-use move_model::model::{DatatypeId, QualifiedId};
 use crate::data::types::Type;
 use crate::data::Dependable;
 use crate::ModuleID;
+use move_model::model::{DatatypeId, QualifiedId};
 
 /// Unique identifier for a struct in the program
 pub type StructID = usize;

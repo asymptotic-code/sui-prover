@@ -101,11 +101,7 @@ pub fn render_type<W: Write>(
 }
 
 /// Render a type to a string.
-pub fn type_to_string(
-    ty: &Type,
-    program: &Program,
-    current_module: Option<&str>,
-) -> String {
+pub fn type_to_string(ty: &Type, program: &Program, current_module: Option<&str>) -> String {
     let mut s = String::new();
     render_type(ty, program, current_module, &mut s);
     s
