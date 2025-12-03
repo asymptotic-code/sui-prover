@@ -4,11 +4,11 @@
 use std::fs;
 use std::path::Path;
 
-pub mod prelude;
-pub mod runtime;
-pub mod renderer;
 pub mod backend;
 pub mod escape;
+pub mod prelude;
+pub mod renderer;
+pub mod runtime;
 
 // Re-exports for convenience
 pub use backend::run_backend;

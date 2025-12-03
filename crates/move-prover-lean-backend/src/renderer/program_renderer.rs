@@ -3,17 +3,21 @@
 
 //! Renders complete TheoremProgram to Lean files.
 
-use intermediate_theorem_format::TheoremProgram;
 use super::function_renderer::render_function;
-use super::struct_renderer::render_struct;
 use super::lean_writer::LeanWriter;
+use super::struct_renderer::render_struct;
 use crate::escape;
+use intermediate_theorem_format::TheoremProgram;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 /// Render program to directory structure (organized by module hierarchy).
-pub fn render_to_directory(program: &TheoremProgram, output_dir: &Path, prelude_imports: &[String]) -> anyhow::Result<()> {
+pub fn render_to_directory(
+    program: &TheoremProgram,
+    output_dir: &Path,
+    prelude_imports: &[String],
+) -> anyhow::Result<()> {
     fs::create_dir_all(output_dir)?;
 
     copy_native_packages(program, output_dir)?;
@@ -32,17 +36,27 @@ pub fn render_to_directory(program: &TheoremProgram, output_dir: &Path, prelude_
         for &required_module_id in &module.required_imports {
             let required_module = program.modules.get(required_module_id);
             let namespace = escape::module_name_to_namespace(&required_module.name);
-            module_output.push_str(&format!("import Impls.{}.{}\n", required_module.package_name, namespace));
+            module_output.push_str(&format!(
+                "import Impls.{}.{}\n",
+                required_module.package_name, namespace
+            ));
         }
 
         // Native imports
-        let has_native_functions = program.functions.values()
+        let has_native_functions = program
+            .functions
+            .values()
             .any(|f| f.module_id == module_id && f.is_native);
         if has_native_functions {
             let namespace_name = escape::module_name_to_namespace(&module.name);
-            let natives_path = output_dir.join(&module.package_name).join(format!("{}Natives.lean", namespace_name));
+            let natives_path = output_dir
+                .join(&module.package_name)
+                .join(format!("{}Natives.lean", namespace_name));
             if natives_path.exists() {
-                module_output.push_str(&format!("import Impls.{}.{}Natives\n", module.package_name, namespace_name));
+                module_output.push_str(&format!(
+                    "import Impls.{}.{}Natives\n",
+                    module.package_name, namespace_name
+                ));
             }
         }
 
@@ -111,7 +125,9 @@ fn copy_native_packages(program: &TheoremProgram, output_dir: &Path) -> anyhow::
     let mut copied_modules = HashSet::new();
 
     for (module_id, module) in program.modules.iter() {
-        let has_native_functions = program.functions.values()
+        let has_native_functions = program
+            .functions
+            .values()
             .any(|f| f.module_id == *module_id && f.is_native);
 
         if !has_native_functions {
@@ -123,7 +139,11 @@ fn copy_native_packages(program: &TheoremProgram, output_dir: &Path) -> anyhow::
             continue;
         }
 
-        let lemma_file = format!("natives/{}/{}.lean", module.package_name, escape::capitalize_first(&module.name));
+        let lemma_file = format!(
+            "natives/{}/{}.lean",
+            module.package_name,
+            escape::capitalize_first(&module.name)
+        );
         let source_path = lemmas_dir.join(&lemma_file);
 
         if !source_path.exists() {
@@ -131,7 +151,9 @@ fn copy_native_packages(program: &TheoremProgram, output_dir: &Path) -> anyhow::
         }
 
         let namespace = escape::module_name_to_namespace(&module.name);
-        let dest_path = output_dir.join(&module.package_name).join(format!("{}Natives.lean", namespace));
+        let dest_path = output_dir
+            .join(&module.package_name)
+            .join(format!("{}Natives.lean", namespace));
 
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent)?;

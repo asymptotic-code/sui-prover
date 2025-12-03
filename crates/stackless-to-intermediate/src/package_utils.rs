@@ -3,8 +3,8 @@
 
 //! Utilities for extracting Move package information
 
-use std::fs::read_to_string;
 use move_model::model::{GlobalEnv, ModuleEnv};
+use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use toml::{from_str, Value};
 
@@ -25,9 +25,12 @@ fn find_package_name_from_path(start_path: &Path) -> Option<String> {
 
 /// Parse the package name from a Move.toml file using proper TOML parsing
 fn parse_package_name_from_toml(toml_path: PathBuf) -> Option<String> {
-    Some(from_str::<Value>(&read_to_string(toml_path).ok()?).ok()?
-        .get("package")?
-        .get("name")?
-        .as_str()?
-        .to_string())
+    Some(
+        from_str::<Value>(&read_to_string(toml_path).ok()?)
+            .ok()?
+            .get("package")?
+            .get("name")?
+            .as_str()?
+            .to_string(),
+    )
 }

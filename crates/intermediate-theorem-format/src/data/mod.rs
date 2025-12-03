@@ -1,20 +1,20 @@
 // Copyright (c) Asymptotic Labs
 // SPDX-License-Identifier: Apache-2.0
 
+use indexmap::IndexMap;
+use move_model::model::{DatatypeId, FunId, ModuleId, QualifiedId};
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
-use indexmap::IndexMap;
-use move_model::model::{ModuleId, DatatypeId, FunId, QualifiedId};
 
+use crate::analysis::{analyze_monadicity, collect_imports, order_by_dependencies};
 pub use functions::TheoremFunctionID;
 pub use structure::TheoremStructID;
-use crate::analysis::{analyze_monadicity, collect_imports, order_by_dependencies};
 
-pub mod ir;
 pub mod functions;
-pub mod variables;
+pub mod ir;
 pub mod structure;
 pub mod types;
+pub mod variables;
 
 pub type TheoremModuleID = usize;
 
@@ -40,7 +40,10 @@ pub struct ItemStore<MoveKey: Ord, Item> {
 
 impl<MoveKey: Ord, Item> Default for ItemStore<MoveKey, Item> {
     fn default() -> Self {
-        Self { ids: BTreeMap::new(), items: IndexMap::new() }
+        Self {
+            ids: BTreeMap::new(),
+            items: IndexMap::new(),
+        }
     }
 }
 
@@ -51,28 +54,52 @@ impl<MoveKey: Ord + Copy, Item> ItemStore<MoveKey, Item> {
         *self.ids.entry(key).or_insert(next_id)
     }
 
-    pub fn has(&self, id: usize) -> bool { self.items.contains_key(&id) }
+    pub fn has(&self, id: usize) -> bool {
+        self.items.contains_key(&id)
+    }
     pub fn create(&mut self, key: MoveKey, item: Item) {
         let id = self.id_for_key(key);
         self.items.insert(id, item);
     }
     pub fn get(&self, id: impl Borrow<usize>) -> &Item {
         let id = id.borrow();
-        self.items.get(id).unwrap_or_else(|| panic!("Item {} should exist, but only have IDs: {:?}", id, self.items.keys().collect::<Vec<_>>()))
+        self.items.get(id).unwrap_or_else(|| {
+            panic!(
+                "Item {} should exist, but only have IDs: {:?}",
+                id,
+                self.items.keys().collect::<Vec<_>>()
+            )
+        })
     }
-    pub fn get_mut(&mut self, id: impl Borrow<usize>) -> &mut Item { self.items.get_mut(id.borrow()).expect("Item should exist") }
-    pub fn iter(&self) -> impl Iterator<Item = (&usize, &Item)> { self.items.iter() }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> { self.items.values_mut() }
-    pub fn iter_ids(&self) -> impl Iterator<Item = usize> + '_ { self.items.keys().copied() }
-    pub fn values(&self) -> impl Iterator<Item = &Item> { self.items.values() }
-    pub fn len(&self) -> usize { self.items.len() }
-    pub fn is_empty(&self) -> bool { self.items.is_empty() }
+    pub fn get_mut(&mut self, id: impl Borrow<usize>) -> &mut Item {
+        self.items.get_mut(id.borrow()).expect("Item should exist")
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&usize, &Item)> {
+        self.items.iter()
+    }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> {
+        self.items.values_mut()
+    }
+    pub fn iter_ids(&self) -> impl Iterator<Item = usize> + '_ {
+        self.items.keys().copied()
+    }
+    pub fn values(&self) -> impl Iterator<Item = &Item> {
+        self.items.values()
+    }
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 }
 
 impl<'a, MoveKey: Ord, Item> IntoIterator for &'a ItemStore<MoveKey, Item> {
     type Item = (&'a usize, &'a Item);
     type IntoIter = indexmap::map::Iter<'a, usize, Item>;
-    fn into_iter(self) -> Self::IntoIter { self.items.iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.iter()
+    }
 }
 
 // ============================================================================

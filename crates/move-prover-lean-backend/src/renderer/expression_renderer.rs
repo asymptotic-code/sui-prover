@@ -4,15 +4,14 @@
 //! Renders IR to Lean syntax.
 //! Pure translation - pattern match IR nodes to Lean text.
 
-use std::fmt::Write;
-use intermediate_theorem_format::{
-    IRNode, BinOp, UnOp, VecOp, Const,
-    VariableRegistry, TheoremProgram, TheoremModuleID,
-};
-use super::type_renderer::{render_type, uint_cast_func, uint_type_name};
-use super::statement_renderer::render_stmt;
 use super::lean_writer::LeanWriter;
+use super::statement_renderer::render_stmt;
+use super::type_renderer::{render_type, uint_cast_func, uint_type_name};
 use crate::escape;
+use intermediate_theorem_format::{
+    BinOp, Const, IRNode, TheoremModuleID, TheoremProgram, UnOp, VariableRegistry, VecOp,
+};
+use std::fmt::Write;
 
 /// Rendering context - holds references needed during rendering.
 pub struct RenderCtx<'a> {
@@ -27,7 +26,12 @@ pub struct RenderCtx<'a> {
 impl<'a> RenderCtx<'a> {
     /// Returns whether a function is monadic (returns Except) by checking its signature.
     pub fn is_func_monadic(&self, func_id: intermediate_theorem_format::TheoremFunctionID) -> bool {
-        self.program.functions.get(func_id).signature.return_type.is_monad()
+        self.program
+            .functions
+            .get(func_id)
+            .signature
+            .return_type
+            .is_monad()
     }
 }
 
@@ -62,7 +66,12 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             render_unop(*op, operand, ctx, w);
         }
 
-        IRNode::Call { function, args, type_args, .. } => {
+        IRNode::Call {
+            function,
+            args,
+            type_args,
+            ..
+        } => {
             let func = ctx.program.functions.get(*function);
             let escaped = escape::escape_identifier(&func.name);
             let func_name = if func.module_id == ctx.current_module_id {
@@ -84,7 +93,11 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             }
         }
 
-        IRNode::Pack { struct_id, type_args, fields } => {
+        IRNode::Pack {
+            struct_id,
+            type_args,
+            fields,
+        } => {
             let struct_def = ctx.program.structs.get(struct_id);
             let struct_name = escape::escape_struct_name(&struct_def.name);
 
@@ -99,7 +112,11 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             }
         }
 
-        IRNode::Field { struct_id, field_index, base } => {
+        IRNode::Field {
+            struct_id,
+            field_index,
+            base,
+        } => {
             let struct_def = ctx.program.structs.get(struct_id);
             let struct_name = escape::escape_struct_name(&struct_def.name);
             let field = &struct_def.fields[*field_index];
@@ -118,7 +135,13 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
                 if i > 0 {
                     write!(w, ", ").unwrap();
                 }
-                write!(w, "{}.{} ", struct_name, escape::escape_identifier(&field.name)).unwrap();
+                write!(
+                    w,
+                    "{}.{} ",
+                    struct_name,
+                    escape::escape_identifier(&field.name)
+                )
+                .unwrap();
                 render_ir_atomic_monadic(value, ctx, w);
             }
             write!(w, ")").unwrap();
@@ -180,7 +203,11 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             render_block_inline(children, ctx, w);
         }
 
-        IRNode::If { cond, then_branch, else_branch } => {
+        IRNode::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
             // Inline if expression - need do block if any part contains monadic operations
             let needs_do = contains_call_monadic(cond, ctx)
                 || contains_call_monadic(then_branch, ctx)
@@ -219,8 +246,12 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             // Body must return Except AbortCode state, so need_monadic=true
             render_branch_inline(body, true, ctx, &mut body_str);
 
-            write!(w, "(whileLoop (fun {} => {}) (fun {} => {}) {})",
-                state_pattern, cond_str, state_pattern, body_str, init_str).unwrap();
+            write!(
+                w,
+                "(whileLoop (fun {} => {}) (fun {} => {}) {})",
+                state_pattern, cond_str, state_pattern, body_str, init_str
+            )
+            .unwrap();
         }
 
         // Statement-like IR nodes - render as their expression form
@@ -252,7 +283,12 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             render_ir_atomic(code, ctx, w);
         }
 
-        IRNode::UpdateField { base, struct_id, field_index, value } => {
+        IRNode::UpdateField {
+            base,
+            struct_id,
+            field_index,
+            value,
+        } => {
             let struct_def = ctx.program.structs.get(struct_id);
             let field_name = &struct_def.fields[*field_index].name;
             write!(w, "{{ ").unwrap();
@@ -292,8 +328,8 @@ fn render_block_inline<W: Write>(children: &[IRNode], ctx: &RenderCtx, w: &mut W
     let stmts = &children[..children.len() - 1];
     let result = &children[children.len() - 1];
 
-    let need_monadic = stmts.iter().any(|s| contains_call_monadic(s, ctx))
-        || contains_call_monadic(result, ctx);
+    let need_monadic =
+        stmts.iter().any(|s| contains_call_monadic(s, ctx)) || contains_call_monadic(result, ctx);
 
     if stmts.is_empty() {
         if is_call_monadic(result, ctx) {
@@ -563,7 +599,11 @@ fn render_vec_op<W: Write>(op: VecOp, operands: &[IRNode], ctx: &RenderCtx, w: &
 pub fn make_pattern<S: AsRef<str>>(names: &[S]) -> String {
     super::render_tuple_like(names, "_", ", ", |name| {
         let name = name.as_ref();
-        if name == "()" { "_".to_string() } else { escape::escape_identifier(name) }
+        if name == "()" {
+            "_".to_string()
+        } else {
+            escape::escape_identifier(name)
+        }
     })
 }
 
@@ -623,4 +663,3 @@ fn render_ir_atomic_monadic<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
         render_ir_atomic(ir, ctx, w);
     }
 }
-

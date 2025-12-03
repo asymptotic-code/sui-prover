@@ -13,20 +13,49 @@ pub(crate) mod ir_translator;
 pub fn convert_constant(constant: &Constant) -> Const {
     match constant {
         Constant::Bool(b) => Const::Bool(*b),
-        Constant::U8(v) => Const::UInt { bits: 8, value: U256::from(*v) },
-        Constant::U16(v) => Const::UInt { bits: 16, value: U256::from(*v) },
-        Constant::U32(v) => Const::UInt { bits: 32, value: U256::from(*v) },
-        Constant::U64(v) => Const::UInt { bits: 64, value: U256::from(*v) },
-        Constant::U128(v) => Const::UInt { bits: 128, value: U256::from(*v) },
-        Constant::U256(v) => Const::UInt { bits: 256, value: *v },
+        Constant::U8(v) => Const::UInt {
+            bits: 8,
+            value: U256::from(*v),
+        },
+        Constant::U16(v) => Const::UInt {
+            bits: 16,
+            value: U256::from(*v),
+        },
+        Constant::U32(v) => Const::UInt {
+            bits: 32,
+            value: U256::from(*v),
+        },
+        Constant::U64(v) => Const::UInt {
+            bits: 64,
+            value: U256::from(*v),
+        },
+        Constant::U128(v) => Const::UInt {
+            bits: 128,
+            value: U256::from(*v),
+        },
+        Constant::U256(v) => Const::UInt {
+            bits: 256,
+            value: *v,
+        },
         Constant::Address(addr) => Const::Address(addr.clone()),
         Constant::ByteArray(bytes) => Const::Vector(
-            bytes.iter().map(|&b| Const::UInt { bits: 8, value: U256::from(b) }).collect(),
+            bytes
+                .iter()
+                .map(|&b| Const::UInt {
+                    bits: 8,
+                    value: U256::from(b),
+                })
+                .collect(),
         ),
-        Constant::Vector(elements) => Const::Vector(elements.iter().map(convert_constant).collect()),
-        Constant::AddressArray(addresses) => {
-            Const::Vector(addresses.iter().map(|addr| Const::Address(addr.clone())).collect())
+        Constant::Vector(elements) => {
+            Const::Vector(elements.iter().map(convert_constant).collect())
         }
+        Constant::AddressArray(addresses) => Const::Vector(
+            addresses
+                .iter()
+                .map(|addr| Const::Address(addr.clone()))
+                .collect(),
+        ),
     }
 }
 

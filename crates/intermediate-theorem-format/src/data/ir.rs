@@ -349,7 +349,7 @@ impl IRNode {
     pub fn unit() -> IRNode {
         IRNode::Tuple(vec![])
     }
-    
+
     /// Get references to all nodes (including itself) in this IR tree
     pub fn children(&self) -> Vec<&IRNode> {
         let mut result = vec![self];
@@ -368,18 +368,18 @@ impl IRNode {
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a IRNode> + 'a {
         self.all_nodes().into_iter()
     }
-    
+
     /// Iterates over all children of this IR node
     pub fn iter_children<'a>(&'a self) -> impl Iterator<Item = &'a IRNode> + 'a {
         self.children().into_iter()
     }
-    
+
     /// Transform this IR recursively (bottom-up)
     pub fn transform<F: FnMut(IRNode) -> IRNode>(self, f: &mut F) -> IRNode {
         let transformed = self.map(&mut |child| child.transform(f));
         f(transformed)
     }
-    
+
     /// Transform only direct children (not self)
     pub fn map<F: FnMut(IRNode) -> IRNode>(mut self, f: &mut F) -> IRNode {
         traverse_ir!(&mut self, as_ir_mut, |value| *value = f(mem::take(value)));
@@ -393,7 +393,7 @@ impl IRNode {
             acc
         })
     }
-    
+
     /// Checks if something is true on both branches of ifs instead of either
     pub fn check_branches<F: Fn(&IRNode) -> bool>(&self, f: F) -> bool {
         self.iter_children().any(|node| match node {
@@ -405,7 +405,7 @@ impl IRNode {
             _ => f(node),
         })
     }
-    
+
     pub fn transform_block<F: Fn(Vec<IRNode>) -> Vec<IRNode>>(self, f: F) -> Self {
         self.map(&mut |node| match node {
             IRNode::Block { children } => IRNode::Block {
@@ -414,7 +414,7 @@ impl IRNode {
             other => other,
         })
     }
-    
+
     /// Check if this is an atomic expression (doesn't need parens when used as arg)
     pub fn is_atomic(&self) -> bool {
         matches!(self, IRNode::Var(_) | IRNode::Const(_) | IRNode::Tuple(_))
@@ -426,9 +426,11 @@ impl IRNode {
             IRNode::Return(_) | IRNode::Abort(_) => true,
             IRNode::Block { children } => children.last().is_some_and(|c| c.terminates()),
             IRNode::Let { value, .. } => value.terminates(),
-            IRNode::If { then_branch, else_branch, .. } => {
-                then_branch.terminates() && else_branch.terminates()
-            }
+            IRNode::If {
+                then_branch,
+                else_branch,
+                ..
+            } => then_branch.terminates() && else_branch.terminates(),
             _ => false,
         }
     }
@@ -445,12 +447,14 @@ impl IRNode {
 
     /// Collect all variable names defined (bound) in this IR tree
     pub fn defined_vars(&self) -> impl Iterator<Item = &TempId> {
-        self.iter().flat_map(|node| {
-            if let IRNode::Let { pattern, .. } = node {
-                return Some(pattern.iter());
-            }
-            None
-        }).flatten()
+        self.iter()
+            .flat_map(|node| {
+                if let IRNode::Let { pattern, .. } = node {
+                    return Some(pattern.iter());
+                }
+                None
+            })
+            .flatten()
     }
 
     /// Collect all function calls
@@ -484,7 +488,7 @@ impl IRNode {
             _ => &[],
         }
     }
-    
+
     pub fn aborts(&self) -> bool {
         self.iter().any(|n| matches!(n, IRNode::Abort(_)))
     }
@@ -506,12 +510,14 @@ impl IRNode {
             IRNode::Abort(_) => true,
             IRNode::While { body, .. } => body.contains_monadic(is_func_monadic),
             IRNode::Call { function, .. } => is_func_monadic(*function),
-            IRNode::If { then_branch, else_branch, .. } => {
-                then_branch.is_monadic(is_func_monadic) || else_branch.is_monadic(is_func_monadic)
-            }
-            IRNode::Block { children } => {
-                children.last().is_some_and(|c| c.is_monadic(is_func_monadic))
-            }
+            IRNode::If {
+                then_branch,
+                else_branch,
+                ..
+            } => then_branch.is_monadic(is_func_monadic) || else_branch.is_monadic(is_func_monadic),
+            IRNode::Block { children } => children
+                .last()
+                .is_some_and(|c| c.is_monadic(is_func_monadic)),
             IRNode::Let { value, .. } => value.is_monadic(is_func_monadic),
             IRNode::Tuple(elems) => {
                 // A tuple is monadic if any of its elements are monadic
@@ -558,39 +564,30 @@ impl IRNode {
 
     /// Collect all struct IDs referenced in Pack, Unpack, Field, UpdateField operations
     pub fn iter_struct_references(&self) -> impl Iterator<Item = TheoremStructID> + '_ {
-        self.iter()
-            .filter_map(|node| match node {
-                IRNode::Pack { struct_id, .. }
-                | IRNode::Unpack { struct_id, .. }
-                | IRNode::Field { struct_id, .. }
-                | IRNode::UpdateField { struct_id, .. } => Some(*struct_id),
-                _ => None,
-            })
+        self.iter().filter_map(|node| match node {
+            IRNode::Pack { struct_id, .. }
+            | IRNode::Unpack { struct_id, .. }
+            | IRNode::Field { struct_id, .. }
+            | IRNode::UpdateField { struct_id, .. } => Some(*struct_id),
+            _ => None,
+        })
     }
 
     /// Collect all struct IDs referenced in type positions (type arguments)
     pub fn iter_type_struct_ids(&self) -> impl Iterator<Item = TheoremStructID> + '_ {
-        self.iter()
-            .flat_map(|node| match node {
-                IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => type_args
-                    .iter()
-                    .flat_map(|ty| ty.struct_ids())
-                    .collect::<Vec<_>>(),
-                _ => vec![],
-            })
+        self.iter().flat_map(|node| match node {
+            IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => type_args
+                .iter()
+                .flat_map(|ty| ty.struct_ids())
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        })
     }
-    
+
     pub fn destructure_let(&self) -> Option<(&Vec<String>, &Box<IRNode>)> {
         match self {
             IRNode::Let { pattern, value } => Some((pattern, value)),
             _ => None,
-        }
-    }
-    
-    pub(crate) fn negate(self) -> IRNode {
-        match self {
-            IRNode::UnOp { op: UnOp::Not, operand } => *operand,
-            other => IRNode::UnOp { op: UnOp::Not, operand: Box::new(other) },
         }
     }
 }

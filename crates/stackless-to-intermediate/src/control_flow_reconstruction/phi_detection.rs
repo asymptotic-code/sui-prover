@@ -21,15 +21,27 @@ pub fn detect_phis(ir: IRNode) -> IRNode {
 
 fn transform_node(ir: IRNode, vars_in_scope: &BTreeSet<String>) -> IRNode {
     match ir {
-        IRNode::Block { children } => {
-            IRNode::Block { children: transform_block(children, vars_in_scope) }
-        }
-        IRNode::If { cond, then_branch, else_branch } => {
+        IRNode::Block { children } => IRNode::Block {
+            children: transform_block(children, vars_in_scope),
+        },
+        IRNode::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
             let then_branch = Box::new(transform_node(*then_branch, vars_in_scope));
             let else_branch = Box::new(transform_node(*else_branch, vars_in_scope));
-            IRNode::If { cond, then_branch, else_branch }
+            IRNode::If {
+                cond,
+                then_branch,
+                else_branch,
+            }
         }
-        IRNode::While { cond, body, vars } => {
+        IRNode::While {
+            cond,
+            body,
+            vars: _,
+        } => {
             // Apply while transformation even when While appears outside of transform_block
             let cond = transform_node(*cond, vars_in_scope);
             let body = transform_node(*body, vars_in_scope);
@@ -56,10 +68,15 @@ fn transform_block(children: Vec<IRNode>, inherited_vars: &BTreeSet<String>) -> 
 
     for child in children {
         match child {
-            IRNode::If { cond, then_branch, else_branch } => {
+            IRNode::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
                 let then_branch = transform_node(*then_branch, &vars_in_scope);
                 let else_branch = transform_node(*else_branch, &vars_in_scope);
-                let transformed = transform_if_in_block(cond, then_branch, else_branch, &vars_in_scope);
+                let transformed =
+                    transform_if_in_block(cond, then_branch, else_branch, &vars_in_scope);
                 // Update vars_in_scope with any new bindings from the transformed if
                 if let IRNode::Let { pattern, .. } = &transformed {
                     vars_in_scope.extend(pattern.iter().cloned());
@@ -162,16 +179,17 @@ fn transform_if_in_block(
 ///
 /// Only variables that were in scope before the while loop are included,
 /// since the initial state tuple must reference values that already exist.
-fn transform_while_in_block(cond: IRNode, body: IRNode, vars_in_scope: &BTreeSet<String>) -> IRNode {
+fn transform_while_in_block(
+    cond: IRNode,
+    body: IRNode,
+    vars_in_scope: &BTreeSet<String>,
+) -> IRNode {
     // Collect variables assigned in the body that were defined before the loop
     let body_assigned = collect_top_level_let_names(&body);
 
     // Find variables that are both assigned in the body AND existed before the loop.
     // This includes temps (starting with $t) which will be optimized away later.
-    let loop_vars: Vec<String> = body_assigned
-        .intersection(vars_in_scope)
-        .cloned()
-        .collect();
+    let loop_vars: Vec<String> = body_assigned.intersection(vars_in_scope).cloned().collect();
 
     if loop_vars.is_empty() {
         // No pre-existing variables modified - loop doesn't need state tracking
@@ -219,10 +237,19 @@ fn collect_top_level_let_names(ir: &IRNode) -> BTreeSet<String> {
 /// Append result expression with passthrough for variables not assigned in this branch.
 /// `passthrough_vars` are variables that this branch doesn't assign but are part of phi_vars.
 /// We need to reference the old value (which is in scope from before the if).
-fn append_result_with_passthrough(ir: IRNode, phi_vars: &[String], passthrough_vars: &[String]) -> IRNode {
+fn append_result_with_passthrough(
+    ir: IRNode,
+    phi_vars: &[String],
+    passthrough_vars: &[String],
+) -> IRNode {
     let result_expr = match phi_vars.len() {
         1 => IRNode::Var(phi_vars[0].clone()),
-        _ => IRNode::Tuple(phi_vars.iter().map(|name| IRNode::Var(name.clone())).collect()),
+        _ => IRNode::Tuple(
+            phi_vars
+                .iter()
+                .map(|name| IRNode::Var(name.clone()))
+                .collect(),
+        ),
     };
 
     // For passthrough vars, we need to add a let binding that shadows the old value with itself.

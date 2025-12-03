@@ -6,7 +6,6 @@
 mod cleanup;
 mod dead_code_removal;
 mod dependency_order;
-mod guard_clause;
 mod import_collection;
 mod monadicity;
 mod temp_inlining;
@@ -34,6 +33,4 @@ fn optimize_single_pass(node: IRNode, registry: &VariableRegistry) -> IRNode {
     let node = temp_inlining::inline_temps(node, registry);
     let node = dead_code_removal::remove_dead_code(node);
     cleanup::cleanup(node)
-    // Disabled guard clause extraction - it was creating infinite nesting
-    // guard_clause::extract_guard_clauses(node)
 }

@@ -71,19 +71,27 @@ impl TheoremType {
 
     fn collect_struct_ids(&self, ids: &mut Vec<TheoremStructID>) {
         match self {
-            TheoremType::Struct { struct_id, type_args } => {
+            TheoremType::Struct {
+                struct_id,
+                type_args,
+            } => {
                 ids.push(*struct_id);
                 type_args.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            TheoremType::Vector(inner) | TheoremType::Reference(inner) |
-            TheoremType::MutableReference(inner) | TheoremType::Except(inner) => {
+            TheoremType::Vector(inner)
+            | TheoremType::Reference(inner)
+            | TheoremType::MutableReference(inner)
+            | TheoremType::Except(inner) => {
                 inner.collect_struct_ids(ids);
             }
             TheoremType::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            TheoremType::Bool | TheoremType::UInt(_) | TheoremType::SInt(_) |
-            TheoremType::Address | TheoremType::TypeParameter(_) => {}
+            TheoremType::Bool
+            | TheoremType::UInt(_)
+            | TheoremType::SInt(_)
+            | TheoremType::Address
+            | TheoremType::TypeParameter(_) => {}
         }
     }
 }

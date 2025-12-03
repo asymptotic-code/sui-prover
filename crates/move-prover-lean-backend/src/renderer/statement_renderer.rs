@@ -6,11 +6,14 @@
 //!
 //! Uses LeanWriter which handles both multi-line (indented) and inline (semicolon-separated) modes.
 
-use std::fmt::Write;
-use intermediate_theorem_format::IRNode;
-use super::expression_renderer::{RenderCtx, ir_to_string, ir_to_string_atomic, ir_to_string_maybe_monadic, render_ir, render_pattern, contains_call_monadic};
+use super::expression_renderer::{
+    contains_call_monadic, ir_to_string, ir_to_string_atomic, ir_to_string_maybe_monadic,
+    render_ir, render_pattern, RenderCtx,
+};
 use super::lean_writer::LeanWriter;
 use crate::escape;
+use intermediate_theorem_format::IRNode;
+use std::fmt::Write;
 
 /// Check if an IR node is a monadic expression (directly returns Except).
 /// Delegates to the IR's is_monadic method.
@@ -25,7 +28,11 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             // In multi-line mode, if/while get special block rendering
             if !w.is_inline() {
                 match value.as_ref() {
-                    IRNode::If { cond, then_branch, else_branch } => {
+                    IRNode::If {
+                        cond,
+                        then_branch,
+                        else_branch,
+                    } => {
                         render_if_stmt(pattern, cond, then_branch, else_branch, ctx, w);
                         return;
                     }
@@ -43,7 +50,12 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             let is_monadic = is_call_monadic_stmt(value, ctx);
             let bind_op = if is_monadic { "←" } else { ":=" };
 
-            w.write(&format!("let {} {} {}", pattern_str, bind_op, ir_to_string(value, ctx)));
+            w.write(&format!(
+                "let {} {} {}",
+                pattern_str,
+                bind_op,
+                ir_to_string(value, ctx)
+            ));
         }
 
         IRNode::Return(values) => {
@@ -67,7 +79,12 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             } else if values.len() == 1 {
                 // Check for IfExpr - render multi-line
                 if !w.is_inline() {
-                    if let IRNode::If { cond, then_branch, else_branch } = &values[0] {
+                    if let IRNode::If {
+                        cond,
+                        then_branch,
+                        else_branch,
+                    } = &values[0]
+                    {
                         render_return_if(cond, then_branch, else_branch, ctx, w);
                         return;
                     }
@@ -123,12 +140,22 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             w.write(&format!("Except.error {}", ir_to_string_atomic(code, ctx)));
         }
 
-        IRNode::UpdateField { base, struct_id, field_index, value } => {
+        IRNode::UpdateField {
+            base,
+            struct_id,
+            field_index,
+            value,
+        } => {
             let target_str = ir_to_string(base, ctx);
-            let field_name = ctx.program.structs.get(struct_id).fields[*field_index].name.clone();
+            let field_name = ctx.program.structs.get(struct_id).fields[*field_index]
+                .name
+                .clone();
             let value_str = ir_to_string(value, ctx);
 
-            w.write(&format!("let {} := {{ {} with {} := {} }}", target_str, target_str, field_name, value_str));
+            w.write(&format!(
+                "let {} := {{ {} with {} := {} }}",
+                target_str, target_str, field_name, value_str
+            ));
         }
 
         IRNode::UpdateVec { base, index, value } => {
@@ -136,7 +163,10 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             let index_str = ir_to_string(index, ctx);
             let value_str = ir_to_string(value, ctx);
 
-            w.write(&format!("let {} := {}.set {} {}", target_str, target_str, index_str, value_str));
+            w.write(&format!(
+                "let {} := {}.set {} {}",
+                target_str, target_str, index_str, value_str
+            ));
         }
 
         IRNode::Requires(cond) => {
@@ -150,7 +180,11 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
         }
 
         // Bare If expression in statement position - render multi-line
-        IRNode::If { cond, then_branch, else_branch } if !w.is_inline() => {
+        IRNode::If {
+            cond,
+            then_branch,
+            else_branch,
+        } if !w.is_inline() => {
             render_if_stmt(&[], cond, then_branch, else_branch, ctx, w);
         }
 
@@ -163,7 +197,6 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
         }
     }
 }
-
 
 /// Render an if expression as a multi-line statement.
 fn render_if_stmt<W: Write>(
@@ -192,7 +225,10 @@ fn render_if_stmt<W: Write>(
     if both_terminate || pattern_is_empty {
         w.write(&format!("if {} then", cond_str));
     } else {
-        w.write(&format!("let {} {} if {} then", pattern_str, bind_op, cond_str));
+        w.write(&format!(
+            "let {} {} if {} then",
+            pattern_str, bind_op, cond_str
+        ));
     }
     w.write("\n");
 
@@ -238,7 +274,12 @@ fn render_else_chain<W: Write>(
     // Check for else-if (Block with no statements and result is If)
     if let IRNode::Block { children } = else_branch {
         if children.len() == 1 {
-            if let IRNode::If { cond, then_branch, else_branch: nested_else } = &children[0] {
+            if let IRNode::If {
+                cond,
+                then_branch,
+                else_branch: nested_else,
+            } = &children[0]
+            {
                 let cond_str = ir_to_string_maybe_monadic(cond, ctx);
                 w.write(&format!("\nelse if {} then", cond_str));
                 w.write("\n");
@@ -293,8 +334,15 @@ fn render_while_stmt<W: Write>(
 
     // Use whileLoop for monadic loops, whileLoopPure for pure loops
     let is_monadic = contains_call_monadic(body, ctx) || contains_call_monadic(cond, ctx);
-    let (bind_op, loop_fn) = if is_monadic { ("←", "whileLoop") } else { (":=", "whileLoopPure") };
-    w.write(&format!("let {} {} ({} (fun {} =>", pattern_str, bind_op, loop_fn, state_pattern));
+    let (bind_op, loop_fn) = if is_monadic {
+        ("←", "whileLoop")
+    } else {
+        (":=", "whileLoopPure")
+    };
+    w.write(&format!(
+        "let {} {} ({} (fun {} =>",
+        pattern_str, bind_op, loop_fn, state_pattern
+    ));
     w.write("\n");
     w.indent();
     w.write("do\n");
@@ -339,7 +387,12 @@ fn render_while_stmt<W: Write>(
 }
 
 /// Render an expression result, wrapping in pure if needed
-fn render_result<W: Write>(result: &IRNode, need_monadic: bool, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
+fn render_result<W: Write>(
+    result: &IRNode,
+    need_monadic: bool,
+    ctx: &RenderCtx,
+    w: &mut LeanWriter<W>,
+) {
     // Complex structures (If/While) should be rendered as statements for readability
     if should_render_as_stmt(result) {
         render_stmt(result, ctx, w);
@@ -370,7 +423,10 @@ fn render_stmts<W: Write>(stmts: &[IRNode], ctx: &RenderCtx, w: &mut LeanWriter<
 fn should_render_as_stmt(ir: &IRNode) -> bool {
     match ir {
         IRNode::Let { value, .. } => {
-            matches!(value.as_ref(), IRNode::If { .. } | IRNode::While { .. } | IRNode::Block { .. })
+            matches!(
+                value.as_ref(),
+                IRNode::If { .. } | IRNode::While { .. } | IRNode::Block { .. }
+            )
         }
         IRNode::If { .. } | IRNode::While { .. } => true,
         _ => false,
@@ -378,7 +434,12 @@ fn should_render_as_stmt(ir: &IRNode) -> bool {
 }
 
 /// Render a block with proper indentation.
-pub fn render_block<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
+pub fn render_block<W: Write>(
+    ir: &IRNode,
+    need_monadic: bool,
+    ctx: &RenderCtx,
+    w: &mut LeanWriter<W>,
+) {
     let stmts = ir.get_block_stmts();
     let result = ir.get_block_result();
 
@@ -405,7 +466,8 @@ pub fn render_block<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderCtx, 
         }
 
         // Check if result contains monadic subexpressions that need do block
-        if need_monadic && contains_call_monadic(result, ctx) && !is_call_monadic_stmt(result, ctx) {
+        if need_monadic && contains_call_monadic(result, ctx) && !is_call_monadic_stmt(result, ctx)
+        {
             // Need do block to handle monadic subexpressions
             w.write("do\n");
             w.indent();

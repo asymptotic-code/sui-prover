@@ -39,10 +39,12 @@ fn substitute_temps(ir: IRNode, temps: &BTreeMap<String, IRNode>) -> IRNode {
 /// Process a node, inlining temps. `temps` contains temps defined in outer scopes.
 fn inline_in_node(ir: IRNode, outer_temps: &BTreeMap<String, IRNode>) -> IRNode {
     match ir {
-        IRNode::Block { children } => {
-            inline_block(children, outer_temps)
-        }
-        IRNode::If { cond, then_branch, else_branch } => {
+        IRNode::Block { children } => inline_block(children, outer_temps),
+        IRNode::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
             // Substitute temps in condition
             let cond = substitute_temps(*cond, outer_temps);
             // Process branches with outer temps (branches may define new temps locally)
@@ -115,10 +117,7 @@ fn inline_block(children: Vec<IRNode>, outer_temps: &BTreeMap<String, IRNode>) -
                 // (temps have been removed from the While's vars by inline_in_node)
                 let pattern = if let IRNode::While { vars, .. } = &value {
                     // Only keep variables that are in the while's vars list
-                    pattern
-                        .into_iter()
-                        .filter(|v| vars.contains(v))
-                        .collect()
+                    pattern.into_iter().filter(|v| vars.contains(v)).collect()
                 } else {
                     pattern
                 };

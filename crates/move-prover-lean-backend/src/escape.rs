@@ -12,45 +12,16 @@
 /// If a Move type matches one of these, we prefix it with "Move"
 const LEAN_BUILTIN_TYPES: &[&str] = &[
     // Core types
-    "Option",
-    "Result",
-    "List",
-    "Array",
-    "String",
-    "Vector",
-    "Nat",
-    "Int",
-    "Bool",
-    "Unit",
-    "Char",
-    "Float",
-    // Common Lean types
-    "Sum",
-    "Prod",
-    "Sigma",
-    "Subtype",
-    "Quotient",
-    "IO",
-    "Task",
-    "HashMap",
-    "HashSet",
-    "RBMap",
+    "Option", "Result", "List", "Array", "String", "Vector", "Nat", "Int", "Bool", "Unit", "Char",
+    "Float", // Common Lean types
+    "Sum", "Prod", "Sigma", "Subtype", "Quotient", "IO", "Task", "HashMap", "HashSet", "RBMap",
     "RBSet",
 ];
 
 /// Lean standard modules/namespaces that conflict with Move module names
 /// If a Move module matches one of these, we prefix it with "Move"
 const LEAN_BUILTIN_MODULES: &[&str] = &[
-    "vector",
-    "option",
-    "string",
-    "list",
-    "array",
-    "nat",
-    "int",
-    "bool",
-    "io",
-    "system",
+    "vector", "option", "string", "list", "array", "nat", "int", "bool", "io", "system",
 ];
 
 /// Escape struct/type names that conflict with Lean built-ins

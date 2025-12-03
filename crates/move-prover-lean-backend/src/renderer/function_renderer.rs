@@ -14,7 +14,12 @@ use super::type_renderer::type_to_string;
 use crate::escape;
 
 /// Render a function definition.
-pub fn render_function<W: Write>(func: &TheoremFunction, program: &TheoremProgram, current_module_namespace: &str, w: &mut LeanWriter<W>) {
+pub fn render_function<W: Write>(
+    func: &TheoremFunction,
+    program: &TheoremProgram,
+    current_module_namespace: &str,
+    w: &mut LeanWriter<W>,
+) {
     let is_monadic = func.signature.return_type.is_monad();
     let escaped_name = escape::escape_identifier(&func.name);
 
@@ -42,7 +47,11 @@ pub fn render_function<W: Write>(func: &TheoremFunction, program: &TheoremProgra
 
     // Return type
     w.write(" : ");
-    let type_str = type_to_string(&func.signature.return_type, program, Some(current_module_namespace));
+    let type_str = type_to_string(
+        &func.signature.return_type,
+        program,
+        Some(current_module_namespace),
+    );
     w.write(&type_str);
     w.write(" :=\n");
 

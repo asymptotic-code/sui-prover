@@ -32,10 +32,7 @@ fn topological_sort<T: Dependable>(items: &mut IndexMap<T::Id, T>) {
         }
     }
 
-    let mut condensed = condensation(
-        graph.into_graph::<u32>(),
-        false,
-    );
+    let mut condensed = condensation(graph.into_graph::<u32>(), false);
 
     let sorted_groups: Vec<_> = toposort(&condensed, None)
         .unwrap()

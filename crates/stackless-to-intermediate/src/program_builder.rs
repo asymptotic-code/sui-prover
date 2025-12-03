@@ -6,18 +6,18 @@
 //! Uses lazy ID generation - IDs are created on first reference.
 //! Single pass creates all definitions and translates function bodies.
 
-use std::rc::Rc;
-use crate::translation::function_translator::translate_function;
 use crate::package_utils::extract_package_name;
+use crate::translation::function_translator::translate_function;
 use intermediate_theorem_format::{
-    TheoremField, TheoremFunctionID, TheoremModule, TheoremProgram, TheoremStruct,
-    TheoremStructID, TheoremType,
+    TheoremField, TheoremFunctionID, TheoremModule, TheoremProgram, TheoremStruct, TheoremStructID,
+    TheoremType,
 };
 use move_model::model::{DatatypeId, FunId, GlobalEnv, ModuleEnv, QualifiedId, TypeParameter};
 use move_model::symbol::Symbol;
 use move_model::ty::Type;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant};
+use std::rc::Rc;
 
 pub struct ProgramBuilder<'env> {
     env: &'env GlobalEnv,
@@ -56,7 +56,8 @@ impl<'env> ProgramBuilder<'env> {
             self.create_module(&module_env);
 
             for func_env in module_env.get_functions() {
-                if let Some(target) = targets.get_target_opt(&func_env, &FunctionVariant::Baseline) {
+                if let Some(target) = targets.get_target_opt(&func_env, &FunctionVariant::Baseline)
+                {
                     self.create_function(target);
                 }
             }
@@ -100,7 +101,8 @@ impl<'env> ProgramBuilder<'env> {
             self.create_module(&module_env);
         }
 
-        let fields = move_struct.get_fields()
+        let fields = move_struct
+            .get_fields()
             .map(|f| TheoremField {
                 name: Self::sanitize_name(&self.symbol_str(f.get_name())),
                 field_type: self.convert_type(&f.get_type()),
@@ -154,7 +156,11 @@ impl<'env> ProgramBuilder<'env> {
 
     /// Convert a datatype (struct or enum) to TheoremType
     /// Panics if the datatype is an enum (unsupported)
-    fn convert_datatype(&mut self, qualified_id: QualifiedId<DatatypeId>, args: &[Type]) -> TheoremType {
+    fn convert_datatype(
+        &mut self,
+        qualified_id: QualifiedId<DatatypeId>,
+        args: &[Type],
+    ) -> TheoremType {
         let module_env = self.env.get_module(qualified_id.module_id);
         let symbol = qualified_id.id.symbol();
 
