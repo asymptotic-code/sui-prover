@@ -19,7 +19,6 @@ use crate::data::types::{TempId, Type};
 use crate::FunctionID;
 use ethnum::U256;
 use num::BigUint;
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::{fmt, mem};
@@ -294,7 +293,7 @@ impl Display for Const {
 }
 
 /// Binary operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
     // Arithmetic
     Add,
@@ -321,7 +320,7 @@ pub enum BinOp {
 }
 
 /// Unary operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
     Not,
     CastU8,
@@ -333,7 +332,7 @@ pub enum UnOp {
 }
 
 /// Vector operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VecOp {
     Empty,
     Length,

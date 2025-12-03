@@ -14,7 +14,7 @@ use intermediate_theorem_format::{
 };
 use move_model::model::{DatatypeId, FunId, GlobalEnv, ModuleEnv, QualifiedId, TypeParameter};
 use move_model::symbol::Symbol;
-use move_model::ty::Type;
+use move_model::ty::Type as MoveType;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant};
 use std::rc::Rc;
@@ -129,25 +129,25 @@ impl<'env> ProgramBuilder<'env> {
         self.program.functions.create(qualified_id, func);
     }
 
-    pub fn convert_type(&mut self, ty: &Type) -> Type {
+    pub fn convert_type(&mut self, ty: &MoveType) -> Type {
         use move_model::ty::PrimitiveType;
         match ty {
-            Type::Primitive(PrimitiveType::Bool) => Type::Bool,
-            Type::Primitive(PrimitiveType::U8) => Type::UInt(8),
-            Type::Primitive(PrimitiveType::U16) => Type::UInt(16),
-            Type::Primitive(PrimitiveType::U32) => Type::UInt(32),
-            Type::Primitive(PrimitiveType::U64) => Type::UInt(64),
-            Type::Primitive(PrimitiveType::U128) => Type::UInt(128),
-            Type::Primitive(PrimitiveType::U256) => Type::UInt(256),
-            Type::Primitive(PrimitiveType::Address | PrimitiveType::Signer) => Type::Address,
-            Type::Datatype(mid, sid, args) => {
+            MoveType::Primitive(PrimitiveType::Bool) => Type::Bool,
+            MoveType::Primitive(PrimitiveType::U8) => Type::UInt(8),
+            MoveType::Primitive(PrimitiveType::U16) => Type::UInt(16),
+            MoveType::Primitive(PrimitiveType::U32) => Type::UInt(32),
+            MoveType::Primitive(PrimitiveType::U64) => Type::UInt(64),
+            MoveType::Primitive(PrimitiveType::U128) => Type::UInt(128),
+            MoveType::Primitive(PrimitiveType::U256) => Type::UInt(256),
+            MoveType::Primitive(PrimitiveType::Address | PrimitiveType::Signer) => Type::Address,
+            MoveType::Datatype(mid, sid, args) => {
                 let qualified_id = mid.qualified(*sid);
                 self.convert_datatype(qualified_id, args)
             }
-            Type::Vector(t) => Type::Vector(Box::new(self.convert_type(t))),
-            Type::Reference(_, t) => Type::Reference(Box::new(self.convert_type(t))),
-            Type::TypeParameter(idx) => Type::TypeParameter(*idx),
-            Type::Tuple(ts) => {
+            MoveType::Vector(t) => Type::Vector(Box::new(self.convert_type(t))),
+            MoveType::Reference(_, t) => Type::Reference(Box::new(self.convert_type(t))),
+            MoveType::TypeParameter(idx) => Type::TypeParameter(*idx),
+            MoveType::Tuple(ts) => {
                 Type::Tuple(ts.iter().map(|t| self.convert_type(t)).collect())
             }
             _ => unreachable!("Unsupported type: {:?}", ty),
@@ -159,7 +159,7 @@ impl<'env> ProgramBuilder<'env> {
     fn convert_datatype(
         &mut self,
         qualified_id: QualifiedId<DatatypeId>,
-        args: &[Type],
+        args: &[MoveType],
     ) -> Type {
         let module_env = self.env.get_module(qualified_id.module_id);
         let symbol = qualified_id.id.symbol();

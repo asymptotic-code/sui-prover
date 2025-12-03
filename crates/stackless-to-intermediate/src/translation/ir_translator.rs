@@ -100,8 +100,7 @@ fn translate_call(
                 .to_string();
 
             let is_prover_module = module_name == "prover"
-                && module_env.self_address()
-                    == &move_core_types::account_address::AccountAddress::ZERO;
+                && module_env.self_address().iter().all(|val| *val == 0);
 
             if is_prover_module && srcs.len() == 1 {
                 if func_name == "requires" {
