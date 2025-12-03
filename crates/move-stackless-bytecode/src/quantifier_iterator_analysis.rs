@@ -8,7 +8,6 @@ use crate::{
     deterministic_analysis,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    no_abort_analysis,
     stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierType},
 };
 
@@ -228,13 +227,11 @@ impl QuantifierIteratorAnalysisProcessor {
         let func_env = env.get_function(qid);
         let data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-        if !no_abort_analysis::get_info(data).does_not_abort
-            && !targets.is_function_with_abort_check(&qid)
-        {
+        if !targets.is_pure_fun(&qid) {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
-                "Quantifier function should not abort",
+                "Quantifier function should be pure",
             );
 
             return true;

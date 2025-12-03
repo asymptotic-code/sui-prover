@@ -135,7 +135,9 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
                 Jump(_, _) => None,
                 Branch(_, _, _, _) => None,
                 Label(_, _) => None,
-                VariantSwitch(_, _, _) => None,
+                VariantSwitch(_, _, _) => {
+                    Some("Pure functions cannot have variant switch operations".to_string())
+                }
                 Abort(_, _) => Some("Pure functions cannot abort".to_string()),
                 // should be unreachable
                 SaveMem(_, _, _) => {
