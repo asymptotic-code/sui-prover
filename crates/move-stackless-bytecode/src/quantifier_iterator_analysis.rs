@@ -136,6 +136,13 @@ impl QuantifierPattern {
             ),
         ]
     }
+
+    pub fn type_from_qid(qid: QualifiedId<FunId>, env: &GlobalEnv) -> Option<QuantifierType> {
+        Self::all_patterns(env)
+            .iter()
+            .find(|p| qid == p.start_qid || qid == p.end_qid)
+            .map(|p| p.quantifier_type)
+    }
 }
 
 pub struct QuantifierIteratorAnalysisProcessor();

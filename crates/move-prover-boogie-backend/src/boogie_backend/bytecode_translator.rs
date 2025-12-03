@@ -69,7 +69,7 @@ use crate::boogie_backend::{
         boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
         FunctionTranslationStyle, TypeIdentToken,
     },
-    options::{BoogieFileMode, BoogieOptions},
+    options::BoogieOptions,
     spec_translator::SpecTranslator,
 };
 
@@ -387,9 +387,7 @@ impl<'env> BoogieTranslator<'env> {
                         }
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All
-                        {
+                        if !self.options.spec_no_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -413,9 +411,7 @@ impl<'env> BoogieTranslator<'env> {
                         }
                         // Attempt to emit Pure variant if eligible
                         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-                        if !self.options.spec_no_abort_check_only
-                            && self.options.boogie_file_mode != BoogieFileMode::All
-                        {
+                        if !self.options.spec_no_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -518,18 +514,14 @@ impl<'env> BoogieTranslator<'env> {
         self.translate_function_style(fun_env, FunctionTranslationStyle::Aborts);
         self.translate_function_style(fun_env, FunctionTranslationStyle::Opaque);
 
-        if self.options.boogie_file_mode == BoogieFileMode::All
-            || self.targets.is_verified_spec(&fun_env.get_qualified_id())
-        {
+        if self.targets.is_verified_spec(&fun_env.get_qualified_id()) {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
         // BUT: Don't emit Pure variants in spec_no_abort_check.bpl
-        if !self.options.spec_no_abort_check_only
-            && self.options.boogie_file_mode != BoogieFileMode::All
-        {
+        if !self.options.spec_no_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }
@@ -782,7 +774,6 @@ impl<'env> BoogieTranslator<'env> {
                     _ => builder.emit(
                         bc.substitute_operations(&ensures_asserts_to_requires_subst)
                             .update_abort_action(|aa| match aa {
-                                Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
                                 Some(AbortAction::Check) => Some(AbortAction::Check),
                                 None => None,
                             }),
@@ -983,7 +974,6 @@ impl<'env> BoogieTranslator<'env> {
         for bc in code.into_iter() {
             match bc {
                 _ => builder.emit(bc.update_abort_action(|aa| match aa {
-                    Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
                     Some(AbortAction::Check) => Some(AbortAction::Check),
                     None => None,
                 })),
@@ -2540,14 +2530,24 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn create_quantifiers_temp_vars(&self) {
+        let mut has_find = false;
+        let mut has_quantifier_sum_temp_vec = false;
         for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
                 if qt.is_find_or_find_index() {
-                    emitln!(self.parent.writer, "var $find_i: int;");
-                    emitln!(self.parent.writer, "var $find_exists: bool;");
-                    return;
+                    has_find = true;
+                }
+                if qt.requires_sum() {
+                    has_quantifier_sum_temp_vec = true;
                 }
             }
+        }
+        if has_find {
+            emitln!(self.parent.writer, "var $find_i: int;");
+            emitln!(self.parent.writer, "var $find_exists: bool;");
+        }
+        if has_quantifier_sum_temp_vec {
+            emitln!(self.parent.writer, "var $quantifier_sum_temp_vec: Vec int;");
         }
     }
 
@@ -4691,31 +4691,53 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
                                 emitln!(self.writer(), "}");
                             }
+                            QuantifierType::Count => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::CountRange => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) == (if {}({}) then 1 else 0));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::SumMap => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
+                            QuantifierType::SumMapRange => {
+                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                            }
                             _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
                         }
                     }
                 }
                 match aa {
-                    Some(AbortAction::Check | AbortAction::Jump(..)) => {
-                        match self.parent.asserts_mode {
-                            AssertsMode::Check => {
-                                let message = if self.parent.options.func_abort_check_only {
-                                    "function code should not abort"
-                                } else {
-                                    "code should not abort"
-                                };
-                                emitln!(
-                                    self.writer(),
-                                    "assert {{:msg \"assert_failed{}: {}\"}} !$abort_flag;",
-                                    self.loc_str(&self.writer().get_loc()),
-                                    message,
-                                );
-                            }
-                            AssertsMode::Assume => {
-                                emitln!(self.writer(), "assume !$abort_flag;");
-                            }
+                    Some(AbortAction::Check) => match self.parent.asserts_mode {
+                        AssertsMode::Check => {
+                            let message = if self.parent.options.func_abort_check_only {
+                                "function code should not abort"
+                            } else {
+                                "code should not abort"
+                            };
+                            emitln!(
+                                self.writer(),
+                                "assert {{:msg \"assert_failed{}: {}\"}} !$abort_flag;",
+                                self.loc_str(&self.writer().get_loc()),
+                                message,
+                            );
                         }
-                    }
+                        AssertsMode::Assume => {
+                            emitln!(self.writer(), "assume !$abort_flag;");
+                        }
+                    },
                     None => {}
                 }
             }

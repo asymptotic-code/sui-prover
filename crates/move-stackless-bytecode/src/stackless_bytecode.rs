@@ -197,6 +197,16 @@ impl QuantifierType {
                 | QuantifierType::FindIndexRange
         )
     }
+
+    pub fn requires_sum(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::SumMap
+                | QuantifierType::SumMapRange
+                | QuantifierType::Count
+                | QuantifierType::CountRange
+        )
+    }
 }
 
 /// An operation -- target of a call. This contains user functions, builtin functions, and
@@ -476,7 +486,6 @@ pub enum PropKind {
 /// jump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbortAction {
-    Jump(Label, TempIndex),
     Check,
 }
 
@@ -548,10 +557,7 @@ impl Bytecode {
     }
 
     pub fn is_conditional_branch(&self) -> bool {
-        matches!(
-            self,
-            Bytecode::Branch(..) | Bytecode::Call(_, _, _, _, Some(_))
-        )
+        matches!(self, Bytecode::Branch(..))
     }
 
     pub fn is_branch(&self) -> bool {
@@ -562,10 +568,7 @@ impl Bytecode {
     pub fn branch_dests(&self) -> Vec<Label> {
         match self {
             Bytecode::Branch(_, then_label, else_label, _) => vec![*then_label, *else_label],
-            Bytecode::Jump(_, label)
-            | Bytecode::Call(_, _, _, _, Some(AbortAction::Jump(label, _))) => {
-                vec![*label]
-            }
+            Bytecode::Jump(_, label) => vec![*label],
             Bytecode::VariantSwitch(_, _, dests) => dests.clone(),
             _ => vec![],
         }
@@ -632,19 +635,9 @@ impl Bytecode {
         }
 
         // always give successors in ascending order
-        if v.len() > 1 && v[0] > v[1] {
-            v.swap(0, 1);
-        }
-        v
-    }
+        v.sort_unstable();
 
-    /// Returns the code offsets at which the code exits(aborts or returns).
-    pub fn get_exits(code: &[Bytecode]) -> Vec<CodeOffset> {
-        code.iter()
-            .enumerate()
-            .filter(|(_, bytecode)| bytecode.is_exit())
-            .map(|(idx, _)| idx as CodeOffset)
-            .collect()
+        v
     }
 
     /// Remaps variables in the instruction.
@@ -679,11 +672,6 @@ impl Bytecode {
         let map = |is_src: bool, f: &mut F, v: Vec<TempIndex>| -> Vec<TempIndex> {
             v.into_iter().map(|i| f(is_src, i)).collect()
         };
-        let map_abort = |f: &mut F, aa: Option<AbortAction>| match aa {
-            Some(AbortAction::Jump(l, code)) => Some(AbortAction::Jump(l, f(false, code))),
-            Some(AbortAction::Check) => Some(AbortAction::Check),
-            None => None,
-        };
         let map_node = |f: &mut F, node: BorrowNode| match node {
             LocalRoot(tmp) => LocalRoot(f(true, tmp)),
             Reference(tmp) => Reference(f(true, tmp)),
@@ -697,22 +685,18 @@ impl Bytecode {
                 vec![],
                 WriteBack(map_node(f, node), edge),
                 map(true, f, srcs),
-                map_abort(f, aa),
+                aa,
             ),
             Call(attr, dests, IsParent(node, edge), srcs, aa) => Call(
                 attr,
                 map(false, f, dests),
                 IsParent(map_node(f, node), edge),
                 map(true, f, srcs),
-                map_abort(f, aa),
+                aa,
             ),
-            Call(attr, dests, op, srcs, aa) => Call(
-                attr,
-                map(false, f, dests),
-                op,
-                map(true, f, srcs),
-                map_abort(f, aa),
-            ),
+            Call(attr, dests, op, srcs, aa) => {
+                Call(attr, map(false, f, dests), op, map(true, f, srcs), aa)
+            }
             Ret(attr, rets) => Ret(attr, map(true, f, rets)),
             Branch(attr, if_label, else_label, cond) => {
                 Branch(attr, if_label, else_label, f(true, cond))
@@ -841,12 +825,6 @@ impl Bytecode {
         use BorrowNode::*;
         use Bytecode::*;
         use Operation::*;
-        let add_abort = |mut res: Vec<TempIndex>, aa: &Option<AbortAction>| {
-            if let Some(AbortAction::Jump(_, dest)) = aa {
-                res.push(*dest)
-            }
-            res
-        };
 
         match self {
             Assign(_, dest, _, _) => {
@@ -862,19 +840,19 @@ impl Bytecode {
                 // constants can only be values, hence no modifications on the reference
                 (vec![*dest], vec![])
             }
-            Call(_, _, Operation::WriteBack(LocalRoot(dest), ..), _, aa) => {
+            Call(_, _, Operation::WriteBack(LocalRoot(dest), ..), _, _) => {
                 // write-back to a local variable distorts the value
-                (add_abort(vec![*dest], aa), vec![])
+                (vec![*dest], vec![])
             }
-            Call(_, _, Operation::WriteBack(Reference(dest), ..), _, aa) => {
+            Call(_, _, Operation::WriteBack(Reference(dest), ..), _, _) => {
                 // write-back to a reference only distorts the value, but not the pointer itself
-                (add_abort(vec![], aa), vec![(*dest, false)])
+                (vec![], vec![(*dest, false)])
             }
-            Call(_, _, Operation::WriteRef, srcs, aa) => {
+            Call(_, _, Operation::WriteRef, srcs, _) => {
                 // write-ref only distorts the value of the reference, but not the pointer itself
-                (add_abort(vec![], aa), vec![(srcs[0], false)])
+                (vec![], vec![(srcs[0], false)])
             }
-            Call(_, dests, Function(..), srcs, aa) => {
+            Call(_, dests, Function(..), srcs, _) => {
                 let mut val_targets = vec![];
                 let mut mut_targets = vec![];
                 for src in srcs {
@@ -892,10 +870,10 @@ impl Bytecode {
                         val_targets.push(*dest);
                     }
                 }
-                (add_abort(val_targets, aa), mut_targets)
+                (val_targets, mut_targets)
             }
             // *** Double-check that this is in Wolfgang's code
-            Call(_, dests, _, _, aa) => {
+            Call(_, dests, _, _, _) => {
                 let mut val_targets = vec![];
                 let mut mut_targets = vec![];
                 for dest in dests {
@@ -907,7 +885,7 @@ impl Bytecode {
                         val_targets.push(*dest);
                     }
                 }
-                (add_abort(val_targets, aa), mut_targets)
+                (val_targets, mut_targets)
             }
             _ => (vec![], vec![]),
         }
@@ -1026,14 +1004,6 @@ impl fmt::Display for BytecodeDisplay<'_> {
                 write!(f, "{}", oper.display(self.func_target))?;
                 self.fmt_locals(f, args, true)?;
                 match aa {
-                    Some(AbortAction::Jump(label, code)) => {
-                        write!(
-                            f,
-                            " on_abort goto {} with {}",
-                            self.label_str(*label),
-                            self.lstr(*code)
-                        )?;
-                    }
                     Some(AbortAction::Check) => {
                         write!(f, "no_abort check")?;
                     }

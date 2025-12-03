@@ -11,6 +11,7 @@ use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
 use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
 
+use crate::quantifier_iterator_analysis::QuantifierPattern;
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
@@ -132,7 +133,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
             if (targets.is_verified_spec(&fun_env.get_qualified_id())
-                || targets.is_spec(&fun_env.get_qualified_id()) && !targets.has_target_mode())
+                || targets.is_spec(&fun_env.get_qualified_id()))
                 && Self::is_within_verification_scope(fun_env, &targets)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
@@ -450,6 +451,10 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
+    pub fn native_check_list(env: &GlobalEnv) -> Vec<QualifiedId<FunId>> {
+        [env.prover_vec_sum_qid(), env.prover_vec_sum_range_qid()].to_vec()
+    }
+
     /// Check if a function is essential for the verification pipeline
     pub fn is_essential_function(fun_env: &FunctionEnv) -> bool {
         let name = fun_env.get_full_name_str();
@@ -514,11 +519,10 @@ impl VerificationAnalysisProcessor {
     ///
     /// NOTE: This does not apply to opaque, native, or intrinsic functions.
     fn mark_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
-        let keep_list = [
-            fun_env.module_env.env.prover_vec_sum_qid(),
-            fun_env.module_env.env.prover_vec_sum_range_qid(),
-        ];
-        if fun_env.is_native() && !keep_list.contains(&fun_env.get_qualified_id()) {
+        if fun_env.is_native()
+            && !Self::native_check_list(fun_env.module_env.env)
+                .contains(&fun_env.get_qualified_id())
+        {
             return;
         }
 
@@ -550,18 +554,24 @@ impl VerificationAnalysisProcessor {
     /// Marks all callees of this function to be inlined. Forms a mutual recursion with the
     /// `mark_inlined` function above.
     fn mark_callees_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
+        let env = fun_env.module_env.env;
         for callee in fun_env.get_called_functions() {
-            let callee_env = fun_env.module_env.env.get_function(callee);
+            let callee_env = env.get_function(callee);
             if let Some(spec_id) = targets.get_spec_by_fun(&callee) {
                 let is_verified = targets.is_verified_spec(spec_id);
                 let no_opaque = targets.omits_opaque(spec_id);
-                let spec_env = fun_env.module_env.env.get_function(*spec_id);
-                Self::mark_inlined(&spec_env, targets);
+                Self::mark_inlined(&env.get_function(*spec_id), targets);
                 if !is_verified && !no_opaque {
                     continue;
                 }
             }
             Self::mark_inlined(&callee_env, targets);
+            if let Some(qt) = QuantifierPattern::type_from_qid(callee, env) {
+                if qt.requires_sum() {
+                    let sum_fun_env = env.get_function(env.prover_vec_sum_qid());
+                    Self::mark_inlined(&sum_fun_env, targets);
+                }
+            }
         }
     }
 

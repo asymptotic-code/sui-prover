@@ -17,7 +17,7 @@ use crate::{
     graph::NaturalLoop,
     helpers::loop_helpers::find_loops_headers,
     move_loop_invariants, spec_global_variable_analysis,
-    stackless_bytecode::{AbortAction, Bytecode, HavocKind, Label, Operation},
+    stackless_bytecode::{Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
 };
 
@@ -473,16 +473,6 @@ impl LoopAnalysisProcessor {
 
             if let Some((begin, end)) = invariants_map.get(&label) {
                 // done with all information collection.
-                let invariant_code = code[*begin..=*end]
-                    .iter()
-                    .map(|bc| {
-                        bc.update_abort_action(|aa| match aa {
-                            Some(AbortAction::Jump(_, _)) => Some(AbortAction::Check),
-                            Some(AbortAction::Check) => Some(AbortAction::Check),
-                            None => None,
-                        })
-                    })
-                    .collect_vec();
                 fat_loops.insert(
                     label,
                     FatLoop {
@@ -490,7 +480,7 @@ impl LoopAnalysisProcessor {
                         mut_targets,
                         back_edges,
                         loop_invariant: LoopInvariant {
-                            code: invariant_code,
+                            code: code[*begin..=*end].to_vec(),
                         },
                         spec_global_var_mut,
                     },

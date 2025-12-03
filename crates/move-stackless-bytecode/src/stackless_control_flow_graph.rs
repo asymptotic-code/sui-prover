@@ -169,6 +169,7 @@ impl StacklessControlFlowGraph {
                 code,
                 &mut bb_offsets,
                 &label_offsets,
+                ignore_aborts,
             );
         }
         // Now construct blocks
@@ -241,6 +242,7 @@ impl StacklessControlFlowGraph {
         code: &[Bytecode],
         block_ids: &mut Set<BlockId>,
         label_offsets: &BTreeMap<Label, CodeOffset>,
+        ignore_aborts: bool,
     ) {
         let bytecode = &code[pc as usize];
 
@@ -248,7 +250,7 @@ impl StacklessControlFlowGraph {
             block_ids.insert(*label_offsets.get(&label).unwrap());
         }
 
-        if bytecode.is_branch() && pc + 1 < (code.len() as CodeOffset) {
+        if !ignore_aborts && matches!(bytecode, Bytecode::Call(_, _, _, _, Some(_))) {
             block_ids.insert(pc + 1);
         }
     }
@@ -325,9 +327,7 @@ impl StacklessControlFlowGraph {
         // Fallback
         candidates.into_iter().next()
     }
-}
 
-impl StacklessControlFlowGraph {
     pub fn successors(&self, block_id: BlockId) -> &Vec<BlockId> {
         &self.blocks[&block_id].successors
     }

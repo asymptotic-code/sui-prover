@@ -82,12 +82,7 @@ L2:
     // trace_return[0]($t6) at tests/inputs/conditionals/simple_max.fail.move:9:5+144
     assume {:print "$track_return(118,0,0,u64):", $t6} $t6 == $t6;
 
-    // label L3 at tests/inputs/conditionals/simple_max.fail.move:14:1+1
-    assume {:print "$at(120,376,377)"} true;
-L3:
-
-    // return $t6 at tests/inputs/conditionals/simple_max.fail.move:14:1+1
-    assume {:print "$at(120,376,377)"} true;
+    // return $t6 at tests/inputs/conditionals/simple_max.fail.move:9:5+144
     $ret0 := $t6;
     return;
 

@@ -10,9 +10,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
+use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_stackless_bytecode::function_stats;
-use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
+use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -187,11 +187,10 @@ pub async fn execute(
     let model = build_model(path, Some(build_config))?;
 
     if general_config.stats {
-        let mut options = move_prover_boogie_backend::generator_options::Options::default();
-        options.filter = filter.clone();
-        let (targets, _) =
-            create_and_process_bytecode(&options, &model, FunctionHolderTarget::None);
-        function_stats::display_function_stats(&model, &targets);
+        function_stats::display_function_stats(
+            &model,
+            &PackageTargets::new(&model, filter.clone(), !general_config.ci),
+        );
         return Ok(());
     }
 
