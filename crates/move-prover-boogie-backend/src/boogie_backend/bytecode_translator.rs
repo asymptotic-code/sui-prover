@@ -878,9 +878,6 @@ impl<'env> BoogieTranslator<'env> {
             }
         }
 
-        // Eliminate unreachable bytecode created by setting abort actions to None
-        builder.eliminate_unreachable_bytecode();
-
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
         let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);

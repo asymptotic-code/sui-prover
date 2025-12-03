@@ -112,7 +112,6 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
         for bc in code.iter() {
             builder.emit(bc.update_abort_action(|f| None).replace_cast_with_assign());
         }
-        builder.eliminate_unreachable_bytecode();
 
         // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
         // Control flow instructions (jumps, branches, labels) are silently skipped since

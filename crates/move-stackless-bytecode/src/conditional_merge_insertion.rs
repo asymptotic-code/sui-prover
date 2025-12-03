@@ -29,6 +29,7 @@ use crate::{
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph},
 };
+use codespan_reporting::diagnostic::Severity;
 use move_model::model::FunctionEnv;
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
@@ -123,6 +124,7 @@ impl ConditionalMergeInsertionProcessor {
         orig_code: &[Bytecode],
         start_pc: usize,
         end_pc: usize,
+        func_env: &FunctionEnv,
     ) -> Option<BTreeMap<usize, usize>> {
         let mut scan_pc = start_pc;
         let mut last_assign_per_var: BTreeMap<usize, usize> = BTreeMap::new();
@@ -170,6 +172,11 @@ impl ConditionalMergeInsertionProcessor {
                 }
                 Bytecode::Branch(..) => {
                     // Nested branches not supported yet
+                    func_env.module_env.env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "Nested branches in pure functions are not supported yet",
+                    );
                     simple_block = false;
                     break;
                 }
@@ -215,12 +222,12 @@ impl ConditionalMergeInsertionProcessor {
         let merge_pc = *labels.get(&merge_label)? as usize;
 
         // Scan the then-block: from then_pc to else_pc
-        let then_assignments = self.block_permitted(code, then_pc, else_pc)?;
+        let then_assignments = self.block_permitted(code, then_pc, else_pc, builder.fun_env)?;
 
         // Scan the else-block: from else_pc to merge_pc
         // If else_pc == merge_pc, there's no else block (pure fallthrough)
         let else_assignments = if else_pc < merge_pc {
-            self.block_permitted(code, else_pc, merge_pc)
+            self.block_permitted(code, else_pc, merge_pc, builder.fun_env)
         } else {
             None
         };
@@ -354,6 +361,11 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
 
         // Skip functions with loops
         if self.has_loops(&orig_code) {
+            func_env.module_env.env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                "Pure functions with loops are not supported",
+            );
             return builder.data;
         }
 
