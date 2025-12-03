@@ -19,7 +19,10 @@ pub fn collect_imports(program: &mut TheoremProgram) {
     }
 }
 
-fn collect_module_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> Vec<TheoremModuleID> {
+fn collect_module_imports(
+    program: &TheoremProgram,
+    module_id: TheoremModuleID,
+) -> Vec<TheoremModuleID> {
     let struct_deps = collect_struct_imports(program, module_id);
     let function_deps = collect_function_imports(program, module_id);
 
@@ -30,7 +33,10 @@ fn collect_module_imports(program: &TheoremProgram, module_id: TheoremModuleID) 
         .collect()
 }
 
-fn collect_struct_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> HashSet<TheoremModuleID> {
+fn collect_struct_imports(
+    program: &TheoremProgram,
+    module_id: TheoremModuleID,
+) -> HashSet<TheoremModuleID> {
     program
         .structs
         .values()
@@ -40,7 +46,10 @@ fn collect_struct_imports(program: &TheoremProgram, module_id: TheoremModuleID) 
         .collect()
 }
 
-fn collect_function_imports(program: &TheoremProgram, module_id: TheoremModuleID) -> HashSet<TheoremModuleID> {
+fn collect_function_imports(
+    program: &TheoremProgram,
+    module_id: TheoremModuleID,
+) -> HashSet<TheoremModuleID> {
     program
         .functions
         .values()
@@ -62,7 +71,8 @@ fn collect_from_function<'a>(
         .flat_map(|t| t.struct_ids())
         .map(|sid| program.structs.get(sid).module_id);
 
-    let body_deps = function.dependencies()
+    let body_deps = function
+        .dependencies()
         .map(|fid| program.functions.get(fid).module_id)
         .chain(
             function

@@ -3,12 +3,12 @@
 
 //! Function IR data structures
 
-use move_model::model::{FunId, QualifiedId};
-use crate::data::variables::VariableRegistry;
-use crate::data::types::{TempId, TheoremType};
-use crate::{IRNode, TheoremModuleID};
-use crate::data::Dependable;
 use crate::analysis;
+use crate::data::types::{TempId, TheoremType};
+use crate::data::variables::VariableRegistry;
+use crate::data::Dependable;
+use crate::{IRNode, TheoremModuleID};
+use move_model::model::{FunId, QualifiedId};
 
 /// Unique identifier for a function in the program
 pub type TheoremFunctionID = usize;

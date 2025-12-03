@@ -4,12 +4,17 @@
 //! Renders TheoremType to Lean syntax.
 //! Pure translation - no logic, just pattern matching.
 
-use std::fmt::Write;
-use intermediate_theorem_format::{TheoremProgram, TheoremType};
 use crate::escape;
+use intermediate_theorem_format::{TheoremProgram, TheoremType};
+use std::fmt::Write;
 
 /// Render a type to Lean syntax.
-pub fn render_type<W: Write>(ty: &TheoremType, program: &TheoremProgram, current_module: Option<&str>, w: &mut W) {
+pub fn render_type<W: Write>(
+    ty: &TheoremType,
+    program: &TheoremProgram,
+    current_module: Option<&str>,
+    w: &mut W,
+) {
     match ty {
         TheoremType::Bool => write!(w, "Bool").unwrap(),
         TheoremType::UInt(8) => write!(w, "UInt8").unwrap(),
@@ -22,7 +27,10 @@ pub fn render_type<W: Write>(ty: &TheoremType, program: &TheoremProgram, current
         TheoremType::SInt(width) => write!(w, "Int{}", width).unwrap(),
         TheoremType::Address => write!(w, "Address").unwrap(),
 
-        TheoremType::Struct { struct_id, type_args } => {
+        TheoremType::Struct {
+            struct_id,
+            type_args,
+        } => {
             let struct_def = program.structs.get(*struct_id);
             let module_def = program.modules.get(struct_def.module_id);
             let escaped_name = escape::escape_struct_name(&struct_def.name);
@@ -93,7 +101,11 @@ pub fn render_type<W: Write>(ty: &TheoremType, program: &TheoremProgram, current
 }
 
 /// Render a type to a string.
-pub fn type_to_string(ty: &TheoremType, program: &TheoremProgram, current_module: Option<&str>) -> String {
+pub fn type_to_string(
+    ty: &TheoremType,
+    program: &TheoremProgram,
+    current_module: Option<&str>,
+) -> String {
     let mut s = String::new();
     render_type(ty, program, current_module, &mut s);
     s

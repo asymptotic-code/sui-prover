@@ -11,7 +11,12 @@ use std::collections::BTreeSet;
 
 pub fn remove_dead_code(ir: IRNode) -> IRNode {
     let used: BTreeSet<String> = ir.used_vars().cloned().collect();
-    ir.transform_block(|children| children.into_iter().filter(|c| !is_dead_let(c, &used)).collect())
+    ir.transform_block(|children| {
+        children
+            .into_iter()
+            .filter(|c| !is_dead_let(c, &used))
+            .collect()
+    })
 }
 
 fn is_dead_let(ir: &IRNode, used: &BTreeSet<String>) -> bool {

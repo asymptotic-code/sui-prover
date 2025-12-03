@@ -7,13 +7,13 @@
 //! The renderer is intentionally "dumb" - it pattern matches IR nodes
 //! and emits corresponding Lean text without complex analysis.
 
-mod lean_writer;
-mod type_renderer;
 mod expression_renderer;
-mod statement_renderer;
 mod function_renderer;
-mod struct_renderer;
+mod lean_writer;
 mod program_renderer;
+mod statement_renderer;
+mod struct_renderer;
+mod type_renderer;
 
 pub use lean_writer::LeanWriter;
 pub use program_renderer::render_to_directory;

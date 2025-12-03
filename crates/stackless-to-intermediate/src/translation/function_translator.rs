@@ -7,26 +7,34 @@ use crate::control_flow_reconstruction::phi_detection::detect_phis;
 use crate::control_flow_reconstruction::structure_discovery::reconstruct_function;
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
-use intermediate_theorem_format::{FunctionSignature, IRNode, Parameter, TheoremFunction, TheoremType, VariableRegistry};
+use intermediate_theorem_format::{
+    FunctionSignature, IRNode, Parameter, TheoremFunction, TheoremType, VariableRegistry,
+};
 use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::graph::{DomRelation, Graph};
 use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph};
 
-pub fn translate_function(
-    builder: &mut ProgramBuilder,
-    target: FunctionTarget,
-) -> TheoremFunction {
-    let mut variables = VariableRegistry::new(target.data.local_types.iter().enumerate()
-        .map(|(index, move_type)| (index, builder.convert_type(move_type)))
-        .collect());
-    
+pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> TheoremFunction {
+    let variables = VariableRegistry::new(
+        target
+            .data
+            .local_types
+            .iter()
+            .enumerate()
+            .map(|(index, move_type)| (index, builder.convert_type(move_type)))
+            .collect(),
+    );
+
     let func_env = target.func_env;
-    let module_id = builder.program.modules.id_for_key(func_env.module_env.get_id());
+    let module_id = builder
+        .program
+        .modules
+        .id_for_key(func_env.module_env.get_id());
     let name = ProgramBuilder::sanitize_name(&builder.symbol_str(func_env.get_name()));
     let signature = build_signature(builder, func_env);
     let is_native = func_env.is_native();
-    
+
     if target.get_bytecode().is_empty() || is_native {
         return TheoremFunction {
             module_id,
@@ -38,12 +46,18 @@ pub fn translate_function(
             is_native,
         };
     }
-    
-    let forward_cfg = StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
+
+    let forward_cfg =
+        StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
     let forward_dom = build_dominator_relation(&forward_cfg);
-    let ctx = DiscoveryContext { builder, target, variables: &mut variables, forward_dom, forward_cfg };
+    let ctx = DiscoveryContext {
+        builder,
+        target,
+        forward_dom,
+        forward_cfg,
+    };
     let body = detect_phis(reconstruct_function(ctx));
-    
+
     TheoremFunction {
         module_id,
         name,
@@ -86,7 +100,7 @@ fn build_signature(builder: &mut ProgramBuilder, func_env: &FunctionEnv) -> Func
                 1 => types.into_iter().next().unwrap(),
                 _ => TheoremType::Tuple(types),
             }
-                .wrap_in_monad()
+            .wrap_in_monad()
         },
     }
 }

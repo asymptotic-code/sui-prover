@@ -10,7 +10,10 @@ use move_stackless_bytecode::stackless_control_flow_graph::{
     BlockContent, BlockId, StacklessControlFlowGraph,
 };
 
-pub fn block_bounds(cfg: &StacklessControlFlowGraph, block: BlockId) -> Option<(CodeOffset, CodeOffset)> {
+pub fn block_bounds(
+    cfg: &StacklessControlFlowGraph,
+    block: BlockId,
+) -> Option<(CodeOffset, CodeOffset)> {
     match cfg.content(block) {
         BlockContent::Basic { lower, upper } => Some((*lower, *upper)),
         _ => None,
@@ -19,8 +22,7 @@ pub fn block_bounds(cfg: &StacklessControlFlowGraph, block: BlockId) -> Option<(
 
 pub fn resolve_label_block(ctx: &DiscoveryContext, label: Label) -> Option<BlockId> {
     let code = ctx.target.get_bytecode();
-    let target_pc = (0..code.len()).find(|&offset| {
-        matches!(&code[offset], Bytecode::Label(_, found) if found == &label)
-    })?;
+    let target_pc = (0..code.len())
+        .find(|&offset| matches!(&code[offset], Bytecode::Label(_, found) if found == &label))?;
     StacklessControlFlowGraph::pc_to_block(&ctx.forward_cfg, target_pc as u16)
 }

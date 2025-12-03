@@ -52,7 +52,8 @@ impl Dependable for TheoremStruct {
     type MoveKey = move_model::model::QualifiedId<move_model::model::DatatypeId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
-        self.fields.iter()
+        self.fields
+            .iter()
             .flat_map(|field| field.field_type.struct_ids())
     }
 

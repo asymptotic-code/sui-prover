@@ -35,7 +35,7 @@ impl VariableRegistry {
     pub fn iter(&self) -> impl Iterator<Item = (usize, &TheoremType)> {
         self.variables.iter().map(|(&k, v)| (k, v))
     }
-    
+
     pub fn is_temp(name: &str) -> bool {
         name.chars().next().unwrap_or('a') == '$'
     }

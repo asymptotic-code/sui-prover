@@ -6,9 +6,9 @@
 //! Takes TheoremProgram and renders to Lean files.
 //! ZERO logic, pure rendering.
 
+use crate::prelude::PreludeManager;
 use crate::renderer::render_to_directory;
 use crate::runtime::run_lake_build;
-use crate::prelude::PreludeManager;
 use move_model::model::GlobalEnv;
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 use stackless_to_intermediate::ProgramBuilder;
@@ -50,7 +50,8 @@ pub async fn run_backend(
     crate::write_lakefile(output_dir, "sui_prover_output")?;
 
     // Run lake build
-    let output_str = output_dir.to_str()
+    let output_str = output_dir
+        .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid output path"))?;
 
     match run_lake_build(output_str).await {
@@ -61,8 +62,6 @@ pub async fn run_backend(
             println!("Generated Lean files in: {}", output_dir.display());
             Ok(())
         }
-        Err(e) => {
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }

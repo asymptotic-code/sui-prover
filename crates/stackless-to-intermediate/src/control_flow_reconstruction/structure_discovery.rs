@@ -28,7 +28,9 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
             continue;
         };
 
-        if let Bytecode::Branch(_, then_label, else_label, cond_temp) = ctx.target.get_bytecode()[upper as usize].clone() {
+        if let Bytecode::Branch(_, then_label, else_label, cond_temp) =
+            ctx.target.get_bytecode()[upper as usize].clone()
+        {
             let cond_name = ir_translator::temp_id(&ctx.target, cond_temp);
             let then_block = resolve_label_block(ctx, then_label).expect("then label must resolve");
             let else_block = resolve_label_block(ctx, else_label).expect("else label must resolve");
@@ -36,8 +38,10 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
             let header = ir_translator::translate_range(ctx, lower..=upper);
             nodes.extend(header);
 
-            let then_is_back = then_block == start || ctx.forward_dom.is_dominated_by(cursor, then_block);
-            let else_is_back = else_block == start || ctx.forward_dom.is_dominated_by(cursor, else_block);
+            let then_is_back =
+                then_block == start || ctx.forward_dom.is_dominated_by(cursor, then_block);
+            let else_is_back =
+                else_block == start || ctx.forward_dom.is_dominated_by(cursor, else_block);
 
             if then_is_back || else_is_back {
                 let (body_start, exit_block) = if then_is_back {
@@ -50,16 +54,18 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
 
                 nodes.push(IRNode::While {
                     cond: Box::new(IRNode::Var(cond_name)),
-                    body: Box::new(IRNode::Block { children: body_nodes }),
-                    vars: vec![],  // Phi detection will populate this later
+                    body: Box::new(IRNode::Block {
+                        children: body_nodes,
+                    }),
+                    vars: vec![], // Phi detection will populate this later
                 });
 
                 cursor = exit_block;
                 continue;
             }
 
-            let merge = find_merge_block(&ctx.forward_cfg, then_block, else_block, stop)
-                .unwrap_or(stop);
+            let merge =
+                find_merge_block(&ctx.forward_cfg, then_block, else_block, stop).unwrap_or(stop);
 
             let mut then_nodes = discover_region(ctx, then_block, merge);
             let mut else_nodes = discover_region(ctx, else_block, merge);
@@ -69,11 +75,19 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
             let mut merge_included = false;
             if let Some((lower, upper)) = block_bounds(&ctx.forward_cfg, merge) {
                 let merge_nodes = ir_translator::translate_range(ctx, lower..=upper);
-                let merge_block = IRNode::Block { children: merge_nodes.clone() };
+                let merge_block = IRNode::Block {
+                    children: merge_nodes.clone(),
+                };
                 if merge_block.terminates() {
                     // Merge block terminates - include it in branches that don't already terminate
-                    let then_term = IRNode::Block { children: then_nodes.clone() }.terminates();
-                    let else_term = IRNode::Block { children: else_nodes.clone() }.terminates();
+                    let then_term = IRNode::Block {
+                        children: then_nodes.clone(),
+                    }
+                    .terminates();
+                    let else_term = IRNode::Block {
+                        children: else_nodes.clone(),
+                    }
+                    .terminates();
                     if !then_term {
                         then_nodes.extend(merge_nodes.clone());
                     }
@@ -84,8 +98,12 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
                 }
             }
 
-            let then_branch = IRNode::Block { children: then_nodes };
-            let else_branch = IRNode::Block { children: else_nodes };
+            let then_branch = IRNode::Block {
+                children: then_nodes,
+            };
+            let else_branch = IRNode::Block {
+                children: else_nodes,
+            };
 
             // If both branches terminate, don't continue after the if
             let both_terminate = then_branch.terminates() && else_branch.terminates();

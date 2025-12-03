@@ -80,8 +80,7 @@ impl PreludeManager {
             return Ok(vec![]);
         }
 
-        let entries = fs::read_dir(&prelude_source)
-            .context("Failed to read Prelude directory")?;
+        let entries = fs::read_dir(&prelude_source).context("Failed to read Prelude directory")?;
 
         let mut imports = Vec::new();
         for entry in entries.flatten() {
@@ -110,17 +109,12 @@ impl PreludeManager {
             return Ok(());
         }
 
-        info!(
-            "Copying Prelude files from: {}",
-            prelude_source.display()
-        );
+        info!("Copying Prelude files from: {}", prelude_source.display());
 
         let output_prelude = self.output_dir.join("Prelude");
-        fs::create_dir_all(&output_prelude)
-            .context("Failed to create Prelude directory")?;
+        fs::create_dir_all(&output_prelude).context("Failed to create Prelude directory")?;
 
-        let entries = fs::read_dir(&prelude_source)
-            .context("Failed to read Prelude directory")?;
+        let entries = fs::read_dir(&prelude_source).context("Failed to read Prelude directory")?;
 
         for entry in entries.flatten() {
             let path = entry.path();

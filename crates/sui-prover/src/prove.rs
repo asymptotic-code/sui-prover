@@ -10,8 +10,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_prover_boogie_backend::generator::create_and_process_bytecode;
+use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_prover_boogie_backend::generator_options::Options;
 use move_stackless_bytecode::function_stats;
 use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
@@ -21,7 +22,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use move_prover_boogie_backend::generator_options::Options;
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -273,7 +273,12 @@ async fn execute_backend_lean(
 ) -> anyhow::Result<()> {
     // Run bytecode transformation pipeline
     let package_targets = PackageTargets::new(&model, Default::default(), true);
-    let (targets, _) = create_and_process_bytecode(&Options::default(), &model, &package_targets, FunctionHolderTarget::All);
+    let (targets, _) = create_and_process_bytecode(
+        &Options::default(),
+        &model,
+        &package_targets,
+        FunctionHolderTarget::All,
+    );
 
     // Determine output directory (use current working directory + output)
     let output_dir = std::env::current_dir()?.join("output");
@@ -282,6 +287,9 @@ async fn execute_backend_lean(
     println!("Generating Lean code...");
     move_prover_lean_backend::run_backend(&model, &targets, &output_dir).await?;
 
-    println!("✓ Lean code generated successfully in {}", output_dir.display());
+    println!(
+        "✓ Lean code generated successfully in {}",
+        output_dir.display()
+    );
     Ok(())
 }
