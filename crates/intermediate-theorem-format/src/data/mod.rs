@@ -60,7 +60,6 @@ impl<MoveKey: Ord + Copy, Item> ItemStore<MoveKey, Item> {
         let id = id.borrow();
         self.items.get(id).unwrap_or_else(|| panic!("Item {} should exist, but only have IDs: {:?}", id, self.items.keys().collect::<Vec<_>>()))
     }
-    pub fn try_get(&self, id: impl Borrow<usize>) -> Option<&Item> { self.items.get(id.borrow()) }
     pub fn get_mut(&mut self, id: impl Borrow<usize>) -> &mut Item { self.items.get_mut(id.borrow()).expect("Item should exist") }
     pub fn iter(&self) -> impl Iterator<Item = (&usize, &Item)> { self.items.iter() }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> { self.items.values_mut() }

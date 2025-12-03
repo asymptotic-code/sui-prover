@@ -10,6 +10,7 @@ use move_stackless_bytecode::graph::DomRelation;
 use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph};
 
 mod helpers;
+pub mod phi_detection;
 pub mod structure_discovery;
 
 pub struct DiscoveryContext<'a, 'b> {

@@ -3,6 +3,7 @@
 
 //! Function body translation
 
+use crate::control_flow_reconstruction::phi_detection::detect_phis;
 use crate::control_flow_reconstruction::structure_discovery::reconstruct_function;
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
@@ -41,7 +42,7 @@ pub fn translate_function(
     let forward_cfg = StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
     let forward_dom = build_dominator_relation(&forward_cfg);
     let ctx = DiscoveryContext { builder, target, variables: &mut variables, forward_dom, forward_cfg };
-    let body = reconstruct_function(ctx);
+    let body = detect_phis(reconstruct_function(ctx));
     
     TheoremFunction {
         module_id,

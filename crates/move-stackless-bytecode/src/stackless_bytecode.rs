@@ -592,20 +592,6 @@ impl Bytecode {
         code: &[Bytecode],
         label_offsets: &BTreeMap<Label, CodeOffset>,
     ) -> Vec<CodeOffset> {
-        Self::get_successors_with_options(pc, code, label_offsets, false)
-    }
-
-    /// Get successors with options.
-    ///
-    /// If `ignore_call_aborts` is true, edges to abort handlers from Call instructions
-    /// are filtered out. This only affects Call instructions with abort handlers,
-    /// not explicit Abort instructions.
-    pub fn get_successors_with_options(
-        pc: CodeOffset,
-        code: &[Bytecode],
-        label_offsets: &BTreeMap<Label, CodeOffset>,
-        ignore_call_aborts: bool,
-    ) -> Vec<CodeOffset> {
         let bytecode = &code[pc as usize];
         let mut v = vec![];
         if !bytecode.is_branch() {
@@ -616,21 +602,6 @@ impl Bytecode {
         } else {
             for label in bytecode.branch_dests() {
                 v.push(*label_offsets.get(&label).expect("label defined"));
-            }
-            if matches!(bytecode, Bytecode::Call(_, _, _, _, Some(_))) {
-                // Falls through.
-                if pc + 1 < code.len() as CodeOffset {
-                    v.push(pc + 1);
-                }
-            }
-        }
-
-        // Filter out call abort edges if requested
-        // This only affects Call instructions with abort handlers, not explicit Abort instructions
-        if ignore_call_aborts {
-            if let Bytecode::Call(_, _, _, _, Some(AbortAction::Jump(abort_label, _))) = bytecode {
-                let abort_pc = *label_offsets.get(abort_label).expect("abort label defined");
-                v.retain(|&pc| pc != abort_pc);
             }
         }
 

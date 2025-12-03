@@ -60,16 +60,16 @@ fn collect_from_function<'a>(
         .map(|p| &p.param_type)
         .chain(std::iter::once(&function.signature.return_type))
         .flat_map(|t| t.struct_ids())
-        .filter_map(|sid| program.structs.try_get(sid).map(|s| s.module_id));
+        .map(|sid| program.structs.get(sid).module_id);
 
     let body_deps = function.dependencies()
-        .filter_map(|fid| program.functions.try_get(fid).map(|f| f.module_id))
+        .map(|fid| program.functions.get(fid).module_id)
         .chain(
             function
                 .body
                 .iter_struct_references()
                 .chain(function.body.iter_type_struct_ids())
-                .filter_map(|sid| program.structs.try_get(sid).map(|s| s.module_id)),
+                .map(|sid| program.structs.get(sid).module_id),
         );
 
     sig_deps.chain(body_deps)

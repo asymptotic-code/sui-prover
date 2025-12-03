@@ -14,14 +14,14 @@ pub async fn run_lake_build(project_dir: &str) -> Result<String> {
     debug!("running lake build in {}", project_dir);
 
     let output = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(120),
         Command::new("lake")
             .arg("build")
             .current_dir(project_dir)
             .output()
     )
         .await
-        .map_err(|_| anyhow!("lake build timed out after 30 seconds"))?
+        .map_err(|_| anyhow!("lake build timed out after 120 seconds"))?
         .map_err(|e| anyhow!("failed to execute lake: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();

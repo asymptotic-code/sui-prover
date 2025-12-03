@@ -96,7 +96,6 @@ fn translate_call(
                 function: ctx.builder.function_id(module_id.qualified(*fun_id)),
                 args: srcs.iter().map(|&temp| make_var(&ctx.target, temp)).collect(),
                 type_args: type_args.iter().map(|ty| ctx.builder.convert_type(ty)).collect(),
-                monadic: false,
             }))
         }
         

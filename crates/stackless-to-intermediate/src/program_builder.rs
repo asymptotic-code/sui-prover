@@ -39,7 +39,7 @@ impl<'env> ProgramBuilder<'env> {
     pub fn struct_id(&mut self, id: QualifiedId<DatatypeId>) -> TheoremStructID {
         let struct_id = self.program.structs.id_for_key(id);
         // Ensure struct data exists - create it if not yet processed
-        if self.program.structs.try_get(struct_id).is_none() {
+        if !self.program.structs.has(struct_id) {
             self.create_struct(id);
         }
         struct_id
@@ -96,7 +96,7 @@ impl<'env> ProgramBuilder<'env> {
 
         // Ensure module exists
         let module_id = self.program.modules.id_for_key(qualified_id.module_id);
-        if self.program.modules.try_get(module_id).is_none() {
+        if !self.program.modules.has(module_id) {
             self.create_module(&module_env);
         }
 

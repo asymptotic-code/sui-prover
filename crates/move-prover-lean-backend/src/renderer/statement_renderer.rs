@@ -8,26 +8,14 @@
 
 use std::fmt::Write;
 use intermediate_theorem_format::IRNode;
-use super::expression_renderer::{RenderCtx, ir_to_string, ir_to_string_atomic, ir_to_string_maybe_monadic, make_pattern, render_ir, render_pattern};
+use super::expression_renderer::{RenderCtx, ir_to_string, ir_to_string_atomic, ir_to_string_maybe_monadic, render_ir, render_pattern, contains_call_monadic};
 use super::lean_writer::LeanWriter;
 use crate::escape;
 
-
-/// Check if an IR node is a monadic call by checking the called function's return type.
-/// This is more robust than checking the Call.monadic field, which may not be updated after optimization.
+/// Check if an IR node is a monadic expression (directly returns Except).
+/// Delegates to the IR's is_monadic method.
 fn is_call_monadic_stmt(ir: &IRNode, ctx: &RenderCtx) -> bool {
-    match ir {
-        IRNode::Call { function, .. } => ctx.is_function_monadic(*function),
-        IRNode::Abort(_) => true,
-        IRNode::If { then_branch, else_branch, .. } => {
-            is_call_monadic_stmt(then_branch, ctx) || is_call_monadic_stmt(else_branch, ctx)
-        }
-        IRNode::Block { children } => {
-            children.last().is_some_and(|c| is_call_monadic_stmt(c, ctx))
-        }
-        IRNode::Let { value, .. } => is_call_monadic_stmt(value, ctx),
-        _ => ir.is_monadic(),
-    }
+    ir.is_monadic(&|fid| ctx.is_func_monadic(fid))
 }
 
 /// Render a statement (IR node in statement position).
@@ -41,8 +29,8 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
                         render_if_stmt(pattern, cond, then_branch, else_branch, ctx, w);
                         return;
                     }
-                    IRNode::While { cond, body } => {
-                        render_while_stmt(pattern, cond, body, ctx, w);
+                    IRNode::While { cond, body, vars } => {
+                        render_while_stmt(pattern, cond, body, vars, ctx, w);
                         return;
                     }
                     _ => {}
@@ -51,7 +39,8 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
 
             // Normal let binding
             let pattern_str = render_pattern(pattern);
-            let is_monadic = value.is_monadic();
+            // Use is_call_monadic_stmt to properly check the function's return type
+            let is_monadic = is_call_monadic_stmt(value, ctx);
             let bind_op = if is_monadic { "←" } else { ":=" };
 
             w.write(&format!("let {} {} {}", pattern_str, bind_op, ir_to_string(value, ctx)));
@@ -83,13 +72,12 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
                         return;
                     }
                 }
-                if values[0].is_monadic() {
+                if is_call_monadic_stmt(&values[0], ctx) {
                     w.write(&ir_to_string(&values[0], ctx));
                 } else {
                     w.write(&format!("pure {}", ir_to_string_atomic(&values[0], ctx)));
                 }
             } else {
-                // Check for monadic elements using function return type (more robust than is_monadic())
                 let any_monadic = values.iter().any(|v| is_call_monadic_stmt(v, ctx));
                 if any_monadic {
                     // Sequence monadic elements: (e1, e2) where e1 is monadic becomes (do let x ← e1; pure (x, e2))
@@ -137,9 +125,7 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
 
         IRNode::UpdateField { base, struct_id, field_index, value } => {
             let target_str = ir_to_string(base, ctx);
-            let field_name = ctx.program.structs.try_get(struct_id)
-                .map(|s| s.fields[*field_index].name.clone())
-                .unwrap_or_else(|| format!("field{}", field_index));
+            let field_name = ctx.program.structs.get(struct_id).fields[*field_index].name.clone();
             let value_str = ir_to_string(value, ctx);
 
             w.write(&format!("let {} := {{ {} with {} := {} }}", target_str, target_str, field_name, value_str));
@@ -163,6 +149,11 @@ pub fn render_stmt<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut LeanWriter<W>
             w.write(&format!("-- ensures: {}", cond_str));
         }
 
+        // Bare If expression in statement position - render multi-line
+        IRNode::If { cond, then_branch, else_branch } if !w.is_inline() => {
+            render_if_stmt(&[], cond, then_branch, else_branch, ctx, w);
+        }
+
         // Other IR nodes that appear in statement position
         _ => {
             // For other expressions in statement position, just render them
@@ -184,8 +175,8 @@ fn render_if_stmt<W: Write>(
     w: &mut LeanWriter<W>,
 ) {
     let pattern_str = render_pattern(pattern);
-    let then_monadic = then_branch.contains_monadic();
-    let else_monadic = else_branch.contains_monadic();
+    let then_monadic = contains_call_monadic(then_branch, ctx);
+    let else_monadic = contains_call_monadic(else_branch, ctx);
     let any_monadic = then_monadic || else_monadic;
 
     let cond_str = ir_to_string_maybe_monadic(cond, ctx);
@@ -195,7 +186,10 @@ fn render_if_stmt<W: Write>(
     let bind_op = if need_monadic { "←" } else { ":=" };
     let pattern_is_empty = pattern.is_empty();
 
-    if both_terminate && pattern_is_empty {
+    // Skip let binding when:
+    // 1. Both branches terminate (Return/Abort), OR
+    // 2. Pattern is empty (value is being returned, not bound)
+    if both_terminate || pattern_is_empty {
         w.write(&format!("if {} then", cond_str));
     } else {
         w.write(&format!("let {} {} if {} then", pattern_str, bind_op, cond_str));
@@ -266,21 +260,39 @@ fn render_else_chain<W: Write>(
     w.dedent();
 }
 
+/// Construct a tuple of variable references from a list of variable names
+fn construct_var_tuple(vars: &[String], _ctx: &RenderCtx) -> IRNode {
+    if vars.is_empty() {
+        IRNode::Tuple(vec![])
+    } else if vars.len() == 1 {
+        IRNode::Var(vars[0].clone())
+    } else {
+        IRNode::Tuple(vars.iter().map(|v| IRNode::Var(v.clone())).collect())
+    }
+}
+
 /// Render a while expression as a multi-line statement.
 fn render_while_stmt<W: Write>(
     pattern: &[String],
     cond: &IRNode,
     body: &IRNode,
+    vars: &[String],
     ctx: &RenderCtx,
     w: &mut LeanWriter<W>,
 ) {
-    let state_vars = body.get_block_result().extract_top_level_vars();
     let pattern_str = render_pattern(pattern);
-    let state_pattern = make_pattern(&state_vars);
-    let init_str = super::render_tuple_like(&state_vars, "()", ", ", |v| escape::escape_identifier(v));
+    let state_pattern = render_pattern(vars);
+    // For initial state: use `default` for temps (starting with $t), actual var reference for real vars
+    let init_str = super::render_tuple_like(vars, "()", ", ", |v| {
+        if v.starts_with("$t") {
+            "default".to_string()
+        } else {
+            escape::escape_identifier(v)
+        }
+    });
 
     // Use whileLoop for monadic loops, whileLoopPure for pure loops
-    let is_monadic = body.contains_monadic() || cond.contains_monadic();
+    let is_monadic = contains_call_monadic(body, ctx) || contains_call_monadic(cond, ctx);
     let (bind_op, loop_fn) = if is_monadic { ("←", "whileLoop") } else { (":=", "whileLoopPure") };
     w.write(&format!("let {} {} ({} (fun {} =>", pattern_str, bind_op, loop_fn, state_pattern));
     w.write("\n");
@@ -290,8 +302,13 @@ fn render_while_stmt<W: Write>(
 
     // Condition block
     render_block_statements(cond, ctx, w);
-    let cond_result = ir_to_string_atomic(cond.get_block_result(), ctx);
-    w.write(&format!("pure {}", cond_result));
+    let cond_result = cond.get_block_result();
+    // If the result is monadic, render it directly. Otherwise, wrap in pure.
+    if is_call_monadic_stmt(cond_result, ctx) {
+        w.write(&ir_to_string(cond_result, ctx));
+    } else {
+        w.write(&format!("pure {}", ir_to_string_atomic(cond_result, ctx)));
+    }
 
     w.dedent();
     w.dedent();
@@ -301,10 +318,20 @@ fn render_while_stmt<W: Write>(
     w.write("do\n");
     w.indent();
 
-    // Body block
+    // Body block - render all statements
     render_block_statements(body, ctx, w);
-    let body_result = ir_to_string_atomic(body.get_block_result(), ctx);
-    w.write(&format!("pure {}", body_result));
+
+    // Construct the return tuple from vars
+    // The body should return the loop state variables as a tuple
+    let return_tuple = construct_var_tuple(vars, ctx);
+
+    // If the return tuple is monadic (contains monadic elements), render it directly.
+    // Otherwise, wrap in pure.
+    if is_call_monadic_stmt(&return_tuple, ctx) {
+        w.write(&ir_to_string(&return_tuple, ctx));
+    } else {
+        w.write(&format!("pure {}", ir_to_string_atomic(&return_tuple, ctx)));
+    }
 
     w.dedent();
     w.dedent();
@@ -313,9 +340,12 @@ fn render_while_stmt<W: Write>(
 
 /// Render an expression result, wrapping in pure if needed
 fn render_result<W: Write>(result: &IRNode, need_monadic: bool, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
-    if result.terminates() {
+    // Complex structures (If/While) should be rendered as statements for readability
+    if should_render_as_stmt(result) {
         render_stmt(result, ctx, w);
-    } else if result.is_monadic() {
+    } else if result.terminates() {
+        render_stmt(result, ctx, w);
+    } else if is_call_monadic_stmt(result, ctx) {
         w.write(&ir_to_string(result, ctx));
     } else if need_monadic {
         w.write("pure ");
@@ -335,6 +365,18 @@ fn render_stmts<W: Write>(stmts: &[IRNode], ctx: &RenderCtx, w: &mut LeanWriter<
     }
 }
 
+/// Check if an IR node should be rendered as a statement (multi-line) rather than inline.
+/// This is true for Let bindings with complex values like If/While.
+fn should_render_as_stmt(ir: &IRNode) -> bool {
+    match ir {
+        IRNode::Let { value, .. } => {
+            matches!(value.as_ref(), IRNode::If { .. } | IRNode::While { .. } | IRNode::Block { .. })
+        }
+        IRNode::If { .. } | IRNode::While { .. } => true,
+        _ => false,
+    }
+}
+
 /// Render a block with proper indentation.
 pub fn render_block<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderCtx, w: &mut LeanWriter<W>) {
     let stmts = ir.get_block_stmts();
@@ -348,8 +390,22 @@ pub fn render_block<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderCtx, 
 
     // Simple block - just result (no statements)
     if stmts.is_empty() {
+        // If result is a complex structure (Let with If/While), render as statements
+        if should_render_as_stmt(result) {
+            let is_monadic = need_monadic || contains_call_monadic(result, ctx);
+            if is_monadic {
+                w.write("do\n");
+            } else {
+                w.write("Id.run do\n");
+            }
+            w.indent();
+            render_stmt(result, ctx, w);
+            w.dedent();
+            return;
+        }
+
         // Check if result contains monadic subexpressions that need do block
-        if need_monadic && result.contains_monadic() && !result.is_monadic() {
+        if need_monadic && contains_call_monadic(result, ctx) && !is_call_monadic_stmt(result, ctx) {
             // Need do block to handle monadic subexpressions
             w.write("do\n");
             w.indent();
@@ -363,8 +419,8 @@ pub fn render_block<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderCtx, 
 
     // Block with statements
     let is_monadic = need_monadic
-        || stmts.iter().any(|s| s.is_monadic())
-        || result.contains_monadic();
+        || stmts.iter().any(|s| contains_call_monadic(s, ctx))
+        || contains_call_monadic(result, ctx);
 
     if is_monadic {
         w.write("do\n");

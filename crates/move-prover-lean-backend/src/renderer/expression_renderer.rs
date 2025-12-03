@@ -8,7 +8,6 @@ use std::fmt::Write;
 use intermediate_theorem_format::{
     IRNode, BinOp, UnOp, VecOp, Const,
     VariableRegistry, TheoremProgram, TheoremModuleID,
-    TheoremFunctionID,
 };
 use super::type_renderer::{render_type, uint_cast_func, uint_type_name};
 use super::statement_renderer::render_stmt;
@@ -26,28 +25,22 @@ pub struct RenderCtx<'a> {
 }
 
 impl<'a> RenderCtx<'a> {
-    /// Check if a function is monadic based on its return type.
-    pub fn is_function_monadic(&self, func_id: TheoremFunctionID) -> bool {
-        self.program.functions.try_get(func_id)
-            .is_some_and(|f| f.signature.return_type.is_monad())
+    /// Returns whether a function is monadic (returns Except) by checking its signature.
+    pub fn is_func_monadic(&self, func_id: intermediate_theorem_format::TheoremFunctionID) -> bool {
+        self.program.functions.get(func_id).signature.return_type.is_monad()
     }
 }
 
-/// Check if an IR node is a monadic call by checking the called function's return type.
-/// This is more robust than checking the Call.monadic field, which may not be updated after optimization.
+/// Check if an IR node is a monadic expression (directly returns Except).
+/// Delegates to the IR's is_monadic method.
 fn is_call_monadic(ir: &IRNode, ctx: &RenderCtx) -> bool {
-    match ir {
-        IRNode::Call { function, .. } => ctx.is_function_monadic(*function),
-        IRNode::Abort(_) => true,
-        IRNode::If { then_branch, else_branch, .. } => {
-            is_call_monadic(then_branch, ctx) || is_call_monadic(else_branch, ctx)
-        }
-        IRNode::Block { children } => {
-            children.last().is_some_and(|c| is_call_monadic(c, ctx))
-        }
-        IRNode::Let { value, .. } => is_call_monadic(value, ctx),
-        _ => ir.is_monadic(), // Fall back to IR's own check
-    }
+    ir.is_monadic(&|fid| ctx.is_func_monadic(fid))
+}
+
+/// Check if an IR node contains any monadic call anywhere in its tree.
+/// Delegates to the IR's contains_monadic method.
+pub fn contains_call_monadic(ir: &IRNode, ctx: &RenderCtx) -> bool {
+    ir.contains_monadic(&|fid| ctx.is_func_monadic(fid))
 }
 
 /// Render an IR node to Lean syntax.
@@ -70,22 +63,14 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
         }
 
         IRNode::Call { function, args, type_args, .. } => {
-            let Some(func) = ctx.program.functions.try_get(*function) else {
-                write!(w, "external_func_{}", function).unwrap();
-                for arg in args {
-                    write!(w, " ").unwrap();
-                    render_ir_atomic_monadic(arg, ctx, w);
-                }
-                return;
-            };
+            let func = ctx.program.functions.get(*function);
             let escaped = escape::escape_identifier(&func.name);
             let func_name = if func.module_id == ctx.current_module_id {
                 escaped
-            } else if let Some(module) = ctx.program.modules.try_get(func.module_id) {
+            } else {
+                let module = ctx.program.modules.get(func.module_id);
                 let namespace = escape::module_name_to_namespace(&module.name);
                 format!("{}.{}", namespace, escaped)
-            } else {
-                escaped
             };
 
             write!(w, "{}", func_name).unwrap();
@@ -149,7 +134,6 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             } else if elems.len() == 1 {
                 render_ir_maybe_monadic(&elems[0], ctx, w);
             } else {
-                // Check if any element is monadic - use is_call_monadic for robust check
                 let has_monadic = elems.iter().any(|e| is_call_monadic(e, ctx));
                 if has_monadic && ctx.current_function_monadic {
                     // Need to sequence monadic elements: (← e1, e2) becomes do let x ← e1; pure (x, e2)
@@ -198,9 +182,9 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
 
         IRNode::If { cond, then_branch, else_branch } => {
             // Inline if expression - need do block if any part contains monadic operations
-            let needs_do = cond.contains_monadic()
-                || then_branch.contains_monadic()
-                || else_branch.contains_monadic();
+            let needs_do = contains_call_monadic(cond, ctx)
+                || contains_call_monadic(then_branch, ctx)
+                || contains_call_monadic(else_branch, ctx);
 
             if needs_do {
                 write!(w, "(do if ").unwrap();
@@ -215,17 +199,25 @@ pub fn render_ir<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
             write!(w, ")").unwrap();
         }
 
-        IRNode::While { cond, body } => {
+        IRNode::While { cond, body, vars } => {
             // Inline while: (whileLoop (fun s => cond_block) (fun s => body_block) init)
-            let state_vars = body.get_block_result().extract_top_level_vars();
-            let state_pattern = make_pattern(&state_vars);
-            let init_str = super::render_tuple_like(&state_vars, "()", ", ", |v| escape::escape_identifier(v));
+            // whileLoop is monadic - the condition and body functions must return Except
+            let state_pattern = make_pattern(vars);
+            let init_str = super::render_tuple_like(vars, "()", ", ", |v| {
+                if v.starts_with("$t") {
+                    "default".to_string()
+                } else {
+                    escape::escape_identifier(v)
+                }
+            });
 
             let mut cond_str = String::new();
-            render_branch_inline(cond, false, ctx, &mut cond_str);
+            // Condition must return Except AbortCode Bool, so need_monadic=true
+            render_branch_inline(cond, true, ctx, &mut cond_str);
 
             let mut body_str = String::new();
-            render_branch_inline(body, false, ctx, &mut body_str);
+            // Body must return Except AbortCode state, so need_monadic=true
+            render_branch_inline(body, true, ctx, &mut body_str);
 
             write!(w, "(whileLoop (fun {} => {}) (fun {} => {}) {})",
                 state_pattern, cond_str, state_pattern, body_str, init_str).unwrap();
@@ -300,12 +292,11 @@ fn render_block_inline<W: Write>(children: &[IRNode], ctx: &RenderCtx, w: &mut W
     let stmts = &children[..children.len() - 1];
     let result = &children[children.len() - 1];
 
-    let need_monadic = stmts.iter().any(|s| s.is_monadic())
-        || result.is_monadic()
-        || result.contains_monadic();
+    let need_monadic = stmts.iter().any(|s| contains_call_monadic(s, ctx))
+        || contains_call_monadic(result, ctx);
 
     if stmts.is_empty() {
-        if result.is_monadic() {
+        if is_call_monadic(result, ctx) {
             render_ir(result, ctx, w);
         } else if need_monadic {
             write!(w, "pure ").unwrap();
@@ -322,7 +313,7 @@ fn render_block_inline<W: Write>(children: &[IRNode], ctx: &RenderCtx, w: &mut W
         }
         write!(w, "{}", inline_writer.into_inner()).unwrap();
 
-        if result.is_monadic() {
+        if is_call_monadic(result, ctx) {
             render_ir(result, ctx, w);
         } else {
             write!(w, "pure ").unwrap();
@@ -362,7 +353,7 @@ fn render_branch_inline<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderC
             let result = &children[children.len() - 1];
 
             if stmts.is_empty() {
-                if result.is_monadic() {
+                if is_call_monadic(result, ctx) {
                     render_ir(result, ctx, w);
                 } else if need_monadic {
                     write!(w, "pure ").unwrap();
@@ -373,8 +364,8 @@ fn render_branch_inline<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderC
             } else {
                 // Has statements - need do block
                 // Use `do` if any statements or result are monadic, else `Id.run do`
-                let stmts_are_monadic = stmts.iter().any(|s| s.contains_monadic());
-                let result_is_monadic = result.contains_monadic();
+                let stmts_are_monadic = stmts.iter().any(|s| contains_call_monadic(s, ctx));
+                let result_is_monadic = contains_call_monadic(result, ctx);
                 let block_is_monadic = need_monadic || stmts_are_monadic || result_is_monadic;
 
                 if block_is_monadic {
@@ -389,7 +380,7 @@ fn render_branch_inline<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderC
                 }
                 write!(w, "{}", inline_writer.into_inner()).unwrap();
 
-                if result.is_monadic() {
+                if is_call_monadic(result, ctx) {
                     render_ir(result, ctx, w);
                 } else {
                     write!(w, "pure ").unwrap();
@@ -399,7 +390,7 @@ fn render_branch_inline<W: Write>(ir: &IRNode, need_monadic: bool, ctx: &RenderC
             }
         }
         _ => {
-            if ir.is_monadic() {
+            if is_call_monadic(ir, ctx) {
                 render_ir(ir, ctx, w);
             } else if need_monadic {
                 write!(w, "pure ").unwrap();
@@ -601,7 +592,7 @@ pub fn ir_to_string_maybe_monadic(ir: &IRNode, ctx: &RenderCtx) -> String {
 fn render_ir_maybe_monadic<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
     if !ctx.current_function_monadic {
         render_ir(ir, ctx, w);
-    } else if ir.is_monadic() {
+    } else if is_call_monadic(ir, ctx) {
         write!(w, "← ").unwrap();
         render_ir_atomic(ir, ctx, w);
     } else {
@@ -624,7 +615,7 @@ fn render_ir_atomic<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
 fn render_ir_atomic_monadic<W: Write>(ir: &IRNode, ctx: &RenderCtx, w: &mut W) {
     if !ctx.current_function_monadic {
         render_ir_atomic(ir, ctx, w);
-    } else if ir.is_monadic() {
+    } else if is_call_monadic(ir, ctx) {
         write!(w, "(← ").unwrap();
         render_ir(ir, ctx, w);
         write!(w, ")").unwrap();

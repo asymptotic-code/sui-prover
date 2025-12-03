@@ -89,7 +89,7 @@ macro_rules! traverse_ir {
                 let $value = else_branch.$deref();
                 $action;
             }
-            IRNode::While { cond, body } => {
+            IRNode::While { cond, body, .. } => {
                 let $value = cond.$deref();
                 $action;
                 let $value = body.$deref();
@@ -167,8 +167,6 @@ pub enum IRNode {
         function: TheoremFunctionID,
         type_args: Vec<TheoremType>,
         args: Vec<IRNode>,
-        /// Whether this call is monadic (can abort)
-        monadic: bool,
     },
 
     /// Struct construction: StructName { fields... }
@@ -221,6 +219,8 @@ pub enum IRNode {
     While {
         cond: Box<IRNode>,
         body: Box<IRNode>,
+        /// Loop state variables that are carried across iterations.
+        vars: Vec<TempId>,
     },
 
     // === Sequencing ===
@@ -422,14 +422,13 @@ impl IRNode {
 
     /// Check if this is a terminating node (Return or Abort at the tail)
     pub fn terminates(&self) -> bool {
-        self.check_branches(Self::node_terminates)
-    }
-
-    fn node_terminates(node: &IRNode) -> bool {
-        match node {
+        match self {
             IRNode::Return(_) | IRNode::Abort(_) => true,
-            IRNode::Block { children } => children.last().is_some_and(Self::node_terminates),
-            IRNode::Let { value, .. } => Self::node_terminates(value),
+            IRNode::Block { children } => children.last().is_some_and(|c| c.terminates()),
+            IRNode::Let { value, .. } => value.terminates(),
+            IRNode::If { then_branch, else_branch, .. } => {
+                then_branch.terminates() && else_branch.terminates()
+            }
             _ => false,
         }
     }
@@ -501,29 +500,37 @@ impl IRNode {
 
     /// Check if the TOP-LEVEL expression is monadic (directly returns Except)
     /// This does NOT check children - only whether this expression itself requires ←
-    pub fn is_monadic(&self) -> bool {
+    /// The `is_func_monadic` closure looks up whether a function ID returns Except.
+    pub fn is_monadic(&self, is_func_monadic: &impl Fn(TheoremFunctionID) -> bool) -> bool {
         match self {
             IRNode::Abort(_) => true,
-            IRNode::While { body, .. } => body.contains_monadic(),
-            IRNode::Call { monadic: true, .. } => true,
+            IRNode::While { body, .. } => body.contains_monadic(is_func_monadic),
+            IRNode::Call { function, .. } => is_func_monadic(*function),
             IRNode::If { then_branch, else_branch, .. } => {
-                then_branch.is_monadic() || else_branch.is_monadic()
+                then_branch.is_monadic(is_func_monadic) || else_branch.is_monadic(is_func_monadic)
             }
             IRNode::Block { children } => {
-                children.last().is_some_and(|c| c.is_monadic())
+                children.last().is_some_and(|c| c.is_monadic(is_func_monadic))
             }
-            IRNode::Let { value, .. } => value.is_monadic(),
+            IRNode::Let { value, .. } => value.is_monadic(is_func_monadic),
+            IRNode::Tuple(elems) => {
+                // A tuple is monadic if any of its elements are monadic
+                // (it will be rendered as a do block)
+                elems.iter().any(|e| e.is_monadic(is_func_monadic))
+            }
             _ => false,
         }
     }
 
     /// Check if this expression or any child contains monadic operations
     /// Used to determine if a block needs a `do` wrapper
-    pub fn contains_monadic(&self) -> bool {
-        self.iter().any(|node| matches!(
-            node,
-            IRNode::Abort(_) | IRNode::Call { monadic: true, .. }
-        ))
+    /// The `is_func_monadic` closure looks up whether a function ID returns Except.
+    pub fn contains_monadic(&self, is_func_monadic: &impl Fn(TheoremFunctionID) -> bool) -> bool {
+        self.iter().any(|node| match node {
+            IRNode::Abort(_) => true,
+            IRNode::Call { function, .. } => is_func_monadic(*function),
+            _ => false,
+        })
     }
 
     /// Substitute variables according to a mapping

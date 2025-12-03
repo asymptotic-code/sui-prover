@@ -37,9 +37,7 @@ pub struct StacklessControlFlowGraph {
     entry_block_id: BlockId,
     blocks: Map<BlockId, Block>,
     backward: bool,
-    /// When true, edges to abort handlers from Call instructions are ignored.
-    /// Explicit Abort instructions still go to DUMMY_EXIT.
-    ignore_call_aborts: bool,
+    ignore_aborts: bool,
 }
 
 const DUMMY_ENTRANCE: BlockId = 0;
@@ -50,16 +48,12 @@ impl StacklessControlFlowGraph {
         Self::new_forward_with_options(code, false)
     }
 
-    /// Create a forward CFG.
-    ///
-    /// If `ignore_call_aborts` is true, edges to abort handlers from Call instructions
-    /// are omitted from the CFG. Explicit Abort instructions still terminate at DUMMY_EXIT.
-    pub fn new_forward_with_options(code: &[Bytecode], ignore_call_aborts: bool) -> Self {
+    pub fn new_forward_with_options(code: &[Bytecode], ignore_aborts: bool) -> Self {
         Self {
             entry_block_id: DUMMY_ENTRANCE,
-            blocks: Self::collect_blocks(code, ignore_call_aborts),
+            blocks: Self::collect_blocks(code, ignore_aborts),
             backward: false,
-            ignore_call_aborts,
+            ignore_aborts,
         }
     }
 
@@ -69,16 +63,12 @@ impl StacklessControlFlowGraph {
         Self::new_backward_with_options(code, from_all_blocks, false)
     }
 
-    /// Create a backward CFG.
-    ///
-    /// If `ignore_call_aborts` is true, edges to abort handlers from Call instructions
-    /// are omitted from the CFG. Explicit Abort instructions still terminate at DUMMY_EXIT.
     pub fn new_backward_with_options(
         code: &[Bytecode],
         from_all_blocks: bool,
-        ignore_call_aborts: bool,
+        ignore_aborts: bool,
     ) -> Self {
-        let blocks = Self::collect_blocks(code, ignore_call_aborts);
+        let blocks = Self::collect_blocks(code, ignore_aborts);
         let mut block_id_to_predecessors: Map<BlockId, Vec<BlockId>> =
             blocks.keys().map(|block_id| (*block_id, vec![])).collect();
         for (block_id, block) in &blocks {
@@ -113,7 +103,7 @@ impl StacklessControlFlowGraph {
                 })
                 .collect(),
             backward: true,
-            ignore_call_aborts,
+            ignore_aborts,
         }
     }
 
@@ -153,11 +143,11 @@ impl StacklessControlFlowGraph {
             entry_block_id: DUMMY_ENTRANCE,
             blocks,
             backward: false,
-            ignore_call_aborts: false,
+            ignore_aborts: false,
         }
     }
 
-    fn collect_blocks(code: &[Bytecode], ignore_call_aborts: bool) -> Map<BlockId, Block> {
+    fn collect_blocks(code: &[Bytecode], ignore_aborts: bool) -> Map<BlockId, Block> {
         // First go through and collect basic block offsets.
         // Need to do this first in order to handle backwards edges.
         let label_offsets = Bytecode::label_offsets(code);
@@ -183,19 +173,15 @@ impl StacklessControlFlowGraph {
             let co_pc: CodeOffset = pc as CodeOffset;
             // Create a basic block
             if StacklessControlFlowGraph::is_end_of_block(co_pc, code, &bb_offsets) {
-                let mut successors = Bytecode::get_successors_with_options(
-                    co_pc,
-                    code,
-                    &label_offsets,
-                    ignore_call_aborts,
-                );
+                let mut successors = Bytecode::get_successors(co_pc, code, &label_offsets);
                 for successor in successors.iter_mut() {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);
                 }
-                // Add DUMMY_EXIT edge for exit instructions
-                // Both Ret and explicit Abort always go to DUMMY_EXIT.
-                if matches!(&code[co_pc as usize], Bytecode::Ret(..) | Bytecode::Abort(..)) {
+                if code[co_pc as usize].is_exit()
+                    || !ignore_aborts
+                        && matches!(code[co_pc as usize], Bytecode::Call(_, _, _, _, Some(_)))
+                {
                     successors.push(DUMMY_EXIT);
                 }
                 let bb = BlockContent::Basic {
@@ -290,6 +276,7 @@ impl StacklessControlFlowGraph {
                     .successors(*x)
                     .iter()
                     .map(|y| (*x, *y))
+                    .collect::<Vec<_>>()
             })
             .collect();
         let graph = crate::graph::Graph::new(entry, nodes.clone(), edges);
