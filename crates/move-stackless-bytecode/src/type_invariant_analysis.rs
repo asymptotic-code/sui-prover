@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
+use codespan_reporting::diagnostic::Severity;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, StructOrEnumEnv},
+    model::{FunctionEnv, GlobalEnv, Loc, StructOrEnumEnv},
     ty::Type,
 };
 
@@ -22,28 +23,45 @@ impl TypeInvariantAnalysisProcessor {
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct NestingPathEntry {
+struct NestedPathEntry {
     field_ty: Type,
     field_offset: usize,
+    enum_loc: Option<Loc>,
 }
 
 fn analyze_type_invariants(
     targets: &FunctionTargetsHolder,
     env: &GlobalEnv,
     ty: &Type,
-) -> BTreeSet<Vec<NestingPathEntry>> {
+) -> BTreeSet<Vec<NestedPathEntry>> {
     let mut results = BTreeSet::new();
-    analyze_type_invariants_r(targets, env, vec![], ty, &mut results);
+    let mut visited = BTreeSet::new();
+    analyze_type_invariants_r(targets, env, vec![], &mut visited, ty, &mut results);
+
+    for result in &results {
+        if let Some(npe) = result.iter().find(|p| p.enum_loc.is_some()) {
+            env.diag(
+                Severity::Error,
+                npe.enum_loc.as_ref().unwrap(),
+                "Type invariants cannot be used through enum fields",
+            );
+        }
+    }
+
     results
 }
 
 fn analyze_type_invariants_r(
     targets: &FunctionTargetsHolder,
     env: &GlobalEnv,
-    nested: Vec<NestingPathEntry>,
+    nested: Vec<NestedPathEntry>,
+    visited: &mut BTreeSet<Type>,
     ty: &Type,
-    results: &mut BTreeSet<Vec<NestingPathEntry>>,
+    results: &mut BTreeSet<Vec<NestedPathEntry>>,
 ) {
+    if !visited.insert(ty.clone()) {
+        return;
+    }
     match ty.skip_reference() {
         Type::TypeParameter(_) => {
             results.insert(vec![]);
@@ -54,25 +72,32 @@ fn analyze_type_invariants_r(
             if targets.get_inv_by_datatype(&qid).is_some() {
                 results.insert(nested);
             } else {
+                let mut enum_loc = None;
                 let fields: Vec<(Type, usize)> = match env.get_struct_or_enum_qid(qid) {
                     StructOrEnumEnv::Struct(struct_env) => struct_env
                         .get_fields()
                         .map(|f| (f.get_type(), f.get_offset()))
                         .collect(),
-                    StructOrEnumEnv::Enum(enum_env) => enum_env
-                        .get_all_fields()
-                        .map(|f| (f.get_type(), f.get_offset()))
-                        .collect(),
+                    StructOrEnumEnv::Enum(enum_env) => {
+                        enum_loc = Some(enum_env.get_loc());
+                        enum_env
+                            .get_all_fields()
+                            .map(|f| (f.get_type(), f.get_offset()))
+                            .collect()
+                    }
                 };
 
                 fields.into_iter().for_each(|(field_ty, field_offset)| {
                     let field_ty = field_ty.instantiate(type_params);
                     let mut new_nested = nested.clone();
-                    new_nested.push(NestingPathEntry {
+                    new_nested.push(NestedPathEntry {
                         field_ty: field_ty.clone(),
                         field_offset,
+                        enum_loc: enum_loc.clone(),
                     });
-                    analyze_type_invariants_r(targets, env, new_nested, &field_ty, results);
+                    analyze_type_invariants_r(
+                        targets, env, new_nested, visited, &field_ty, results,
+                    );
                 });
             }
         }
@@ -88,15 +113,18 @@ fn process_type_inv<F>(
 ) where
     F: Fn(&mut FunctionDataBuilder, usize),
 {
-    let parent_ty = builder.get_local_type(param);
-    let nested_invs = analyze_type_invariants(targets, builder.global_env(), &parent_ty);
+    let nested_invs = analyze_type_invariants(
+        targets,
+        builder.global_env(),
+        &builder.get_local_type(param),
+    );
     for nested_path in nested_invs {
         let mut parameter = param;
         for (idx, path_el) in nested_path.iter().enumerate() {
             parameter = builder.emit_let_get_datatype_field(
                 parameter,
                 if idx == 0 {
-                    parent_ty.clone()
+                    builder.get_local_type(param)
                 } else {
                     nested_path[idx - 1].field_ty.clone()
                 },
