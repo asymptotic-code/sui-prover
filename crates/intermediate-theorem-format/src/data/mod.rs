@@ -7,8 +7,8 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
 use crate::analysis::{analyze_monadicity, collect_imports, order_by_dependencies};
-pub use functions::TheoremFunctionID;
-pub use structure::TheoremStructID;
+pub use functions::FunctionID;
+pub use structure::StructID;
 
 pub mod functions;
 pub mod ir;
@@ -16,7 +16,7 @@ pub mod structure;
 pub mod types;
 pub mod variables;
 
-pub type TheoremModuleID = usize;
+pub type ModuleID = usize;
 
 /// Trait for items that can have dependencies on other items of the same type
 pub trait Dependable {
@@ -107,13 +107,13 @@ impl<'a, MoveKey: Ord, Item> IntoIterator for &'a ItemStore<MoveKey, Item> {
 // ============================================================================
 
 #[derive(Debug, Clone, Default)]
-pub struct TheoremProgram {
-    pub modules: ItemStore<ModuleId, TheoremModule>,
-    pub structs: ItemStore<QualifiedId<DatatypeId>, structure::TheoremStruct>,
-    pub functions: ItemStore<QualifiedId<FunId>, functions::TheoremFunction>,
+pub struct Program {
+    pub modules: ItemStore<ModuleId, Module>,
+    pub structs: ItemStore<QualifiedId<DatatypeId>, structure::Struct>,
+    pub functions: ItemStore<QualifiedId<FunId>, functions::Function>,
 }
 
-impl TheoremProgram {
+impl Program {
     pub fn finalize(&mut self) {
         order_by_dependencies(self);
         analyze_monadicity(self);
@@ -130,13 +130,9 @@ impl TheoremProgram {
     }
 }
 
-// ============================================================================
-// Module IR
-// ============================================================================
-
 #[derive(Debug, Clone)]
-pub struct TheoremModule {
+pub struct Module {
     pub name: String,
     pub package_name: String,
-    pub required_imports: Vec<TheoremModuleID>,
+    pub required_imports: Vec<ModuleID>,
 }

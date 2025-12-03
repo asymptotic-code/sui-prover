@@ -9,15 +9,15 @@ use super::statement_renderer::render_stmt;
 use super::type_renderer::{render_type, uint_cast_func, uint_type_name};
 use crate::escape;
 use intermediate_theorem_format::{
-    BinOp, Const, IRNode, TheoremModuleID, TheoremProgram, UnOp, VariableRegistry, VecOp,
+    BinOp, Const, IRNode, ModuleID, Program, UnOp, VariableRegistry, VecOp,
 };
 use std::fmt::Write;
 
 /// Rendering context - holds references needed during rendering.
 pub struct RenderCtx<'a> {
     pub registry: &'a VariableRegistry,
-    pub program: &'a TheoremProgram,
-    pub current_module_id: TheoremModuleID,
+    pub program: &'a Program,
+    pub current_module_id: ModuleID,
     pub current_module_namespace: Option<&'a str>,
     /// Whether the current function is monadic (uses do/Except)
     pub current_function_monadic: bool,
@@ -25,7 +25,7 @@ pub struct RenderCtx<'a> {
 
 impl<'a> RenderCtx<'a> {
     /// Returns whether a function is monadic (returns Except) by checking its signature.
-    pub fn is_func_monadic(&self, func_id: intermediate_theorem_format::TheoremFunctionID) -> bool {
+    pub fn is_func_monadic(&self, func_id: intermediate_theorem_format::FunctionID) -> bool {
         self.program
             .functions
             .get(func_id)

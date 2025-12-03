@@ -7,14 +7,14 @@ use super::function_renderer::render_function;
 use super::lean_writer::LeanWriter;
 use super::struct_renderer::render_struct;
 use crate::escape;
-use intermediate_theorem_format::TheoremProgram;
+use intermediate_theorem_format::Program;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 /// Render program to directory structure (organized by module hierarchy).
 pub fn render_to_directory(
-    program: &TheoremProgram,
+    program: &Program,
     output_dir: &Path,
     prelude_imports: &[String],
 ) -> anyhow::Result<()> {
@@ -120,7 +120,7 @@ pub fn render_to_directory(
 }
 
 /// Copy native package implementations from lemmas directory.
-fn copy_native_packages(program: &TheoremProgram, output_dir: &Path) -> anyhow::Result<()> {
+fn copy_native_packages(program: &Program, output_dir: &Path) -> anyhow::Result<()> {
     let lemmas_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("lemmas");
     let mut copied_modules = HashSet::new();
 

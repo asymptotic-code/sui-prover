@@ -5,29 +5,29 @@
 //! Pure translation - no logic, just pattern matching.
 
 use crate::escape;
-use intermediate_theorem_format::{TheoremProgram, TheoremType};
+use intermediate_theorem_format::{Program, Type};
 use std::fmt::Write;
 
 /// Render a type to Lean syntax.
 pub fn render_type<W: Write>(
-    ty: &TheoremType,
-    program: &TheoremProgram,
+    ty: &Type,
+    program: &Program,
     current_module: Option<&str>,
     w: &mut W,
 ) {
     match ty {
-        TheoremType::Bool => write!(w, "Bool").unwrap(),
-        TheoremType::UInt(8) => write!(w, "UInt8").unwrap(),
-        TheoremType::UInt(16) => write!(w, "UInt16").unwrap(),
-        TheoremType::UInt(32) => write!(w, "UInt32").unwrap(),
-        TheoremType::UInt(64) => write!(w, "UInt64").unwrap(),
-        TheoremType::UInt(128) => write!(w, "UInt128").unwrap(),
-        TheoremType::UInt(256) => write!(w, "UInt256").unwrap(),
-        TheoremType::UInt(width) => write!(w, "UInt{}", width).unwrap(),
-        TheoremType::SInt(width) => write!(w, "Int{}", width).unwrap(),
-        TheoremType::Address => write!(w, "Address").unwrap(),
+        Type::Bool => write!(w, "Bool").unwrap(),
+        Type::UInt(8) => write!(w, "UInt8").unwrap(),
+        Type::UInt(16) => write!(w, "UInt16").unwrap(),
+        Type::UInt(32) => write!(w, "UInt32").unwrap(),
+        Type::UInt(64) => write!(w, "UInt64").unwrap(),
+        Type::UInt(128) => write!(w, "UInt128").unwrap(),
+        Type::UInt(256) => write!(w, "UInt256").unwrap(),
+        Type::UInt(width) => write!(w, "UInt{}", width).unwrap(),
+        Type::SInt(width) => write!(w, "Int{}", width).unwrap(),
+        Type::Address => write!(w, "Address").unwrap(),
 
-        TheoremType::Struct {
+        Type::Struct {
             struct_id,
             type_args,
         } => {
@@ -60,22 +60,22 @@ pub fn render_type<W: Write>(
             }
         }
 
-        TheoremType::Vector(elem) => {
+        Type::Vector(elem) => {
             write!(w, "(List ").unwrap();
             render_type(elem, program, current_module, w);
             write!(w, ")").unwrap();
         }
 
         // References are erased in pure functional Lean
-        TheoremType::Reference(inner) | TheoremType::MutableReference(inner) => {
+        Type::Reference(inner) | Type::MutableReference(inner) => {
             render_type(inner, program, current_module, w);
         }
 
-        TheoremType::TypeParameter(idx) => {
+        Type::TypeParameter(idx) => {
             write!(w, "tv{}", idx).unwrap();
         }
 
-        TheoremType::Tuple(types) => {
+        Type::Tuple(types) => {
             if types.is_empty() {
                 write!(w, "Unit").unwrap();
             } else if types.len() == 1 {
@@ -92,7 +92,7 @@ pub fn render_type<W: Write>(
             }
         }
 
-        TheoremType::Except(inner) => {
+        Type::Except(inner) => {
             write!(w, "(Except AbortCode ").unwrap();
             render_type(inner, program, current_module, w);
             write!(w, ")").unwrap();
@@ -102,8 +102,8 @@ pub fn render_type<W: Write>(
 
 /// Render a type to a string.
 pub fn type_to_string(
-    ty: &TheoremType,
-    program: &TheoremProgram,
+    ty: &Type,
+    program: &Program,
     current_module: Option<&str>,
 ) -> String {
     let mut s = String::new();

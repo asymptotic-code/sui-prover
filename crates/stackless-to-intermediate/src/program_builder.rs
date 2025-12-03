@@ -9,8 +9,8 @@
 use crate::package_utils::extract_package_name;
 use crate::translation::function_translator::translate_function;
 use intermediate_theorem_format::{
-    TheoremField, TheoremFunctionID, TheoremModule, TheoremProgram, TheoremStruct, TheoremStructID,
-    TheoremType,
+    Field, FunctionID, Module, Program, Struct, StructID,
+    Type,
 };
 use move_model::model::{DatatypeId, FunId, GlobalEnv, ModuleEnv, QualifiedId, TypeParameter};
 use move_model::symbol::Symbol;
@@ -21,14 +21,14 @@ use std::rc::Rc;
 
 pub struct ProgramBuilder<'env> {
     env: &'env GlobalEnv,
-    pub program: TheoremProgram,
+    pub program: Program,
 }
 
 impl<'env> ProgramBuilder<'env> {
     pub fn new(env: &'env GlobalEnv) -> Self {
         Self {
             env,
-            program: TheoremProgram::default(),
+            program: Program::default(),
         }
     }
 
@@ -36,7 +36,7 @@ impl<'env> ProgramBuilder<'env> {
         self.env
     }
 
-    pub fn struct_id(&mut self, id: QualifiedId<DatatypeId>) -> TheoremStructID {
+    pub fn struct_id(&mut self, id: QualifiedId<DatatypeId>) -> StructID {
         let struct_id = self.program.structs.id_for_key(id);
         // Ensure struct data exists - create it if not yet processed
         if !self.program.structs.has(struct_id) {
@@ -45,11 +45,11 @@ impl<'env> ProgramBuilder<'env> {
         struct_id
     }
 
-    pub fn function_id(&mut self, id: QualifiedId<FunId>) -> TheoremFunctionID {
+    pub fn function_id(&mut self, id: QualifiedId<FunId>) -> FunctionID {
         self.program.functions.id_for_key(id)
     }
 
-    pub fn build(mut self, targets: &'env FunctionTargetsHolder) -> TheoremProgram {
+    pub fn build(mut self, targets: &'env FunctionTargetsHolder) -> Program {
         // Only create modules and functions - structs are created on-demand
         // when referenced by function signatures or bodies via struct_id()
         for module_env in self.env.get_modules() {
@@ -70,7 +70,7 @@ impl<'env> ProgramBuilder<'env> {
     fn create_module(&mut self, module_env: &ModuleEnv) {
         self.program.modules.create(
             module_env.get_id(),
-            TheoremModule {
+            Module {
                 name: Self::sanitize_name(&self.symbol_str(module_env.get_name().name())),
                 package_name: extract_package_name(self.env, module_env),
                 required_imports: Vec::new(),
@@ -103,7 +103,7 @@ impl<'env> ProgramBuilder<'env> {
 
         let fields = move_struct
             .get_fields()
-            .map(|f| TheoremField {
+            .map(|f| Field {
                 name: Self::sanitize_name(&self.symbol_str(f.get_name())),
                 field_type: self.convert_type(&f.get_type()),
             })
@@ -112,7 +112,7 @@ impl<'env> ProgramBuilder<'env> {
         let struct_name = Self::sanitize_name(&self.symbol_str(move_struct.get_name()));
         self.program.structs.create(
             qualified_id,
-            TheoremStruct {
+            Struct {
                 module_id,
                 name: struct_name,
                 qualified_name: move_struct.get_full_name_str(),
@@ -129,26 +129,26 @@ impl<'env> ProgramBuilder<'env> {
         self.program.functions.create(qualified_id, func);
     }
 
-    pub fn convert_type(&mut self, ty: &Type) -> TheoremType {
+    pub fn convert_type(&mut self, ty: &Type) -> Type {
         use move_model::ty::PrimitiveType;
         match ty {
-            Type::Primitive(PrimitiveType::Bool) => TheoremType::Bool,
-            Type::Primitive(PrimitiveType::U8) => TheoremType::UInt(8),
-            Type::Primitive(PrimitiveType::U16) => TheoremType::UInt(16),
-            Type::Primitive(PrimitiveType::U32) => TheoremType::UInt(32),
-            Type::Primitive(PrimitiveType::U64) => TheoremType::UInt(64),
-            Type::Primitive(PrimitiveType::U128) => TheoremType::UInt(128),
-            Type::Primitive(PrimitiveType::U256) => TheoremType::UInt(256),
-            Type::Primitive(PrimitiveType::Address | PrimitiveType::Signer) => TheoremType::Address,
+            Type::Primitive(PrimitiveType::Bool) => Type::Bool,
+            Type::Primitive(PrimitiveType::U8) => Type::UInt(8),
+            Type::Primitive(PrimitiveType::U16) => Type::UInt(16),
+            Type::Primitive(PrimitiveType::U32) => Type::UInt(32),
+            Type::Primitive(PrimitiveType::U64) => Type::UInt(64),
+            Type::Primitive(PrimitiveType::U128) => Type::UInt(128),
+            Type::Primitive(PrimitiveType::U256) => Type::UInt(256),
+            Type::Primitive(PrimitiveType::Address | PrimitiveType::Signer) => Type::Address,
             Type::Datatype(mid, sid, args) => {
                 let qualified_id = mid.qualified(*sid);
                 self.convert_datatype(qualified_id, args)
             }
-            Type::Vector(t) => TheoremType::Vector(Box::new(self.convert_type(t))),
-            Type::Reference(_, t) => TheoremType::Reference(Box::new(self.convert_type(t))),
-            Type::TypeParameter(idx) => TheoremType::TypeParameter(*idx),
+            Type::Vector(t) => Type::Vector(Box::new(self.convert_type(t))),
+            Type::Reference(_, t) => Type::Reference(Box::new(self.convert_type(t))),
+            Type::TypeParameter(idx) => Type::TypeParameter(*idx),
             Type::Tuple(ts) => {
-                TheoremType::Tuple(ts.iter().map(|t| self.convert_type(t)).collect())
+                Type::Tuple(ts.iter().map(|t| self.convert_type(t)).collect())
             }
             _ => unreachable!("Unsupported type: {:?}", ty),
         }
@@ -160,7 +160,7 @@ impl<'env> ProgramBuilder<'env> {
         &mut self,
         qualified_id: QualifiedId<DatatypeId>,
         args: &[Type],
-    ) -> TheoremType {
+    ) -> Type {
         let module_env = self.env.get_module(qualified_id.module_id);
         let symbol = qualified_id.id.symbol();
 
@@ -171,7 +171,7 @@ impl<'env> ProgramBuilder<'env> {
             panic!("Enums are not yet supported: {}::{}", module_name, name);
         }
 
-        TheoremType::Struct {
+        Type::Struct {
             struct_id: self.struct_id(qualified_id),
             type_args: args.iter().map(|a| self.convert_type(a)).collect(),
         }

@@ -6,13 +6,13 @@
 use super::lean_writer::LeanWriter;
 use super::type_renderer::type_to_string;
 use crate::escape;
-use intermediate_theorem_format::{TheoremProgram, TheoremStruct};
+use intermediate_theorem_format::{Program, Struct};
 use std::fmt::Write;
 
 /// Render a struct definition.
 pub fn render_struct<W: Write>(
-    struct_def: &TheoremStruct,
-    program: &TheoremProgram,
+    struct_def: &Struct,
+    program: &Program,
     current_module: &str,
     w: &mut LeanWriter<W>,
 ) {

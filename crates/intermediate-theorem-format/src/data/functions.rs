@@ -4,14 +4,14 @@
 //! Function IR data structures
 
 use crate::analysis;
-use crate::data::types::{TempId, TheoremType};
+use crate::data::types::{TempId, Type};
 use crate::data::variables::VariableRegistry;
 use crate::data::Dependable;
-use crate::{IRNode, TheoremModuleID};
+use crate::{IRNode, ModuleID};
 use move_model::model::{FunId, QualifiedId};
 
 /// Unique identifier for a function in the program
-pub type TheoremFunctionID = usize;
+pub type FunctionID = usize;
 
 /// Function parameter
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ pub struct Parameter {
     pub name: String,
 
     /// Parameter type
-    pub param_type: TheoremType,
+    pub param_type: Type,
 
     /// SSA value for this parameter
     pub ssa_value: TempId,
@@ -36,14 +36,14 @@ pub struct FunctionSignature {
     pub parameters: Vec<Parameter>,
 
     /// Return type
-    pub return_type: TheoremType,
+    pub return_type: Type,
 }
 
 /// A function represented as structured control flow
 #[derive(Debug, Clone)]
-pub struct TheoremFunction {
+pub struct Function {
     /// Module this function belongs to
-    pub module_id: TheoremModuleID,
+    pub module_id: ModuleID,
 
     /// Function name (e.g., "empty")
     pub name: String,
@@ -66,7 +66,7 @@ pub struct TheoremFunction {
     pub is_native: bool,
 }
 
-impl TheoremFunction {
+impl Function {
     /// Get mutable access to SSA registry
     pub fn variable_registry(&mut self) -> &mut VariableRegistry {
         &mut self.variables
@@ -81,8 +81,8 @@ impl TheoremFunction {
     }
 }
 
-impl Dependable for TheoremFunction {
-    type Id = TheoremFunctionID;
+impl Dependable for Function {
+    type Id = FunctionID;
     type MoveKey = QualifiedId<FunId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {

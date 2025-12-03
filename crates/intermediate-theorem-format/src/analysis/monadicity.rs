@@ -8,13 +8,13 @@
 //!
 //! Prerequisites: DependencyOrderPass must have run first.
 
-use crate::data::TheoremProgram;
-use crate::TheoremFunctionID;
+use crate::data::Program;
+use crate::FunctionID;
 use std::collections::BTreeSet;
 
-pub fn analyze_monadicity(program: &mut TheoremProgram) {
+pub fn analyze_monadicity(program: &mut Program) {
     let func_ids: Vec<_> = program.functions.iter_ids().collect();
-    let mut monadic_funcs: BTreeSet<TheoremFunctionID> = BTreeSet::new();
+    let mut monadic_funcs: BTreeSet<FunctionID> = BTreeSet::new();
 
     // First pass: identify which functions are intrinsically monadic
     // - Functions that abort

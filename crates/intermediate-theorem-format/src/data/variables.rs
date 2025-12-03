@@ -5,7 +5,7 @@
 //!
 //! Variables are identified by index (usize) but converted to names (TempId) for IR.
 
-use crate::data::types::TheoremType;
+use crate::data::types::Type;
 use std::collections::BTreeMap;
 
 /// Registry for variables - single source of truth
@@ -13,16 +13,16 @@ use std::collections::BTreeMap;
 /// Maps variable indices to their types. Generates names like "$t0", "$t1", etc.
 #[derive(Debug, Clone)]
 pub struct VariableRegistry {
-    variables: BTreeMap<usize, TheoremType>,
+    variables: BTreeMap<usize, Type>,
 }
 
 impl VariableRegistry {
-    pub fn new(variables: BTreeMap<usize, TheoremType>) -> Self {
+    pub fn new(variables: BTreeMap<usize, Type>) -> Self {
         Self { variables }
     }
 
     /// Get the type for a variable
-    pub fn get_type(&self, index: usize) -> Option<&TheoremType> {
+    pub fn get_type(&self, index: usize) -> Option<&Type> {
         self.variables.get(&index)
     }
 
@@ -32,7 +32,7 @@ impl VariableRegistry {
     }
 
     /// Iterate over all variables (index, type)
-    pub fn iter(&self) -> impl Iterator<Item = (usize, &TheoremType)> {
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &Type)> {
         self.variables.iter().map(|(&k, v)| (k, v))
     }
 

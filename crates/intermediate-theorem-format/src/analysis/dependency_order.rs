@@ -3,13 +3,13 @@
 
 //! Topological sorting of functions and structs by dependency order
 
-use crate::data::{Dependable, TheoremProgram};
+use crate::data::{Dependable, Program};
 use indexmap::IndexMap;
 use petgraph::algo::{condensation, toposort};
 use petgraph::graphmap::DiGraphMap;
 use std::collections::hash_map::RandomState;
 
-pub fn order_by_dependencies(program: &mut TheoremProgram) {
+pub fn order_by_dependencies(program: &mut Program) {
     topological_sort(&mut program.structs.items);
     topological_sort(&mut program.functions.items);
 }

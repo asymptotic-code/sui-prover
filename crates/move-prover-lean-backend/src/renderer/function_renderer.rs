@@ -5,7 +5,7 @@
 
 use std::fmt::Write;
 
-use intermediate_theorem_format::{TheoremFunction, TheoremProgram};
+use intermediate_theorem_format::{Function, Program};
 
 use super::expression_renderer::RenderCtx;
 use super::lean_writer::LeanWriter;
@@ -15,8 +15,8 @@ use crate::escape;
 
 /// Render a function definition.
 pub fn render_function<W: Write>(
-    func: &TheoremFunction,
-    program: &TheoremProgram,
+    func: &Function,
+    program: &Program,
     current_module_namespace: &str,
     w: &mut LeanWriter<W>,
 ) {

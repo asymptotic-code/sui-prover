@@ -3,12 +3,13 @@
 
 //! Struct IR data structures
 
-use crate::data::types::TheoremType;
+use move_model::model::{DatatypeId, QualifiedId};
+use crate::data::types::Type;
 use crate::data::Dependable;
-use crate::TheoremModuleID;
+use crate::ModuleID;
 
 /// Unique identifier for a struct in the program
-pub type TheoremStructID = usize;
+pub type StructID = usize;
 
 // ============================================================================
 // Struct IR
@@ -16,9 +17,9 @@ pub type TheoremStructID = usize;
 
 /// A struct definition
 #[derive(Debug, Clone)]
-pub struct TheoremStruct {
+pub struct Struct {
     /// The struct's module
-    pub module_id: TheoremModuleID,
+    pub module_id: ModuleID,
 
     /// Struct name
     pub name: String,
@@ -30,7 +31,7 @@ pub struct TheoremStruct {
     pub type_params: Vec<String>,
 
     /// Fields
-    pub fields: Vec<TheoremField>,
+    pub fields: Vec<Field>,
 
     /// Mutual recursion group ID (None if not mutually recursive)
     /// Structs with the same group ID are mutually recursive and must be defined together
@@ -39,17 +40,17 @@ pub struct TheoremStruct {
 
 /// A field in a struct
 #[derive(Debug, Clone)]
-pub struct TheoremField {
+pub struct Field {
     /// Field name
     pub name: String,
 
     /// Field type
-    pub field_type: TheoremType,
+    pub field_type: Type,
 }
 
-impl Dependable for TheoremStruct {
-    type Id = TheoremStructID;
-    type MoveKey = move_model::model::QualifiedId<move_model::model::DatatypeId>;
+impl Dependable for Struct {
+    type Id = StructID;
+    type MoveKey = QualifiedId<DatatypeId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
         self.fields

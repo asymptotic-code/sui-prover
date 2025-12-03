@@ -8,14 +8,14 @@ use crate::control_flow_reconstruction::structure_discovery::reconstruct_functio
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
 use intermediate_theorem_format::{
-    FunctionSignature, IRNode, Parameter, TheoremFunction, TheoremType, VariableRegistry,
+    FunctionSignature, IRNode, Parameter, Function, Type, VariableRegistry,
 };
 use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::graph::{DomRelation, Graph};
 use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph};
 
-pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> TheoremFunction {
+pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> Function {
     let variables = VariableRegistry::new(
         target
             .data
@@ -36,7 +36,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
     let is_native = func_env.is_native();
 
     if target.get_bytecode().is_empty() || is_native {
-        return TheoremFunction {
+        return Function {
             module_id,
             name,
             signature,
@@ -58,7 +58,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
     };
     let body = detect_phis(reconstruct_function(ctx));
 
-    TheoremFunction {
+    Function {
         module_id,
         name,
         signature,
@@ -96,9 +96,9 @@ fn build_signature(builder: &mut ProgramBuilder, func_env: &FunctionEnv) -> Func
                 .map(|t| builder.convert_type(t))
                 .collect();
             match types.len() {
-                0 => TheoremType::Tuple(vec![]),
+                0 => Type::Tuple(vec![]),
                 1 => types.into_iter().next().unwrap(),
-                _ => TheoremType::Tuple(types),
+                _ => Type::Tuple(types),
             }
             .wrap_in_monad()
         },

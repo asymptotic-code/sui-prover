@@ -14,9 +14,9 @@
 //! 3. **Let-based sequencing**: `Let { value, body }` chains expressions
 //! 4. **Everything produces a value**: Even effects like Abort produce unit
 
-use crate::data::structure::TheoremStructID;
-use crate::data::types::{TempId, TheoremType};
-use crate::TheoremFunctionID;
+use crate::data::structure::StructID;
+use crate::data::types::{TempId, Type};
+use crate::FunctionID;
 use ethnum::U256;
 use num::BigUint;
 use serde::{Deserialize, Serialize};
@@ -164,28 +164,28 @@ pub enum IRNode {
 
     /// Function call: function(args)
     Call {
-        function: TheoremFunctionID,
-        type_args: Vec<TheoremType>,
+        function: FunctionID,
+        type_args: Vec<Type>,
         args: Vec<IRNode>,
     },
 
     /// Struct construction: StructName { fields... }
     Pack {
-        struct_id: TheoremStructID,
-        type_args: Vec<TheoremType>,
+        struct_id: StructID,
+        type_args: Vec<Type>,
         fields: Vec<IRNode>,
     },
 
     /// Field access: struct.field
     Field {
-        struct_id: TheoremStructID,
+        struct_id: StructID,
         field_index: usize,
         base: Box<IRNode>,
     },
 
     /// Struct destructuring: let (f1, f2, ...) = struct
     Unpack {
-        struct_id: TheoremStructID,
+        struct_id: StructID,
         value: Box<IRNode>,
     },
 
@@ -238,7 +238,7 @@ pub enum IRNode {
     /// Field update: { struct with field = value }
     UpdateField {
         base: Box<IRNode>,
-        struct_id: TheoremStructID,
+        struct_id: StructID,
         field_index: usize,
         value: Box<IRNode>,
     },
@@ -458,7 +458,7 @@ impl IRNode {
     }
 
     /// Collect all function calls
-    pub fn calls(&self) -> impl Iterator<Item = TheoremFunctionID> + '_ {
+    pub fn calls(&self) -> impl Iterator<Item =FunctionID> + '_ {
         self.iter().filter_map(|node| {
             if let IRNode::Call { function, .. } = node {
                 Some(*function)
@@ -505,7 +505,7 @@ impl IRNode {
     /// Check if the TOP-LEVEL expression is monadic (directly returns Except)
     /// This does NOT check children - only whether this expression itself requires ←
     /// The `is_func_monadic` closure looks up whether a function ID returns Except.
-    pub fn is_monadic(&self, is_func_monadic: &impl Fn(TheoremFunctionID) -> bool) -> bool {
+    pub fn is_monadic(&self, is_func_monadic: &impl Fn(FunctionID) -> bool) -> bool {
         match self {
             IRNode::Abort(_) => true,
             IRNode::While { body, .. } => body.contains_monadic(is_func_monadic),
@@ -531,7 +531,7 @@ impl IRNode {
     /// Check if this expression or any child contains monadic operations
     /// Used to determine if a block needs a `do` wrapper
     /// The `is_func_monadic` closure looks up whether a function ID returns Except.
-    pub fn contains_monadic(&self, is_func_monadic: &impl Fn(TheoremFunctionID) -> bool) -> bool {
+    pub fn contains_monadic(&self, is_func_monadic: &impl Fn(FunctionID) -> bool) -> bool {
         self.iter().any(|node| match node {
             IRNode::Abort(_) => true,
             IRNode::Call { function, .. } => is_func_monadic(*function),
@@ -576,7 +576,7 @@ impl IRNode {
     }
 
     /// Collect all struct IDs referenced in Pack, Unpack, Field, UpdateField operations
-    pub fn iter_struct_references(&self) -> impl Iterator<Item = TheoremStructID> + '_ {
+    pub fn iter_struct_references(&self) -> impl Iterator<Item =StructID> + '_ {
         self.iter().filter_map(|node| match node {
             IRNode::Pack { struct_id, .. }
             | IRNode::Unpack { struct_id, .. }
@@ -587,7 +587,7 @@ impl IRNode {
     }
 
     /// Collect all struct IDs referenced in type positions (type arguments)
-    pub fn iter_type_struct_ids(&self) -> impl Iterator<Item = TheoremStructID> + '_ {
+    pub fn iter_type_struct_ids(&self) -> impl Iterator<Item =StructID> + '_ {
         self.iter().flat_map(|node| match node {
             IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => type_args
                 .iter()

@@ -3,14 +3,14 @@
 
 //! Type system for TheoremIR
 
-use crate::TheoremStructID;
+use crate::StructID;
 
 /// Temporary value identifier
 pub type TempId = String;
 
 /// Theorem IR type with enriched metadata for code generation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TheoremType {
+pub enum Type {
     /// Boolean
     Bool,
     /// Unsigned integer with bit width
@@ -24,74 +24,74 @@ pub enum TheoremType {
     Struct {
         /// Unique struct ID in the TheoremProgram
         /// Used to lookup names via NameManager and struct definitions
-        struct_id: TheoremStructID,
+        struct_id: StructID,
         /// Type arguments (for generics like Coin<SUI>)
-        type_args: Vec<TheoremType>,
+        type_args: Vec<Type>,
     },
     /// Vector of elements
-    Vector(Box<TheoremType>),
+    Vector(Box<Type>),
     /// Reference (immutable)
-    Reference(Box<TheoremType>),
+    Reference(Box<Type>),
     /// Mutable reference
-    MutableReference(Box<TheoremType>),
+    MutableReference(Box<Type>),
     /// Type parameter
     TypeParameter(u16),
     /// Tuple
-    Tuple(Vec<TheoremType>),
+    Tuple(Vec<Type>),
     /// Except monad wrapping a type (for abort handling)
     /// Represents an error monad for capturing abort codes
-    Except(Box<TheoremType>),
+    Except(Box<Type>),
 }
 
-impl TheoremType {
+impl Type {
     /// Wrap this type in Except monad
     pub fn wrap_in_monad(self) -> Self {
-        TheoremType::Except(Box::new(self))
+        Type::Except(Box::new(self))
     }
 
     /// Check if this is an Except type
     pub fn is_monad(&self) -> bool {
-        matches!(self, TheoremType::Except(_))
+        matches!(self, Type::Except(_))
     }
 
     /// Unwrap the inner type from Except, if applicable
-    pub fn unwrap_monad(&self) -> Option<&TheoremType> {
+    pub fn unwrap_monad(&self) -> Option<&Type> {
         match self {
-            TheoremType::Except(inner) => Some(inner),
+            Type::Except(inner) => Some(inner),
             _ => None,
         }
     }
 
     /// Collect all struct IDs referenced in this type
-    pub fn struct_ids(&self) -> Vec<TheoremStructID> {
+    pub fn struct_ids(&self) -> Vec<StructID> {
         let mut ids = Vec::new();
         self.collect_struct_ids(&mut ids);
         ids
     }
 
-    fn collect_struct_ids(&self, ids: &mut Vec<TheoremStructID>) {
+    fn collect_struct_ids(&self, ids: &mut Vec<StructID>) {
         match self {
-            TheoremType::Struct {
+            Type::Struct {
                 struct_id,
                 type_args,
             } => {
                 ids.push(*struct_id);
                 type_args.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            TheoremType::Vector(inner)
-            | TheoremType::Reference(inner)
-            | TheoremType::MutableReference(inner)
-            | TheoremType::Except(inner) => {
+            Type::Vector(inner)
+            | Type::Reference(inner)
+            | Type::MutableReference(inner)
+            | Type::Except(inner) => {
                 inner.collect_struct_ids(ids);
             }
-            TheoremType::Tuple(tys) => {
+            Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            TheoremType::Bool
-            | TheoremType::UInt(_)
-            | TheoremType::SInt(_)
-            | TheoremType::Address
-            | TheoremType::TypeParameter(_) => {}
+            Type::Bool
+            | Type::UInt(_)
+            | Type::SInt(_)
+            | Type::Address
+            | Type::TypeParameter(_) => {}
         }
     }
 }

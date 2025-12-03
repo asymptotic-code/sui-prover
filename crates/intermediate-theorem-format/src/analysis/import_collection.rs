@@ -3,11 +3,11 @@
 
 //! Import collection pass
 
-use crate::data::{Dependable, TheoremModuleID, TheoremProgram};
-use crate::TheoremFunction;
+use crate::data::{Dependable, ModuleID, Program};
+use crate::Function;
 use std::collections::HashSet;
 
-pub fn collect_imports(program: &mut TheoremProgram) {
+pub fn collect_imports(program: &mut Program) {
     let module_imports: Vec<_> = program
         .modules
         .iter_ids()
@@ -20,9 +20,9 @@ pub fn collect_imports(program: &mut TheoremProgram) {
 }
 
 fn collect_module_imports(
-    program: &TheoremProgram,
-    module_id: TheoremModuleID,
-) -> Vec<TheoremModuleID> {
+    program: &Program,
+    module_id: ModuleID,
+) -> Vec<ModuleID> {
     let struct_deps = collect_struct_imports(program, module_id);
     let function_deps = collect_function_imports(program, module_id);
 
@@ -34,9 +34,9 @@ fn collect_module_imports(
 }
 
 fn collect_struct_imports(
-    program: &TheoremProgram,
-    module_id: TheoremModuleID,
-) -> HashSet<TheoremModuleID> {
+    program: &Program,
+    module_id: ModuleID,
+) -> HashSet<ModuleID> {
     program
         .structs
         .values()
@@ -47,9 +47,9 @@ fn collect_struct_imports(
 }
 
 fn collect_function_imports(
-    program: &TheoremProgram,
-    module_id: TheoremModuleID,
-) -> HashSet<TheoremModuleID> {
+    program: &Program,
+    module_id: ModuleID,
+) -> HashSet<ModuleID> {
     program
         .functions
         .values()
@@ -59,9 +59,9 @@ fn collect_function_imports(
 }
 
 fn collect_from_function<'a>(
-    program: &'a TheoremProgram,
-    function: &'a TheoremFunction,
-) -> impl Iterator<Item = TheoremModuleID> + 'a {
+    program: &'a Program,
+    function: &'a Function,
+) -> impl Iterator<Item =ModuleID> + 'a {
     let sig_deps = function
         .signature
         .parameters
