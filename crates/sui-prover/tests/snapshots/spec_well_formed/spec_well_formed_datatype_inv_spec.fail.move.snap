@@ -8,6 +8,6 @@ error: Consider avoiding functions with specs in datatype invariants
    ┌─ tests/inputs/spec_well_formed/spec_well_formed_datatype_inv_spec.fail.move:9:1
    │  
  9 │ ╭ fun S_inv(self: &S): bool {
-10 │ │     self.get_x() > 0
+10 │ │     self.get_y() > 0
 11 │ │ }
    │ ╰─^

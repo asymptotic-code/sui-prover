@@ -293,10 +293,6 @@ impl FunctionTargetsHolder {
         self.package_targets.spec_timeouts().get(id)
     }
 
-    pub fn is_system_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.package_targets.is_system_spec(id)
-    }
-
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
