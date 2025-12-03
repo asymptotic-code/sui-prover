@@ -32,12 +32,42 @@ fn apply_copy_propagation(nodes: Vec<IRNode>) -> Vec<IRNode> {
         })
         .unzip();
 
+    // Compute transitive closure of the substitution map
+    // For chains like a=expr, b=a, c=b, we want c->a directly (not c->b->a)
+    let subs = transitive_closure(subs);
+
     nodes
         .into_iter()
         .enumerate()
         .filter(|(i, _)| !indices_to_remove.contains(i))
         .map(|(_, node)| node.substitute_vars(&subs))
         .collect()
+}
+
+/// Compute the transitive closure of a substitution map.
+/// If we have {c: b, b: a}, this produces {c: a, b: a}.
+fn transitive_closure(mut subs: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    // Repeatedly resolve each mapping until no more changes occur
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let updates: Vec<_> = subs
+            .iter()
+            .filter_map(|(key, target)| {
+                subs.get(target)
+                    .filter(|resolved| *resolved != target)
+                    .map(|resolved| (key.clone(), resolved.clone()))
+            })
+            .collect();
+
+        if !updates.is_empty() {
+            changed = true;
+            for (key, resolved) in updates {
+                subs.insert(key, resolved);
+            }
+        }
+    }
+    subs
 }
 
 /// Detects `let x = expr; let y = x` pattern, returns (original_name, copy_name)

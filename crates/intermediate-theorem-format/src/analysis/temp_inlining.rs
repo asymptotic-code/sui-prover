@@ -26,7 +26,7 @@ pub fn inline_temps(ir: IRNode, _registry: &VariableRegistry) -> IRNode {
 
 /// Substitute known temps in an IR node (non-recursive on definitions)
 fn substitute_temps(ir: IRNode, temps: &BTreeMap<String, IRNode>) -> IRNode {
-    ir.transform(&mut |node| {
+    ir.map(&mut |node| {
         if let IRNode::Var(name) = &node {
             if let Some(value) = temps.get(name) {
                 return value.clone();

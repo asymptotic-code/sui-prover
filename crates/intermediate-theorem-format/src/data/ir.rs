@@ -374,16 +374,15 @@ impl IRNode {
         self.children().into_iter()
     }
 
-    /// Transform this IR recursively (bottom-up)
-    pub fn transform<F: FnMut(IRNode) -> IRNode>(self, f: &mut F) -> IRNode {
-        let transformed = self.map(&mut |child| child.transform(f));
-        f(transformed)
-    }
-
-    /// Transform only direct children (not self)
+    /// Transform this IR recursively (bottom-up: children first, then parent)
     pub fn map<F: FnMut(IRNode) -> IRNode>(mut self, f: &mut F) -> IRNode {
-        traverse_ir!(&mut self, as_ir_mut, |value| *value = f(mem::take(value)));
-        self
+        // First recurse into children
+        traverse_ir!(&mut self, as_ir_mut, |value| {
+            let child = mem::take(value);
+            *value = child.map(f);
+        });
+        // Then apply f to self
+        f(self)
     }
 
     /// Collects all the IRNodes into a given structure
@@ -406,6 +405,7 @@ impl IRNode {
         })
     }
 
+    /// Transform all Block nodes recursively
     pub fn transform_block<F: Fn(Vec<IRNode>) -> Vec<IRNode>>(self, f: F) -> Self {
         self.map(&mut |node| match node {
             IRNode::Block { children } => IRNode::Block {
@@ -541,12 +541,25 @@ impl IRNode {
 
     /// Substitute variables according to a mapping
     pub fn substitute_vars(self, subs: &BTreeMap<String, String>) -> IRNode {
-        self.transform(&mut |node| {
-            if let IRNode::Var(name) = node {
-                IRNode::Var(subs.get(&name).cloned().unwrap_or(name))
-            } else {
-                node
+        self.map(&mut |node| match node {
+            IRNode::Var(name) => IRNode::Var(subs.get(&name).cloned().unwrap_or(name)),
+            IRNode::While { cond, body, vars } => {
+                // Also substitute variable names in the vars metadata
+                let vars = vars
+                    .into_iter()
+                    .map(|v| subs.get(&v).cloned().unwrap_or(v))
+                    .collect();
+                IRNode::While { cond, body, vars }
             }
+            IRNode::Let { pattern, value } => {
+                // Also substitute variable names in let patterns
+                let pattern = pattern
+                    .into_iter()
+                    .map(|v| subs.get(&v).cloned().unwrap_or(v))
+                    .collect();
+                IRNode::Let { pattern, value }
+            }
+            other => other,
         })
     }
 
