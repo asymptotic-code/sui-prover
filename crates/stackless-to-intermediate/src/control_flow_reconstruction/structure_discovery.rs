@@ -30,25 +30,28 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
         if let Bytecode::Branch(_, then_label, else_label, cond_temp) =
             ctx.target.get_bytecode()[upper as usize].clone()
         {
-            let cond_name = ir_translator::temp_id(&ctx.target, cond_temp);
+            let cond_name = ir_translator::temp_id(ctx, cond_temp);
             let then_block = resolve_label_block(ctx, then_label).expect("then label must resolve");
             let else_block = resolve_label_block(ctx, else_label).expect("else label must resolve");
 
-            let header = ir_translator::translate_range(ctx, lower..=upper);
-            node = node.combine(header);
-
+            // Check if either branch is a back-edge (loop)
+            // A branch is a back-edge if it targets a block that dominates the current block,
+            // or if it targets the start of the current region
             let then_is_back =
                 then_block == start || ctx.forward_dom.is_dominated_by(cursor, then_block);
             let else_is_back =
                 else_block == start || ctx.forward_dom.is_dominated_by(cursor, else_block);
 
             if then_is_back || else_is_back {
+                // This is a loop - do NOT translate the header here, it will be part of the loop body
                 let (body_start, exit_block) = if then_is_back {
                     (then_block, else_block)
                 } else {
                     (else_block, then_block)
                 };
 
+                // Discover the loop body, which includes everything from body_start back to cursor (exclusive)
+                // This will include the current block's statements as part of the loop body
                 let body_nodes = discover_region(ctx, body_start, cursor);
 
                 let cond = if !then_is_back {
@@ -69,6 +72,10 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
                 cursor = exit_block;
                 continue;
             }
+
+            // Not a loop - regular if-then-else
+            let header = ir_translator::translate_range(ctx, lower..=upper);
+            node = node.combine(header);
 
             let merge =
                 find_merge_block(&ctx.forward_cfg, then_block, else_block, stop).unwrap_or(stop);

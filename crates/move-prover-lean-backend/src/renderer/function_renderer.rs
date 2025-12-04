@@ -3,13 +3,11 @@
 
 //! Renders TheoremFunction to Lean syntax.
 
+use intermediate_theorem_format::{Function, Program};
 use std::fmt::Write;
 
-use intermediate_theorem_format::{Function, Program};
-
-use super::expression_renderer::RenderCtx;
+use super::ir_renderer::{render_block, RenderCtx};
 use super::lean_writer::LeanWriter;
-use super::statement_renderer::render_block;
 use super::type_renderer::type_to_string;
 use crate::escape;
 
@@ -18,20 +16,22 @@ pub fn render_function<W: Write>(
     func: &Function,
     program: &Program,
     current_module_namespace: &str,
-    w: &mut LeanWriter<W>,
-) {
+    w: LeanWriter<W>,
+) -> LeanWriter<W> {
     let is_monadic = func.signature.return_type.is_monad();
     let escaped_name = escape::escape_identifier(&func.name);
 
-    // partial def name
-    w.write("partial def ");
-    w.write(&escaped_name);
+    let mut writer = w;
+
+    // def name (removed 'partial' to allow theorem proving)
+    writer.write("def ");
+    writer.write(&escaped_name);
 
     // Type parameters with constraints
     for tp in &func.signature.type_params {
-        w.write(&format!(" ({} : Type)", tp));
-        w.write(&format!(" [BEq {}]", tp));
-        w.write(&format!(" [Inhabited {}]", tp));
+        writer.write(&format!(" ({} : Type)", tp));
+        writer.write(&format!(" [BEq {}]", tp));
+        writer.write(&format!(" [Inhabited {}]", tp));
     }
 
     // Parameters
@@ -42,33 +42,36 @@ pub fn render_function<W: Write>(
             escape::escape_identifier(&p.name)
         };
         let type_str = type_to_string(&p.param_type, program, Some(current_module_namespace));
-        w.write(&format!(" ({} : {})", param_name, type_str));
+        writer.write(&format!(" ({} : {})", param_name, type_str));
     }
 
     // Return type
-    w.write(" : ");
+    writer.write(" : ");
     let type_str = type_to_string(
         &func.signature.return_type,
         program,
         Some(current_module_namespace),
     );
-    w.write(&type_str);
-    w.write(" :=\n");
+    writer.write(&type_str);
+    writer.write(" :=\n");
 
     // Function body
-    w.write("  ");
-    w.indent();
+    writer.write("  ");
+    writer.indent();
 
-    let ctx = RenderCtx {
-        registry: &func.variables,
+    let mut ctx = RenderCtx::new(
         program,
-        current_module_id: func.module_id,
-        current_module_namespace: Some(current_module_namespace),
-        current_function_monadic: is_monadic,
-    };
+        &func.variables,
+        func.module_id,
+        Some(current_module_namespace),
+        writer,
+    );
 
-    render_block(&func.body, is_monadic, &ctx, w);
+    render_block(&func.body, is_monadic, &mut ctx);
 
-    w.dedent();
-    w.write("\n");
+    let mut writer = ctx.into_writer();
+    writer.dedent();
+    writer.write("\n");
+
+    writer
 }

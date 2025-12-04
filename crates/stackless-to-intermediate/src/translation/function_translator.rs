@@ -14,6 +14,7 @@ use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::graph::{DomRelation, Graph};
 use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph};
+use crate::translation::ir_translator::build_trace_map;
 
 pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> Function {
     let variables = VariableRegistry::new(
@@ -34,11 +35,22 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
             StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
         let forward_dom = build_dominator_relation(&forward_cfg);
         detect_phis(reconstruct_function(DiscoveryContext {
+            trace_names: build_trace_map(&target),
             builder,
             target,
             forward_dom,
-            forward_cfg,
+            forward_cfg
         }))
+    };
+
+    // Check if this is a spec function with #[spec(prove)]
+    let is_spec = has_spec_prove_attribute(&func_env);
+
+    // Extract requires/ensures from spec function body
+    let (requires, ensures) = if is_spec {
+        extract_spec_conditions(&body)
+    } else {
+        (vec![], vec![])
     };
 
     Function {
@@ -49,6 +61,10 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         variables,
         mutual_group_id: None,
         is_native: func_env.is_native(),
+        is_spec,
+        requires,
+        ensures,
+        spec_for: None, // Will be populated later when we link spec to impl
     }
 }
 
@@ -91,4 +107,43 @@ fn build_dominator_relation(cfg: &StacklessControlFlowGraph) -> DomRelation<Bloc
         .flat_map(|block| cfg.successors(*block).iter().map(|succ| (*block, *succ)))
         .collect::<Vec<_>>();
     DomRelation::new(&Graph::new(entry, nodes, edges))
+}
+
+/// Check if a function has the #[spec(prove)] attribute
+fn has_spec_prove_attribute(func_env: &FunctionEnv) -> bool {
+    use move_model::ast::Attribute;
+
+    func_env.get_attributes().iter().any(|attr| {
+        if let Attribute::Apply(_, name, sub_attrs) = attr {
+            let name_str = name.display(func_env.symbol_pool()).to_string();
+            if name_str == "spec" {
+                return sub_attrs.iter().any(|sub_attr| {
+                    if let Attribute::Apply(_, value_name, _) = sub_attr {
+                        value_name.display(func_env.symbol_pool()).to_string() == "prove"
+                    } else {
+                        false
+                    }
+                });
+            }
+        }
+        false
+    })
+}
+
+/// Extract requires and ensures conditions from a spec function body
+/// Removes them from the body and collects them separately
+fn extract_spec_conditions(body: &IRNode) -> (Vec<IRNode>, Vec<IRNode>) {
+    let mut requires = vec![];
+    let mut ensures = vec![];
+
+    // Walk through all nodes and collect requires/ensures
+    for node in body.iter() {
+        match node {
+            IRNode::Requires(cond) => requires.push((**cond).clone()),
+            IRNode::Ensures(cond) => ensures.push((**cond).clone()),
+            _ => {}
+        }
+    }
+
+    (requires, ensures)
 }

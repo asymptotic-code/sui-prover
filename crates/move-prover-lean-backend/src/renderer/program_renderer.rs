@@ -87,8 +87,8 @@ pub fn render_to_directory(
                 continue;
             }
 
-            let mut writer = LeanWriter::new(String::new());
-            render_function(func, program, &namespace_name, &mut writer);
+            let writer = LeanWriter::new(String::new());
+            let writer = render_function(func, program, &namespace_name, writer);
             let rendered = writer.into_inner();
 
             if !rendered.trim().is_empty() {

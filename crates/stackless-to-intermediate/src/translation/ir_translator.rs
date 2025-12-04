@@ -12,7 +12,35 @@ use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::stackless_bytecode::{
     BorrowEdge, BorrowNode, Bytecode, Constant, Operation,
 };
+use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
+
+/// Build a mapping from temp indices to traced variable names by scanning TraceLocal operations
+pub fn build_trace_map(target: &FunctionTarget) -> BTreeMap<usize, String> {
+    let mut trace_map = BTreeMap::new();
+
+    for bytecode in target.get_bytecode() {
+        if let Bytecode::Call(_, _, Operation::TraceLocal(local_idx), srcs, _) = bytecode {
+            // TraceLocal(local_idx) traces the value in srcs[0] to the variable at local_idx
+            if !srcs.is_empty() {
+                let source_temp = srcs[0];
+                let symbol = target.get_local_name(*local_idx);
+                let traced_name = target.global_env().symbol_pool().string(symbol).to_string();
+
+                // Strip version suffixes from traced name
+                let traced_name = if let Some(hash_pos) = traced_name.find('#') {
+                    traced_name[..hash_pos].to_string()
+                } else {
+                    traced_name
+                };
+
+                trace_map.insert(source_temp, traced_name);
+            }
+        }
+    }
+
+    trace_map
+}
 
 pub fn translate_range(
     ctx: &mut DiscoveryContext,
@@ -25,13 +53,14 @@ pub fn translate_range(
 
 pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {
     let bytecode = ctx.target.get_bytecode()[offset as usize].clone();
+
     match &bytecode {
         Bytecode::Assign(_, dest, src, _) => {
-            make_let(&ctx.target, &[*dest], make_var(&ctx.target, *src))
+            make_let(ctx, &[*dest], make_var(ctx, *src))
         }
 
         Bytecode::Load(_, dest, constant) => {
-            make_let(&ctx.target, &[*dest], make_constant(constant))
+            make_let(ctx, &[*dest], make_constant(constant))
         }
 
         Bytecode::Call(_, dests, operation, srcs, _) => {
@@ -39,10 +68,10 @@ pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {
         }
 
         Bytecode::Ret(_, temps) => IRNode::Return(
-            temps.iter().map(|&t| make_var(&ctx.target, t)).collect(),
+            temps.iter().map(|&t| make_var(ctx, t)).collect(),
         ),
 
-        Bytecode::Abort(_, temp) => IRNode::Abort(Box::new(make_var(&ctx.target, *temp))),
+        Bytecode::Abort(_, temp) => IRNode::Abort(Box::new(make_var(ctx, *temp))),
 
         Bytecode::Label(_, _)
         | Bytecode::Jump(_, _)
@@ -60,32 +89,32 @@ fn translate_call(
     srcs: &[usize],
     offset: CodeOffset,
 ) -> IRNode {
-    let make_let_from_expr = |expr| make_let(&ctx.target, dests, expr);
-
     match operation {
         Operation::Unpack(module_id, struct_id, _)
         | Operation::UnpackVariant(module_id, struct_id, _, _, _) => {
             assert!(!srcs.is_empty(), "BUG: Unpack with no source");
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            make_let_from_expr(IRNode::Unpack {
+            make_let(ctx, dests, IRNode::Unpack {
                 struct_id: struct_id_ir,
-                value: Box::new(make_var(&ctx.target, srcs[0])),
+                value: Box::new(make_var(ctx, srcs[0])),
             })
         }
 
         Operation::Pack(module_id, struct_id, type_args)
         | Operation::PackVariant(module_id, struct_id, _, type_args) => {
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            make_let_from_expr(IRNode::Pack {
+            let type_args = type_args
+                .iter()
+                .map(|ty| ctx.builder.convert_type(ty))
+                .collect();
+            let fields = srcs
+                .iter()
+                .map(|&temp| make_var(ctx, temp))
+                .collect();
+            make_let(ctx, dests, IRNode::Pack {
                 struct_id: struct_id_ir,
-                type_args: type_args
-                    .iter()
-                    .map(|ty| ctx.builder.convert_type(ty))
-                    .collect(),
-                fields: srcs
-                    .iter()
-                    .map(|&temp| make_var(&ctx.target, temp))
-                    .collect(),
+                type_args,
+                fields,
             })
         }
 
@@ -106,22 +135,25 @@ fn translate_call(
 
             if is_prover_module && srcs.len() == 1 {
                 if func_name == "requires" {
-                    return IRNode::Requires(Box::new(make_var(&ctx.target, srcs[0])));
+                    return IRNode::Requires(Box::new(make_var(ctx, srcs[0])));
                 } else if func_name == "ensures" {
-                    return IRNode::Ensures(Box::new(make_var(&ctx.target, srcs[0])));
+                    return IRNode::Ensures(Box::new(make_var(ctx, srcs[0])));
                 }
             }
 
-            make_let_from_expr(IRNode::Call {
-                function: ctx.builder.function_id(module_id.qualified(*fun_id)),
-                args: srcs
-                    .iter()
-                    .map(|&temp| make_var(&ctx.target, temp))
-                    .collect(),
-                type_args: type_args
-                    .iter()
-                    .map(|ty| ctx.builder.convert_type(ty))
-                    .collect(),
+            let function = ctx.builder.function_id(module_id.qualified(*fun_id));
+            let args = srcs
+                .iter()
+                .map(|&temp| make_var(ctx, temp))
+                .collect();
+            let type_args = type_args
+                .iter()
+                .map(|ty| ctx.builder.convert_type(ty))
+                .collect();
+            make_let(ctx, dests, IRNode::Call {
+                function,
+                args,
+                type_args,
             })
         }
 
@@ -131,10 +163,10 @@ fn translate_call(
                 return IRNode::default();
             }
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            make_let_from_expr(IRNode::Field {
+            make_let(ctx, dests, IRNode::Field {
                 struct_id: struct_id_ir,
                 field_index: *field_idx,
-                base: Box::new(make_var(&ctx.target, srcs[0])),
+                base: Box::new(make_var(ctx, srcs[0])),
             })
         }
 
@@ -145,7 +177,7 @@ fn translate_call(
             if dests.is_empty() || srcs.is_empty() {
                 return IRNode::default();
             }
-            make_let_from_expr(make_var(&ctx.target, srcs[0]))
+            make_let(ctx, dests, make_var(ctx, srcs[0]))
         }
 
         Operation::WriteRef => {
@@ -182,10 +214,10 @@ fn translate_call(
                 "BUG: Binary operation with {} operands",
                 srcs.len()
             );
-            make_let_from_expr(IRNode::BinOp {
+            make_let(ctx, dests, IRNode::BinOp {
                 op: convert_binop(operation),
-                lhs: Box::new(make_var(&ctx.target, srcs[0])),
-                rhs: Box::new(make_var(&ctx.target, srcs[1])),
+                lhs: Box::new(make_var(ctx, srcs[0])),
+                rhs: Box::new(make_var(ctx, srcs[1])),
             })
         }
 
@@ -196,9 +228,9 @@ fn translate_call(
                 "BUG: Unary operation with {} operands",
                 srcs.len()
             );
-            make_let_from_expr(IRNode::UnOp {
+            make_let(ctx, dests, IRNode::UnOp {
                 op: UnOp::Not,
-                operand: Box::new(make_var(&ctx.target, srcs[0])),
+                operand: Box::new(make_var(ctx, srcs[0])),
             })
         }
 
@@ -223,9 +255,9 @@ fn translate_call(
                 Operation::CastU256 => UnOp::CastU256,
                 _ => unreachable!(),
             };
-            make_let_from_expr(IRNode::UnOp {
+            make_let(ctx, dests, IRNode::UnOp {
                 op,
-                operand: Box::new(make_var(&ctx.target, srcs[0])),
+                operand: Box::new(make_var(ctx, srcs[0])),
             })
         }
 
@@ -274,7 +306,7 @@ fn translate_write_ref(
 
     if incoming.is_empty() {
         if ref_temp < ctx.target.get_parameter_count() {
-            return make_let(&ctx.target, &[ref_temp], make_var(&ctx.target, value_temp));
+            return make_let(ctx, &[ref_temp], make_var(ctx, value_temp));
         }
         panic!(
             "BUG: WriteRef to reference {} with no incoming edges",
@@ -286,18 +318,18 @@ fn translate_write_ref(
 
     match (parent_node, edge) {
         (BorrowNode::LocalRoot(local_idx), BorrowEdge::Direct) => make_let(
-            &ctx.target,
+            ctx,
             &[*local_idx],
-            make_var(&ctx.target, value_temp),
+            make_var(ctx, value_temp),
         ),
 
         (BorrowNode::LocalRoot(local_idx), BorrowEdge::Field(struct_qid, field_idx)) => {
             let struct_id = ctx.builder.struct_id(struct_qid.to_qualified_id());
             IRNode::UpdateField {
-                base: Box::new(make_var(&ctx.target, *local_idx)),
+                base: Box::new(make_var(ctx, *local_idx)),
                 struct_id,
                 field_index: *field_idx,
-                value: Box::new(make_var(&ctx.target, value_temp)),
+                value: Box::new(make_var(ctx, value_temp)),
             }
         }
 
@@ -317,22 +349,35 @@ fn translate_write_ref(
 }
 
 /// Convert a TempIndex to a TempId by looking up the name from the function target
-pub fn temp_id(target: &FunctionTarget, temp: usize) -> TempId {
-    let symbol = target.get_local_name(temp);
-    target.global_env().symbol_pool().string(symbol).to_string()
+pub fn temp_id(ctx: &DiscoveryContext, temp: usize) -> TempId {
+    // First check if we have a traced name for this temp
+    if let Some(traced_name) = ctx.trace_names.get(&temp) {
+        return traced_name.clone();
+    }
+
+    // Otherwise fall back to the regular local name
+    let symbol = ctx.target.get_local_name(temp);
+    let mut name = ctx.target.global_env().symbol_pool().string(symbol).to_string();
+
+    // Strip Move compiler's version suffixes (e.g., "sum#1#0" → "sum", "tmp#$2" → "tmp")
+    if let Some(hash_pos) = name.find('#') {
+        name.truncate(hash_pos);
+    }
+
+    name
 }
 
-fn make_var(target: &FunctionTarget, temp: usize) -> IRNode {
-    IRNode::Var(temp_id(target, temp))
+fn make_var(ctx: &DiscoveryContext, temp: usize) -> IRNode {
+    IRNode::Var(temp_id(ctx, temp))
 }
 
 fn make_constant(constant: &Constant) -> IRNode {
     IRNode::Const(convert_constant(constant))
 }
 
-fn make_let(target: &FunctionTarget, results: &[usize], value: IRNode) -> IRNode {
+fn make_let(ctx: &DiscoveryContext, results: &[usize], value: IRNode) -> IRNode {
     IRNode::Let {
-        pattern: results.iter().map(|&temp| temp_id(target, temp)).collect(),
+        pattern: results.iter().map(|&temp| temp_id(ctx, temp)).collect(),
         value: Box::new(value),
     }
 }

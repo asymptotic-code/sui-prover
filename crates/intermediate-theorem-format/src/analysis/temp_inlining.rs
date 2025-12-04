@@ -137,7 +137,23 @@ fn inline_block(children: Vec<IRNode>, outer_temps: &BTreeMap<String, IRNode>) -
     IRNode::Block { children: result }
 }
 
-/// Check if pattern is a single temp variable
+/// Check if pattern is a single temp variable that should be inlined
 fn is_single_temp(pattern: &[String]) -> bool {
-    pattern.len() == 1 && VariableRegistry::is_temp(&pattern[0])
+    if pattern.len() != 1 {
+        return false;
+    }
+
+    let name = &pattern[0];
+
+    // Inline $ prefixed temps (true compiler temps)
+    if VariableRegistry::is_temp(name) {
+        return true;
+    }
+
+    // Also inline variables named "tmp" (compiler-generated but got meaningful names via TraceLocal)
+    if name == "tmp" {
+        return true;
+    }
+
+    false
 }

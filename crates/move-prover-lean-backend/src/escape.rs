@@ -74,6 +74,22 @@ pub fn escape_identifier(name: &str) -> String {
     // Replace # with _ (used in loop variable renaming like sum#1#0)
     let name = name.replace('#', "_");
 
+    // Strip SSA suffixes like _1_0, _2_1, etc. for cleaner output
+    // Pattern: ends with _<digit>_<digit> or _<digit>_<digit>_<digit>...
+    let name = if let Some(base_pos) = name.rfind(|c: char| !c.is_ascii_digit() && c != '_') {
+        let suffix_start = base_pos + 1;
+        let suffix = &name[suffix_start..];
+        // Check if suffix matches pattern like _1_0 or _2_1_3
+        if suffix.starts_with('_') && suffix.chars().skip(1).all(|c| c.is_ascii_digit() || c == '_') {
+            // Has SSA suffix, strip it
+            name[..suffix_start].to_string()
+        } else {
+            name
+        }
+    } else {
+        name
+    };
+
     match name.as_str() {
         // Basic control flow
         "if" => "if_".to_string(),

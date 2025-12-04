@@ -91,6 +91,11 @@ impl<W: Write> LeanWriter<W> {
         self.out
     }
 
+    /// Get a mutable reference to the underlying writer.
+    pub fn inner_mut(&mut self) -> &mut W {
+        &mut self.out
+    }
+
     /// Write a formatted string using format_args!.
     /// Convenience method to avoid `w.write(&format!(...))`.
     pub fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
@@ -111,6 +116,17 @@ impl<W: Write> LeanWriter<W> {
     /// Write an empty line (just a newline).
     pub fn newline(&mut self) {
         self.write("\n");
+    }
+
+    /// Clone this writer's state with a new underlying writer.
+    /// Used for rendering to temporary strings while preserving context.
+    pub fn clone_with_writer<W2: Write>(&self, writer: W2) -> LeanWriter<W2> {
+        LeanWriter {
+            out: writer,
+            indent: self.indent,
+            at_line_start: self.at_line_start,
+            inline: self.inline,
+        }
     }
 }
 

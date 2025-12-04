@@ -74,6 +74,7 @@ end MoveExcept
 -- a body function that receives and returns state,
 -- and initial loop state
 -- Returns the final loop state after the condition becomes false
+-- NOTE: Marked partial until we can provide termination proofs
 partial def whileLoop {α : Type}
   (cond : α → Except AbortCode Bool)
   (body : α → Except AbortCode α)
@@ -87,6 +88,7 @@ partial def whileLoop {α : Type}
 
 -- Pure while loop combinator (for Id monad)
 -- Used when the loop body has no aborts or monadic operations
+-- NOTE: Marked partial until we can provide termination proofs
 partial def whileLoopPure {α : Type}
   (cond : α → Id Bool)
   (body : α → Id α)

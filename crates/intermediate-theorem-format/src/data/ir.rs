@@ -398,7 +398,20 @@ impl IRNode {
 
     /// Check if this is an atomic expression (doesn't need parens when used as arg)
     pub fn is_atomic(&self) -> bool {
-        matches!(self, IRNode::Var(_) | IRNode::Const(_) | IRNode::Tuple(_))
+        match self {
+            IRNode::Var(_) | IRNode::Const(_) | IRNode::Tuple(_) => true,
+            // Block with no statements that has an atomic result is also atomic
+            IRNode::Block { children } => {
+                if children.len() == 1 {
+                    children[0].is_atomic()
+                } else {
+                    false
+                }
+            }
+            // Return with a single atomic value is atomic
+            IRNode::Return(values) => values.len() == 1 && values[0].is_atomic(),
+            _ => false,
+        }
     }
 
     /// Check if this is a terminating node (Return or Abort at the tail)
@@ -488,10 +501,15 @@ impl IRNode {
                 else_branch,
                 ..
             } => then_branch.is_monadic(is_func_monadic) || else_branch.is_monadic(is_func_monadic),
-            IRNode::Block { children } => children
-                .last()
-                .is_some_and(|c| c.is_monadic(is_func_monadic)),
+            IRNode::Block { children } => {
+                children.iter().any(|c| c.contains_monadic(is_func_monadic))
+                    || children.last().is_some_and(|c| c.is_monadic(is_func_monadic))
+            }
             IRNode::Let { value, .. } => value.is_monadic(is_func_monadic),
+            IRNode::Return(values) => {
+                // A return is monadic if any of its values are monadic
+                values.iter().any(|v| v.is_monadic(is_func_monadic))
+            }
             IRNode::Tuple(elems) => {
                 // A tuple is monadic if any of its elements are monadic
                 // (it will be rendered as a do block)

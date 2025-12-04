@@ -5,81 +5,20 @@
 //!
 //! Transformations:
 //! 1. Remove identity assignments: `let x := x` -> removed
-//! 2. Copy propagation: `let tmp := expr; let x := tmp` -> `let x := expr`
+//! 2. Simplify boolean if expressions: `if cond then true else false` -> `cond`
 
-use crate::IRNode;
-use std::collections::BTreeMap;
+use crate::{Const, IRNode};
 
 pub fn cleanup(node: IRNode) -> IRNode {
-    node.transform_block(|children| {
-        apply_copy_propagation(
-            children
-                .into_iter()
-                .filter(|c| !is_identity_let(c))
-                .collect(),
-        )
-    })
-}
+    let node = node.transform_block(|children| {
+        children
+            .into_iter()
+            .filter(|c| !is_identity_let(c))
+            .collect()
+    });
 
-fn apply_copy_propagation(nodes: Vec<IRNode>) -> Vec<IRNode> {
-    // Find copy patterns: `let x = expr; let y = x` -> remove `let y = x`, substitute y → x
-    let (indices_to_remove, subs): (Vec<usize>, BTreeMap<String, String>) = nodes
-        .windows(2)
-        .enumerate()
-        .filter_map(|(index, window)| {
-            // Returns (original_name, copy_name) - we want to replace copy_name with original_name
-            try_propagate(&window[0], &window[1]).map(|(orig, copy)| (index + 1, (copy, orig)))
-        })
-        .unzip();
-
-    // Compute transitive closure of the substitution map
-    // For chains like a=expr, b=a, c=b, we want c->a directly (not c->b->a)
-    let subs = transitive_closure(subs);
-
-    nodes
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| !indices_to_remove.contains(i))
-        .map(|(_, node)| node.substitute_vars(&subs))
-        .collect()
-}
-
-/// Compute the transitive closure of a substitution map.
-/// If we have {c: b, b: a}, this produces {c: a, b: a}.
-fn transitive_closure(mut subs: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    // Repeatedly resolve each mapping until no more changes occur
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let updates: Vec<_> = subs
-            .iter()
-            .filter_map(|(key, target)| {
-                subs.get(target)
-                    .filter(|resolved| *resolved != target)
-                    .map(|resolved| (key.clone(), resolved.clone()))
-            })
-            .collect();
-
-        if !updates.is_empty() {
-            changed = true;
-            for (key, resolved) in updates {
-                subs.insert(key, resolved);
-            }
-        }
-    }
-    subs
-}
-
-/// Detects `let x = expr; let y = x` pattern, returns (original_name, copy_name)
-fn try_propagate(first: &IRNode, second: &IRNode) -> Option<(String, String)> {
-    let (def_name, _) = single_pattern_let(first)?;
-    let (copy_name, IRNode::Var(use_value)) = single_pattern_let(second)? else {
-        return None;
-    };
-    if use_value != def_name {
-        return None;
-    }
-    Some((def_name.clone(), copy_name.clone()))
+    // Apply boolean simplification after other cleanups
+    simplify_boolean_ifs(node)
 }
 
 fn is_identity_let(ir: &IRNode) -> bool {
@@ -93,4 +32,42 @@ fn single_pattern_let(ir: &IRNode) -> Option<(&String, &IRNode)> {
         IRNode::Let { pattern, value } if pattern.len() == 1 => Some((&pattern[0], value.as_ref())),
         _ => None,
     }
+}
+
+/// Simplify boolean if expressions recursively
+/// - `if cond then true else false` -> `cond`
+/// - `if cond then false else true` -> `!cond`
+fn simplify_boolean_ifs(node: IRNode) -> IRNode {
+    node.map(&mut |n| match n {
+        IRNode::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            // Check if both branches are boolean constants
+            let then_is_true = matches!(*then_branch.as_ref(), IRNode::Const(Const::Bool(true)));
+            let then_is_false = matches!(*then_branch.as_ref(), IRNode::Const(Const::Bool(false)));
+            let else_is_true = matches!(*else_branch.as_ref(), IRNode::Const(Const::Bool(true)));
+            let else_is_false = matches!(*else_branch.as_ref(), IRNode::Const(Const::Bool(false)));
+
+            if then_is_true && else_is_false {
+                // if cond then true else false -> cond
+                *cond
+            } else if then_is_false && else_is_true {
+                // if cond then false else true -> !cond
+                IRNode::UnOp {
+                    op: crate::UnOp::Not,
+                    operand: cond,
+                }
+            } else {
+                // Keep as is
+                IRNode::If {
+                    cond,
+                    then_branch,
+                    else_branch,
+                }
+            }
+        }
+        other => other,
+    })
 }
