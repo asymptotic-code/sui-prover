@@ -17,35 +17,37 @@ use std::ops::RangeInclusive;
 pub fn translate_range(
     ctx: &mut DiscoveryContext,
     range: RangeInclusive<CodeOffset>,
-) -> Vec<IRNode> {
-    range.filter_map(|offset| translate(ctx, offset)).collect()
+) -> IRNode {
+    range
+        .map(|offset| translate(ctx, offset))
+        .fold(IRNode::default(), |acc, node| acc.combine(node))
 }
 
-pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> Option<IRNode> {
+pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {
     let bytecode = ctx.target.get_bytecode()[offset as usize].clone();
     match &bytecode {
         Bytecode::Assign(_, dest, src, _) => {
-            Some(make_let(&ctx.target, &[*dest], make_var(&ctx.target, *src)))
+            make_let(&ctx.target, &[*dest], make_var(&ctx.target, *src))
         }
 
         Bytecode::Load(_, dest, constant) => {
-            Some(make_let(&ctx.target, &[*dest], make_constant(constant)))
+            make_let(&ctx.target, &[*dest], make_constant(constant))
         }
 
         Bytecode::Call(_, dests, operation, srcs, _) => {
             translate_call(ctx, dests, operation, srcs, offset)
         }
 
-        Bytecode::Ret(_, temps) => Some(IRNode::Return(
+        Bytecode::Ret(_, temps) => IRNode::Return(
             temps.iter().map(|&t| make_var(&ctx.target, t)).collect(),
-        )),
+        ),
 
-        Bytecode::Abort(_, temp) => Some(IRNode::Abort(Box::new(make_var(&ctx.target, *temp)))),
+        Bytecode::Abort(_, temp) => IRNode::Abort(Box::new(make_var(&ctx.target, *temp))),
 
         Bytecode::Label(_, _)
         | Bytecode::Jump(_, _)
         | Bytecode::Branch(_, _, _, _)
-        | Bytecode::Nop(_) => None,
+        | Bytecode::Nop(_) => IRNode::default(),
 
         _ => panic!("BUG: Unsupported bytecode {:?}", bytecode),
     }
@@ -57,7 +59,7 @@ fn translate_call(
     operation: &Operation,
     srcs: &[usize],
     offset: CodeOffset,
-) -> Option<IRNode> {
+) -> IRNode {
     let make_let_from_expr = |expr| make_let(&ctx.target, dests, expr);
 
     match operation {
@@ -65,16 +67,16 @@ fn translate_call(
         | Operation::UnpackVariant(module_id, struct_id, _, _, _) => {
             assert!(!srcs.is_empty(), "BUG: Unpack with no source");
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            Some(make_let_from_expr(IRNode::Unpack {
+            make_let_from_expr(IRNode::Unpack {
                 struct_id: struct_id_ir,
                 value: Box::new(make_var(&ctx.target, srcs[0])),
-            }))
+            })
         }
 
         Operation::Pack(module_id, struct_id, type_args)
         | Operation::PackVariant(module_id, struct_id, _, type_args) => {
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            Some(make_let_from_expr(IRNode::Pack {
+            make_let_from_expr(IRNode::Pack {
                 struct_id: struct_id_ir,
                 type_args: type_args
                     .iter()
@@ -84,7 +86,7 @@ fn translate_call(
                     .iter()
                     .map(|&temp| make_var(&ctx.target, temp))
                     .collect(),
-            }))
+            })
         }
 
         Operation::Function(module_id, fun_id, type_args) => {
@@ -104,13 +106,13 @@ fn translate_call(
 
             if is_prover_module && srcs.len() == 1 {
                 if func_name == "requires" {
-                    return Some(IRNode::Requires(Box::new(make_var(&ctx.target, srcs[0]))));
+                    return IRNode::Requires(Box::new(make_var(&ctx.target, srcs[0])));
                 } else if func_name == "ensures" {
-                    return Some(IRNode::Ensures(Box::new(make_var(&ctx.target, srcs[0]))));
+                    return IRNode::Ensures(Box::new(make_var(&ctx.target, srcs[0])));
                 }
             }
 
-            Some(make_let_from_expr(IRNode::Call {
+            make_let_from_expr(IRNode::Call {
                 function: ctx.builder.function_id(module_id.qualified(*fun_id)),
                 args: srcs
                     .iter()
@@ -120,20 +122,20 @@ fn translate_call(
                     .iter()
                     .map(|ty| ctx.builder.convert_type(ty))
                     .collect(),
-            }))
+            })
         }
 
         Operation::GetField(module_id, struct_id, _, field_idx)
         | Operation::BorrowField(module_id, struct_id, _, field_idx) => {
             if srcs.is_empty() {
-                return None;
+                return IRNode::default();
             }
             let struct_id_ir = ctx.builder.struct_id(module_id.qualified(*struct_id));
-            Some(make_let_from_expr(IRNode::Field {
+            make_let_from_expr(IRNode::Field {
                 struct_id: struct_id_ir,
                 field_index: *field_idx,
                 base: Box::new(make_var(&ctx.target, srcs[0])),
-            }))
+            })
         }
 
         Operation::BorrowLoc
@@ -141,9 +143,9 @@ fn translate_call(
         | Operation::ReadRef
         | Operation::FreezeRef => {
             if dests.is_empty() || srcs.is_empty() {
-                return None;
+                return IRNode::default();
             }
-            Some(make_let_from_expr(make_var(&ctx.target, srcs[0])))
+            make_let_from_expr(make_var(&ctx.target, srcs[0]))
         }
 
         Operation::WriteRef => {
@@ -153,7 +155,7 @@ fn translate_call(
                 "BUG: WriteRef expects 2 sources, got {}",
                 srcs.len()
             );
-            Some(translate_write_ref(ctx, offset, srcs[0], srcs[1]))
+            translate_write_ref(ctx, offset, srcs[0], srcs[1])
         }
 
         Operation::Add
@@ -180,11 +182,11 @@ fn translate_call(
                 "BUG: Binary operation with {} operands",
                 srcs.len()
             );
-            Some(make_let_from_expr(IRNode::BinOp {
+            make_let_from_expr(IRNode::BinOp {
                 op: convert_binop(operation),
                 lhs: Box::new(make_var(&ctx.target, srcs[0])),
                 rhs: Box::new(make_var(&ctx.target, srcs[1])),
-            }))
+            })
         }
 
         Operation::Not => {
@@ -194,10 +196,10 @@ fn translate_call(
                 "BUG: Unary operation with {} operands",
                 srcs.len()
             );
-            Some(make_let_from_expr(IRNode::UnOp {
+            make_let_from_expr(IRNode::UnOp {
                 op: UnOp::Not,
                 operand: Box::new(make_var(&ctx.target, srcs[0])),
-            }))
+            })
         }
 
         Operation::CastU8
@@ -221,10 +223,10 @@ fn translate_call(
                 Operation::CastU256 => UnOp::CastU256,
                 _ => unreachable!(),
             };
-            Some(make_let_from_expr(IRNode::UnOp {
+            make_let_from_expr(IRNode::UnOp {
                 op,
                 operand: Box::new(make_var(&ctx.target, srcs[0])),
-            }))
+            })
         }
 
         // Skipped debug ops
@@ -234,7 +236,7 @@ fn translate_call(
         | Operation::TraceAbort
         | Operation::TraceExp(_, _)
         | Operation::TraceGlobalMem(_)
-        | Operation::TraceGhost(_, _) => None,
+        | Operation::TraceGhost(_, _) => IRNode::default(),
 
         Operation::GetGlobal(..)
         | Operation::MoveFrom(..)

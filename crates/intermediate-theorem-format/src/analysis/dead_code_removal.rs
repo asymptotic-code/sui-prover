@@ -20,7 +20,7 @@ pub fn remove_dead_code(ir: IRNode) -> IRNode {
 }
 
 fn is_dead_let(ir: &IRNode, used: &BTreeSet<String>) -> bool {
-    let Some((pattern, value)) = ir.destructure_let() else {
+    let IRNode::Let { pattern, value } = ir else {
         return false;
     };
     // Only remove Let bindings where:

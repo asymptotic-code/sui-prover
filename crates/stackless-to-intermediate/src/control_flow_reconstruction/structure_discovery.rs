@@ -14,12 +14,11 @@ use std::collections::BTreeSet;
 pub fn reconstruct_function(mut ctx: DiscoveryContext) -> IRNode {
     let entry = ctx.forward_cfg.entry_block();
     let exit = ctx.forward_cfg.exit_block();
-    let nodes = discover_region(&mut ctx, entry, exit);
-    IRNode::Block { children: nodes }
+    discover_region(&mut ctx, entry, exit)
 }
 
-fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) -> Vec<IRNode> {
-    let mut nodes = Vec::new();
+fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) -> IRNode {
+    let mut node = IRNode::default();
     let mut cursor = start;
 
     while cursor != stop {
@@ -36,7 +35,7 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
             let else_block = resolve_label_block(ctx, else_label).expect("else label must resolve");
 
             let header = ir_translator::translate_range(ctx, lower..=upper);
-            nodes.extend(header);
+            node = node.combine(header);
 
             let then_is_back =
                 then_block == start || ctx.forward_dom.is_dominated_by(cursor, then_block);
@@ -61,11 +60,9 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
                     IRNode::Var(cond_name)
                 };
 
-                nodes.push(IRNode::While {
+                node = node.combine(IRNode::While {
                     cond: Box::new(cond),
-                    body: Box::new(IRNode::Block {
-                        children: body_nodes,
-                    }),
+                    body: Box::new(body_nodes),
                     vars: vec![], // Phi detection will populate this later
                 });
 
@@ -76,73 +73,24 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
             let merge =
                 find_merge_block(&ctx.forward_cfg, then_block, else_block, stop).unwrap_or(stop);
 
-            let mut then_nodes = discover_region(ctx, then_block, merge);
-            let mut else_nodes = discover_region(ctx, else_block, merge);
-
-            // Check if merge block contains only terminating code (e.g., shared return)
-            // If so, include it in branches that don't already terminate
-            let mut merge_included = false;
-            if let Some((lower, upper)) = block_bounds(&ctx.forward_cfg, merge) {
-                let merge_nodes = ir_translator::translate_range(ctx, lower..=upper);
-                let merge_block = IRNode::Block {
-                    children: merge_nodes.clone(),
-                };
-                if merge_block.terminates() {
-                    // Merge block terminates - include it in branches that don't already terminate
-                    let then_term = IRNode::Block {
-                        children: then_nodes.clone(),
-                    }
-                    .terminates();
-                    let else_term = IRNode::Block {
-                        children: else_nodes.clone(),
-                    }
-                    .terminates();
-                    if !then_term {
-                        then_nodes.extend(merge_nodes.clone());
-                    }
-                    if !else_term {
-                        else_nodes.extend(merge_nodes);
-                    }
-                    merge_included = true;
-                }
-            }
-
-            let then_branch = IRNode::Block {
-                children: then_nodes,
-            };
-            let else_branch = IRNode::Block {
-                children: else_nodes,
-            };
-
-            // If both branches terminate, don't continue after the if
-            let both_terminate = then_branch.terminates() && else_branch.terminates();
-
-            nodes.push(IRNode::If {
+            node = node.combine(IRNode::If {
                 cond: Box::new(IRNode::Var(cond_name)),
-                then_branch: Box::new(then_branch),
-                else_branch: Box::new(else_branch),
+                then_branch: Box::new(discover_region(ctx, then_block, merge)),
+                else_branch: Box::new(discover_region(ctx, else_block, merge)),
             });
 
-            if both_terminate {
-                break;
-            }
-
-            // If we included the merge block in the branches, skip past it
-            if merge_included {
-                cursor = next_block(ctx, merge, stop);
-            } else {
-                cursor = merge;
-            }
+            // Continue at the merge
+            cursor = merge;
             continue;
         }
 
-        let block_nodes = ir_translator::translate_range(ctx, lower..=upper);
-        nodes.extend(block_nodes);
+        node  = node.combine(ir_translator::translate_range(ctx, lower..=upper));
         cursor = next_block(ctx, cursor, stop);
     }
 
-    nodes
+    node
 }
+
 
 fn next_block(ctx: &DiscoveryContext, current: BlockId, stop: BlockId) -> BlockId {
     *ctx.forward_cfg.successors(current).first().unwrap_or(&stop)

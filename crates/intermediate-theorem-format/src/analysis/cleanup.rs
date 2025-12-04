@@ -89,7 +89,8 @@ fn is_identity_let(ir: &IRNode) -> bool {
 }
 
 fn single_pattern_let(ir: &IRNode) -> Option<(&String, &IRNode)> {
-    ir.destructure_let()
-        .filter(|(pattern, _)| pattern.len() == 1)
-        .map(|(pattern, value)| (&pattern[0], value.as_ref()))
+    match ir {
+        IRNode::Let { pattern, value } if pattern.len() == 1 => Some((&pattern[0], value.as_ref())),
+        _ => None,
+    }
 }

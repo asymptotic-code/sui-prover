@@ -17,13 +17,8 @@ use move_stackless_bytecode::stackless_control_flow_graph::{BlockId, StacklessCo
 
 pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> Function {
     let variables = VariableRegistry::new(
-        target
-            .data
-            .local_types
-            .iter()
-            .enumerate()
-            .map(|(index, move_type)| (index, builder.convert_type(move_type)))
-            .collect(),
+        builder.convert_types(&target.data.local_types)
+            .into_iter().enumerate().collect()
     );
 
     let func_env = target.func_env;
@@ -31,41 +26,29 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         .program
         .modules
         .id_for_key(func_env.module_env.get_id());
-    let name = ProgramBuilder::sanitize_name(&builder.symbol_str(func_env.get_name()));
-    let signature = build_signature(builder, func_env);
-    let is_native = func_env.is_native();
 
-    if target.get_bytecode().is_empty() || is_native {
-        return Function {
-            module_id,
-            name,
-            signature,
-            body: IRNode::default(),
-            variables,
-            mutual_group_id: None,
-            is_native,
-        };
-    }
-
-    let forward_cfg =
-        StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
-    let forward_dom = build_dominator_relation(&forward_cfg);
-    let ctx = DiscoveryContext {
-        builder,
-        target,
-        forward_dom,
-        forward_cfg,
+    let body = if target.get_bytecode().is_empty() || func_env.is_native() {
+        IRNode::default()
+    } else {
+        let forward_cfg =
+            StacklessControlFlowGraph::new_forward_with_options(target.get_bytecode(), true);
+        let forward_dom = build_dominator_relation(&forward_cfg);
+        detect_phis(reconstruct_function(DiscoveryContext {
+            builder,
+            target,
+            forward_dom,
+            forward_cfg,
+        }))
     };
-    let body = detect_phis(reconstruct_function(ctx));
 
     Function {
         module_id,
-        name,
-        signature,
+        name: ProgramBuilder::sanitize_name(&builder.symbol_str(func_env.get_name())),
+        signature: build_signature(builder, func_env),
         body,
         variables,
         mutual_group_id: None,
-        is_native,
+        is_native: func_env.is_native(),
     }
 }
 
@@ -90,17 +73,12 @@ fn build_signature(builder: &mut ProgramBuilder, func_env: &FunctionEnv) -> Func
             })
             .collect(),
         return_type: {
-            let types: Vec<_> = func_env
-                .get_return_types()
-                .iter()
-                .map(|t| builder.convert_type(t))
-                .collect();
+            let types = builder.convert_types(&func_env.get_return_types());
             match types.len() {
                 0 => Type::Tuple(vec![]),
                 1 => types.into_iter().next().unwrap(),
                 _ => Type::Tuple(types),
-            }
-            .wrap_in_monad()
+            }.wrap_in_monad()
         },
     }
 }

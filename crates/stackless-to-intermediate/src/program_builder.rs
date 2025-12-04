@@ -126,6 +126,10 @@ impl<'env> ProgramBuilder<'env> {
         self.program.functions.create(qualified_id, func);
     }
 
+    pub fn convert_types(&mut self, types: &[MoveType]) -> Vec<Type> {
+        types.iter().map(|types| self.convert_type(types)).collect()
+    }
+    
     pub fn convert_type(&mut self, ty: &MoveType) -> Type {
         use move_model::ty::PrimitiveType;
         match ty {

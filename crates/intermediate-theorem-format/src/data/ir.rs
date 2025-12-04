@@ -349,28 +349,22 @@ impl IRNode {
         IRNode::Tuple(vec![])
     }
 
-    /// Get references to all nodes (including itself) in this IR tree
-    pub fn children(&self) -> Vec<&IRNode> {
-        let mut result = vec![self];
-        traverse_ir!(self, as_ir_ref, |child| result.push(child));
-        result
-    }
-
-    /// Get references to all nodes (including itself) in this IR tree
-    pub fn all_nodes(&self) -> Vec<&IRNode> {
-        let mut result = vec![self];
-        traverse_ir!(self, as_ir_ref, |child| result.extend(child.all_nodes()));
-        result
-    }
-
-    /// Iterates over all nodes of this IR node
+    /// Get references to all nodes (including itself) recursively in this IR tree
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a IRNode> + 'a {
-        self.all_nodes().into_iter()
+        fn collect_nodes<'a>(node: &'a IRNode, result: &mut Vec<&'a IRNode>) {
+            result.push(node);
+            traverse_ir!(node, as_ir_ref, |child| collect_nodes(child, result));
+        }
+        let mut result = Vec::new();
+        collect_nodes(self, &mut result);
+        result.into_iter()
     }
 
-    /// Iterates over all children of this IR node
+    /// Get references to direct children (depth 1) of this IR node
     pub fn iter_children<'a>(&'a self) -> impl Iterator<Item = &'a IRNode> + 'a {
-        self.children().into_iter()
+        let mut result = Vec::new();
+        traverse_ir!(self, as_ir_ref, |child| result.push(child));
+        result.into_iter()
     }
 
     /// Transform this IR recursively (bottom-up: children first, then parent)
@@ -384,24 +378,12 @@ impl IRNode {
         f(self)
     }
 
-    /// Collects all the IRNodes into a given structure
-    pub fn collect<F: FnMut(&mut T, &IRNode), T: Default>(&self, mut f: F) -> T {
-        self.iter().fold(T::default(), |mut acc, node| {
-            f(&mut acc, node);
-            acc
-        })
-    }
-
-    /// Checks if something is true on both branches of ifs instead of either
-    pub fn check_branches<F: Fn(&IRNode) -> bool>(&self, f: F) -> bool {
-        self.iter_children().any(|node| match node {
-            IRNode::If {
-                then_branch,
-                else_branch,
-                ..
-            } => f(then_branch.as_ref()) && f(else_branch.as_ref()),
-            _ => f(node),
-        })
+    /// Fold over all IRNodes into a given structure
+    pub fn fold<T, F>(&self, init: T, mut f: F) -> T
+    where
+        F: FnMut(T, &IRNode) -> T,
+    {
+        self.iter().fold(init, |acc, node| f(acc, node))
     }
 
     /// Transform all Block nodes recursively
@@ -436,34 +418,25 @@ impl IRNode {
 
     /// Collect all variable names used (read) in this IR tree
     pub fn used_vars(&self) -> impl Iterator<Item = &TempId> {
-        self.iter().filter_map(|node| {
-            if let IRNode::Var(name) = node {
-                return Some(name);
-            }
-            None
+        self.iter().filter_map(|node| match node {
+            IRNode::Var(name) => Some(name),
+            _ => None,
         })
     }
 
     /// Collect all variable names defined (bound) in this IR tree
     pub fn defined_vars(&self) -> impl Iterator<Item = &TempId> {
-        self.iter()
-            .flat_map(|node| {
-                if let IRNode::Let { pattern, .. } = node {
-                    return Some(pattern.iter());
-                }
-                None
-            })
-            .flatten()
+        self.iter().flat_map(|node| match node {
+            IRNode::Let { pattern, .. } => pattern.iter(),
+            _ => [].iter(),
+        })
     }
 
     /// Collect all function calls
     pub fn calls(&self) -> impl Iterator<Item = FunctionID> + '_ {
-        self.iter().filter_map(|node| {
-            if let IRNode::Call { function, .. } = node {
-                Some(*function)
-            } else {
-                None
-            }
+        self.iter().filter_map(|node| match node {
+            IRNode::Call { function, .. } => Some(*function),
+            _ => None,
         })
     }
 
@@ -488,6 +461,7 @@ impl IRNode {
         }
     }
 
+    /// Check if this IR tree contains any Abort nodes
     pub fn aborts(&self) -> bool {
         self.iter().any(|n| matches!(n, IRNode::Abort(_)))
     }
@@ -587,19 +561,46 @@ impl IRNode {
 
     /// Collect all struct IDs referenced in type positions (type arguments)
     pub fn iter_type_struct_ids(&self) -> impl Iterator<Item = StructID> + '_ {
-        self.iter().flat_map(|node| match node {
-            IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => type_args
-                .iter()
-                .flat_map(|ty| ty.struct_ids())
-                .collect::<Vec<_>>(),
-            _ => vec![],
-        })
+        self.iter()
+            .filter_map(|node| match node {
+                IRNode::Pack { type_args, .. } | IRNode::Call { type_args, .. } => {
+                    Some(type_args.iter())
+                }
+                _ => None,
+            })
+            .flatten()
+            .flat_map(|ty| ty.struct_ids())
     }
 
-    pub fn destructure_let(&self) -> Option<(&Vec<String>, &Box<IRNode>)> {
+    pub fn combine(self, other: IRNode) -> IRNode {
+        let mut elements: Vec<_> = self.into();
+        elements.append(&mut other.into());
+        elements.into_iter().collect()
+    }
+}
+
+impl Into<Vec<IRNode>> for IRNode {
+    fn into(self) -> Vec<IRNode> {
         match self {
-            IRNode::Let { pattern, value } => Some((pattern, value)),
-            _ => None,
+            IRNode::Block { children } => {
+                children
+            },
+            IRNode::Tuple(vals) if vals.is_empty() => {
+                vec![]
+            }
+            _ => vec![self]
+        }
+    }
+}
+
+impl FromIterator<IRNode> for IRNode {
+    fn from_iter<T: IntoIterator<Item=IRNode>>(iter: T) -> Self {
+        let mut nodes = iter.into_iter().collect::<Vec<IRNode>>();
+
+        match nodes.len() {
+            0 => IRNode::default(),
+            1 => nodes.pop().unwrap(),
+            _ => IRNode::Block { children: nodes }
         }
     }
 }
