@@ -55,11 +55,11 @@ fn analyze_type_invariants_r(
     targets: &FunctionTargetsHolder,
     env: &GlobalEnv,
     nested: Vec<NestedPathEntry>,
-    visited: &mut BTreeSet<Type>,
+    visited: &mut BTreeSet<(Type, Vec<NestedPathEntry>)>,
     ty: &Type,
     results: &mut BTreeSet<Vec<NestedPathEntry>>,
 ) {
-    if !visited.insert(ty.clone()) {
+    if !visited.insert((ty.clone(), nested.clone())) {
         return;
     }
     match ty.skip_reference() {
