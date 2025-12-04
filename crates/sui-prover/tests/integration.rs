@@ -21,7 +21,8 @@ fn run_prover(file_path: &Path) -> String {
         .unwrap()
         .join("packages")
         .join("sui-prover");
-    let prover_dir_dis = prover_dir.display();
+    // Convert path to use forward slashes for TOML (even on Windows)
+    let prover_dir_dis = prover_dir.display().to_string().replace('\\', "/");
     let tmp = tempfile::tempdir().unwrap();
     let tmp_dir = tmp.path();
     std::fs::write(
