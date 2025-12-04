@@ -83,8 +83,8 @@ fn reconstruct_region(
                             ctx.forward_cfg.display();
                             ctx.back_cfg.display();
                             panic!(
-                                "no region found for if block={} then branch block={}",
-                                current_block, *then_branch
+                                "no region found for if block={}, then block={}, else block={}, merge block={}",
+                                current_block, *then_branch, *else_branch, immediate_post_dominator
                             )
                         });
                 let else_region =
