@@ -932,12 +932,6 @@ dependencies = [
 
 [[package]]
 name = "fixedbitset"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
-
-[[package]]
-name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
@@ -1655,6 +1649,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
+name = "intermediate-theorem-format"
+version = "0.1.0"
+dependencies = [
+ "ethnum",
+ "indexmap 2.12.1",
+ "log",
+ "move-model 0.1.0",
+ "num",
+ "petgraph",
+]
+
+[[package]]
 name = "internment"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2011,7 +2017,7 @@ dependencies = [
  "indexmap 2.12.1",
  "move-binary-format",
  "move-core-types",
- "petgraph 0.8.3",
+ "petgraph",
  "serde-reflection",
 ]
 
@@ -2028,7 +2034,7 @@ dependencies = [
  "move-core-types",
  "move-regex-borrow-graph",
  "move-vm-config",
- "petgraph 0.8.3",
+ "petgraph",
 ]
 
 [[package]]
@@ -2087,7 +2093,7 @@ dependencies = [
  "move-proc-macros",
  "move-symbol-pool",
  "once_cell",
- "petgraph 0.8.3",
+ "petgraph",
  "rayon",
  "regex",
  "serde",
@@ -2144,7 +2150,7 @@ dependencies = [
  "move-core-types",
  "move-ir-types",
  "move-trace-format",
- "petgraph 0.8.3",
+ "petgraph",
  "serde",
 ]
 
@@ -2333,7 +2339,7 @@ dependencies = [
  "move-symbol-pool",
  "named-lock",
  "once_cell",
- "petgraph 0.8.3",
+ "petgraph",
  "regex",
  "serde",
  "serde_yaml",
@@ -2398,31 +2404,12 @@ name = "move-prover-lean-backend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "bimap",
- "clap",
- "codespan",
- "codespan-reporting",
- "futures",
- "itertools 0.13.0",
+ "intermediate-theorem-format",
  "log",
- "move-binary-format",
- "move-command-line-common",
- "move-compiler",
- "move-core-types",
- "move-docgen",
  "move-model 0.1.0",
  "move-stackless-bytecode",
- "num",
- "once_cell",
- "pretty",
- "rand 0.8.5",
- "regex",
- "serde",
- "simplelog",
- "tera",
+ "stackless-to-intermediate",
  "tokio",
- "toml 0.7.8",
 ]
 
 [[package]]
@@ -2433,7 +2420,7 @@ dependencies = [
  "itertools 0.10.5",
  "move-binary-format",
  "move-core-types",
- "petgraph 0.8.3",
+ "petgraph",
  "proptest",
 ]
 
@@ -2463,7 +2450,7 @@ dependencies = [
  "num",
  "once_cell",
  "paste",
- "petgraph 0.5.1",
+ "petgraph",
  "regex",
  "serde",
 ]
@@ -3085,21 +3072,11 @@ dependencies = [
 
 [[package]]
 name = "petgraph"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
-dependencies = [
- "fixedbitset 0.2.0",
- "indexmap 1.9.3",
-]
-
-[[package]]
-name = "petgraph"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
 dependencies = [
- "fixedbitset 0.5.7",
+ "fixedbitset",
  "hashbrown 0.15.5",
  "indexmap 2.12.1",
  "serde",
@@ -4198,6 +4175,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "stackless-to-intermediate"
+version = "0.1.0"
+dependencies = [
+ "ethnum",
+ "indexmap 2.12.1",
+ "intermediate-theorem-format",
+ "log",
+ "move-binary-format",
+ "move-model 0.1.0",
+ "move-stackless-bytecode",
+ "toml 0.7.8",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4237,7 +4228,7 @@ dependencies = [
  "move-stackless-bytecode",
  "move-symbol-pool",
  "openai_api_rust",
- "petgraph 0.5.1",
+ "petgraph",
  "regex",
  "serde",
  "sha2 0.10.9",
