@@ -227,11 +227,12 @@ impl QuantifierIteratorAnalysisProcessor {
         let func_env = env.get_function(qid);
         let data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-        if !targets.is_pure_fun(&qid) {
+        // NOTE: workaround for issue #329: nested quantifiers are not supported yet, so we allow extra bpl with no_abort attribute
+        if !targets.is_function_with_abort_check(&qid) {
             env.diag(
                 Severity::Error,
                 &func_env.get_loc(),
-                "Quantifier function should be pure",
+                "Quantifier function should be pure ",
             );
 
             return true;

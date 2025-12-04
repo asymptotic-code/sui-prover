@@ -1,6 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 276
+assertion_line: 277
 expression: output
 ---
 Verification successful
@@ -33,7 +33,7 @@ function {:inline} $42_quantifiers_multiple_args_is_greater_or_equal$pure(_$t0: 
 }
 function {:inline} $42_quantifiers_multiple_args_sum3$pure(_$t0: int, _$t1: int, _$t2: int) returns ($ret0: int)
 {
-    (var $t3 := (_$t0 + _$t1);
-    (var $t4 := ($t3 + _$t2);
-    $t4))
+    (var $t5 := (_$t0 + _$t1);
+    (var $t7 := ($t5 + _$t2);
+    $t7))
 }

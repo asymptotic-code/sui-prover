@@ -172,11 +172,6 @@ impl ConditionalMergeInsertionProcessor {
                 }
                 Bytecode::Branch(..) => {
                     // Nested branches not supported yet
-                    func_env.module_env.env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        "Nested branches in pure functions are not supported yet",
-                    );
                     simple_block = false;
                     break;
                 }
