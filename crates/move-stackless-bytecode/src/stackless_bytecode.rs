@@ -605,9 +605,6 @@ impl Bytecode {
             }
         }
 
-        // always give successors in ascending order
-        v.sort_unstable();
-
         v
     }
 
