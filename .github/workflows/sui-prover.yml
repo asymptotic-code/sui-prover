@@ -382,7 +382,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: asymptotic-code/cetus-clmm
-          ref: clmm-specs
+          ref: specs
           token: ${{ secrets.PAT_TOKEN }}
           path: cetus    
 
