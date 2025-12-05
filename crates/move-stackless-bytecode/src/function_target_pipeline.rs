@@ -19,6 +19,7 @@ use petgraph::graph::DiGraph;
 
 use crate::{
     function_target::{FunctionData, FunctionTarget},
+    no_abort_analysis::NoAbortInfo,
     options::ProverOptions,
     package_targets::PackageTargets,
     print_targets_for_test,
@@ -202,6 +203,10 @@ impl FunctionTargetsHolder {
         &self.prover_options
     }
 
+    pub fn func_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
+    }
+
     /// Get an iterator for all functions this holder.
     pub fn get_funs(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.targets.keys().cloned()
@@ -224,11 +229,25 @@ impl FunctionTargetsHolder {
         self.function_specs.get_by_right(id)
     }
 
+    fn in_target(&self, id: &QualifiedId<FunId>) -> bool {
+        match self.target {
+            FunctionHolderTarget::All => true,
+            FunctionHolderTarget::FunctionsAbortCheck => {
+                self.package_targets.abort_check_functions().contains(id)
+            }
+            FunctionHolderTarget::Function(qid) => id == &qid,
+            FunctionHolderTarget::Module(mid) => id.module_id == mid,
+        }
+    }
+
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
-        Box::new(self.package_targets.no_verify_specs().iter().filter(|nvs| {
-            self.function_specs.contains_left(nvs)
-                || self.package_targets.scenario_specs().contains(nvs)
-        }))
+        // Return specs that should not be verified: either explicitly marked as no-verify,
+        // or not in the current target scope
+        Box::new(
+            self.specs().filter(|s| {
+                self.package_targets.no_verify_specs().contains(s) || !self.in_target(s)
+            }),
+        )
     }
 
     pub fn ignore_aborts(&self) -> &BTreeSet<QualifiedId<FunId>> {
@@ -245,6 +264,22 @@ impl FunctionTargetsHolder {
 
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.abort_check_functions().contains(id)
+    }
+
+    pub fn is_function_with_abort_check(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.abort_check_functions().contains(id)
+            || self.package_targets.pure_functions().contains(id)
+    }
+
+    pub fn should_generate_abort_check(&self, id: &QualifiedId<FunId>) -> bool {
+        self.is_function_with_abort_check(id)
+            && !self
+                .get_annotation::<NoAbortInfo>(id, &FunctionVariant::Baseline)
+                .does_not_abort
+    }
+
+    pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.pure_functions().contains(id)
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
