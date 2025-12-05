@@ -112,7 +112,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         fs::create_dir_all(output_path)?;
     }
 
-    if !targets.has_abort_checks() {
+    if !targets.has_function_checks() {
         if !targets.has_specs() {
             return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
         }
@@ -192,30 +192,36 @@ async fn run_prover_abort_check<W: WriteColor>(
     env: &GlobalEnv,
     error_writer: &mut W,
     opt: &Options,
-    targets: &PackageTargets,
+    package_targets: &PackageTargets,
 ) -> anyhow::Result<bool> {
-    if !targets.has_abort_checks() {
-        return Ok(false);
-    }
-
     let mut options = opt.clone();
     options.backend.func_abort_check_only = true;
-
-    let file_name = "funs_abort_check";
-    println!("🔄 {file_name}");
 
     let (targets, _) = create_and_process_bytecode(
         &options,
         env,
-        targets,
+        package_targets,
         FunctionHolderTarget::FunctionsAbortCheck,
     );
+
     check_errors(
         env,
         &options,
         error_writer,
         "exiting with bytecode transformation errors",
     )?;
+
+    if !package_targets
+        .abort_check_functions()
+        .iter()
+        .chain(package_targets.pure_functions().iter())
+        .any(|qid| targets.should_generate_abort_check(qid))
+    {
+        return Ok(false);
+    }
+
+    let file_name = "funs_abort_check";
+    println!("🔄 {file_name}");
 
     let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check)?;
     check_errors(

@@ -235,7 +235,3 @@ pub const BV_PARAM_PROP: &str = "bv";
 /// to explicitly specify which return value will be translated into a bv type in the boogie file
 /// example: bv_ret=b"0,1"
 pub const BV_RET_PROP: &str = "bv_ret";
-
-/// Pragma indicating that a function should be emitted as a pure Boogie function
-/// (no side effects, supports quantifiers). Use as #[ext(pure)]
-pub const PURE_PRAGMA: &str = "pure";
