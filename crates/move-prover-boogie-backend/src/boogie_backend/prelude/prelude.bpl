@@ -1005,7 +1005,6 @@ procedure {:inline 1} $Sub(src1: int, src2: int) returns (dst: int)
 
 // uninterpreted function to return an undefined value.
 function $undefined_int(): int;
-function $undefined_real(): real;
 
 // Recursive exponentiation function
 // Undefined unless e >=0.  $pow(0,0) is also undefined.
@@ -1018,7 +1017,7 @@ function $pow(n: int, e: int): int {
 function $pow_real(n: real, e: int): real {
     if n != 0.0 && e == 0 then 1.0
     else if e > 0 then n * $pow_real(n, e - 1)
-    else $undefined_real()
+    else 1.0 / $pow_real(n, -e)
 }
 
 function $shl(src1: int, p: int): int {
