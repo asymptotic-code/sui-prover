@@ -310,8 +310,8 @@ function {:inline} $1_real_div(x: real, y: real): real {
     x / y
 }
 
-function {:inline} $1_real_exp(x: real, y: real): real {
-    x ** y
+function {:inline} $1_real_exp(x: real, y: int): real {
+    $pow_real(x, y)
 }
 
 function {:inline} $1_real_lt(x: real, y: real): bool {
@@ -330,7 +330,7 @@ function {:inline} $1_real_gte(x: real, y: real): bool {
     x >= y
 }
 
-function {:inline} $1_real_sqrt(x: real, y: real): real {
+function {:inline} $1_real_sqrt(x: real, y: int): real {
     $sqrt_real(x,y)
 }
 
@@ -1005,6 +1005,7 @@ procedure {:inline 1} $Sub(src1: int, src2: int) returns (dst: int)
 
 // uninterpreted function to return an undefined value.
 function $undefined_int(): int;
+function $undefined_real(): real;
 
 // Recursive exponentiation function
 // Undefined unless e >=0.  $pow(0,0) is also undefined.
@@ -1012,6 +1013,12 @@ function $pow(n: int, e: int): int {
     if n != 0 && e == 0 then 1
     else if e > 0 then n * $pow(n, e - 1)
     else $undefined_int()
+}
+
+function $pow_real(n: real, e: int): real {
+    if n != 0.0 && e == 0 then 1.0
+    else if e > 0 then n * $pow_real(n, e - 1)
+    else $undefined_real()
 }
 
 function $shl(src1: int, p: int): int {
@@ -1062,34 +1069,56 @@ axiom (forall y: int :: y > 0 ==> $sqrt_int(0, y) == 0);
 axiom (forall y: int :: y > 0 ==> $sqrt_int(1, y) == 1);
 axiom (forall x: int :: x >= 0 ==> $sqrt_int(x, 1) == x);
 
-// Real exponentiation function (for integer exponents)
-// $pow_real(x, e) returns x^e for real x and integer e
-function $pow_real(x: real, e: int): real {
-    if x != 0.0 && e == 0 then 1.0
-    else if e > 0 then x * $pow_real(x, e - 1)
-    else $undefined_real()
-}
-
-// uninterpreted function to return an undefined real value
-function $undefined_real(): real;
-
 // Real n-th root function
 // $sqrt_real(x, y) returns x^(1/y) - the y-th root of x
 // Undefined for x < 0 or y <= 0
-function $sqrt_real(x: real, y: real): real;
+function $sqrt_real(x: real, y: int): real;
 
 // Core axioms for $sqrt_real
-axiom (forall x: real, y: real :: x >= 0.0 && y > 0.0 ==> $sqrt_real(x, y) >= 0.0);
-axiom (forall x: real, y: int :: x >= 0.0 && y > 0 ==> $pow_real($sqrt_real(x, real(y)), y) == x);
+axiom (forall x: real, y: int :: x >= 0.0 && y > 0 ==> $sqrt_real(x, y) >= 0.0);
+axiom (forall x: real, y: int :: x >= 0.0 && y > 0 ==> $pow_real($sqrt_real(x, y), y) == x);
 
 // Edge case axioms for $sqrt_real
-axiom (forall y: real :: y > 0.0 ==> $sqrt_real(0.0, y) == 0.0);
-axiom (forall y: real :: y > 0.0 ==> $sqrt_real(1.0, y) == 1.0);
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 1.0) == x);
+axiom (forall y: int :: y > 0 ==> $sqrt_real(0.0, y) == 0.0);
+axiom (forall y: int :: y > 0 ==> $sqrt_real(1.0, y) == 1.0);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 1) == x);
 
 // Specific axioms for common roots (help SMT solver)
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 2.0) * $sqrt_real(x, 2.0) == x);
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 3.0) * $sqrt_real(x, 3.0) * $sqrt_real(x, 3.0) == x);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 2) * $sqrt_real(x, 2) == x);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 3) * $sqrt_real(x, 3) * $sqrt_real(x, 3) == x);
+
+// =============================================================================
+// Computational Integer Square Root (bit-by-bit algorithm)
+// Implements: floor(sqrt(x)) using the binary digit-by-digit method
+// =============================================================================
+
+// Helper function implementing the bit-by-bit square root algorithm
+// x: remaining value to process
+// res: accumulated result
+// bit: current bit being tested (power of 4, shifts right by 2 each step)
+function $isqrt_helper(x: int, res: int, bit: int): int {
+    if bit == 0 then res
+    else if x >= res + bit then
+        $isqrt_helper(x - (res + bit), (res div 2) + bit, bit div 4)
+    else
+        $isqrt_helper(x, res div 2, bit div 4)
+}
+
+// Generic integer square root (works for any non-negative integer)
+// Uses 2^128 as starting bit - large enough for any practical input
+// Extra iterations are skipped automatically when bit > x
+function $isqrt(x: int): int {
+    $isqrt_helper(x, 0, 340282366920938463463374607431768211456)
+}
+
+// Axioms for $isqrt (enable symbolic reasoning)
+axiom (forall x: int :: x >= 0 ==> $isqrt(x) >= 0);
+axiom (forall x: int :: x >= 0 ==> $isqrt(x) * $isqrt(x) <= x);
+axiom (forall x: int :: x >= 0 ==> ($isqrt(x) + 1) * ($isqrt(x) + 1) > x);
+
+// Edge cases for $isqrt
+axiom $isqrt(0) == 0;
+axiom $isqrt(1) == 1;
 
 // We need to know the size of the destination in order to drop bits
 // that have been shifted left more than that, so we have $ShlU8/16/32/64/128/256
