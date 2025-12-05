@@ -28,7 +28,7 @@ use crate::{
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
-use move_compiler::shared::known_attributes::AttributeKind_;
+use codespan_reporting::diagnostic::Severity;
 use move_model::model::FunctionEnv;
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
@@ -108,6 +108,7 @@ impl ConditionalMergeInsertionProcessor {
         orig_code: &[Bytecode],
         start_pc: usize,
         end_pc: usize,
+        func_env: &FunctionEnv,
     ) -> Option<BTreeMap<usize, usize>> {
         let mut scan_pc = start_pc;
         let mut last_assign_per_var: BTreeMap<usize, usize> = BTreeMap::new();
@@ -200,12 +201,12 @@ impl ConditionalMergeInsertionProcessor {
         let merge_pc = *labels.get(&merge_label)? as usize;
 
         // Scan the then-block: from then_pc to else_pc
-        let then_assignments = self.block_permitted(code, then_pc, else_pc)?;
+        let then_assignments = self.block_permitted(code, then_pc, else_pc, builder.fun_env)?;
 
         // Scan the else-block: from else_pc to merge_pc
         // If else_pc == merge_pc, there's no else block (pure fallthrough)
         let else_assignments = if else_pc < merge_pc {
-            self.block_permitted(code, else_pc, merge_pc)
+            self.block_permitted(code, else_pc, merge_pc, builder.fun_env)
         } else {
             None
         };
@@ -314,12 +315,12 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         if targets.is_spec(&func_env.get_qualified_id()) {
             return data; // Do not touch specs
         }
-        if func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .is_some()
+        if !targets.prover_options().enable_conditional_merge_insertion
+            && !self.debug
+            && !(targets.is_pure_fun(&func_env.get_qualified_id())
+                && !targets.func_abort_check_mode())
         {
-            return data; // Do not touch spec_only
+            return data; // Skip if option not set, but keep for pure
         }
 
         let mut builder = FunctionDataBuilder::new(func_env, data);
@@ -339,6 +340,14 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
 
         // Skip functions with loops
         if Self::has_loops(&orig_code) {
+            if !targets.prover_options().enable_conditional_merge_insertion && !self.debug {
+                // NOTE: trigger error only in pure-only translation mode for now
+                func_env.module_env.env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    "Pure functions with loops are not supported",
+                );
+            }
             return builder.data;
         }
 

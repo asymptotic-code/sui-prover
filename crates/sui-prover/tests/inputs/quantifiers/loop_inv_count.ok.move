@@ -6,7 +6,7 @@ use prover::prover::{invariant, ensures, requires};
 use prover::vector_iter::{count, count_range};
 
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun x_is_positive(x: &u64): bool {
     *x > 0
 }

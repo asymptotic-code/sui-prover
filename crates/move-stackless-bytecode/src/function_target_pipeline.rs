@@ -19,6 +19,7 @@ use petgraph::graph::DiGraph;
 
 use crate::{
     function_target::{FunctionData, FunctionTarget},
+    no_abort_analysis::NoAbortInfo,
     options::ProverOptions,
     package_targets::PackageTargets,
     print_targets_for_test,
@@ -202,6 +203,10 @@ impl FunctionTargetsHolder {
         &self.prover_options
     }
 
+    pub fn func_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
+    }
+
     /// Get an iterator for all functions this holder.
     pub fn get_funs(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.targets.keys().cloned()
@@ -259,6 +264,22 @@ impl FunctionTargetsHolder {
 
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.abort_check_functions().contains(id)
+    }
+
+    pub fn is_function_with_abort_check(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.abort_check_functions().contains(id)
+            || self.package_targets.pure_functions().contains(id)
+    }
+
+    pub fn should_generate_abort_check(&self, id: &QualifiedId<FunId>) -> bool {
+        self.is_function_with_abort_check(id)
+            && !self
+                .get_annotation::<NoAbortInfo>(id, &FunctionVariant::Baseline)
+                .does_not_abort
+    }
+
+    pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.pure_functions().contains(id)
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {

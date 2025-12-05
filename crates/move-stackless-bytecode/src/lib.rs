@@ -50,6 +50,7 @@ pub mod options;
 pub mod package_targets;
 pub mod packed_types_analysis;
 pub mod pipeline_factory;
+pub mod pure_function_analysis;
 pub mod quantifier_iterator_analysis;
 pub mod reaching_def_analysis;
 pub mod replacement_analysis;

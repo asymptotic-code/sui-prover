@@ -1,6 +1,31 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 275
+assertion_line: 276
 expression: output
 ---
 Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_sum_map_ok_x_minus_5$pure(_$t0: int) returns ($ret0: int)
+{
+    (var $t2 := 5;
+    (var $t3 := (_$t0 < $t2);
+    (var $t4 := 0;
+    (var $t5 := $t4;
+    (var $t6 := 5;
+    (var $t7 := (_$t0 - $t6);
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
+}
+function {:inline} $42_quantifiers_sum_map_ok_x_plus_10$pure(_$t0: int) returns ($ret0: int)
+{
+    (var $t2 := 18446744073709551605;
+    (var $t3 := (_$t0 > $t2);
+    (var $t4 := 18446744073709551615;
+    (var $t5 := $t4;
+    (var $t6 := 10;
+    (var $t7 := (_$t0 + $t6);
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
+}
