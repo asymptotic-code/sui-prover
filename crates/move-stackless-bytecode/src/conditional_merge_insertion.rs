@@ -340,11 +340,14 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
 
         // Skip functions with loops
         if Self::has_loops(&orig_code) {
-            func_env.module_env.env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                "Pure functions with loops are not supported",
-            );
+            if !targets.prover_options().enable_conditional_merge_insertion && !self.debug {
+                // NOTE: trigger error only in pure-only translation mode for now
+                func_env.module_env.env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    "Pure functions with loops are not supported",
+                );
+            }
             return builder.data;
         }
 
