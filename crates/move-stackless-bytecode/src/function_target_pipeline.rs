@@ -224,11 +224,25 @@ impl FunctionTargetsHolder {
         self.function_specs.get_by_right(id)
     }
 
+    fn in_target(&self, id: &QualifiedId<FunId>) -> bool {
+        match self.target {
+            FunctionHolderTarget::All => true,
+            FunctionHolderTarget::FunctionsAbortCheck => {
+                self.package_targets.abort_check_functions().contains(id)
+            }
+            FunctionHolderTarget::Function(qid) => id == &qid,
+            FunctionHolderTarget::Module(mid) => id.module_id == mid,
+        }
+    }
+
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
-        Box::new(self.package_targets.no_verify_specs().iter().filter(|nvs| {
-            self.function_specs.contains_left(nvs)
-                || self.package_targets.scenario_specs().contains(nvs)
-        }))
+        // Return specs that should not be verified: either explicitly marked as no-verify,
+        // or not in the current target scope
+        Box::new(
+            self.specs().filter(|s| {
+                self.package_targets.no_verify_specs().contains(s) || !self.in_target(s)
+            }),
+        )
     }
 
     pub fn ignore_aborts(&self) -> &BTreeSet<QualifiedId<FunId>> {
