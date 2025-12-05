@@ -1020,9 +1020,12 @@ function $pow(n: int, e: int): int {
 }
 
 function $pow_real(n: real, e: int): real {
-    if n != 0.0 && e == 0 then 1.0
-    else if e > 0 then n * $pow_real(n, e - 1)
-    else 1.0 / $pow_real(n, -e)
+    if n == 0.0 then 0.0
+    else (
+        if e == 0 then 1.0
+        else if e > 0 then n * $pow_real(n, e - 1)
+        else 1.0 / $pow_real(n, -e)
+    )
 }
 
 function $shl(src1: int, p: int): int {
