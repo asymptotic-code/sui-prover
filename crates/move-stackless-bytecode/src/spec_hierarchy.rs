@@ -44,12 +44,11 @@ pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, 
     }
 }
 
-fn get_excluded_addresses() -> [BigUint; 5] {
+fn get_excluded_addresses() -> [BigUint; 4] {
     [
-        0u16.into(),      // System address (core framework)
-        1u16.into(),      // Tests address
-        2u16.into(),      // Event address
-        3u16.into(),      // Stdlib address
+        1u16.into(),      // MoveStdlib
+        2u16.into(),      // Sui
+        3u16.into(),      // SuiSystem
         0xdee9u16.into(), // DeepBook address
     ]
 }
@@ -152,9 +151,7 @@ fn build_implementation_tree(
     displayed: &mut BTreeSet<QualifiedId<FunId>>,
     content: &mut String,
 ) {
-    let called_functions = func_env.get_called_functions();
-
-    let filtered_calls: Vec<_> = called_functions
+    let filtered_calls: Vec<_> = func_env.get_called_functions()
         .into_iter()
         .filter(|called_id| {
             let called_env = env.get_function(*called_id);
@@ -178,7 +175,13 @@ fn build_implementation_tree(
             branch, call_info.display_name, props_str
         ));
 
-        if !displayed.contains(called_id) {
+        let should_recurse = if let Some(spec_id) = call_info.spec_id {
+            targets.omits_opaque(&spec_id)
+        } else {
+            true
+        };
+
+        if should_recurse && !displayed.contains(called_id) {
             displayed.insert(*called_id);
             let called_env = env.get_function(*called_id);
             build_implementation_tree(
