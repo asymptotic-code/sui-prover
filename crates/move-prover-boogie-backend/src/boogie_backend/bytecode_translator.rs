@@ -32,6 +32,7 @@ use move_model::{
 };
 use move_stackless_bytecode::{
     ast::{TempIndex, TraceKind},
+    control_flow_reconstruction::{self, StructuredBlock},
     deterministic_analysis, dynamic_field_analysis,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionTarget,
@@ -848,8 +849,12 @@ impl<'env> BoogieTranslator<'env> {
                     ),
                 },
                 FunctionTranslationStyle::Pure => {
-                    // workaround: for pure functions, we just remove all casts via relacing with assigns
-                    builder.emit(bc.update_abort_action(|_| None).replace_cast_with_assign());
+                    // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
+                    let mut bc = bc.update_abort_action(|_| None);
+                    if self.targets.prover_options().bv_int_encoding { // only in non-bitvector mode
+                        bc = bc.replace_cast_with_assign();   
+                    }
+                    builder.emit(bc);
                 }
             }
         }
@@ -877,9 +882,6 @@ impl<'env> BoogieTranslator<'env> {
                 _ => builder.emit(bc),
             }
         }
-
-        // Eliminate unreachable bytecode created by setting abort actions to None
-        builder.eliminate_unreachable_bytecode();
 
         let mut data = builder.data;
         let reach_def = ReachingDefProcessor::new();
@@ -2439,9 +2441,14 @@ impl<'env> FunctionTranslator<'env> {
         if emit_pure_in_place {
             self.generate_pure_expression(code);
         } else {
-            // For procedures: emit all bytecodes as normal
-            for bytecode in code.iter() {
-                self.translate_bytecode(&mut last_tracked_loc, bytecode);
+            // Use CFG recovery to generate structured if-then-else statements
+            match control_flow_reconstruction::reconstruct_control_flow(code) {
+                Some(block) => self.translate_structured_block(&mut last_tracked_loc, &block),
+                None => {
+                    for bytecode in code {
+                        self.translate_bytecode(&mut last_tracked_loc, bytecode);
+                    }
+                }
             }
         }
 
@@ -2795,6 +2802,110 @@ impl<'env> FunctionTranslator<'env> {
             }
             emitln!(writer, "");
         }
+    }
+
+    /// Translates a structured block.
+    fn translate_structured_block(
+        &mut self,
+        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
+        block: &StructuredBlock,
+    ) {
+        let code = self.fun_target.get_bytecode();
+
+        match block {
+            StructuredBlock::Basic { lower, upper } => {
+                for pc in *lower..=*upper {
+                    let bytecode = &code[pc as usize];
+                    // skip control flow bytecodes that are now handled structurally
+                    if matches!(
+                        bytecode,
+                        Bytecode::Jump(..) | Bytecode::Branch(..) | Bytecode::Label(..)
+                    ) {
+                        continue;
+                    }
+                    self.translate_bytecode(last_tracked_loc, bytecode);
+                }
+            }
+            StructuredBlock::Seq(blocks) => {
+                for inner_block in blocks {
+                    self.translate_structured_block(last_tracked_loc, inner_block);
+                }
+            }
+            StructuredBlock::IfThenElse {
+                cond_at,
+                then_branch,
+                else_branch,
+            } => {
+                self.translate_if_chain(
+                    last_tracked_loc,
+                    &[(*cond_at, then_branch.as_ref())],
+                    else_branch.as_deref(),
+                );
+            }
+            StructuredBlock::IfElseChain {
+                branches,
+                else_branch,
+            } => {
+                self.translate_if_chain(
+                    last_tracked_loc,
+                    &branches.iter().map(|(c, b)| (*c, b.as_ref())).collect_vec(),
+                    else_branch.as_deref(),
+                );
+            }
+        }
+    }
+
+    fn translate_if_chain(
+        &mut self,
+        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
+        branches: &[(u16, &StructuredBlock)],
+        else_branch: Option<&StructuredBlock>,
+    ) {
+        let code = self.fun_target.get_bytecode();
+
+        for (i, (cond_at, body)) in branches.iter().enumerate() {
+            let branch_bc = &code[*cond_at as usize];
+            let Bytecode::Branch(attr_id, _, _, cond_idx) = branch_bc else {
+                panic!(
+                    "expected branch at cond_at={}, actual bytecode: {} at {}",
+                    cond_at,
+                    branch_bc.display(self.fun_target, &BTreeMap::default()),
+                    self.fun_target
+                        .get_bytecode_loc(branch_bc.get_attr_id())
+                        .display(self.fun_target.global_env())
+                );
+            };
+
+            let loc = self.fun_target.get_bytecode_loc(*attr_id);
+            self.writer().set_location(&loc);
+            self.track_loc(last_tracked_loc, &loc);
+
+            if i == 0 {
+                emitln!(
+                    self.writer(),
+                    "// {} {}",
+                    branch_bc.display(self.fun_target, &BTreeMap::default()),
+                    loc.display(self.fun_target.global_env())
+                );
+                emitln!(self.writer(), "if ($t{}) {{", cond_idx);
+            } else {
+                emitln!(self.writer(), "}} else if ($t{}) {{", cond_idx);
+            }
+
+            self.writer().indent();
+            self.translate_structured_block(last_tracked_loc, body);
+            self.writer().unindent();
+        }
+
+        if let Some(else_block) = else_branch {
+            emitln!(self.writer(), "} else {");
+            self.writer().indent();
+            self.translate_structured_block(last_tracked_loc, else_block);
+            self.writer().unindent();
+        }
+
+        emitln!(self.writer(), "}");
+        emitln!(self.writer());
     }
 
     /// Translates one bytecode instruction.

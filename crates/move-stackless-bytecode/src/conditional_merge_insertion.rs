@@ -24,11 +24,11 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    graph::Graph,
     livevar_analysis::LiveVarAnnotation,
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
-    stackless_control_flow_graph::{BlockId, StacklessControlFlowGraph},
+    stackless_control_flow_graph::StacklessControlFlowGraph,
 };
+use codespan_reporting::diagnostic::Severity;
 use move_model::model::FunctionEnv;
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
@@ -47,26 +47,12 @@ impl ConditionalMergeInsertionProcessor {
         Box::new(Self { debug: true })
     }
 
-    fn has_loops(&self, code: &[Bytecode]) -> bool {
+    fn has_loops(code: &[Bytecode]) -> bool {
         if code.is_empty() {
             return false;
         }
 
-        let forward_cfg = StacklessControlFlowGraph::new_forward(code);
-        let entry = forward_cfg.entry_block();
-        let nodes = forward_cfg.blocks();
-
-        let edges: Vec<(BlockId, BlockId)> = nodes
-            .iter()
-            .flat_map(|x| forward_cfg.successors(*x).iter().map(|y| (*x, *y)))
-            .collect();
-
-        let graph = Graph::new(entry, nodes, edges);
-        match graph.compute_reducible() {
-            Some(natural_loops) => !natural_loops.is_empty(),
-            // None implies irreducible or malformed -> reject
-            None => true,
-        }
+        !StacklessControlFlowGraph::new_forward(code).is_acyclic()
     }
 
     // Dominator-based merge detection for a branch at pc.
@@ -87,8 +73,7 @@ impl ConditionalMergeInsertionProcessor {
         let branch_block = StacklessControlFlowGraph::pc_to_block(back_cfg, branch_pc as u16)?;
         // Compute merge block as immediate post-dominator of the branch block using
         // reversed-graph dominator analysis (postdominators of the original graph).
-        let merge_block =
-            StacklessControlFlowGraph::find_immediate_post_dominator(back_cfg, branch_block)?;
+        let merge_block = back_cfg.find_immediate_dominator(branch_block)?;
         let merge_pc = StacklessControlFlowGraph::block_start_pc(back_cfg, merge_block)?;
 
         // Find the label that corresponds to merge_pc
@@ -123,6 +108,7 @@ impl ConditionalMergeInsertionProcessor {
         orig_code: &[Bytecode],
         start_pc: usize,
         end_pc: usize,
+        func_env: &FunctionEnv,
     ) -> Option<BTreeMap<usize, usize>> {
         let mut scan_pc = start_pc;
         let mut last_assign_per_var: BTreeMap<usize, usize> = BTreeMap::new();
@@ -215,12 +201,12 @@ impl ConditionalMergeInsertionProcessor {
         let merge_pc = *labels.get(&merge_label)? as usize;
 
         // Scan the then-block: from then_pc to else_pc
-        let then_assignments = self.block_permitted(code, then_pc, else_pc)?;
+        let then_assignments = self.block_permitted(code, then_pc, else_pc, builder.fun_env)?;
 
         // Scan the else-block: from else_pc to merge_pc
         // If else_pc == merge_pc, there's no else block (pure fallthrough)
         let else_assignments = if else_pc < merge_pc {
-            self.block_permitted(code, else_pc, merge_pc)
+            self.block_permitted(code, else_pc, merge_pc, builder.fun_env)
         } else {
             None
         };
@@ -353,7 +339,12 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         let back_cfg = Some(StacklessControlFlowGraph::new_backward(&orig_code, false));
 
         // Skip functions with loops
-        if self.has_loops(&orig_code) {
+        if Self::has_loops(&orig_code) {
+            func_env.module_env.env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                "Pure functions with loops are not supported",
+            );
             return builder.data;
         }
 

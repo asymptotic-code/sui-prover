@@ -246,7 +246,6 @@ impl<'a> LiveVarAnalysis<'a> {
     ) -> Vec<Bytecode> {
         let label_to_code_offset = Bytecode::label_offsets(&code);
         let mut transformed_code = vec![];
-        let mut new_bytecodes = vec![];
 
         // insert marks for uninitialized mutable references
         let num_args = self.func_target.get_parameter_count();
@@ -281,6 +280,7 @@ impl<'a> LiveVarAnalysis<'a> {
             let annotation_at = &annotations[&(code_offset as CodeOffset)];
             match bytecode {
                 Bytecode::Branch(attr_id, then_label, else_label, src) => {
+                    let mut new_bytecodes = vec![];
                     let (then_label, mut bytecodes) = self.create_block_to_destroy_refs(
                         then_label,
                         self.lost_refs_along_edge(
@@ -300,8 +300,10 @@ impl<'a> LiveVarAnalysis<'a> {
                     );
                     new_bytecodes.append(&mut bytecodes);
                     transformed_code.push(Bytecode::Branch(attr_id, then_label, else_label, src));
+                    transformed_code.append(&mut new_bytecodes);
                 }
                 Bytecode::VariantSwitch(attr_id, src, labels) => {
+                    let mut new_bytecodes = vec![];
                     let new_labels = labels
                         .into_iter()
                         .map(|label| {
@@ -318,6 +320,7 @@ impl<'a> LiveVarAnalysis<'a> {
                         })
                         .collect();
                     transformed_code.push(Bytecode::VariantSwitch(attr_id, src, new_labels));
+                    transformed_code.append(&mut new_bytecodes);
                 }
                 Bytecode::Load(_, dest, _) | Bytecode::Assign(_, dest, _, _)
                     if !annotation_at.after.contains(&dest) =>
@@ -367,7 +370,6 @@ impl<'a> LiveVarAnalysis<'a> {
                 }
             }
         }
-        transformed_code.append(&mut new_bytecodes);
         transformed_code
     }
 

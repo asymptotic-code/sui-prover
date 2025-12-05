@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use crate::{
     deterministic_analysis,
-    function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     stackless_bytecode::{Bytecode, Operation},
@@ -107,17 +106,10 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
             return data;
         }
 
-        let mut builder = FunctionDataBuilder::new(fun_env, data);
-        let code = std::mem::take(&mut builder.data.code);
-        for bc in code.iter() {
-            builder.emit(bc.update_abort_action(|f| None).replace_cast_with_assign());
-        }
-        builder.eliminate_unreachable_bytecode();
-
         // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
         // Control flow instructions (jumps, branches, labels) are silently skipped since
         // if_then_else expressions have already summarized their effects.
-        for bc in builder.data.code.iter() {
+        for bc in data.code.iter() {
             use Bytecode::*;
             let error = match bc {
                 Assign(_, _, _, _) => None,
@@ -136,7 +128,9 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
                 Jump(_, _) => None,
                 Branch(_, _, _, _) => None,
                 Label(_, _) => None,
-                VariantSwitch(_, _, _) => None,
+                VariantSwitch(_, _, _) => {
+                    Some("Pure functions cannot have variant switch operations".to_string())
+                }
                 Abort(_, _) => Some("Pure functions cannot abort".to_string()),
                 // should be unreachable
                 SaveMem(_, _, _) => {
@@ -147,16 +141,17 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
                 }
             };
             if let Some(reason) = error {
-                fun_env.module_env.env.diag(
-                    Severity::Error,
-                    &builder.get_loc(bc.get_attr_id()),
-                    &reason,
-                );
-                return builder.data;
+                let loc = data
+                    .locations
+                    .get(&bc.get_attr_id())
+                    .cloned()
+                    .unwrap_or_else(|| fun_env.get_loc());
+                fun_env.module_env.env.diag(Severity::Error, &loc, &reason);
+                return data;
             }
         }
 
-        builder.data
+        data
     }
 
     fn name(&self) -> String {
