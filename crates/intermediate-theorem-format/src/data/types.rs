@@ -13,6 +13,8 @@ pub type TempId = String;
 pub enum Type {
     /// Boolean
     Bool,
+    /// Proposition (for spec functions)
+    Prop,
     /// Unsigned integer with bit width
     UInt(u32),
     /// Signed integer with bit width
@@ -62,6 +64,14 @@ impl Type {
         }
     }
 
+    /// Get the inner type from Except monad, panics if not a monad
+    pub fn inner_monad_type(&self) -> Type {
+        match self {
+            Type::Except(inner) => (**inner).clone(),
+            _ => panic!("Type is not a monad: {:?}", self),
+        }
+    }
+
     /// Collect all struct IDs referenced in this type
     pub fn struct_ids(&self) -> Vec<StructID> {
         let mut ids = Vec::new();
@@ -87,7 +97,7 @@ impl Type {
             Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            Type::Bool | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
+            Type::Bool | Type::Prop | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
             }
         }
     }

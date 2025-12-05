@@ -10,9 +10,7 @@
 //! ## Design Principles
 //!
 //! 1. **Single recursive type**: No separate Statement/Expression/Block types
-//! 2. **Simple traversal**: `children()`, `transform()`, `fold()` work uniformly
-//! 3. **Let-based sequencing**: `Let { value, body }` chains expressions
-//! 4. **Everything produces a value**: Even effects like Abort produce unit
+//! 2. **Simple traversal**: `children()`, `map()`, `fold()` work uniformly
 
 use crate::data::structure::StructID;
 use crate::data::types::{TempId, Type};
@@ -22,9 +20,6 @@ use num::BigUint;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::{fmt, mem};
-// ============================================================================
-// Traversal Macro
-// ============================================================================
 
 /// Traverse child IR nodes of an IR expression.
 /// Uses tt for actions to expand inline, avoiding closure lifetime issues.
@@ -594,6 +589,57 @@ impl IRNode {
         let mut elements: Vec<_> = self.into();
         elements.append(&mut other.into());
         elements.into_iter().collect()
+    }
+
+    /// Remove all Requires and Ensures nodes from the IR tree
+    pub fn strip_spec_nodes(self) -> IRNode {
+        self.map(&mut |node| match node {
+            IRNode::Block { children } => {
+                let filtered: Vec<_> = children
+                    .into_iter()
+                    .filter(|child| !matches!(child, IRNode::Requires(_) | IRNode::Ensures(_)))
+                    .collect();
+                match filtered.len() {
+                    0 => IRNode::default(),
+                    1 => filtered.into_iter().next().unwrap(),
+                    _ => IRNode::Block { children: filtered }
+                }
+            }
+            IRNode::Requires(_) | IRNode::Ensures(_) => IRNode::default(),
+            other => other,
+        })
+    }
+
+    /// Simplify blocks by unwrapping simple let-return patterns
+    /// Transforms: Block([Let(x, v), Return(x)]) => Return(v)
+    pub fn simplify_blocks(self) -> IRNode {
+        self.map(&mut |node| match node {
+            IRNode::Block { mut children } => {
+                // Check for pattern: [Let { pattern: [x], value }, Return([Var(x)])]
+                if children.len() == 2 {
+                    if let (
+                        IRNode::Let { pattern, value },
+                        IRNode::Return(ret_vals)
+                    ) = (&children[0], &children[1]) {
+                        if pattern.len() == 1 && ret_vals.len() == 1 {
+                            if let IRNode::Var(var_name) = &ret_vals[0] {
+                                if var_name == &pattern[0] {
+                                    // Replace with Return(value)
+                                    let value = if let IRNode::Let { value, .. } = children.remove(0) {
+                                        *value
+                                    } else {
+                                        unreachable!()
+                                    };
+                                    return IRNode::Return(vec![value]);
+                                }
+                            }
+                        }
+                    }
+                }
+                IRNode::Block { children }
+            }
+            other => other,
+        })
     }
 }
 

@@ -269,7 +269,7 @@ async fn execute_backend_boogie(
 
 async fn execute_backend_lean(
     model: GlobalEnv,
-    _general_config: &GeneralConfig,
+    general_config: &GeneralConfig,
 ) -> anyhow::Result<()> {
     // Run bytecode transformation pipeline
     let package_targets = PackageTargets::new(&model, Default::default(), true);
@@ -285,7 +285,7 @@ async fn execute_backend_lean(
 
     // Run Lean backend
     println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(&model, &targets, &output_dir).await?;
+    move_prover_lean_backend::run_backend(&model, &targets, &output_dir, general_config.generate_only).await?;
 
     println!(
         "✓ Lean code generated successfully in {}",

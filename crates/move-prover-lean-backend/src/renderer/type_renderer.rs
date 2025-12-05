@@ -4,35 +4,32 @@
 //! Renders TheoremType to Lean syntax.
 //! Pure translation - no logic, just pattern matching.
 
+use super::context::RenderCtx;
 use crate::escape;
 use intermediate_theorem_format::{Program, Type};
 use std::fmt::Write;
 
 /// Render a type to Lean syntax.
-pub fn render_type<W: Write>(
-    ty: &Type,
-    program: &Program,
-    current_module: Option<&str>,
-    w: &mut W,
-) {
+pub fn render_type<W: Write>(ty: &Type, ctx: &mut RenderCtx<W>) {
     match ty {
-        Type::Bool => write!(w, "Bool").unwrap(),
-        Type::UInt(8) => write!(w, "UInt8").unwrap(),
-        Type::UInt(16) => write!(w, "UInt16").unwrap(),
-        Type::UInt(32) => write!(w, "UInt32").unwrap(),
-        Type::UInt(64) => write!(w, "UInt64").unwrap(),
-        Type::UInt(128) => write!(w, "UInt128").unwrap(),
-        Type::UInt(256) => write!(w, "UInt256").unwrap(),
-        Type::UInt(width) => write!(w, "UInt{}", width).unwrap(),
-        Type::SInt(width) => write!(w, "Int{}", width).unwrap(),
-        Type::Address => write!(w, "Address").unwrap(),
+        Type::Bool => ctx.write("Bool"),
+        Type::Prop => ctx.write("Prop"),
+        Type::UInt(8) => ctx.write("UInt8"),
+        Type::UInt(16) => ctx.write("UInt16"),
+        Type::UInt(32) => ctx.write("UInt32"),
+        Type::UInt(64) => ctx.write("UInt64"),
+        Type::UInt(128) => ctx.write("UInt128"),
+        Type::UInt(256) => ctx.write("UInt256"),
+        Type::UInt(width) => ctx.write(&format!("UInt{}", width)),
+        Type::SInt(width) => ctx.write(&format!("Int{}", width)),
+        Type::Address => ctx.write("Address"),
 
         Type::Struct {
             struct_id,
             type_args,
         } => {
-            let struct_def = program.structs.get(*struct_id);
-            let module_def = program.modules.get(struct_def.module_id);
+            let struct_def = ctx.program.structs.get(*struct_id);
+            let module_def = ctx.program.modules.get(struct_def.module_id);
             let escaped_name = escape::escape_struct_name(&struct_def.name);
 
             // Don't qualify Lean built-in types
@@ -41,7 +38,7 @@ pub fn render_type<W: Write>(
             } else {
                 let namespace = escape::module_name_to_namespace(&module_def.name);
                 // Don't qualify if we're in the same module
-                if current_module == Some(namespace.as_str()) {
+                if ctx.current_module_namespace == Some(namespace.as_str()) {
                     escaped_name
                 } else {
                     format!("{}.{}", namespace, escaped_name)
@@ -49,53 +46,53 @@ pub fn render_type<W: Write>(
             };
 
             if type_args.is_empty() {
-                write!(w, "{}", qualified_name).unwrap();
+                ctx.write(&qualified_name);
             } else {
-                write!(w, "({}", qualified_name).unwrap();
+                ctx.write(&format!("({}", qualified_name));
                 for arg in type_args {
-                    write!(w, " ").unwrap();
-                    render_type(arg, program, current_module, w);
+                    ctx.write(" ");
+                    render_type(arg, ctx);
                 }
-                write!(w, ")").unwrap();
+                ctx.write(")");
             }
         }
 
         Type::Vector(elem) => {
-            write!(w, "(List ").unwrap();
-            render_type(elem, program, current_module, w);
-            write!(w, ")").unwrap();
+            ctx.write("(List ");
+            render_type(elem, ctx);
+            ctx.write(")");
         }
 
         // References are erased in pure functional Lean
         Type::Reference(inner) | Type::MutableReference(inner) => {
-            render_type(inner, program, current_module, w);
+            render_type(inner, ctx);
         }
 
         Type::TypeParameter(idx) => {
-            write!(w, "tv{}", idx).unwrap();
+            ctx.write(&format!("tv{}", idx));
         }
 
         Type::Tuple(types) => {
             if types.is_empty() {
-                write!(w, "Unit").unwrap();
+                ctx.write("Unit");
             } else if types.len() == 1 {
-                render_type(&types[0], program, current_module, w);
+                render_type(&types[0], ctx);
             } else {
-                write!(w, "(").unwrap();
+                ctx.write("(");
                 for (i, ty) in types.iter().enumerate() {
                     if i > 0 {
-                        write!(w, " × ").unwrap();
+                        ctx.write(" × ");
                     }
-                    render_type(ty, program, current_module, w);
+                    render_type(ty, ctx);
                 }
-                write!(w, ")").unwrap();
+                ctx.write(")");
             }
         }
 
         Type::Except(inner) => {
-            write!(w, "(Except AbortCode ").unwrap();
-            render_type(inner, program, current_module, w);
-            write!(w, ")").unwrap();
+            ctx.write("(Except AbortCode ");
+            render_type(inner, ctx);
+            ctx.write(")");
         }
     }
 }
@@ -103,7 +100,18 @@ pub fn render_type<W: Write>(
 /// Render a type to a string.
 pub fn type_to_string(ty: &Type, program: &Program, current_module: Option<&str>) -> String {
     let mut s = String::new();
-    render_type(ty, program, current_module, &mut s);
+    use super::lean_writer::LeanWriter;
+    use std::collections::BTreeMap;
+    let writer = LeanWriter::new(&mut s);
+    let registry = intermediate_theorem_format::VariableRegistry::new(BTreeMap::new());
+    let mut ctx = RenderCtx::new(
+        program,
+        &registry,
+        0, // ModuleID is just usize
+        current_module,
+        writer,
+    );
+    render_type(ty, &mut ctx);
     s
 }
 

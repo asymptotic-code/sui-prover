@@ -8,13 +8,11 @@
 //! and emits corresponding Lean text without complex analysis.
 
 mod context;
-mod expr;
 mod function_renderer;
 mod helpers;
-mod ir_renderer;
 mod lean_writer;
 mod program_renderer;
-mod stmt;
+mod render;
 mod struct_renderer;
 mod type_renderer;
 

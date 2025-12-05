@@ -43,15 +43,10 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         }))
     };
 
-    // Check if this is a spec function with #[spec(prove)]
-    let is_spec = has_spec_prove_attribute(&func_env);
-
-    // Extract requires/ensures from spec function body
-    let (requires, ensures) = if is_spec {
-        extract_spec_conditions(&body)
-    } else {
-        (vec![], vec![])
-    };
+    // Check if this is a spec function by detecting requires/ensures in body
+    // Note: #[spec(prove)] attributes don't survive compilation to bytecode,
+    // so we detect spec functions by their IR structure
+    let is_spec_function = contains_spec_nodes(&body);
 
     Function {
         module_id,
@@ -61,10 +56,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         variables,
         mutual_group_id: None,
         is_native: func_env.is_native(),
-        is_spec,
-        requires,
-        ensures,
-        spec_for: None, // Will be populated later when we link spec to impl
+        is_spec_function,
     }
 }
 
@@ -109,41 +101,7 @@ fn build_dominator_relation(cfg: &StacklessControlFlowGraph) -> DomRelation<Bloc
     DomRelation::new(&Graph::new(entry, nodes, edges))
 }
 
-/// Check if a function has the #[spec(prove)] attribute
-fn has_spec_prove_attribute(func_env: &FunctionEnv) -> bool {
-    use move_model::ast::Attribute;
-
-    func_env.get_attributes().iter().any(|attr| {
-        if let Attribute::Apply(_, name, sub_attrs) = attr {
-            let name_str = name.display(func_env.symbol_pool()).to_string();
-            if name_str == "spec" {
-                return sub_attrs.iter().any(|sub_attr| {
-                    if let Attribute::Apply(_, value_name, _) = sub_attr {
-                        value_name.display(func_env.symbol_pool()).to_string() == "prove"
-                    } else {
-                        false
-                    }
-                });
-            }
-        }
-        false
-    })
-}
-
-/// Extract requires and ensures conditions from a spec function body
-/// Removes them from the body and collects them separately
-fn extract_spec_conditions(body: &IRNode) -> (Vec<IRNode>, Vec<IRNode>) {
-    let mut requires = vec![];
-    let mut ensures = vec![];
-
-    // Walk through all nodes and collect requires/ensures
-    for node in body.iter() {
-        match node {
-            IRNode::Requires(cond) => requires.push((**cond).clone()),
-            IRNode::Ensures(cond) => ensures.push((**cond).clone()),
-            _ => {}
-        }
-    }
-
-    (requires, ensures)
+/// Check if IR body contains requires or ensures nodes
+fn contains_spec_nodes(body: &IRNode) -> bool {
+    body.iter().any(|node| matches!(node, IRNode::Requires(_) | IRNode::Ensures(_)))
 }

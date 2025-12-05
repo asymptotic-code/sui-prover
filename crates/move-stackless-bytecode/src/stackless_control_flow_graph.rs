@@ -178,11 +178,26 @@ impl StacklessControlFlowGraph {
                     *successor = *offset_to_key.entry(*successor).or_insert(bcounter);
                     bcounter = std::cmp::max(*successor + 1, bcounter);
                 }
-                if code[co_pc as usize].is_exit()
-                    || !ignore_aborts
-                        && matches!(code[co_pc as usize], Bytecode::Call(_, _, _, _, Some(_)))
-                {
-                    successors.push(DUMMY_EXIT);
+                if !ignore_aborts {
+                    if code[pc].is_exit() || matches!(code[pc], Bytecode::Call(_, _, _, _, Some(_)))
+                    {
+                        successors.push(DUMMY_EXIT);
+                    }
+                } else {
+                    assert_eq!(
+                        code[pc].is_exit() || pc + 1 == code.len(),
+                        successors.is_empty(),
+                        "code[{}]: {:?}",
+                        pc,
+                        code[pc]
+                    );
+                    if pc + 1 == code.len() {
+                        assert!(code[pc].is_exit() || !code[pc].is_branch());
+                        successors.push(DUMMY_EXIT);
+                    } else if code[pc].is_exit() {
+                        successors.push(*offset_to_key.entry(co_pc + 1).or_insert(bcounter));
+                        bcounter = std::cmp::max(*offset_to_key.get(&(co_pc + 1)).unwrap() + 1, bcounter);
+                    }
                 }
                 let bb = BlockContent::Basic {
                     lower: block_entry,

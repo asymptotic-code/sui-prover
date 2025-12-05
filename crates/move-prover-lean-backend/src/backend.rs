@@ -20,6 +20,7 @@ pub async fn run_backend(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
     output_dir: &Path,
+    generate_only: bool,
 ) -> anyhow::Result<()> {
     // Run translation pipeline
     let program = ProgramBuilder::new(env).build(targets);
@@ -48,6 +49,12 @@ pub async fn run_backend(
 
     // Generate lakefile and manifest
     crate::write_lakefile(output_dir, "sui_prover_output")?;
+
+    // Skip lake build if generate_only is true
+    if generate_only {
+        println!("✓ Lean code generated (skipping lake build)");
+        return Ok(());
+    }
 
     // Run lake build
     let output_str = output_dir

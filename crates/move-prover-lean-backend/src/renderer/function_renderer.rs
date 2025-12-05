@@ -6,8 +6,9 @@
 use intermediate_theorem_format::{Function, Program};
 use std::fmt::Write;
 
-use super::ir_renderer::{render_block, RenderCtx};
+use super::context::RenderCtx;
 use super::lean_writer::LeanWriter;
+use super::render;
 use super::type_renderer::type_to_string;
 use crate::escape;
 
@@ -55,9 +56,11 @@ pub fn render_function<W: Write>(
     writer.write(&type_str);
     writer.write(" :=\n");
 
-    // Function body
+    // Function body (strip requires/ensures nodes - they go in Specs/)
     writer.write("  ");
     writer.indent();
+
+    let body = func.body.clone().strip_spec_nodes().simplify_blocks();
 
     let mut ctx = RenderCtx::new(
         program,
@@ -67,7 +70,7 @@ pub fn render_function<W: Write>(
         writer,
     );
 
-    render_block(&func.body, is_monadic, &mut ctx);
+    render::render(&body, &mut ctx);
 
     let mut writer = ctx.into_writer();
     writer.dedent();

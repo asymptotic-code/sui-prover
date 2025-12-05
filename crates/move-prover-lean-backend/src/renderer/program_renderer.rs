@@ -13,6 +13,8 @@ use std::fs;
 use std::path::Path;
 
 /// Render program to directory structure (organized by module hierarchy).
+/// output_dir should be the Impls/ directory (e.g., output/Impls)
+/// Specs will be written to the sibling Specs/ directory (e.g., output/Specs)
 pub fn render_to_directory(
     program: &Program,
     output_dir: &Path,
@@ -74,7 +76,7 @@ pub fn render_to_directory(
             }
         }
 
-        // Functions
+        // Functions (skip spec functions - they go in Specs/ folder)
         let mut rendered_functions = HashSet::new();
         for (func_id, func) in &program.functions {
             if func.module_id != module_id {
@@ -84,6 +86,10 @@ pub fn render_to_directory(
                 continue;
             }
             if func.is_native {
+                continue;
+            }
+            // Skip .requires and .ensures functions - they go in Specs/ folder
+            if func.name.contains(".requires") || func.name.contains(".ensures") {
                 continue;
             }
 
@@ -114,6 +120,88 @@ pub fn render_to_directory(
         }
 
         fs::write(module_file, module_output)?;
+    }
+
+    // Render spec functions to Specs/ folder
+    render_spec_files(program, output_dir, prelude_imports)?;
+
+    Ok(())
+}
+
+/// Render spec functions (.requires and .ensures) to Specs/ folder
+fn render_spec_files(
+    program: &Program,
+    impls_dir: &Path,
+    prelude_imports: &[String],
+) -> anyhow::Result<()> {
+    // Specs directory is sibling to Impls
+    let specs_dir = impls_dir.parent().unwrap().join("Specs");
+    fs::create_dir_all(&specs_dir)?;
+
+    // Group spec functions by base function name and module
+    let mut spec_functions_by_base: std::collections::HashMap<(usize, String), Vec<&intermediate_theorem_format::Function>> = std::collections::HashMap::new();
+
+    for func in program.functions.values() {
+        // Check if this is a spec function (.requires or .ensures)
+        if let Some(base_name) = func.name.strip_suffix(".requires") {
+            spec_functions_by_base
+                .entry((func.module_id, base_name.to_string()))
+                .or_default()
+                .push(func);
+        } else if let Some(base_name) = func.name.strip_suffix(".ensures") {
+            spec_functions_by_base
+                .entry((func.module_id, base_name.to_string()))
+                .or_default()
+                .push(func);
+        }
+    }
+
+    // Render each group to a separate file
+    for ((module_id, base_name), funcs) in spec_functions_by_base {
+        let module = program.modules.get(module_id);
+        let namespace_name = escape::module_name_to_namespace(&module.name);
+
+        let mut spec_output = String::new();
+        spec_output.push_str(&format!("-- Spec for function: {}\n\n", base_name));
+
+        // Prelude imports
+        for prelude_import in prelude_imports {
+            spec_output.push_str(&format!("import {}\n", prelude_import));
+        }
+
+        // Import the implementation module
+        spec_output.push_str(&format!(
+            "import Impls.{}.{}\n",
+            module.package_name, namespace_name
+        ));
+
+        spec_output.push('\n');
+        spec_output.push_str(&format!("namespace {}\n\n", namespace_name));
+
+        // Render each spec function
+        for func in funcs {
+            let writer = LeanWriter::new(String::new());
+            let writer = render_function(func, program, &namespace_name, writer);
+            let rendered = writer.into_inner();
+
+            if !rendered.trim().is_empty() {
+                spec_output.push_str(&rendered);
+                spec_output.push('\n');
+            }
+        }
+
+        spec_output.push_str(&format!("end {}\n", namespace_name));
+
+        // Write to Specs/<package>/<base_name>.lean
+        let spec_file = specs_dir
+            .join(&module.package_name)
+            .join(format!("{}.lean", base_name));
+
+        if let Some(parent) = spec_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(spec_file, spec_output)?;
     }
 
     Ok(())

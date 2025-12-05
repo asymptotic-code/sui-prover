@@ -115,6 +115,8 @@ pub struct Program {
 
 impl Program {
     pub fn finalize(&mut self) {
+        crate::analysis::generate_runtime_variants(self);
+        crate::analysis::generate_spec_functions(self);
         order_by_dependencies(self);
         analyze_monadicity(self);
         collect_imports(self);

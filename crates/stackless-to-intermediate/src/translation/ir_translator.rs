@@ -46,9 +46,17 @@ pub fn translate_range(
     ctx: &mut DiscoveryContext,
     range: RangeInclusive<CodeOffset>,
 ) -> IRNode {
-    range
-        .map(|offset| translate(ctx, offset))
-        .fold(IRNode::default(), |acc, node| acc.combine(node))
+    let mut result = IRNode::default();
+    for offset in range {
+        let node = translate(ctx, offset);
+        let terminates = node.terminates();
+        result = result.combine(node);
+        // Stop translating if we hit a terminating instruction
+        if terminates {
+            break;
+        }
+    }
+    result
 }
 
 pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {

@@ -55,3 +55,9 @@ output/
 .sparse
 
 crates/sui-prover/tests/sources/*
+
+CLAUDE.md
+.claude/
+get_sqrt_price_at_positive_tick
+*.log.*
+*.log

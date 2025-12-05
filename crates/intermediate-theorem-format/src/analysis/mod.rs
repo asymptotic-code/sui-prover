@@ -8,11 +8,15 @@ mod dead_code_removal;
 mod dependency_order;
 mod import_collection;
 mod monadicity;
+mod runtime_variants;
+mod spec_generation;
 mod temp_inlining;
 
 pub use dependency_order::order_by_dependencies;
 pub use import_collection::collect_imports;
 pub use monadicity::analyze_monadicity;
+pub use runtime_variants::generate_runtime_variants;
+pub use spec_generation::generate_spec_functions;
 
 use crate::{IRNode, VariableRegistry};
 

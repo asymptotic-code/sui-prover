@@ -65,18 +65,9 @@ pub struct Function {
     /// Native functions should be provided by backend-specific implementations
     pub is_native: bool,
 
-    /// Whether this function is a spec function (has #[spec(prove)] attribute)
-    /// Spec functions have requires/ensures extracted and generate additional files
-    pub is_spec: bool,
-
-    /// Preconditions extracted from requires() calls in spec functions
-    pub requires: Vec<IRNode>,
-
-    /// Postconditions extracted from ensures() calls in spec functions
-    pub ensures: Vec<IRNode>,
-
-    /// Function ID of the function this spec is for (if this is a spec function)
-    pub spec_for: Option<FunctionID>,
+    /// Whether this is a spec function (contains requires/ensures nodes)
+    /// If true, analysis will generate separate requires/ensures functions
+    pub is_spec_function: bool,
 }
 
 impl Function {
