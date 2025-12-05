@@ -1063,7 +1063,7 @@ function $shr(src1: int, p: int): int {
 // Integer 2 root function (floor)
 // $sqrt_int(x) returns the largest integer r such that r^2 <= x
 // i.e., floor(x^(1/2))
-// Undefined for x < 0 or y <= 0
+// Undefined for x < 0
 function $sqrt_int(x: int): int;
 
 // Core axioms for $sqrt_int (these uniquely define the function)
@@ -1077,7 +1077,7 @@ axiom $sqrt_int(1) == 1;
 
 // Real 2 root function
 // $sqrt_real(x, 2) returns x^(1/2) - the 2-th root of x
-// Undefined for x < 0 or y <= 0
+// Undefined for x < 0
 function $sqrt_real(x: real): real;
 
 // Core axioms for $sqrt_real
