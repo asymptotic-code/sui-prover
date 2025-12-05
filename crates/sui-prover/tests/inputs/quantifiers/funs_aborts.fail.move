@@ -5,7 +5,7 @@ module 0x42::quantifiers_funs_aborts_fail;
 use prover::prover::{exists, ensures};
 
 
-#[spec_only]
+#[ext(pure)]
 fun x_is_10_aborts(x: &u64): bool {
     assert!(x == 10); // function can abort
     x == 10
