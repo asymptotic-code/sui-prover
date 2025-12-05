@@ -215,7 +215,7 @@ impl MoveLoopInvariantsProcessor {
             .filter(|name| pure_names.iter().filter(|n| n == name).count() > 1)
             .collect();
 
-        return all_names
+        all_names
             .iter()
             .map(|(name, idx)| {
                 // Note: builder.data.name_to_index usually looks like
@@ -223,9 +223,9 @@ impl MoveLoopInvariantsProcessor {
                 let final_name = if name.contains('#') {
                     let pure = name.split('#').next().unwrap().to_string();
                     if duplicate_pure_names.contains(&&pure) {
-                        format!("{}__{}", pure, name.split('#').last().unwrap()).to_string()
+                        format!("{}__{}", pure, name.split('#').last().unwrap())
                     } else {
-                        pure.to_string()
+                        pure
                     }
                 } else {
                     name.to_string()
@@ -233,7 +233,7 @@ impl MoveLoopInvariantsProcessor {
 
                 (final_name, *idx)
             })
-            .collect::<Vec<(String, usize)>>();
+            .collect::<Vec<(String, usize)>>()
     }
 
     fn match_invariant_arguments(
