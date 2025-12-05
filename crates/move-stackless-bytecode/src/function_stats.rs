@@ -1,4 +1,5 @@
 use move_binary_format::file_format::Visibility;
+use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::{
     ast::Attribute,
     model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
@@ -47,6 +48,13 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 /// - Functions with `test_only` attribute
 /// - Spec functions themselves
 fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> bool {
+    if func_env
+        .get_toplevel_attributes()
+        .get_(&AttributeKind_::Mode)
+        .is_some()
+    {
+        return false;
+    }
     if func_env.visibility() != Visibility::Public {
         return false;
     }
