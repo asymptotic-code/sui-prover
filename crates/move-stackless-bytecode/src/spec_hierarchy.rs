@@ -15,7 +15,7 @@ pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, 
 
     for spec_id in targets.specs() {
         let spec_env = env.get_function(*spec_id);
-        let spec_name = spec_env.get_name_str();
+        let spec_name = spec_env.get_full_name_str();
 
         if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
             let func_env = env.get_function(*fun_id);
