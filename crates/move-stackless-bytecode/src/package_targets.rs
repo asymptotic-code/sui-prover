@@ -639,6 +639,10 @@ impl PackageTargets {
         !self.abort_check_functions.is_empty()
     }
 
+    pub fn has_focus_specs(&self) -> bool {
+        !self.focus_specs.is_empty()
+    }
+
     pub fn ignores_aborts(&self, func_id: &QualifiedId<FunId>) -> bool {
         self.ignore_aborts.contains(func_id)
     }
