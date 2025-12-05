@@ -9,7 +9,7 @@ use prover::vector_iter::{map_range, map};
 
 public struct S {}
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun to_zero(x: &S): u8 {
     0
 }
