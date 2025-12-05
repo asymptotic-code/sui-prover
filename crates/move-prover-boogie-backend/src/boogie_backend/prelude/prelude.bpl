@@ -1087,39 +1087,6 @@ axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 1) == x);
 axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 2) * $sqrt_real(x, 2) == x);
 axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 3) * $sqrt_real(x, 3) * $sqrt_real(x, 3) == x);
 
-// =============================================================================
-// Computational Integer Square Root (bit-by-bit algorithm)
-// Implements: floor(sqrt(x)) using the binary digit-by-digit method
-// =============================================================================
-
-// Helper function implementing the bit-by-bit square root algorithm
-// x: remaining value to process
-// res: accumulated result
-// bit: current bit being tested (power of 4, shifts right by 2 each step)
-function $isqrt_helper(x: int, res: int, bit: int): int {
-    if bit == 0 then res
-    else if x >= res + bit then
-        $isqrt_helper(x - (res + bit), (res div 2) + bit, bit div 4)
-    else
-        $isqrt_helper(x, res div 2, bit div 4)
-}
-
-// Generic integer square root (works for any non-negative integer)
-// Uses 2^128 as starting bit - large enough for any practical input
-// Extra iterations are skipped automatically when bit > x
-function $isqrt(x: int): int {
-    $isqrt_helper(x, 0, 340282366920938463463374607431768211456)
-}
-
-// Axioms for $isqrt (enable symbolic reasoning)
-axiom (forall x: int :: x >= 0 ==> $isqrt(x) >= 0);
-axiom (forall x: int :: x >= 0 ==> $isqrt(x) * $isqrt(x) <= x);
-axiom (forall x: int :: x >= 0 ==> ($isqrt(x) + 1) * ($isqrt(x) + 1) > x);
-
-// Edge cases for $isqrt
-axiom $isqrt(0) == 0;
-axiom $isqrt(1) == 1;
-
 // We need to know the size of the destination in order to drop bits
 // that have been shifted left more than that, so we have $ShlU8/16/32/64/128/256
 procedure {:inline 1} $ShlU8(src1: int, src2: int) returns (dst: int)
