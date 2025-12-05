@@ -15,6 +15,10 @@ pub struct TargetFilterOptions {
 }
 
 impl TargetFilterOptions {
+    pub fn is_configured(&self) -> bool {
+        self.modules.is_some() || self.functions.is_some()
+    }
+
     pub fn is_targeted(&self, func_env: &FunctionEnv) -> bool {
         if let Some(modules) = &self.modules {
             let module_name = &func_env
