@@ -183,7 +183,7 @@ impl MoveLoopInvariantsProcessor {
     }
 
     fn vars_in_scope(offset: usize, builder: &FunctionDataBuilder) -> Vec<(String, usize)> {
-        builder
+        let all_names = builder
             .data
             .name_to_index
             .iter()
@@ -194,19 +194,46 @@ impl MoveLoopInvariantsProcessor {
                 {
                     return None;
                 }
+                let name_str = builder.fun_env.symbol_pool().string(*name).to_string();
+                Some((name_str, local_idx))
+            })
+            .collect::<Vec<(String, usize)>>();
 
+        let pure_names: Vec<String> = all_names
+            .iter()
+            .map(|(name, _)| {
+                if name.contains('#') {
+                    name.split('#').next().unwrap().to_string()
+                } else {
+                    name.to_string()
+                }
+            })
+            .collect();
+
+        let duplicate_pure_names: Vec<&String> = pure_names
+            .iter()
+            .filter(|name| pure_names.iter().filter(|n| n == name).count() > 1)
+            .collect();
+
+        return all_names
+            .iter()
+            .map(|(name, idx)| {
                 // Note: builder.data.name_to_index usually looks like
                 // n -> 0, i#1#0 -> 1, s#1#0 -> 2
-                let name_str = builder.fun_env.symbol_pool().string(*name);
-                let final_name = if name_str.contains('#') {
-                    name_str.split('#').next().unwrap().to_string()
+                let final_name = if name.contains('#') {
+                    let pure = name.split('#').next().unwrap().to_string();
+                    if duplicate_pure_names.contains(&&pure) {
+                        format!("{}__{}", pure, name.split('#').last().unwrap()).to_string()
+                    } else {
+                        pure.to_string()
+                    }
                 } else {
-                    name_str.to_string()
+                    name.to_string()
                 };
 
-                Some((final_name, local_idx))
+                (final_name, *idx)
             })
-            .collect::<Vec<(String, usize)>>()
+            .collect::<Vec<(String, usize)>>();
     }
 
     fn match_invariant_arguments(
