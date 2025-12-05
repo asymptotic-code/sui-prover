@@ -236,15 +236,12 @@ impl FunctionTargetsHolder {
     }
 
     pub fn no_verify_specs(&self) -> Box<dyn Iterator<Item = &QualifiedId<FunId>> + '_> {
-        // NOTE: package_targets target_specs is all eligible specs based on filters and other features
-        // so we filter out those that are in target
+        // Return specs that should not be verified: either explicitly marked as no-verify,
+        // or not in the current target scope
         Box::new(
-            self.package_targets.no_verify_specs().iter().chain(
-                self.package_targets
-                    .target_specs()
-                    .iter()
-                    .filter(|s| !self.in_target(s)),
-            ),
+            self.specs().filter(|s| {
+                self.package_targets.no_verify_specs().contains(s) || !self.in_target(s)
+            }),
         )
     }
 
