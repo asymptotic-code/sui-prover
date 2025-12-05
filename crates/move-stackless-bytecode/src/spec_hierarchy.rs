@@ -151,7 +151,8 @@ fn build_implementation_tree(
     displayed: &mut BTreeSet<QualifiedId<FunId>>,
     content: &mut String,
 ) {
-    let filtered_calls: Vec<_> = func_env.get_called_functions()
+    let filtered_calls: Vec<_> = func_env
+        .get_called_functions()
         .into_iter()
         .filter(|called_id| {
             let called_env = env.get_function(*called_id);

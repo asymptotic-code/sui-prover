@@ -200,8 +200,12 @@ pub async fn execute(
     } else if general_config.verbose {
         let mut options = move_prover_boogie_backend::generator_options::Options::default();
         options.filter = filter.clone();
-        let (targets, _) =
-            create_and_process_bytecode(&options, &model, &package_targets, FunctionHolderTarget::All);
+        let (targets, _) = create_and_process_bytecode(
+            &options,
+            &model,
+            &package_targets,
+            FunctionHolderTarget::All,
+        );
 
         let output_dir = std::path::Path::new(&options.output_path);
         if !output_dir.exists() {
