@@ -163,8 +163,8 @@ function {:inline} $1_integer_pow(x: int, y: int): int {
     $pow(x, y)
 }
 
-function {:inline} $1_integer_sqrt(x: int, y: int): int {
-    $sqrt_int(x, y)
+function {:inline} $1_integer_sqrt(x: int): int {
+    $sqrt_int(x)
 }
 
 function $andInt(x: int, y: int) returns (int);
@@ -311,7 +311,12 @@ function {:inline} $1_real_div(x: real, y: real): real {
 }
 
 function {:inline} $1_real_exp(x: real, y: int): real {
-    $pow_real(x, y)
+    // simplifications
+    if y == 0 then 1.0
+    else if y == 1 || y == -1 then x
+    else if y == 2 then x * x
+    else if y == 3 then x * x * x
+    else $pow_real(x, y)
 }
 
 function {:inline} $1_real_lt(x: real, y: real): bool {
@@ -330,8 +335,8 @@ function {:inline} $1_real_gte(x: real, y: real): bool {
     x >= y
 }
 
-function {:inline} $1_real_sqrt(x: real, y: int): real {
-    $sqrt_real(x,y)
+function {:inline} $1_real_sqrt(x: real): real {
+    $sqrt_real(x)
 }
 
 
@@ -1052,39 +1057,33 @@ function $shr(src1: int, p: int): int {
     src1 div $pow(2, p)
 }
 
-// Integer n-th root function (floor)
-// $sqrt_int(x, y) returns the largest integer r such that r^y <= x
-// i.e., floor(x^(1/y))
+// Integer 2 root function (floor)
+// $sqrt_int(x) returns the largest integer r such that r^2 <= x
+// i.e., floor(x^(1/2))
 // Undefined for x < 0 or y <= 0
-function $sqrt_int(x: int, y: int): int;
+function $sqrt_int(x: int): int;
 
 // Core axioms for $sqrt_int (these uniquely define the function)
-axiom (forall x: int, y: int :: x >= 0 && y > 0 ==> $sqrt_int(x, y) >= 0);
-axiom (forall x: int, y: int :: x >= 0 && y > 0 ==> $pow($sqrt_int(x, y), y) <= x);
-axiom (forall x: int, y: int :: x >= 0 && y > 0 ==> $pow($sqrt_int(x, y) + 1, y) > x);
+axiom (forall x: int :: x >= 0 ==> $sqrt_int(x) >= 0);
+axiom (forall x: int :: x >= 0 ==> $pow($sqrt_int(x), 2) <= x);
+axiom (forall x: int :: x >= 0 ==> $pow($sqrt_int(x) + 1, 2) > x);
 
 // Edge case axioms for $sqrt_int (derived, but help SMT solver)
-axiom (forall y: int :: y > 0 ==> $sqrt_int(0, y) == 0);
-axiom (forall y: int :: y > 0 ==> $sqrt_int(1, y) == 1);
-axiom (forall x: int :: x >= 0 ==> $sqrt_int(x, 1) == x);
+axiom $sqrt_int(0) == 0;
+axiom $sqrt_int(1) == 1;
 
-// Real n-th root function
-// $sqrt_real(x, y) returns x^(1/y) - the y-th root of x
+// Real 2 root function
+// $sqrt_real(x, 2) returns x^(1/2) - the 2-th root of x
 // Undefined for x < 0 or y <= 0
-function $sqrt_real(x: real, y: int): real;
+function $sqrt_real(x: real): real;
 
 // Core axioms for $sqrt_real
-axiom (forall x: real, y: int :: x >= 0.0 && y > 0 ==> $sqrt_real(x, y) >= 0.0);
-axiom (forall x: real, y: int :: x >= 0.0 && y > 0 ==> $pow_real($sqrt_real(x, y), y) == x);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x) >= 0.0);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x) * $sqrt_real(x) == x);
 
 // Edge case axioms for $sqrt_real
-axiom (forall y: int :: y > 0 ==> $sqrt_real(0.0, y) == 0.0);
-axiom (forall y: int :: y > 0 ==> $sqrt_real(1.0, y) == 1.0);
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 1) == x);
-
-// Specific axioms for common roots (help SMT solver)
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 2) * $sqrt_real(x, 2) == x);
-axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x, 3) * $sqrt_real(x, 3) * $sqrt_real(x, 3) == x);
+axiom $sqrt_real(0.0) == 0.0;
+axiom $sqrt_real(1.0) == 1.0;
 
 // We need to know the size of the destination in order to drop bits
 // that have been shifted left more than that, so we have $ShlU8/16/32/64/128/256
