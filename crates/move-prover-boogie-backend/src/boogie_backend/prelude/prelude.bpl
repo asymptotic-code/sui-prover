@@ -1068,8 +1068,8 @@ function $sqrt_int(x: int): int;
 
 // Core axioms for $sqrt_int (these uniquely define the function)
 axiom (forall x: int :: x >= 0 ==> $sqrt_int(x) >= 0);
-axiom (forall x: int :: x >= 0 ==> $pow($sqrt_int(x), 2) <= x);
-axiom (forall x: int :: x >= 0 ==> $pow($sqrt_int(x) + 1, 2) > x);
+axiom (forall x: int :: x >= 0 ==> $sqrt_int(x) * $sqrt_int(x) <= x);
+axiom (forall x: int :: x >= 0 ==> ($sqrt_int(x) + 1) * ($sqrt_int(x) + 1) > x);
 
 // Edge case axioms for $sqrt_int (derived, but help SMT solver)
 axiom $sqrt_int(0) == 0;
