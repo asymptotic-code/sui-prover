@@ -250,6 +250,34 @@ impl<'env> FunctionDataBuilder<'env> {
         temp
     }
 
+    pub fn emit_let_get_datatype_field(
+        &mut self,
+        idx: TempIndex,
+        ty: Type,
+        field_ty: Type,
+        field_offset: usize,
+    ) -> TempIndex {
+        let (val, val_ty) = if ty.is_reference() {
+            (self.emit_let_read_ref(idx), ty.skip_reference().clone())
+        } else {
+            (idx, ty)
+        };
+
+        let (d_id, tys) = val_ty.get_datatype().unwrap();
+
+        let temp = self.new_temp(field_ty);
+        self.emit_with(|id: AttrId| {
+            Bytecode::Call(
+                id,
+                vec![temp],
+                Operation::GetField(d_id.module_id, d_id.id, tys.to_vec(), field_offset),
+                vec![val],
+                None,
+            )
+        });
+        temp
+    }
+
     pub fn emit_type_inv(&mut self, idx: TempIndex) -> TempIndex {
         let ty = self.get_local_type(idx);
         let (val, val_ty) = if ty.is_reference() {
