@@ -180,19 +180,21 @@ pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: usize = 45;
 
 pub async fn execute(
     path: Option<&Path>,
-    general_config: GeneralConfig,
+    mut general_config: GeneralConfig,
     remote_config: RemoteConfig,
     build_config: BuildConfig,
     boogie_config: Option<String>,
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
+    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci);
+
+    general_config.skip_spec_no_abort = general_config.skip_spec_no_abort
+        || package_targets.has_focus_specs()
+        || filter.is_configured();
 
     if general_config.stats {
-        function_stats::display_function_stats(
-            &model,
-            &PackageTargets::new(&model, filter.clone(), !general_config.ci),
-        );
+        function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
     }
 
