@@ -1,6 +1,15 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 275
+assertion_line: 268
 expression: output
 ---
 Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_loop_inv_count_ok_x_is_positive$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 0;
+    (var $t2 := (_$t0 > $t1);
+    $t2))
+}

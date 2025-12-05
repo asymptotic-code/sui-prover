@@ -4,12 +4,12 @@ module 0x42::quantifiers_forall_exists_ok;
 #[spec_only]
 use prover::prover::{forall, exists, ensures};
 
-#[spec_only]
+#[ext(pure)]
 fun x_is_10(x: &u64): bool {
     x == 10
 }
 
-#[spec_only]
+#[ext(pure)]
 fun x_is_gte_0(x: &u64): bool {
     *x >= 0
 }
