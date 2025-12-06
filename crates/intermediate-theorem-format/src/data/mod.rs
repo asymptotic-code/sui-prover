@@ -7,6 +7,7 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
 use crate::analysis::{analyze_monadicity, collect_imports, order_by_dependencies};
+use crate::data::variables::TypeContext;
 pub use functions::FunctionID;
 pub use structure::StructID;
 
@@ -115,18 +116,31 @@ pub struct Program {
 
 impl Program {
     pub fn finalize(&mut self) {
-        crate::analysis::generate_runtime_variants(self);
-        crate::analysis::generate_spec_functions(self);
+        // TODO: crate::analysis::lift_monadic_calls(self); // Module doesn't exist yet
+
         order_by_dependencies(self);
-        analyze_monadicity(self);
+        analyze_monadicity(self);  // Sets is_monadic flag on each function
+        crate::analysis::generate_runtime_variants(self);  // Uses is_monadic flag
+        crate::analysis::generate_spec_functions(self);
         collect_imports(self);
         self.optimize_all();
     }
 
     pub fn optimize_all(&mut self) {
+        // Build maps for TypeContext
+        let function_sigs: BTreeMap<FunctionID, functions::FunctionSignature> = self.functions.iter()
+            .map(|(id, f)| (*id, f.signature.clone()))
+            .collect();
+        let struct_defs: BTreeMap<StructID, structure::Struct> = self.structs.iter()
+            .map(|(id, s)| (*id, s.clone()))
+            .collect();
+
         for func in self.functions.iter_mut() {
             if !func.is_native {
-                func.optimize();
+                // Clone variables to avoid borrow conflict with mutable optimize
+                let vars = func.variables.clone();
+                let ctx = TypeContext::new(&vars, &function_sigs, &struct_defs);
+                func.optimize(&ctx);
             }
         }
     }

@@ -11,10 +11,8 @@ pub type TempId = String;
 /// Theorem IR type with enriched metadata for code generation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
-    /// Boolean
+    /// Boolean (rendered as Prop in Lean for specifications)
     Bool,
-    /// Proposition (for spec functions)
-    Prop,
     /// Unsigned integer with bit width
     UInt(u32),
     /// Signed integer with bit width
@@ -64,12 +62,9 @@ impl Type {
         }
     }
 
-    /// Get the inner type from Except monad, panics if not a monad
-    pub fn inner_monad_type(&self) -> Type {
-        match self {
-            Type::Except(inner) => (**inner).clone(),
-            _ => panic!("Type is not a monad: {:?}", self),
-        }
+    /// Unwraps if the type is a monad, or else returns the type
+    pub fn base_type(&self) -> Type {
+        self.unwrap_monad().cloned().unwrap_or_else(|| self.clone())
     }
 
     /// Collect all struct IDs referenced in this type
@@ -97,7 +92,7 @@ impl Type {
             Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            Type::Bool | Type::Prop | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
+            Type::Bool | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
             }
         }
     }

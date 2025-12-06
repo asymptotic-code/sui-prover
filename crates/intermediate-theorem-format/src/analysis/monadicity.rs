@@ -18,10 +18,10 @@ pub fn analyze_monadicity(program: &mut Program) {
 
     // First pass: identify which functions are intrinsically monadic
     // - Functions that abort
-    // - Native functions (we assume they may abort since we don't know their implementation)
+    // Native functions are assumed to be pure (not monadic)
     for func_id in &func_ids {
         let func = program.functions.get(*func_id);
-        if func.body.aborts() || func.is_native {
+        if func.body.aborts() {
             monadic_funcs.insert(*func_id);
         }
     }
@@ -46,13 +46,15 @@ pub fn analyze_monadicity(program: &mut Program) {
         }
     }
 
-    // Second pass: unwrap return types for non-monadic functions
-    // Native functions stay monadic since we don't know their behavior
+    // Second pass: set is_monadic flag and unwrap return types for non-monadic functions
+    // This includes native functions, which are now treated as pure
     for func_id in &func_ids {
-        let func = program.functions.get(*func_id);
-        if !monadic_funcs.contains(func_id) && !func.is_native {
+        let is_monadic = monadic_funcs.contains(func_id);
+        let func = program.functions.get_mut(*func_id);
+        func.is_monadic = is_monadic;
+        if !is_monadic {
             if let Some(inner) = func.signature.return_type.unwrap_monad().cloned() {
-                program.functions.get_mut(*func_id).signature.return_type = inner;
+                func.signature.return_type = inner;
             }
         }
     }

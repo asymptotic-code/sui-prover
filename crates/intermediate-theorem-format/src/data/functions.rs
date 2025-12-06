@@ -5,7 +5,7 @@
 
 use crate::analysis;
 use crate::data::types::{TempId, Type};
-use crate::data::variables::VariableRegistry;
+use crate::data::variables::{TypeContext, VariableRegistry};
 use crate::data::Dependable;
 use crate::{IRNode, ModuleID};
 use move_model::model::{FunId, QualifiedId};
@@ -68,6 +68,10 @@ pub struct Function {
     /// Whether this is a spec function (contains requires/ensures nodes)
     /// If true, analysis will generate separate requires/ensures functions
     pub is_spec_function: bool,
+
+    /// Whether this function is monadic (can abort or calls monadic functions).
+    /// Set by monadicity analysis pass. If true, return type remains wrapped in Except.
+    pub is_monadic: bool,
 }
 
 impl Function {
@@ -80,8 +84,8 @@ impl Function {
     ///
     /// This runs the complete optimization pipeline (see `analysis::optimize`):
     /// The pipeline runs to fix-point automatically.
-    pub fn optimize(&mut self) {
-        self.body = analysis::optimize(self.body.clone(), &self.variables);
+    pub fn optimize(&mut self, ctx: &TypeContext) {
+        self.body = analysis::optimize(self.body.clone(), ctx);
     }
 }
 

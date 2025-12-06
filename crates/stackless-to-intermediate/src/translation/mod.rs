@@ -4,11 +4,21 @@
 //! Translation utilities for Move bytecode to TheoremIR
 
 use ethnum::U256;
-use intermediate_theorem_format::{BinOp, Const};
+use intermediate_theorem_format::{BinOp, Const, Type};
 use move_stackless_bytecode::stackless_bytecode::{Constant, Operation};
 
 pub(crate) mod function_translator;
 pub(crate) mod ir_translator;
+
+/// Get the type of a constant value
+fn const_type(c: &Const) -> Type {
+    match c {
+        Const::Bool(_) => Type::Bool,
+        Const::UInt { bits, .. } => Type::UInt(*bits as u32),
+        Const::Address(_) => Type::Address,
+        Const::Vector { elem_type, .. } => Type::Vector(Box::new(elem_type.clone())),
+    }
+}
 
 pub fn convert_constant(constant: &Constant) -> Const {
     match constant {
@@ -38,24 +48,31 @@ pub fn convert_constant(constant: &Constant) -> Const {
             value: *v,
         },
         Constant::Address(addr) => Const::Address(addr.clone()),
-        Constant::ByteArray(bytes) => Const::Vector(
-            bytes
+        Constant::ByteArray(bytes) => Const::Vector {
+            elem_type: Type::UInt(8),
+            elems: bytes
                 .iter()
                 .map(|&b| Const::UInt {
                     bits: 8,
                     value: U256::from(b),
                 })
                 .collect(),
-        ),
+        },
         Constant::Vector(elements) => {
-            Const::Vector(elements.iter().map(convert_constant).collect())
+            let elems: Vec<_> = elements.iter().map(convert_constant).collect();
+            // Infer element type from first element, or use Unit if empty
+            let elem_type = elems.first()
+                .map(const_type)
+                .unwrap_or(Type::Tuple(vec![]));
+            Const::Vector { elem_type, elems }
         }
-        Constant::AddressArray(addresses) => Const::Vector(
-            addresses
+        Constant::AddressArray(addresses) => Const::Vector {
+            elem_type: Type::Address,
+            elems: addresses
                 .iter()
                 .map(|addr| Const::Address(addr.clone()))
                 .collect(),
-        ),
+        },
     }
 }
 

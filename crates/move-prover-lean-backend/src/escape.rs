@@ -76,7 +76,11 @@ pub fn escape_identifier(name: &str) -> String {
 
     // Strip SSA suffixes like _1_0, _2_1, etc. for cleaner output
     // Pattern: ends with _<digit>_<digit> or _<digit>_<digit>_<digit>...
-    let name = if let Some(base_pos) = name.rfind(|c: char| !c.is_ascii_digit() && c != '_') {
+    // BUT preserve suffixes like .ensures_0, .ensures_1 (indexed spec functions)
+    let name = if name.contains(".ensures_") || name.contains(".requires_") {
+        // Don't strip suffix from indexed spec functions
+        name
+    } else if let Some(base_pos) = name.rfind(|c: char| !c.is_ascii_digit() && c != '_') {
         let suffix_start = base_pos + 1;
         let suffix = &name[suffix_start..];
         // Check if suffix matches pattern like _1_0 or _2_1_3

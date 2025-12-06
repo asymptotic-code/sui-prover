@@ -129,6 +129,15 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
         }
 
         node  = node.combine(ir_translator::translate_range(ctx, lower..=upper));
+
+        // Check if this block terminates (Ret or Abort) - if so, stop traversal
+        if matches!(
+            ctx.target.get_bytecode()[upper as usize],
+            Bytecode::Ret(_, _) | Bytecode::Abort(_, _)
+        ) {
+            break;
+        }
+
         cursor = next;
     }
 

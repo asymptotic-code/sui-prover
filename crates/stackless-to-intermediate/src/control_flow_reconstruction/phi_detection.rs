@@ -115,13 +115,84 @@ fn transform_if_in_block(
     let then_terminates = then_branch.terminates();
     let else_terminates = else_branch.terminates();
 
-    // If either branch terminates (Return/Abort), the if is a control flow statement,
-    // not an expression. No phi detection needed - just return the if as-is.
-    if then_terminates || else_terminates {
+    // If BOTH branches terminate, no phi detection needed
+    if then_terminates && else_terminates {
         return IRNode::If {
             cond,
             then_branch: Box::new(then_branch),
             else_branch: Box::new(else_branch),
+        };
+    }
+
+    // If one branch terminates and the other doesn't, the non-terminating branch
+    // may define variables that are used after the if. We need to make the if
+    // expression return those variables so they're in scope after.
+    if then_terminates || else_terminates {
+        let (continuing_branch, terminating_branch, cond, swap_branches) = if else_terminates {
+            (then_branch, else_branch, cond, false)
+        } else {
+            // then terminates, else continues - we'll negate the condition conceptually
+            // by swapping branches in the final If
+            (else_branch, then_branch, cond, true)
+        };
+
+        // Get variables defined in the continuing branch
+        let continuing_vars: Vec<String> = collect_top_level_let_names(&continuing_branch)
+            .into_iter()
+            .collect();
+
+        if continuing_vars.is_empty() {
+            // No variables to lift - return as-is
+            return if swap_branches {
+                IRNode::If {
+                    cond,
+                    then_branch: Box::new(terminating_branch),
+                    else_branch: Box::new(continuing_branch),
+                }
+            } else {
+                IRNode::If {
+                    cond,
+                    then_branch: Box::new(continuing_branch),
+                    else_branch: Box::new(terminating_branch),
+                }
+            };
+        }
+
+        // Add result expression to continuing branch
+        let result_expr = if continuing_vars.len() == 1 {
+            IRNode::Var(continuing_vars[0].clone())
+        } else {
+            IRNode::Tuple(continuing_vars.iter().map(|n| IRNode::Var(n.clone())).collect())
+        };
+
+        let continuing_with_result = match continuing_branch {
+            IRNode::Block { mut children } => {
+                children.push(result_expr);
+                IRNode::Block { children }
+            }
+            other => IRNode::Block {
+                children: vec![other, result_expr],
+            },
+        };
+
+        // Wrap in let binding
+        let if_expr = if swap_branches {
+            IRNode::If {
+                cond,
+                then_branch: Box::new(terminating_branch),
+                else_branch: Box::new(continuing_with_result),
+            }
+        } else {
+            IRNode::If {
+                cond,
+                then_branch: Box::new(continuing_with_result),
+                else_branch: Box::new(terminating_branch),
+            }
+        };
+
+        return IRNode::Let {
+            pattern: continuing_vars,
+            value: Box::new(if_expr),
         };
     }
 

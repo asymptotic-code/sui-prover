@@ -142,13 +142,19 @@ fn render_spec_files(
     let mut spec_functions_by_base: std::collections::HashMap<(usize, String), Vec<&intermediate_theorem_format::Function>> = std::collections::HashMap::new();
 
     for func in program.functions.values() {
-        // Check if this is a spec function (.requires or .ensures)
-        if let Some(base_name) = func.name.strip_suffix(".requires") {
-            spec_functions_by_base
-                .entry((func.module_id, base_name.to_string()))
-                .or_default()
-                .push(func);
-        } else if let Some(base_name) = func.name.strip_suffix(".ensures") {
+        // Check if this is a spec function (.requires or .ensures or .ensures_N)
+        let base_name = if let Some(base) = func.name.strip_suffix(".requires") {
+            Some(base)
+        } else if let Some(base) = func.name.strip_suffix(".ensures") {
+            Some(base)
+        } else if func.name.contains(".ensures_") {
+            // Handle .ensures_0, .ensures_1, etc.
+            func.name.rfind(".ensures_").map(|idx| &func.name[..idx])
+        } else {
+            None
+        };
+
+        if let Some(base_name) = base_name {
             spec_functions_by_base
                 .entry((func.module_id, base_name.to_string()))
                 .or_default()
@@ -178,14 +184,45 @@ fn render_spec_files(
         spec_output.push('\n');
         spec_output.push_str(&format!("namespace {}\n\n", namespace_name));
 
+        // Collect requires and ensures function names for theorem generation
+        let mut ensures_names: Vec<String> = Vec::new();
+        let mut requires_func: Option<&intermediate_theorem_format::Function> = None;
+        let mut first_ensures_func: Option<&intermediate_theorem_format::Function> = None;
+
         // Render each spec function
-        for func in funcs {
+        for func in &funcs {
             let writer = LeanWriter::new(String::new());
             let writer = render_function(func, program, &namespace_name, writer);
             let rendered = writer.into_inner();
 
             if !rendered.trim().is_empty() {
                 spec_output.push_str(&rendered);
+                spec_output.push('\n');
+            }
+
+            // Track requires/ensures for theorem generation
+            if func.name.ends_with(".requires") {
+                requires_func = Some(func);
+            } else if func.name.contains(".ensures") {
+                ensures_names.push(escape::escape_identifier(&func.name));
+                if first_ensures_func.is_none() {
+                    first_ensures_func = Some(func);
+                }
+            }
+        }
+
+        // Generate the verification theorem
+        // Use requires function signature if available, otherwise use first ensures function
+        if !ensures_names.is_empty() {
+            let signature_func = requires_func.or(first_ensures_func);
+            if let Some(sig_func) = signature_func {
+                spec_output.push_str(&generate_verification_theorem(
+                    &base_name,
+                    &sig_func.signature,
+                    requires_func.is_some(),
+                    &ensures_names,
+                    program,
+                ));
                 spec_output.push('\n');
             }
         }
@@ -205,6 +242,108 @@ fn render_spec_files(
     }
 
     Ok(())
+}
+
+/// Generate a verification theorem for a spec function
+/// The theorem states: requires → ensures_0 ∧ ensures_1 ∧ ...
+/// If has_requires is false, the theorem is just: ensures_0 ∧ ensures_1 ∧ ...
+fn generate_verification_theorem(
+    base_name: &str,
+    signature: &intermediate_theorem_format::FunctionSignature,
+    has_requires: bool,
+    ensures_names: &[String],
+    program: &Program,
+) -> String {
+    use crate::renderer::type_renderer::type_to_string;
+
+    let escaped_base = escape::escape_identifier(base_name);
+    let mut output = String::new();
+
+    // Build type parameter list (e.g., "(tv0 : Type) [BEq tv0] [Inhabited tv0]")
+    let type_param_decls: Vec<String> = signature
+        .type_params
+        .iter()
+        .map(|tp| format!("({} : Type) [BEq {}] [Inhabited {}]", tp, tp, tp))
+        .collect();
+
+    // Build parameter list for the theorem
+    let param_decls: Vec<String> = signature
+        .parameters
+        .iter()
+        .map(|p| {
+            let name = escape::escape_identifier(&p.name);
+            let ty = type_to_string(&p.param_type, program, None);
+            format!("({} : {})", name, ty)
+        })
+        .collect();
+
+    // Combine type params and regular params
+    let all_decls: Vec<String> = type_param_decls
+        .into_iter()
+        .chain(param_decls)
+        .collect();
+
+    let param_list = if all_decls.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", all_decls.join(" "))
+    };
+
+    // Build argument list for function calls (just the names)
+    let type_param_names: Vec<String> = signature.type_params.clone();
+    let param_names: Vec<String> = signature
+        .parameters
+        .iter()
+        .map(|p| escape::escape_identifier(&p.name))
+        .collect();
+
+    let all_args: Vec<String> = type_param_names
+        .into_iter()
+        .chain(param_names)
+        .collect();
+
+    let args_str = all_args.join(" ");
+
+    // Build the ensures conjunction
+    let ensures_calls: Vec<String> = ensures_names
+        .iter()
+        .map(|name| {
+            if args_str.is_empty() {
+                name.clone()
+            } else {
+                format!("{} {}", name, args_str)
+            }
+        })
+        .collect();
+
+    let ensures_conjunction = if ensures_calls.len() == 1 {
+        ensures_calls[0].clone()
+    } else {
+        ensures_calls.join(" ∧\n    ")
+    };
+
+    // Generate the theorem
+    output.push_str(&format!(
+        "theorem {}.verified{} :\n",
+        escaped_base, param_list
+    ));
+
+    if has_requires {
+        // Build the requires call
+        let requires_call = if args_str.is_empty() {
+            format!("{}.requires", escaped_base)
+        } else {
+            format!("{}.requires {}", escaped_base, args_str)
+        };
+        output.push_str(&format!("  {} →\n", requires_call));
+        output.push_str(&format!("    {} := by\n", ensures_conjunction));
+    } else {
+        // No requires, just the ensures conjunction
+        output.push_str(&format!("    {} := by\n", ensures_conjunction));
+    }
+    output.push_str("  sorry\n");
+
+    output
 }
 
 /// Copy native package implementations from lemmas directory.

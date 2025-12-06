@@ -19,7 +19,10 @@ use crate::translation::ir_translator::build_trace_map;
 pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) -> Function {
     let variables = VariableRegistry::new(
         builder.convert_types(&target.data.local_types)
-            .into_iter().enumerate().collect()
+            .into_iter()
+            .enumerate()
+            .map(|(idx, ty)| (format!("$t{}", idx), ty))
+            .collect()
     );
 
     let func_env = target.func_env;
@@ -28,7 +31,11 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         .modules
         .id_for_key(func_env.module_env.get_id());
 
-    let body = if target.get_bytecode().is_empty() || func_env.is_native() {
+    let body = if func_env.is_native() {
+        // Native functions have no body
+        IRNode::default()
+    } else if target.get_bytecode().is_empty() {
+        // Non-native function with empty bytecode - likely inlined/optimized by compiler
         IRNode::default()
     } else {
         let forward_cfg =
@@ -57,6 +64,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         mutual_group_id: None,
         is_native: func_env.is_native(),
         is_spec_function,
+        is_monadic: false,  // Will be set by analyze_monadicity pass
     }
 }
 

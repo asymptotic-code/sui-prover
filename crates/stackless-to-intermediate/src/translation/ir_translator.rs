@@ -19,22 +19,30 @@ use std::ops::RangeInclusive;
 pub fn build_trace_map(target: &FunctionTarget) -> BTreeMap<usize, String> {
     let mut trace_map = BTreeMap::new();
 
+    // Get the number of parameters - these are local variables 0..num_params-1
+    let num_params = target.get_parameter_count();
+
     for bytecode in target.get_bytecode() {
         if let Bytecode::Call(_, _, Operation::TraceLocal(local_idx), srcs, _) = bytecode {
             // TraceLocal(local_idx) traces the value in srcs[0] to the variable at local_idx
             if !srcs.is_empty() {
                 let source_temp = srcs[0];
-                let symbol = target.get_local_name(*local_idx);
-                let traced_name = target.global_env().symbol_pool().string(symbol).to_string();
 
-                // Strip version suffixes from traced name
-                let traced_name = if let Some(hash_pos) = traced_name.find('#') {
-                    traced_name[..hash_pos].to_string()
-                } else {
-                    traced_name
-                };
+                // Only map temps that are NOT parameters
+                // Parameters (temps 0..num_params-1) should keep their original names
+                if source_temp >= num_params {
+                    let symbol = target.get_local_name(*local_idx);
+                    let traced_name = target.global_env().symbol_pool().string(symbol).to_string();
 
-                trace_map.insert(source_temp, traced_name);
+                    // Strip version suffixes from traced name
+                    let traced_name = if let Some(hash_pos) = traced_name.find('#') {
+                        traced_name[..hash_pos].to_string()
+                    } else {
+                        traced_name
+                    };
+
+                    trace_map.insert(source_temp, traced_name);
+                }
             }
         }
     }

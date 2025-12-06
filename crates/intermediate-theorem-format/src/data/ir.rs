@@ -14,6 +14,7 @@
 
 use crate::data::structure::StructID;
 use crate::data::types::{TempId, Type};
+use crate::data::variables::TypeContext;
 use crate::FunctionID;
 use ethnum::U256;
 use num::BigUint;
@@ -254,7 +255,7 @@ pub enum IRNode {
 
 impl Default for IRNode {
     fn default() -> Self {
-        IRNode::Tuple(vec![])
+        IRNode::Block { children: vec![] }
     }
 }
 
@@ -264,7 +265,8 @@ pub enum Const {
     Bool(bool),
     UInt { bits: usize, value: U256 },
     Address(BigUint),
-    Vector(Vec<Const>),
+    /// Vector constant with element type and values
+    Vector { elem_type: Type, elems: Vec<Const> },
 }
 
 impl Display for Const {
@@ -273,7 +275,7 @@ impl Display for Const {
             Const::Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
             Const::UInt { value, .. } => write!(f, "{}", value),
             Const::Address(addr) => write!(f, "{}", addr),
-            Const::Vector(elems) => {
+            Const::Vector { elems, .. } => {
                 write!(f, "[")?;
                 for (i, e) in elems.iter().enumerate() {
                     if i > 0 {
@@ -327,9 +329,10 @@ pub enum UnOp {
 }
 
 /// Vector operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VecOp {
-    Empty,
+    /// Create empty vector with element type
+    Empty(Type),
     Length,
     Push,
     Pop,
@@ -391,6 +394,15 @@ impl IRNode {
         })
     }
 
+    /// Filter out nodes from blocks based on a predicate.
+    /// Nodes for which the predicate returns false are removed.
+    /// This traverses the entire IR tree and filters Block children.
+    pub fn filter<F: Fn(&IRNode) -> bool>(self, predicate: F) -> Self {
+        self.transform_block(|children| {
+            children.into_iter().filter(&predicate).collect()
+        })
+    }
+
     /// Check if this is an atomic expression (doesn't need parens when used as arg)
     pub fn is_atomic(&self) -> bool {
         match self {
@@ -422,6 +434,15 @@ impl IRNode {
             } => then_branch.terminates() && else_branch.terminates(),
             _ => false,
         }
+    }
+
+    /// Extract and collect values from matching nodes in the IR tree
+    /// The extractor function returns Some(T) for nodes that should be collected.
+    pub fn extract<T, F>(&self, extractor: F) -> Vec<T>
+    where
+        F: Fn(&IRNode) -> Option<T>,
+    {
+        self.iter().filter_map(extractor).collect()
     }
 
     /// Collect all variable names used (read) in this IR tree
@@ -474,6 +495,22 @@ impl IRNode {
         self.iter().any(|n| matches!(n, IRNode::Abort(_)))
     }
 
+    /// Check if ALL execution paths in this IR tree lead to Abort
+    pub fn always_aborts(&self) -> bool {
+        match self {
+            IRNode::Abort(_) => true,
+            IRNode::Block { children } => {
+                children.last().map_or(false, |c| c.always_aborts())
+            }
+            IRNode::If { then_branch, else_branch, .. } => {
+                then_branch.always_aborts() && else_branch.always_aborts()
+            }
+            IRNode::While { .. } => false, // Loops might not execute
+            IRNode::Return(_) => false, // Returns don't abort
+            _ => false,
+        }
+    }
+
     /// Get the abort code if this IR is an abort (or ends in one)
     pub fn get_abort_code(&self) -> Option<&IRNode> {
         match self {
@@ -491,11 +528,22 @@ impl IRNode {
             IRNode::Abort(_) => true,
             IRNode::While { body, .. } => body.contains_monadic(is_func_monadic),
             IRNode::Call { function, .. } => is_func_monadic(*function),
+            // BinOp is monadic if any operand is monadic (rendered as a do block)
+            IRNode::BinOp { lhs, rhs, .. } => {
+                lhs.is_monadic(is_func_monadic) || rhs.is_monadic(is_func_monadic)
+            }
+            // UnOp is monadic if its operand is monadic
+            IRNode::UnOp { operand, .. } => operand.is_monadic(is_func_monadic),
+            // If is monadic if condition, then, or else is monadic
             IRNode::If {
+                cond,
                 then_branch,
                 else_branch,
-                ..
-            } => then_branch.is_monadic(is_func_monadic) || else_branch.is_monadic(is_func_monadic),
+            } => {
+                cond.is_monadic(is_func_monadic)
+                    || then_branch.is_monadic(is_func_monadic)
+                    || else_branch.is_monadic(is_func_monadic)
+            }
             IRNode::Block { children } => {
                 children.iter().any(|c| c.contains_monadic(is_func_monadic))
                     || children.last().is_some_and(|c| c.is_monadic(is_func_monadic))
@@ -591,24 +639,125 @@ impl IRNode {
         elements.into_iter().collect()
     }
 
-    /// Remove all Requires and Ensures nodes from the IR tree
-    pub fn strip_spec_nodes(self) -> IRNode {
-        self.map(&mut |node| match node {
-            IRNode::Block { children } => {
-                let filtered: Vec<_> = children
-                    .into_iter()
-                    .filter(|child| !matches!(child, IRNode::Requires(_) | IRNode::Ensures(_)))
-                    .collect();
-                match filtered.len() {
-                    0 => IRNode::default(),
-                    1 => filtered.into_iter().next().unwrap(),
-                    _ => IRNode::Block { children: filtered }
+    /// Get the type of this IR expression using the type context.
+    /// Returns None for control flow nodes (Return, Abort) and spec nodes (Requires, Ensures).
+    /// Panics if a node that should have a type cannot resolve it.
+    pub fn get_type(&self, ctx: &TypeContext) -> Option<Type> {
+        match self {
+            // Variables: look up in registry - MUST exist
+            IRNode::Var(name) => Some(ctx.vars.get_type_or_panic(name).clone()),
+
+            // Constants: direct type inference
+            IRNode::Const(c) => Some(match c {
+                Const::Bool(_) => Type::Bool,
+                Const::UInt { bits, .. } => Type::UInt(*bits as u32),
+                Const::Address(_) => Type::Address,
+                Const::Vector { elem_type, .. } => Type::Vector(Box::new(elem_type.clone())),
+            }),
+
+            // Binary operations: result type depends on operation
+            IRNode::BinOp { op, lhs, .. } => Some(match op {
+                BinOp::And | BinOp::Or |
+                BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => Type::Bool,
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod
+                | BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => {
+                    lhs.expect_type(ctx)
+                }
+            }),
+
+            // Unary operations
+            IRNode::UnOp { op, .. } => Some(match op {
+                UnOp::Not => Type::Bool,
+                UnOp::CastU8 => Type::UInt(8),
+                UnOp::CastU16 => Type::UInt(16),
+                UnOp::CastU32 => Type::UInt(32),
+                UnOp::CastU64 => Type::UInt(64),
+                UnOp::CastU128 => Type::UInt(128),
+                UnOp::CastU256 => Type::UInt(256),
+            }),
+
+            // Function calls: look up return type from context
+            IRNode::Call { function, .. } => Some(ctx.function_return_type(*function).clone()),
+
+            // Struct construction
+            IRNode::Pack { struct_id, type_args, .. } => {
+                Some(Type::Struct {
+                    struct_id: *struct_id,
+                    type_args: type_args.clone(),
+                })
+            }
+
+            // Field access: look up field type from struct definition
+            IRNode::Field { struct_id, field_index, .. } => {
+                Some(ctx.struct_field_type(*struct_id, *field_index).clone())
+            }
+
+            // Struct destructuring: returns tuple of field types
+            IRNode::Unpack { struct_id, .. } => Some(ctx.struct_fields_tuple(*struct_id)),
+
+            // Vector operations
+            IRNode::VecOp { op, args, .. } => Some(match op {
+                VecOp::Empty(elem_type) => Type::Vector(Box::new(elem_type.clone())),
+                VecOp::Length => Type::UInt(64),
+                VecOp::Push | VecOp::Swap => Type::Tuple(vec![]), // Returns unit
+                VecOp::Pop | VecOp::Borrow | VecOp::BorrowMut => {
+                    let vec_type = args.first()
+                        .expect("VecOp::Pop/Borrow/BorrowMut requires a vector argument")
+                        .expect_type(ctx);
+                    match vec_type {
+                        Type::Vector(elem_ty) => (*elem_ty).clone(),
+                        _ => panic!("VecOp expected Vector type, got {:?}", vec_type),
+                    }
+                }
+            }),
+
+            // Tuples
+            IRNode::Tuple(elems) => {
+                Some(Type::Tuple(elems.iter().map(|e| e.expect_type(ctx)).collect()))
+            }
+
+            // Let: type is the type of the value being bound (if it has one)
+            IRNode::Let { value, .. } => value.get_type(ctx),
+
+            // If: type is from the non-terminating branch
+            IRNode::If { then_branch, else_branch, .. } => {
+                if !then_branch.terminates() {
+                    then_branch.get_type(ctx)
+                } else {
+                    else_branch.get_type(ctx)
                 }
             }
-            IRNode::Requires(_) | IRNode::Ensures(_) => IRNode::default(),
-            other => other,
+
+            // While: returns tuple of the loop variables
+            IRNode::While { vars, .. } => {
+                Some(Type::Tuple(vars.iter().map(|v| ctx.vars.get_type_or_panic(v).clone()).collect()))
+            }
+
+            // Block: type of last child (if it has one)
+            IRNode::Block { children } => {
+                children.last().and_then(|c| c.get_type(ctx))
+            }
+
+            // Control flow nodes don't have types
+            IRNode::Return(_) | IRNode::Abort(_) => None,
+
+            // Updates return the updated value
+            IRNode::UpdateField { base, .. } => base.get_type(ctx),
+            IRNode::UpdateVec { base, .. } => base.get_type(ctx),
+
+            // Spec nodes don't produce values
+            IRNode::Requires(_) | IRNode::Ensures(_) => None,
+        }
+    }
+
+    /// Get the type of this IR expression, panicking if it doesn't have one.
+    /// Use this when you know the node must have a type.
+    pub fn expect_type(&self, ctx: &TypeContext) -> Type {
+        self.get_type(ctx).unwrap_or_else(|| {
+            panic!("Expected IR node to have a type, but it doesn't: {:?}", self)
         })
     }
+
 
     /// Simplify blocks by unwrapping simple let-return patterns
     /// Transforms: Block([Let(x, v), Return(x)]) => Return(v)
@@ -618,7 +767,7 @@ impl IRNode {
                 // Check for pattern: [Let { pattern: [x], value }, Return([Var(x)])]
                 if children.len() == 2 {
                     if let (
-                        IRNode::Let { pattern, value },
+                        IRNode::Let { pattern, value: _ },
                         IRNode::Return(ret_vals)
                     ) = (&children[0], &children[1]) {
                         if pattern.len() == 1 && ret_vals.len() == 1 {
