@@ -11,7 +11,7 @@ use std::collections::hash_map::RandomState;
 
 pub fn order_by_dependencies(program: &mut Program) {
     topological_sort(&mut program.structs.items);
-    topological_sort(&mut program.functions.items);
+    topological_sort(program.functions.base_functions_mut());
 }
 
 fn topological_sort<T: Dependable>(items: &mut IndexMap<T::Id, T>) {

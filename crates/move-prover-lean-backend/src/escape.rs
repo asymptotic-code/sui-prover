@@ -63,6 +63,15 @@ pub fn capitalize_first(name: &str) -> String {
 
 /// Escape identifiers (function names, field names, parameter names) that conflict with Lean reserved words
 pub fn escape_identifier(name: &str) -> String {
+    // Handle variant suffixes (like "from.pure" -> "from_.pure")
+    // Split on '.' and escape the base name, then rejoin
+    if let Some(dot_pos) = name.find('.') {
+        let base = &name[..dot_pos];
+        let suffix = &name[dot_pos..]; // includes the dot
+        let escaped_base = escape_identifier(base);
+        return format!("{}{}", escaped_base, suffix);
+    }
+
     // Handle $ prefix (temps like $t0, $t1 etc.) - $ is special in Lean
     // Also handle $ anywhere in the name (like tmp#$1 -> tmp_t_1)
     let name = if name.starts_with('$') {
@@ -84,7 +93,12 @@ pub fn escape_identifier(name: &str) -> String {
         let suffix_start = base_pos + 1;
         let suffix = &name[suffix_start..];
         // Check if suffix matches pattern like _1_0 or _2_1_3
-        if suffix.starts_with('_') && suffix.chars().skip(1).all(|c| c.is_ascii_digit() || c == '_') {
+        if suffix.starts_with('_')
+            && suffix
+                .chars()
+                .skip(1)
+                .all(|c| c.is_ascii_digit() || c == '_')
+        {
             // Has SSA suffix, strip it
             name[..suffix_start].to_string()
         } else {

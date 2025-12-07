@@ -8,7 +8,8 @@ use crate::control_flow_reconstruction::structure_discovery::reconstruct_functio
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
 use intermediate_theorem_format::{
-    Function, FunctionSignature, IRNode, Parameter, Type, VariableRegistry,
+    Function, FunctionFlags, FunctionSignature, IRNode, Parameter, Type,
+    VariableRegistry,
 };
 use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;
@@ -53,7 +54,11 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
     // Check if this is a spec function by detecting requires/ensures in body
     // Note: #[spec(prove)] attributes don't survive compilation to bytecode,
     // so we detect spec functions by their IR structure
-    let is_spec_function = contains_spec_nodes(&body);
+    let is_spec = contains_spec_nodes(&body);
+
+    let mut flags = FunctionFlags::new();
+    flags.set_native(func_env.is_native());
+    flags.set_spec(is_spec);
 
     Function {
         module_id,
@@ -62,9 +67,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         body,
         variables,
         mutual_group_id: None,
-        is_native: func_env.is_native(),
-        is_spec_function,
-        is_monadic: false,  // Will be set by analyze_monadicity pass
+        flags,
     }
 }
 

@@ -76,7 +76,8 @@ pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {
         }
 
         Bytecode::Load(_, dest, constant) => {
-            make_let(ctx, &[*dest], make_constant(constant))
+            let dest_type = ctx.builder.convert_type(ctx.target.get_local_type(*dest));
+            make_let(ctx, &[*dest], make_constant(constant, &dest_type))
         }
 
         Bytecode::Call(_, dests, operation, srcs, _) => {
@@ -387,8 +388,8 @@ fn make_var(ctx: &DiscoveryContext, temp: usize) -> IRNode {
     IRNode::Var(temp_id(ctx, temp))
 }
 
-fn make_constant(constant: &Constant) -> IRNode {
-    IRNode::Const(convert_constant(constant))
+fn make_constant(constant: &Constant, expected_type: &intermediate_theorem_format::Type) -> IRNode {
+    IRNode::Const(convert_constant(constant, expected_type))
 }
 
 fn make_let(ctx: &DiscoveryContext, results: &[usize], value: IRNode) -> IRNode {

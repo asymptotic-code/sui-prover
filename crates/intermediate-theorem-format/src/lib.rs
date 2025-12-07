@@ -8,7 +8,7 @@ mod data;
 pub mod utils;
 
 pub use analysis::optimize;
-pub use data::functions::{Function, FunctionSignature, Parameter};
+pub use data::functions::{Function, FunctionFlags, FunctionSignature, FunctionVariant, Parameter};
 pub use data::ir::{BinOp, Const, IRNode, UnOp, VecOp};
 pub use data::structure::{Field, Struct};
 pub use data::types::{TempId, Type};

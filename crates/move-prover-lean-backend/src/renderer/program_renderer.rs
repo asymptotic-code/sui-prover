@@ -7,7 +7,7 @@ use super::function_renderer::render_function;
 use super::lean_writer::LeanWriter;
 use super::struct_renderer::render_struct;
 use crate::escape;
-use intermediate_theorem_format::Program;
+use intermediate_theorem_format::{FunctionID, FunctionVariant, Program};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -48,7 +48,7 @@ pub fn render_to_directory(
         let has_native_functions = program
             .functions
             .values()
-            .any(|f| f.module_id == module_id && f.is_native);
+            .any(|f| f.module_id == module_id && f.is_native());
         if has_native_functions {
             let namespace_name = escape::module_name_to_namespace(&module.name);
             let natives_path = output_dir
@@ -76,32 +76,47 @@ pub fn render_to_directory(
             }
         }
 
-        // Functions (skip spec functions - they go in Specs/ folder)
-        let mut rendered_functions = HashSet::new();
-        for (func_id, func) in &program.functions {
-            if func.module_id != module_id {
+        // Functions - iterate by base function to maintain dependency order
+        // For each base function, render it and all its non-spec variants together
+        for base_id in program.functions.iter_base_ids() {
+            let base_func = program.functions.get(&FunctionID::new(base_id));
+            if base_func.module_id != module_id {
                 continue;
             }
-            if rendered_functions.contains(func_id) {
-                continue;
-            }
-            if func.is_native {
-                continue;
-            }
-            // Skip .requires and .ensures functions - they go in Specs/ folder
-            if func.name.contains(".requires") || func.name.contains(".ensures") {
+            if base_func.is_native() {
                 continue;
             }
 
-            let writer = LeanWriter::new(String::new());
-            let writer = render_function(func, program, &namespace_name, writer);
-            let rendered = writer.into_inner();
-
-            if !rendered.trim().is_empty() {
-                module_output.push_str(&rendered);
-                module_output.push('\n');
+            // Render the base (runtime) function only if it's not monadic
+            // Monadic runtime functions are skipped - we only need .pure and .aborts variants for verification
+            let base_func_id = FunctionID::new(base_id);
+            if !base_func.is_monadic() {
+                let writer = LeanWriter::new(String::new());
+                let writer =
+                    render_function(base_func_id, base_func, program, &namespace_name, writer);
+                let rendered = writer.into_inner();
+                if !rendered.trim().is_empty() {
+                    module_output.push_str(&rendered);
+                    module_output.push('\n');
+                }
             }
-            rendered_functions.insert(*func_id);
+
+            // Then render non-spec variants (Pure, Aborts) for this base function
+            for (variant_id, variant_func) in program.functions.variants_for(base_id) {
+                // Skip spec-derived variants (requires, ensures) - they go in Specs/ folder
+                if variant_id.variant.is_spec_variant() {
+                    continue;
+                }
+
+                let writer = LeanWriter::new(String::new());
+                let writer =
+                    render_function(variant_id, variant_func, program, &namespace_name, writer);
+                let rendered = writer.into_inner();
+                if !rendered.trim().is_empty() {
+                    module_output.push_str(&rendered);
+                    module_output.push('\n');
+                }
+            }
         }
 
         // Ensure blank line before closing namespace
@@ -139,26 +154,18 @@ fn render_spec_files(
     fs::create_dir_all(&specs_dir)?;
 
     // Group spec functions by base function name and module
-    let mut spec_functions_by_base: std::collections::HashMap<(usize, String), Vec<&intermediate_theorem_format::Function>> = std::collections::HashMap::new();
+    let mut spec_functions_by_base: std::collections::HashMap<
+        (usize, String),
+        Vec<(FunctionID, &intermediate_theorem_format::Function)>,
+    > = std::collections::HashMap::new();
 
-    for func in program.functions.values() {
-        // Check if this is a spec function (.requires or .ensures or .ensures_N)
-        let base_name = if let Some(base) = func.name.strip_suffix(".requires") {
-            Some(base)
-        } else if let Some(base) = func.name.strip_suffix(".ensures") {
-            Some(base)
-        } else if func.name.contains(".ensures_") {
-            // Handle .ensures_0, .ensures_1, etc.
-            func.name.rfind(".ensures_").map(|idx| &func.name[..idx])
-        } else {
-            None
-        };
-
-        if let Some(base_name) = base_name {
+    for (func_id, func) in program.functions.iter() {
+        // Check if this is a spec-derived variant
+        if func_id.variant.is_spec_variant() {
             spec_functions_by_base
-                .entry((func.module_id, base_name.to_string()))
+                .entry((func.module_id, func.name.clone()))
                 .or_default()
-                .push(func);
+                .push((func_id, func));
         }
     }
 
@@ -190,9 +197,9 @@ fn render_spec_files(
         let mut first_ensures_func: Option<&intermediate_theorem_format::Function> = None;
 
         // Render each spec function
-        for func in &funcs {
+        for (func_id, func) in &funcs {
             let writer = LeanWriter::new(String::new());
-            let writer = render_function(func, program, &namespace_name, writer);
+            let writer = render_function(*func_id, func, program, &namespace_name, writer);
             let rendered = writer.into_inner();
 
             if !rendered.trim().is_empty() {
@@ -201,13 +208,17 @@ fn render_spec_files(
             }
 
             // Track requires/ensures for theorem generation
-            if func.name.ends_with(".requires") {
-                requires_func = Some(func);
-            } else if func.name.contains(".ensures") {
-                ensures_names.push(escape::escape_identifier(&func.name));
-                if first_ensures_func.is_none() {
-                    first_ensures_func = Some(func);
+            match func_id.variant {
+                FunctionVariant::Requires => {
+                    requires_func = Some(*func);
                 }
+                FunctionVariant::Ensures(_) => {
+                    ensures_names.push(escape::escape_identifier(&func.full_name(func_id.variant)));
+                    if first_ensures_func.is_none() {
+                        first_ensures_func = Some(*func);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -278,10 +289,7 @@ fn generate_verification_theorem(
         .collect();
 
     // Combine type params and regular params
-    let all_decls: Vec<String> = type_param_decls
-        .into_iter()
-        .chain(param_decls)
-        .collect();
+    let all_decls: Vec<String> = type_param_decls.into_iter().chain(param_decls).collect();
 
     let param_list = if all_decls.is_empty() {
         String::new()
@@ -297,10 +305,7 @@ fn generate_verification_theorem(
         .map(|p| escape::escape_identifier(&p.name))
         .collect();
 
-    let all_args: Vec<String> = type_param_names
-        .into_iter()
-        .chain(param_names)
-        .collect();
+    let all_args: Vec<String> = type_param_names.into_iter().chain(param_names).collect();
 
     let args_str = all_args.join(" ");
 
@@ -355,7 +360,7 @@ fn copy_native_packages(program: &Program, output_dir: &Path) -> anyhow::Result<
         let has_native_functions = program
             .functions
             .values()
-            .any(|f| f.module_id == *module_id && f.is_native);
+            .any(|f| f.module_id == *module_id && f.is_native());
 
         if !has_native_functions {
             continue;

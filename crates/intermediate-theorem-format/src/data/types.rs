@@ -96,4 +96,19 @@ impl Type {
             }
         }
     }
+
+    /// Check if this type contains Bool anywhere (including in tuples)
+    /// Bool becomes Prop in Lean, which affects Decidable instance derivation
+    pub fn contains_bool(&self) -> bool {
+        match self {
+            Type::Bool => true,
+            Type::Tuple(tys) => tys.iter().any(|t| t.contains_bool()),
+            Type::Vector(inner)
+            | Type::Reference(inner)
+            | Type::MutableReference(inner)
+            | Type::Except(inner) => inner.contains_bool(),
+            Type::Struct { type_args, .. } => type_args.iter().any(|t| t.contains_bool()),
+            Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => false,
+        }
+    }
 }

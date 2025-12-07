@@ -31,6 +31,16 @@ fn single_pattern_let(ir: &IRNode) -> Option<(&String, &IRNode)> {
     }
 }
 
+/// Get the effective value if it's a boolean constant (possibly wrapped in Block/Return)
+fn get_bool_const(node: &IRNode) -> Option<bool> {
+    match node {
+        IRNode::Const(Const::Bool(b)) => Some(*b),
+        IRNode::Block { children } if children.len() == 1 => get_bool_const(&children[0]),
+        IRNode::Return(values) if values.len() == 1 => get_bool_const(&values[0]),
+        _ => None,
+    }
+}
+
 /// Simplify boolean if expressions recursively
 /// - `if cond then true else false` -> `cond`
 /// - `if cond then false else true` -> `!cond`
@@ -41,11 +51,11 @@ fn simplify_boolean_ifs(node: IRNode) -> IRNode {
             then_branch,
             else_branch,
         } => {
-            // Check if both branches are boolean constants
-            let then_is_true = matches!(*then_branch.as_ref(), IRNode::Const(Const::Bool(true)));
-            let then_is_false = matches!(*then_branch.as_ref(), IRNode::Const(Const::Bool(false)));
-            let else_is_true = matches!(*else_branch.as_ref(), IRNode::Const(Const::Bool(true)));
-            let else_is_false = matches!(*else_branch.as_ref(), IRNode::Const(Const::Bool(false)));
+            // Check if both branches are boolean constants (handles wrapped cases)
+            let then_is_true = get_bool_const(&then_branch) == Some(true);
+            let then_is_false = get_bool_const(&then_branch) == Some(false);
+            let else_is_true = get_bool_const(&else_branch) == Some(true);
+            let else_is_false = get_bool_const(&else_branch) == Some(false);
 
             if then_is_true && else_is_false {
                 // if cond then true else false -> cond
@@ -79,16 +89,6 @@ fn convert_boolean_ifs_to_and(node: IRNode, ctx: &TypeContext) -> IRNode {
             then_branch,
             else_branch,
         } => {
-            // Helper to get the effective value if it's a boolean constant (possibly wrapped in Block/Return)
-            fn get_bool_const(node: &IRNode) -> Option<bool> {
-                match node {
-                    IRNode::Const(Const::Bool(b)) => Some(*b),
-                    IRNode::Block { children } if children.len() == 1 => get_bool_const(&children[0]),
-                    IRNode::Return(values) if values.len() == 1 => get_bool_const(&values[0]),
-                    _ => None,
-                }
-            }
-
             // Check for both branches being the same boolean constant
             // if X then true else true => true, if X then false else false => false
             if let (Some(then_val), Some(else_val)) = (get_bool_const(&then_branch), get_bool_const(&else_branch)) {
@@ -99,8 +99,8 @@ fn convert_boolean_ifs_to_and(node: IRNode, ctx: &TypeContext) -> IRNode {
             }
 
             // Check if else branch is false
-            let else_is_false = matches!(*else_branch.as_ref(), IRNode::Const(Const::Bool(false)));
-            let then_is_false = matches!(*then_branch.as_ref(), IRNode::Const(Const::Bool(false)));
+            let else_is_false = get_bool_const(&else_branch) == Some(false);
+            let then_is_false = get_bool_const(&then_branch) == Some(false);
 
             // Don't convert if both are false (should be handled above, but double-check)
             if else_is_false && !then_is_false {

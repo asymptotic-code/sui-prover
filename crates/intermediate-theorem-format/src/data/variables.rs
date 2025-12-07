@@ -7,7 +7,7 @@
 
 use crate::data::types::{TempId, Type};
 use crate::data::structure::{Struct, StructID};
-use crate::{FunctionID, FunctionSignature};
+use crate::FunctionSignature;
 use std::collections::BTreeMap;
 
 /// Maps variable names (TempId) to their types.
@@ -59,8 +59,8 @@ impl VariableRegistry {
 pub struct TypeContext<'a> {
     /// Variable types
     pub vars: &'a VariableRegistry,
-    /// Function signatures by ID
-    pub functions: &'a BTreeMap<FunctionID, FunctionSignature>,
+    /// Function signatures by base ID (variants share the same base signature for params)
+    pub functions: &'a BTreeMap<usize, FunctionSignature>,
     /// Struct definitions by ID
     pub structs: &'a BTreeMap<StructID, Struct>,
 }
@@ -68,16 +68,16 @@ pub struct TypeContext<'a> {
 impl<'a> TypeContext<'a> {
     pub fn new(
         vars: &'a VariableRegistry,
-        functions: &'a BTreeMap<FunctionID, FunctionSignature>,
+        functions: &'a BTreeMap<usize, FunctionSignature>,
         structs: &'a BTreeMap<StructID, Struct>,
     ) -> Self {
         Self { vars, functions, structs }
     }
 
-    /// Get function return type
-    pub fn function_return_type(&self, id: FunctionID) -> &Type {
-        &self.functions.get(&id)
-            .unwrap_or_else(|| panic!("Function {} not found in TypeContext", id))
+    /// Get function return type by base ID
+    pub fn function_return_type(&self, base_id: usize) -> &Type {
+        &self.functions.get(&base_id)
+            .unwrap_or_else(|| panic!("Function {} not found in TypeContext", base_id))
             .return_type
     }
 

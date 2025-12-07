@@ -12,7 +12,10 @@ use std::fmt::Write;
 /// Render a type to Lean syntax.
 pub fn render_type<W: Write>(ty: &Type, ctx: &mut RenderCtx<W>) {
     match ty {
-        Type::Bool => ctx.write("Bool"),
+        Type::Bool => {
+            // Always use Prop for Bool - Lean backend only uses propositions
+            ctx.write("Prop");
+        }
         Type::UInt(8) => ctx.write("UInt8"),
         Type::UInt(16) => ctx.write("UInt16"),
         Type::UInt(32) => ctx.write("UInt32"),

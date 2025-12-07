@@ -10,17 +10,9 @@ use move_stackless_bytecode::stackless_bytecode::{Constant, Operation};
 pub(crate) mod function_translator;
 pub(crate) mod ir_translator;
 
-/// Get the type of a constant value
-fn const_type(c: &Const) -> Type {
-    match c {
-        Const::Bool(_) => Type::Bool,
-        Const::UInt { bits, .. } => Type::UInt(*bits as u32),
-        Const::Address(_) => Type::Address,
-        Const::Vector { elem_type, .. } => Type::Vector(Box::new(elem_type.clone())),
-    }
-}
-
-pub fn convert_constant(constant: &Constant) -> Const {
+/// Convert a Move constant to IR Const.
+/// The `expected_type` is used to determine the element type for empty vectors.
+pub fn convert_constant(constant: &Constant, expected_type: &Type) -> Const {
     match constant {
         Constant::Bool(b) => Const::Bool(*b),
         Constant::U8(v) => Const::UInt {
@@ -59,11 +51,15 @@ pub fn convert_constant(constant: &Constant) -> Const {
                 .collect(),
         },
         Constant::Vector(elements) => {
-            let elems: Vec<_> = elements.iter().map(convert_constant).collect();
-            // Infer element type from first element, or use Unit if empty
-            let elem_type = elems.first()
-                .map(const_type)
-                .unwrap_or(Type::Tuple(vec![]));
+            // Get element type from expected_type (which should be Vector<T>)
+            let elem_type = match expected_type {
+                Type::Vector(inner) => inner.as_ref().clone(),
+                _ => panic!("BUG: Expected vector type for vector constant, got {:?}", expected_type),
+            };
+            let elems = elements
+                .iter()
+                .map(|e| convert_constant(e, &elem_type))
+                .collect();
             Const::Vector { elem_type, elems }
         }
         Constant::AddressArray(addresses) => Const::Vector {

@@ -4,7 +4,7 @@
 //! Rendering context - shared state during IR rendering
 
 use super::lean_writer::LeanWriter;
-use intermediate_theorem_format::{FunctionID, ModuleID, Program, VariableRegistry};
+use intermediate_theorem_format::{ModuleID, Program, VariableRegistry};
 use std::fmt::Write;
 
 /// Rendering context - holds everything needed during rendering
@@ -33,16 +33,6 @@ impl<'a, W: Write> RenderCtx<'a, W> {
         }
     }
 
-    /// Check if a function is monadic (returns Except)
-    pub fn is_func_monadic(&self, func_id: FunctionID) -> bool {
-        self.program
-            .functions
-            .get(func_id)
-            .signature
-            .return_type
-            .is_monad()
-    }
-
     /// Write a string to the writer
     pub fn write(&mut self, s: &str) {
         self.writer.write(s);
@@ -55,22 +45,62 @@ impl<'a, W: Write> RenderCtx<'a, W> {
 
     /// Write a newline
     pub fn newline(&mut self) {
-        self.writer.write("\n");
+        self.writer.newline();
     }
 
-    /// Increase indentation
-    pub fn indent(&mut self) {
-        self.writer.indent();
+    /// Increase indentation. If `newline` is true, writes a newline before indenting.
+    pub fn indent(&mut self, newline: bool) {
+        self.writer.indent(newline);
     }
 
-    /// Decrease indentation
-    pub fn dedent(&mut self) {
-        self.writer.dedent();
+    /// Decrease indentation. If `newline` is true, writes a newline after dedenting.
+    pub fn dedent(&mut self, newline: bool) {
+        self.writer.dedent(newline);
     }
 
     /// Check if in inline mode
     pub fn is_inline(&self) -> bool {
         self.writer.is_inline()
+    }
+
+    /// Write items with a separator, using a render function
+    pub fn sep_with<I, T, F>(&mut self, separator: &str, items: I, mut render: F)
+    where
+        I: IntoIterator<Item = T>,
+        F: FnMut(&mut Self, T),
+    {
+        let mut first = true;
+        for item in items {
+            if !first {
+                self.write(separator);
+            }
+            first = false;
+            render(self, item);
+        }
+    }
+
+    /// Write a tuple-like structure: empty→empty_val, single→element, multiple→`(a, b, c)`
+    pub fn tuple<I, T, F>(&mut self, items: I, empty_val: &str, mut render: F)
+    where
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+        F: FnMut(&mut Self, T),
+    {
+        let iter = items.into_iter();
+        let len = iter.len();
+        match len {
+            0 => self.write(empty_val),
+            1 => {
+                for item in iter {
+                    render(self, item);
+                }
+            }
+            _ => {
+                self.write("(");
+                self.sep_with(", ", iter, &mut render);
+                self.write(")");
+            }
+        }
     }
 
     /// Get the underlying writer

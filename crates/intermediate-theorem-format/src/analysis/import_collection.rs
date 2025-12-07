@@ -4,7 +4,7 @@
 //! Import collection pass
 
 use crate::data::{Dependable, ModuleID, Program};
-use crate::Function;
+use crate::{Function, FunctionID};
 use std::collections::HashSet;
 
 pub fn collect_imports(program: &mut Program) {
@@ -64,16 +64,18 @@ fn collect_from_function<'a>(
         .flat_map(|t| t.struct_ids())
         .map(|sid| program.structs.get(sid).module_id);
 
-    let body_deps = function
-        .dependencies()
-        .map(|fid| program.functions.get(fid).module_id)
-        .chain(
-            function
-                .body
-                .iter_struct_references()
-                .chain(function.body.iter_type_struct_ids())
-                .map(|sid| program.structs.get(sid).module_id),
-        );
+    // Get base IDs from function calls and look up their module
+    let call_deps = function
+        .body
+        .calls()
+        .into_iter()
+        .map(|fid| program.functions.get(&FunctionID::new(fid.base)).module_id);
 
-    sig_deps.chain(body_deps)
+    let struct_deps = function
+        .body
+        .iter_struct_references()
+        .chain(function.body.iter_type_struct_ids())
+        .map(|sid| program.structs.get(sid).module_id);
+
+    sig_deps.chain(call_deps).chain(struct_deps)
 }
