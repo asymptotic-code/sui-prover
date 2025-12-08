@@ -471,6 +471,10 @@ fn compute_uid_info(
                 if !dests.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
+                if callee_id == fun_target.global_env().type_inv_qid() {
+                    return None;
+                }
+
                 let callee_data = targets
                     .get_data(&callee_id, &FunctionVariant::Baseline)
                     .unwrap();
@@ -583,6 +587,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         mut data: FunctionData,
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
+        println!("Analyzing function: {}", fun_env.get_full_name_str());
         if fun_env.is_native() || fun_env.is_intrinsic() {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
