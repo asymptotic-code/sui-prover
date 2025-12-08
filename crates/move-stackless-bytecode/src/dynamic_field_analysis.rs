@@ -587,7 +587,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         mut data: FunctionData,
         scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        println!("Analyzing function: {}", fun_env.get_full_name_str());
         if fun_env.is_native() || fun_env.is_intrinsic() {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
