@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 277
+expression: output
+---
+exiting with model building errors
+error: cyclic data
+   ┌─ tests/inputs/inv/recursive_type_inv.move:22:21
+   │
+22 │     c_field: vector<C>,
+   │                     ^
+   │                     │
+   │                     Invalid field containing 'C' in struct 'B'.
+   │                     Using this struct creates a cycle: 'C' contains 'A' contains 'B' contains 'C'
+
+error: cyclic data
+  ┌─ tests/inputs/inv/recursive_type_inv.move:7:19
+  │
+7 │     right: Option<Leaf>,
+  │                   ^^^^
+  │                   │
+  │                   Invalid field containing 'Leaf' in struct 'Leaf'.
+  │                   Using this struct creates a cycle: 'Leaf' contains 'Leaf'
