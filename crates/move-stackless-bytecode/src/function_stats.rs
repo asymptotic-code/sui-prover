@@ -1,4 +1,5 @@
 use move_binary_format::file_format::Visibility;
+use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::{
     ast::Attribute,
     model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
@@ -47,6 +48,13 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 /// - Functions with `test_only` attribute
 /// - Spec functions themselves
 fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> bool {
+    if func_env
+        .get_toplevel_attributes()
+        .get_(&AttributeKind_::Mode)
+        .is_some()
+    {
+        return false;
+    }
     if func_env.visibility() != Visibility::Public {
         return false;
     }
@@ -84,6 +92,22 @@ fn determine_spec_status(spec_id: &QualifiedId<FunId>, targets: &PackageTargets)
     }
 }
 
+fn is_test_module(module_env: &move_model::model::ModuleEnv) -> bool {
+    let source_path = module_env.get_source_path();
+    source_path
+        .to_str()
+        .map(|path| path.contains("/tests/") || path.contains("/test/"))
+        .unwrap_or(false)
+}
+
+fn is_github_dependency(module_env: &move_model::model::ModuleEnv) -> bool {
+    let source_path = module_env.get_source_path();
+    source_path
+        .to_str()
+        .map(|path| path.contains("github"))
+        .unwrap_or(false)
+}
+
 /// Displays statistics for all public functions in the project.
 ///
 /// Shows:
@@ -99,10 +123,9 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
     println!("📊 Function Statistics\n");
 
     let excluded_addresses = [
-        0u16.into(),      // System address (core framework)
-        1u16.into(),      // Tests address
-        2u16.into(),      // Event address
-        3u16.into(),      // Stdlib address
+        1u16.into(),      // MoveStdlib
+        2u16.into(),      // Sui
+        3u16.into(),      // SuiSystem
         0xdee9u16.into(), // DeepBook address
     ];
 
@@ -120,6 +143,8 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
 
         if excluded_addresses.contains(module_addr)
             || GlobalEnv::SPECS_MODULES_NAMES.contains(&module_name.as_str())
+            || is_test_module(&module_env)
+            || is_github_dependency(&module_env)
         {
             continue;
         }
@@ -153,23 +178,11 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
                     .or_insert(0) += 1;
                 println!("  {} {}", ProofStatus::NoSpec, func_env.get_name_str());
             } else {
-                let statuses = specs
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|spec| {
-                        let status = determine_spec_status(spec, targets);
-                        *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
-                        let spec_module_name = env
-                            .get_module(spec.module_id)
-                            .get_name()
-                            .display(env.symbol_pool())
-                            .to_string();
-                        format!("{}: {}", spec_module_name, status)
-                    })
-                    .collect::<Vec<_>>();
-
-                println!("  [{}] {}", statuses.join(", "), func_env.get_name_str());
+                for spec in specs.unwrap() {
+                    let status = determine_spec_status(&spec, targets);
+                    *stats_by_status.entry(format!("{}", status)).or_insert(0) += 1;
+                    println!("  {} {}", status, func_env.get_name_str());
+                }
             }
         }
 
