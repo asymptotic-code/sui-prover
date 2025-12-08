@@ -115,9 +115,6 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
                 Assign(_, _, _, _) => None,
                 Load(_, _, _) => None,
                 Call(_, _, op, _, _) => match op {
-                    Operation::Quantifier(_, _, _, _) => {
-                        Some("Quantifiers not allowed in pure functions yet".to_string())
-                    }
                     Operation::Function(mid, fid, _) => {
                         self.check_function(*mid, *fid, fun_env.module_env.env, &targets)
                     }

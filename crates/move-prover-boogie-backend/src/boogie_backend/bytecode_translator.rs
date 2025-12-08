@@ -2718,6 +2718,15 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 continue;
                             }
+                        } else if let Quantifier(qt, qid, inst, li) = op {
+                            let qfun_env = fun_target.global_env().get_function(*qid);
+                            let inst = &self.inst_slice(inst);
+                            let qfun_name =
+                                boogie_function_name(&qfun_env, inst, FunctionTranslationStyle::Pure);
+
+                            self.generate_pure_quantifier_expr(
+                                qt, &qfun_name, &qfun_env, inst, srcs, *li, &fmt_temp,
+                            )
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
                                 // Bitwise operations and shifts are functions, not operators
@@ -2802,6 +2811,145 @@ impl<'env> FunctionTranslator<'env> {
                 emit!(writer, ")");
             }
             emitln!(writer, "");
+        }
+    }
+
+    /// Generate a pure quantifier expression for use in pure functions.
+    /// Only supports quantifiers that can be expressed as pure Boogie expressions
+    /// (Forall, Exists, Any, AnyRange, All, AllRange).
+    fn generate_pure_quantifier_expr<F>(
+        &self,
+        qt: &QuantifierType,
+        fun_name: &str,
+        fun_env: &FunctionEnv,
+        inst: &[Type],
+        srcs: &[TempIndex],
+        li: usize,
+        fmt_temp: &F,
+    ) -> String
+    where
+        F: Fn(usize) -> String,
+    {
+        let env = self.fun_target.global_env();
+
+        // Build the argument list for the predicate function
+        let cr_args = |local_name: &str| -> String {
+            if !qt.vector_based() {
+                // For Forall/Exists: replace the li-th argument with the bound variable
+                srcs.iter()
+                    .enumerate()
+                    .map(|(index, vidx)| {
+                        if index == li {
+                            local_name.to_string()
+                        } else {
+                            fmt_temp(*vidx)
+                        }
+                    })
+                    .join(", ")
+            } else {
+                // For vector-based quantifiers: skip initial src args and replace li-th with ReadVec
+                srcs.iter()
+                    .skip(if qt.range_based() { 3 } else { 1 })
+                    .enumerate()
+                    .map(|(index, vidx)| {
+                        if index == li {
+                            format!("ReadVec({}, {})", fmt_temp(srcs[0]), local_name)
+                        } else {
+                            fmt_temp(*vidx)
+                        }
+                    })
+                    .join(", ")
+            }
+        };
+
+        match qt {
+            QuantifierType::Forall => {
+                let loc_type = fun_env.get_parameter_types()[0]
+                    .skip_reference()
+                    .instantiate(inst);
+                let b_type = boogie_type(env, &loc_type);
+                let suffix = boogie_type_suffix(env, &loc_type);
+                format!(
+                    "(forall x: {} :: $IsValid'{}'(x) ==> {}({}))",
+                    b_type,
+                    suffix,
+                    fun_name,
+                    cr_args("x")
+                )
+            }
+            QuantifierType::Exists => {
+                let loc_type = fun_env.get_parameter_types()[0]
+                    .skip_reference()
+                    .instantiate(inst);
+                let b_type = boogie_type(env, &loc_type);
+                let suffix = boogie_type_suffix(env, &loc_type);
+                format!(
+                    "(exists x: {} :: $IsValid'{}'(x) && {}({}))",
+                    b_type,
+                    suffix,
+                    fun_name,
+                    cr_args("x")
+                )
+            }
+            QuantifierType::Any => {
+                // (exists i:int :: 0 <= i && i < LenVec(vec) && fun(ReadVec(vec, i)))
+                format!(
+                    "(exists i:int :: 0 <= i && i < LenVec({}) && {}({}))",
+                    fmt_temp(srcs[0]),
+                    fun_name,
+                    cr_args("i")
+                )
+            }
+            QuantifierType::AnyRange => {
+                // (exists i:int :: start <= i && i < end && fun(ReadVec(vec, i)))
+                format!(
+                    "(exists i:int :: {} <= i && i < {} && {}({}))",
+                    fmt_temp(srcs[1]),
+                    fmt_temp(srcs[2]),
+                    fun_name,
+                    cr_args("i")
+                )
+            }
+            QuantifierType::All => {
+                // (forall i:int :: 0 <= i && i < LenVec(vec) ==> fun(ReadVec(vec, i)))
+                format!(
+                    "(forall i:int :: 0 <= i && i < LenVec({}) ==> {}({}))",
+                    fmt_temp(srcs[0]),
+                    fun_name,
+                    cr_args("i")
+                )
+            }
+            QuantifierType::AllRange => {
+                // (forall i:int :: start <= i && i < end ==> fun(ReadVec(vec, i)))
+                format!(
+                    "(forall i:int :: {} <= i && i < {} ==> {}({}))",
+                    fmt_temp(srcs[1]),
+                    fmt_temp(srcs[2]),
+                    fun_name,
+                    cr_args("i")
+                )
+            }
+            // The following quantifiers require imperative constructs (havoc, assume)
+            // and cannot be expressed as pure Boogie expressions
+            QuantifierType::Map
+            | QuantifierType::MapRange
+            | QuantifierType::Filter
+            | QuantifierType::FilterRange
+            | QuantifierType::Find
+            | QuantifierType::FindRange
+            | QuantifierType::FindIndex
+            | QuantifierType::FindIndexRange
+            | QuantifierType::FindIndices
+            | QuantifierType::FindIndicesRange
+            | QuantifierType::Count
+            | QuantifierType::CountRange
+            | QuantifierType::SumMap
+            | QuantifierType::SumMapRange => {
+                panic!(
+                    "Quantifier {:?} cannot be used in pure functions - it requires imperative constructs (havoc/assume)",
+                    qt
+                )
+            }
         }
     }
 
