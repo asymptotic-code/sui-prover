@@ -49,6 +49,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
+        TypeInvariantAnalysisProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
@@ -65,7 +66,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     processors.append(&mut vec![
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
-        TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
