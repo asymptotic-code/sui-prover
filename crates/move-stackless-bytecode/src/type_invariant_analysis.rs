@@ -90,9 +90,7 @@ fn analyze_type_invariants_r(
                         field_offset,
                         enum_loc: enum_loc.clone(),
                     });
-                    analyze_type_invariants_r(
-                        targets, env, new_nested, &field_ty, results,
-                    );
+                    analyze_type_invariants_r(targets, env, new_nested, &field_ty, results);
                 });
             }
         }
@@ -152,16 +150,18 @@ fn process_type_inv_with_ensures(
     });
 }
 
-fn detect_recursion_cycles(
-    targets: &FunctionTargetsHolder,
-    env: &GlobalEnv,
-    ty: &Type,
-) -> bool {
+fn detect_recursion_cycles(targets: &FunctionTargetsHolder, env: &GlobalEnv, ty: &Type) -> bool {
     let mut cycles = BTreeSet::new();
     let mut visited = BTreeSet::new();
     let mut path = Vec::new();
 
-    find_recursion_cycles_r(env, ty.skip_reference(), &mut visited, &mut path, &mut cycles);
+    find_recursion_cycles_r(
+        env,
+        ty.skip_reference(),
+        &mut visited,
+        &mut path,
+        &mut cycles,
+    );
 
     for cycle_ty in &cycles {
         if let Type::Datatype(mid, datatype_id, _) = cycle_ty {
