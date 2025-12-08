@@ -317,8 +317,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         }
         if !targets.prover_options().enable_conditional_merge_insertion
             && !self.debug
-            && !(targets.is_pure_fun(&func_env.get_qualified_id())
-                && !targets.func_abort_check_mode())
+            && !targets.is_pure_fun(&func_env.get_qualified_id())
         {
             return data; // Skip if option not set, but keep for pure
         }
