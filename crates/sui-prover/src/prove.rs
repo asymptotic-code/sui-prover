@@ -16,6 +16,7 @@ use move_prover_boogie_backend::generator_options::Options;
 use move_stackless_bytecode::function_stats;
 use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
+use move_stackless_bytecode::spec_hierarchy;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -196,6 +197,22 @@ pub async fn execute(
     if general_config.stats {
         function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
+    } else if general_config.dump_bytecode {
+        let mut options = move_prover_boogie_backend::generator_options::Options::default();
+        options.filter = filter.clone();
+        let (targets, _) = create_and_process_bytecode(
+            &options,
+            &model,
+            &package_targets,
+            FunctionHolderTarget::All,
+        );
+
+        let output_dir = std::path::Path::new(&options.output_path);
+        if !output_dir.exists() {
+            std::fs::create_dir_all(output_dir)?;
+        }
+
+        spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
     }
 
     if matches!(general_config.backend, BackendOptions::Boogie) {
