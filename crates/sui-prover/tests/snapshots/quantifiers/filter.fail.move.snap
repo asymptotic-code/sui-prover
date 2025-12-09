@@ -1,0 +1,63 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 276
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/filter.fail.move:57:5
+   │
+57 │     ensures(vector::contains(tens, &20)); // EXPECTED FAILURE
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/filter.fail.move:53: test_element_not_matching_predicate
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/filter.fail.move:27:5
+   │
+27 │     ensures(vector::length(tens) == 3); // EXPECTED FAILURE
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/filter.fail.move:23: test_wrong_count
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/filter.fail.move:37:5
+   │
+37 │     ensures(*vector::borrow(tens, 0) == 20); // EXPECTED FAILURE
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/filter.fail.move:33: test_wrong_element
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/filter.fail.move:47:5
+   │
+47 │     ensures(*vector::borrow(evens, 1) == 30); // EXPECTED FAILURE (should be 20)
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/filter.fail.move:43: test_wrong_order
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/filter.fail.move:67:5
+   │
+67 │     ensures(vector::length(evens) == 2); // EXPECTED FAILURE
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/filter.fail.move:63: test_wrong_predicate
+
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_filter_fail_x_is_10$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 10;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}
+function {:inline} $42_quantifiers_filter_fail_x_is_even$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 2;
+    (var $t2 := (_$t0 mod $t1);
+    (var $t3 := 0;
+    (var $t4 := ($t2 == $t3);
+    $t4))))
+}

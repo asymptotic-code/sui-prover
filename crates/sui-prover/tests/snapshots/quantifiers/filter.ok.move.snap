@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 276
+expression: output
+---
+Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_filter_ok_x_is_10$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 10;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}
+function {:inline} $42_quantifiers_filter_ok_x_is_even$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 2;
+    (var $t2 := (_$t0 mod $t1);
+    (var $t3 := 0;
+    (var $t4 := ($t2 == $t3);
+    $t4))))
+}
