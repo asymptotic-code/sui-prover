@@ -168,8 +168,6 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
-    /// Emit a specialized MapQuantifier function if not already emitted.
-    /// Returns the function name.
     pub fn emit_map_quantifier(
         &self,
         function_name: &str,
@@ -804,7 +802,7 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
-        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
+        // BUT: Don't emit Pure variants in spec_no_abort_check
         if !self.options.spec_no_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
@@ -3198,7 +3196,6 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
-    /// Generate a pure quantifier expression for use in pure functions.
     fn generate_pure_quantifier_expr<F>(
         &self,
         qt: &QuantifierType,

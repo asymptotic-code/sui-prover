@@ -1524,28 +1524,6 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 {%- endfor %}
 
 // ==================================================================================
-// Pure Quantifier Helper Functions
-
-// $FirstIndex returns the first index in vector v where predicate p holds.
-// The result is only meaningful when such an index exists.
-function $FirstIndex<T>(v: Vec T, p: [int]bool): int;
-axiom (forall<T> v: Vec T, p: [int]bool :: {$FirstIndex(v, p)}
-    (var idx := $FirstIndex(v, p);
-     // If there exists an element satisfying p, idx is the first such index
-     (exists i: int :: 0 <= i && i < LenVec(v) && p[i]) ==>
-        (0 <= idx && idx < LenVec(v) && p[idx] &&
-         (forall j: int :: 0 <= j && j < idx ==> !p[j]))));
-
-// $FirstIndexRange returns the first index in range [start, end) of vector v where predicate p holds.
-function $FirstIndexRange<T>(v: Vec T, start: int, end: int, p: [int]bool): int;
-axiom (forall<T> v: Vec T, start: int, end: int, p: [int]bool :: {$FirstIndexRange(v, start, end, p)}
-    (var idx := $FirstIndexRange(v, start, end, p);
-     // If there exists an element satisfying p in range, idx is the first such index
-     (exists i: int :: start <= i && i < end && p[i]) ==>
-        (start <= idx && idx < end && p[idx] &&
-         (forall j: int :: start <= j && j < idx ==> !p[j]))));
-
-// ==================================================================================
 // Native Hash
 
 // Hash is modeled as an otherwise uninterpreted injection.
