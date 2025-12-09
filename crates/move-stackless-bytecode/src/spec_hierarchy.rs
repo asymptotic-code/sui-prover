@@ -242,7 +242,7 @@ fn build_implementation_tree(
         ));
 
         let should_recurse = if let Some(spec_id) = call_info.spec_id {
-            targets.omits_opaque(&spec_id)
+            !targets.omits_opaque(&spec_id)
         } else {
             true
         };
@@ -339,42 +339,67 @@ fn build_spec_only_tree(
         })
         .collect();
 
-    for (i, called_id) in filtered_calls.iter().enumerate() {
-        let is_last = i == filtered_calls.len() - 1;
-        let (branch, next_prefix) = get_tree_branch(is_last, prefix);
-
-        let call_info = get_call_display_info(env, targets, called_id);
-
-        if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
-            if *spec_id != *root_spec_id {
-                let props_str = format_spec_properties(targets, &spec_id);
-
-                println!("{} {}{}", branch, call_info.display_name, props_str);
-            }
-        }
-
-        let should_recurse = if let Some(spec_id) = call_info.spec_id {
-            if call_info.spec_id.unwrap() == *root_spec_id {
-                false
+    let specs_to_display: Vec<_> = filtered_calls
+        .iter()
+        .filter(|called_id| {
+            if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
+                *spec_id != *root_spec_id
             } else {
-                !targets.omits_opaque(&call_info.spec_id.unwrap())
+                false
             }
+        })
+        .collect();
+
+    let mut spec_index = 0;
+
+    for called_id in filtered_calls.iter() {
+        let call_info = get_call_display_info(env, targets, called_id);
+        let spec_id = targets.get_spec_by_fun(called_id);
+
+        let will_display = if let Some(sid) = spec_id {
+            *sid != *root_spec_id
         } else {
-            true
+            false
         };
 
-        if should_recurse && !displayed.contains(called_id) {
-            displayed.insert(*called_id);
-            let called_env = env.get_function(*called_id);
-            build_spec_only_tree(
-                env,
-                targets,
-                &called_env,
-                &next_prefix,
-                excluded_addresses,
-                displayed,
-                root_spec_id,
-            );
+        if will_display {
+            let is_last = spec_index == specs_to_display.len() - 1;
+            let (branch, next_prefix) = get_tree_branch(is_last, prefix);
+
+            let props_str = format_spec_properties(targets, spec_id.unwrap());
+            println!("{} {}{}", branch, call_info.display_name, props_str);
+
+            spec_index += 1;
+
+            let should_recurse = !targets.omits_opaque(spec_id.unwrap());
+            if should_recurse && !displayed.contains(called_id) {
+                displayed.insert(*called_id);
+                let called_env = env.get_function(*called_id);
+                build_spec_only_tree(
+                    env,
+                    targets,
+                    &called_env,
+                    &next_prefix,
+                    excluded_addresses,
+                    displayed,
+                    root_spec_id,
+                );
+            }
+        } else {
+            let should_recurse = spec_id.map_or(true, |sid| *sid != *root_spec_id);
+            if should_recurse && !displayed.contains(called_id) {
+                displayed.insert(*called_id);
+                let called_env = env.get_function(*called_id);
+                build_spec_only_tree(
+                    env,
+                    targets,
+                    &called_env,
+                    prefix,
+                    excluded_addresses,
+                    displayed,
+                    root_spec_id,
+                );
+            }
         }
     }
 }
