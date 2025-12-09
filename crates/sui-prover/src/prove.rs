@@ -197,7 +197,7 @@ pub async fn execute(
     if general_config.stats {
         function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
-    } else if general_config.verbose {
+    } else if general_config.dump_bytecode {
         let mut options = move_prover_boogie_backend::generator_options::Options::default();
         options.filter = filter.clone();
         let (targets, _) = create_and_process_bytecode(

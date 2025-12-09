@@ -197,3 +197,86 @@ fn build_implementation_tree(
         }
     }
 }
+
+pub fn display_spec_tree_terminal(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    spec_id: &QualifiedId<FunId>,
+) {
+    let excluded_addresses = get_excluded_addresses();
+    
+    let func_env = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
+        env.get_function(*fun_id)
+    } else {
+        return;
+    };
+    
+    let mut displayed = BTreeSet::new();
+    build_spec_only_tree(
+        env,
+        targets,
+        &func_env,
+        "",
+        &excluded_addresses,
+        &mut displayed,
+        spec_id,
+    );
+}
+
+fn build_spec_only_tree(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    func_env: &FunctionEnv,
+    prefix: &str,
+    excluded_addresses: &[BigUint],
+    displayed: &mut BTreeSet<QualifiedId<FunId>>,
+    root_spec_id: &QualifiedId<FunId>,
+) {
+    let filtered_calls: Vec<_> = func_env
+        .get_called_functions()
+        .into_iter()
+        .filter(|called_id| {
+            let called_env = env.get_function(*called_id);
+            !is_system_function(&called_env, excluded_addresses)
+        })
+        .collect();
+
+    for (i, called_id) in filtered_calls.iter().enumerate() {
+        let is_last = i == filtered_calls.len() - 1;
+        let (branch, next_prefix) = get_tree_branch(is_last, prefix);
+
+        let call_info = get_call_display_info(env, targets, called_id);
+
+        if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
+            if targets.get_spec_by_fun(called_id).unwrap() != root_spec_id {
+                let props_str = format_spec_properties(targets, &spec_id);
+
+                println!("{} {}{}", branch, call_info.display_name, props_str);
+            }
+        }
+
+        let should_recurse = if let Some(spec_id) = call_info.spec_id {
+            if call_info.spec_id.unwrap() == *root_spec_id {
+                false
+            } else {
+                !targets.omits_opaque(&call_info.spec_id.unwrap())
+            }
+        } else {
+            true
+        };
+
+        if should_recurse && !displayed.contains(called_id) {
+            displayed.insert(*called_id);
+            let called_env = env.get_function(*called_id);
+            build_spec_only_tree(
+                env,
+                targets,
+                &called_env,
+                &next_prefix,
+                excluded_addresses,
+                displayed,
+                root_spec_id,
+            );
+        }
+    }
+}

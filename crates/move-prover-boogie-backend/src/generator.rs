@@ -16,7 +16,7 @@ use codespan_reporting::{
 };
 use futures::stream::{self, StreamExt};
 #[allow(unused_imports)]
-use log::{debug, info, warn};
+use log::{debug, info, warn, LevelFilter};
 use move_model::{
     code_writer::CodeWriter,
     model::{FunId, GlobalEnv, ModuleId, QualifiedId},
@@ -31,6 +31,7 @@ use move_stackless_bytecode::{
     number_operation::GlobalNumberOperationState,
     options::ProverOptions,
     pipeline_factory,
+    spec_hierarchy,
 };
 use std::{fs, path::Path, time::Instant};
 
@@ -41,6 +42,7 @@ pub struct FileOptions {
     pub boogie_options: Option<String>,
     pub timeout: Option<u64>,
     pub targets: FunctionTargetsHolder,
+    pub qid: Option<QualifiedId<FunId>>,
 }
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
@@ -302,6 +304,7 @@ fn generate_function_bpl<W: WriteColor>(
         boogie_options: targets.get_spec_boogie_options(qid).cloned(),
         timeout: targets.get_spec_timeout(qid).cloned(),
         targets,
+        qid: Some(*qid),
     })
 }
 
@@ -347,6 +350,7 @@ fn generate_module_bpl<W: WriteColor>(
         boogie_options: None,
         timeout: None,
         targets,
+        qid: None,
     })
 }
 
@@ -385,6 +389,12 @@ async fn verify_bpl<W: WriteColor>(
             println!("✅ {} ({}s)", file.file_name, elapsed.as_secs());
         } else {
             println!("✅ {}", file.file_name);
+        }
+    }
+
+    if let Some(qid) = &file.qid {
+        if options.verbosity_level > LevelFilter::Info {
+            spec_hierarchy::display_spec_tree_terminal(env, &file.targets, qid);
         }
     }
 
