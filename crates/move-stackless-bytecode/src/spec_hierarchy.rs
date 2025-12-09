@@ -292,13 +292,13 @@ pub fn display_spec_tree_terminal(
     spec_id: &QualifiedId<FunId>,
 ) {
     let excluded_addresses = get_excluded_addresses();
-    
+
     let func_env = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
         env.get_function(*fun_id)
     } else {
         return;
     };
-    
+
     let mut displayed = BTreeSet::new();
     build_spec_only_tree(
         env,

@@ -30,8 +30,7 @@ use move_stackless_bytecode::{
     },
     number_operation::GlobalNumberOperationState,
     options::ProverOptions,
-    pipeline_factory,
-    spec_hierarchy,
+    pipeline_factory, spec_hierarchy,
 };
 use std::{fs, path::Path, time::Instant};
 
