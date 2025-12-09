@@ -5,7 +5,7 @@ module 0x42::nested_pure_ok;
 use prover::prover::ensures;
 
 #[spec_only]
-use prover::vector_iter::{any, all, any_range, all_range, count, count_range, sum_map, sum_map_range, map, map_range, find_index, find_index_range};
+use prover::vector_iter::{any, all, any_range, all_range, count, count_range, sum_map, sum_map_range, map, map_range, find_index, find_index_range, find, find_range, filter, filter_range, find_indices, find_indices_range};
 
 // Simple predicates
 #[ext(pure)]
@@ -84,6 +84,36 @@ fun vec_find_even_idx_in_range(v: &vector<u64>, start: u64, end: u64): std::opti
     find_index_range!<u64>(v, start, end, |x| is_even(x))
 }
 
+#[ext(pure)]
+fun vec_find_even(v: &vector<u64>): std::option::Option<u64> {
+    *find!<u64>(v, |x| is_even(x))
+}
+
+#[ext(pure)]
+fun vec_find_even_in_range(v: &vector<u64>, start: u64, end: u64): std::option::Option<u64> {
+    *find_range!<u64>(v, start, end, |x| is_even(x))
+}
+
+#[ext(pure)]
+fun vec_filter_even(v: &vector<u64>): &vector<u64> {
+    filter!<u64>(v, |x| is_even(x))
+}
+
+#[ext(pure)]
+fun vec_filter_even_in_range(v: &vector<u64>, start: u64, end: u64): &vector<u64> {
+    filter_range!<u64>(v, start, end, |x| is_even(x))
+}
+
+#[ext(pure)]
+fun vec_find_even_indices(v: &vector<u64>): vector<u64> {
+    find_indices!<u64>(v, |x| is_even(x))
+}
+
+#[ext(pure)]
+fun vec_find_even_indices_in_range(v: &vector<u64>, start: u64, end: u64): vector<u64> {
+    find_indices_range!<u64>(v, start, end, |x| is_even(x))
+}
+
 // Test: any
 #[spec(prove)]
 fun test_any() {
@@ -129,15 +159,25 @@ fun test_count_range() {
 // Test: sum_map
 #[spec(prove)]
 fun test_sum_map() {
-    let v = vector[1, 2, 3];
-    ensures(vec_sum_doubled(&v) == 12u64.to_int()); // 2+4+6 = 12
+    let mut v = vector[1, 2, 3];
+
+    *vector::borrow_mut(&mut v, 0) = 10u64;
+    *vector::borrow_mut(&mut v, 1) = 20u64;
+    *vector::borrow_mut(&mut v, 2) = 30u64;
+
+    ensures(vec_sum_doubled(&v) == 120u64.to_int()); // 20+40+60 = 120
 }
 
 // Test: sum_map_range
 #[spec(prove)]
 fun test_sum_map_range() {
-    let v = vector[1, 2, 3];
-    ensures(vec_sum_doubled_in_range(&v, 0, 2) == 6u64.to_int()); // 2+4 = 6
+    let mut v = vector[1, 2, 3];
+
+    *vector::borrow_mut(&mut v, 0) = 10u64;
+    *vector::borrow_mut(&mut v, 1) = 20u64;
+    *vector::borrow_mut(&mut v, 2) = 30u64;
+
+    ensures(vec_sum_doubled_in_range(&v, 0, 2) == 60u64.to_int()); // 20+40 = 60
 }
 
 // Test: map
@@ -168,3 +208,44 @@ fun test_find_index_range() {
     ensures(vec_find_even_idx_in_range(&v, 1, 4) == std::option::some(2)); // index 2 has 4
 }
 
+// Test: find
+#[spec(prove)]
+fun test_find() {
+    let v = vector[1, 2, 3];
+    ensures(vec_find_even(&v) == std::option::some(2)); // finds element 2
+}
+
+// Test: find_range
+#[spec(prove)]
+fun test_find_range() {
+    let v = vector[1, 3, 4, 5];
+    ensures(vec_find_even_in_range(&v, 1, 4) == std::option::some(4)); // finds element 4 in range [1,4)
+}
+
+// Test: filter
+#[spec(prove)]
+fun test_filter() {
+    let v = vector[1, 2, 3, 4];
+    ensures(*vec_filter_even(&v) == vector[2, 4]); // filters to only even elements
+}
+
+// Test: filter_range
+#[spec(prove)]
+fun test_filter_range() {
+    let v = vector[1, 2, 3, 4];
+    ensures(*vec_filter_even_in_range(&v, 1, 4) == vector[2, 4]); // filters range [1,4) to even elements
+}
+
+// Test: find_indices
+#[spec(prove)]
+fun test_find_indices() {
+    let v = vector[10, 20, 30, 40];
+    ensures(vec_find_even_indices(&v) == vector[1, 3]); // indices 1 and 3 have even elements (2, 4)
+}
+
+// Test: find_indices_range
+#[spec(prove)]
+fun test_find_indices_range() {
+    let v = vector[10, 20, 30, 40];
+    ensures(vec_find_even_indices_in_range(&v, 0, 2) == vector[1]); // index 1 has 20
+}
