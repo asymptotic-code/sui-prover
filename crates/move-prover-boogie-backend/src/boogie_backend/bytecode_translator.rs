@@ -2525,14 +2525,14 @@ impl<'env> FunctionTranslator<'env> {
 
     fn create_quantifiers_temp_vars(&self) {
         let mut has_find = false;
-        let mut has_quantifier_sum_temp_vec = false;
+        let mut has_quantifier_temp_vec = false;
         for bc in self.fun_target.get_bytecode() {
             if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
                 if qt.is_find_or_find_index() {
                     has_find = true;
                 }
-                if qt.requires_sum() {
-                    has_quantifier_sum_temp_vec = true;
+                if qt.requires_sum() || qt.requires_filter_indices() {
+                    has_quantifier_temp_vec = true;
                 }
             }
         }
@@ -2540,8 +2540,8 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(self.parent.writer, "var $find_i: int;");
             emitln!(self.parent.writer, "var $find_exists: bool;");
         }
-        if has_quantifier_sum_temp_vec {
-            emitln!(self.parent.writer, "var $quantifier_sum_temp_vec: Vec int;");
+        if has_quantifier_temp_vec {
+            emitln!(self.parent.writer, "var $quantifier_temp_vec: Vec int;");
         }
     }
 
@@ -4922,47 +4922,122 @@ impl<'env> FunctionTranslator<'env> {
                         match qt {
                             QuantifierType::Forall => {
                                 let b_type = boogie_type(env, &loc_type);
-                                emitln!(self.writer(), "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));", dests[0], b_type, suffix, fun_name, cr_args("x"));
-                            },
+                                emitln!(
+                                    self.writer(),
+                                    "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));",
+                                    dests[0],
+                                    b_type,
+                                    suffix,
+                                    fun_name,
+                                    cr_args("x")
+                                );
+                            }
                             QuantifierType::Exists => {
                                 let b_type = boogie_type(env, &loc_type);
-                                emitln!(self.writer(), "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));", dests[0], b_type, suffix, fun_name, cr_args("x"));
-                            },
+                                emitln!(
+                                    self.writer(),
+                                    "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));",
+                                    dests[0],
+                                    b_type,
+                                    suffix,
+                                    fun_name,
+                                    cr_args("x")
+                                );
+                            }
                             QuantifierType::Map => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(self.writer(), "assume LenVec($t{}) == LenVec($t{});", dests[0], srcs[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($t{}) == LenVec($t{});",
+                                    dests[0],
+                                    srcs[0]
+                                );
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "assume $IsValid'{}'($t{});", suffix, dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
                             }
                             QuantifierType::MapRange => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});", srcs[1], srcs[2], dests[0], srcs[2], srcs[1]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});",
+                                    srcs[1],
+                                    srcs[2],
+                                    dests[0],
+                                    srcs[2],
+                                    srcs[1]
+                                );
                                 emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "assume $IsValid'{}'($t{});", suffix, dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
                             }
                             QuantifierType::Any => {
                                 emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
                             }
                             QuantifierType::AnyRange => {
-                                emitln!(self.writer(), "$t{} := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", dests[0], srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "$t{} := (exists i:int :: $t{} <= i && i < $t{} && {}({}));",
+                                    dests[0],
+                                    srcs[1],
+                                    srcs[2],
+                                    fun_name,
+                                    cr_args("i")
+                                );
                             }
                             QuantifierType::All => {
                                 emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
                             }
                             QuantifierType::AllRange => {
-                                emitln!(self.writer(), "$t{} := (forall i:int :: $t{} <= i && i < $t{} ==> {}({}));", dests[0], srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "$t{} := (forall i:int :: $t{} <= i && i < $t{} ==> {}({}));",
+                                    dests[0],
+                                    srcs[1],
+                                    srcs[2],
+                                    fun_name,
+                                    cr_args("i")
+                                );
                             }
                             QuantifierType::Find => {
                                 emitln!(self.writer(), "havoc $find_exists;");
                                 emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(self.writer(), "    assume 0 <= $find_i && $find_i < LenVec($t{});", srcs[0]);
-                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(
+                                    self.writer(),
+                                    "    assume 0 <= $find_i && $find_i < LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "    assume {}({});",
+                                    fun_name,
+                                    cr_args("$find_i")
+                                );
                                 emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
-                                emitln!(self.writer(), "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));", dests[0], suffix, srcs[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
+                                    dests[0],
+                                    suffix,
+                                    srcs[0]
+                                );
                                 emitln!(self.writer(), "} else {");
-                                emitln!(self.writer(), "    $t{} := {}(EmptyVec());", dests[0], suffix);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := {}(EmptyVec());",
+                                    dests[0],
+                                    suffix
+                                );
                                 emitln!(self.writer(), "}");
                             }
                             QuantifierType::FindRange => {
@@ -4970,12 +5045,33 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(self.writer(), "    assume $t{} <= $find_i && $find_i < $t{};", srcs[1], srcs[2]);
-                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(
+                                    self.writer(),
+                                    "    assume $t{} <= $find_i && $find_i < $t{};",
+                                    srcs[1],
+                                    srcs[2]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "    assume {}({});",
+                                    fun_name,
+                                    cr_args("$find_i")
+                                );
                                 emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
-                                emitln!(self.writer(), "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));", dests[0], suffix, srcs[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
+                                    dests[0],
+                                    suffix,
+                                    srcs[0]
+                                );
                                 emitln!(self.writer(), "} else {");
-                                emitln!(self.writer(), "    $t{} := {}(EmptyVec());", dests[0], suffix);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := {}(EmptyVec());",
+                                    dests[0],
+                                    suffix
+                                );
                                 emitln!(self.writer(), "}");
                             }
                             QuantifierType::FindIndex => {
@@ -4983,12 +5079,29 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(self.writer(), "    assume 0 <= $find_i && $find_i < LenVec($t{});", srcs[0]);
-                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(
+                                    self.writer(),
+                                    "    assume 0 <= $find_i && $find_i < LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "    assume {}({});",
+                                    fun_name,
+                                    cr_args("$find_i")
+                                );
                                 emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
-                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
+                                    dests[0]
+                                );
                                 emitln!(self.writer(), "} else {");
-                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := $1_option_Option'u64'(EmptyVec());",
+                                    dests[0]
+                                );
                                 emitln!(self.writer(), "}");
                             }
                             QuantifierType::FindIndexRange => {
@@ -4996,39 +5109,160 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(self.writer(), "    assume $t{} <= $find_i && $find_i < $t{};", srcs[1], srcs[2]);
-                                emitln!(self.writer(), "    assume {}({});", fun_name, cr_args("$find_i"));
+                                emitln!(
+                                    self.writer(),
+                                    "    assume $t{} <= $find_i && $find_i < $t{};",
+                                    srcs[1],
+                                    srcs[2]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "    assume {}({});",
+                                    fun_name,
+                                    cr_args("$find_i")
+                                );
                                 emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
-                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
+                                    dests[0]
+                                );
                                 emitln!(self.writer(), "} else {");
-                                emitln!(self.writer(), "    $t{} := $1_option_Option'u64'(EmptyVec());", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "    $t{} := $1_option_Option'u64'(EmptyVec());",
+                                    dests[0]
+                                );
                                 emitln!(self.writer(), "}");
                             }
                             QuantifierType::Count => {
-                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
-                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::CountRange => {
-                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) == (if {}({}) then 1 else 0));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) == (if {}({}) then 1 else 0));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::SumMap => {
-                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
-                                emitln!(self.writer(), "assume LenVec($quantifier_sum_temp_vec) == LenVec($t{});", srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_sum_temp_vec) ==> ReadVec($quantifier_sum_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::SumMapRange => {
-                                emitln!(self.writer(), "havoc $quantifier_sum_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_sum_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_sum_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_sum_temp_vec, 0, LenVec($quantifier_sum_temp_vec));", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
-                            _ => unimplemented!("// Unimplemented quantifier {:?}. Fun: {:?} Types: {:?}. Srcs: {:?}, Dests {:?}", qt, qid, inst, srcs, dests),
+                            QuantifierType::Filter => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    dests[0]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($t{}) <= LenVec($t{});",
+                                    dests[0],
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> $ContainsVec'u64'($quantifier_temp_vec, j)));", srcs[0], fun_name, cr_args("j"));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
+                            }
+                            QuantifierType::FilterRange => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    dests[0]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assume $t{} <= $t{} ==> LenVec($t{}) <= ($t{} - $t{});",
+                                    srcs[1],
+                                    srcs[2],
+                                    dests[0],
+                                    srcs[2],
+                                    srcs[1]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assume $t{} > $t{} ==> LenVec($t{}) == 0;",
+                                    srcs[1],
+                                    srcs[2],
+                                    dests[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", srcs[1], srcs[2]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> $ContainsVec'u64'($quantifier_temp_vec, j)));", srcs[1], srcs[2], fun_name, cr_args("j"));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
+                            }
+                            QuantifierType::FindIndices => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($t{}) <= LenVec($t{});",
+                                    dests[0],
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", dests[0], dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> $ContainsVec'u64'($t{}, i)));", srcs[0], fun_name, cr_args("i"), dests[0]);
+                            }
+                            QuantifierType::FindIndicesRange => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume $t{} <= $t{} ==> LenVec($t{}) <= ($t{} - $t{});",
+                                    srcs[1],
+                                    srcs[2],
+                                    dests[0],
+                                    srcs[2],
+                                    srcs[1]
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assume $t{} > $t{} ==> LenVec($t{}) == 0;",
+                                    srcs[1],
+                                    srcs[2],
+                                    dests[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", dests[0], srcs[1], dests[0], dests[0], srcs[2]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> $ContainsVec'u64'($t{}, i)));", srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
+                            }
                         }
                     }
                 }
