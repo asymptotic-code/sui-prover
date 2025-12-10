@@ -28,7 +28,7 @@ impl RecursionAnalysisProcessor {
         trace: Vec<QualifiedId<FunId>>,
     ) -> Option<Vec<String>> {
         for qid in fun_env.get_called_functions() {
-            let calle_env = fun_env.module_env.env.get_function(qid);
+            let callee_env = fun_env.module_env.env.get_function(qid);
             let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
             if !verification_info.inlined
                 && !verification_info.verified
@@ -42,13 +42,13 @@ impl RecursionAnalysisProcessor {
                 for id in &trace {
                     result.push(fun_env.module_env.env.get_function(*id).get_full_name_str());
                 }
-                result.push(calle_env.get_full_name_str());
+                result.push(callee_env.get_full_name_str());
                 return Some(result);
             } else {
                 let mut new_trace = trace.clone();
                 new_trace.push(qid);
 
-                if let Some(trace) = self.find_recursive_functions_r(&calle_env, data, new_trace) {
+                if let Some(trace) = self.find_recursive_functions_r(&callee_env, data, new_trace) {
                     return Some(trace);
                 }
             }
@@ -77,7 +77,7 @@ impl FunctionTargetProcessor for RecursionAnalysisProcessor {
                 Severity::Error,
                 &fun_env.get_loc(),
                 &format!(
-                    "Recursive functions is not supported for specifications. {}",
+                    "Recursive functions are not supported for specifications. {}",
                     trace.join(" -> ")
                 ),
             );

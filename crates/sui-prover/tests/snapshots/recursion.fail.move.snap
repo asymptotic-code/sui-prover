@@ -4,7 +4,7 @@ assertion_line: 277
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Recursive functions is not supported for specifications. foo::my_spec_simple -> foo::factorial -> foo::factorial
+error: Recursive functions are not supported for specifications. foo::my_spec_simple -> foo::factorial -> foo::factorial
    ┌─ tests/inputs/recursion.fail.move:15:1
    │  
 15 │ ╭ public fun my_spec_simple() {
@@ -12,7 +12,7 @@ error: Recursive functions is not supported for specifications. foo::my_spec_sim
 17 │ │ }
    │ ╰─^
 
-error: Recursive functions is not supported for specifications. foo::my_spec_complex -> foo::factorial_complex -> foo::factorial_helper -> foo::factorial_complex
+error: Recursive functions are not supported for specifications. foo::my_spec_complex -> foo::factorial_complex -> foo::factorial_helper -> foo::factorial_complex
    ┌─ tests/inputs/recursion.fail.move:33:1
    │  
 33 │ ╭ public fun my_spec_complex() {
