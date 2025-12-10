@@ -289,18 +289,6 @@ fn collect_dynamic_field_info(
                         return;
                     }
 
-                    // TODO: remove this once we don't include modules/functions not included in verification
-                    let excluded_modules = vec![
-                        "0x2::dynamic_field",
-                        "0x2::dynamic_object_field",
-                        "0x2::kiosk_extension",
-                    ];
-                    if excluded_modules
-                        .contains(&builder.fun_env.module_env.get_full_name_str().as_str())
-                    {
-                        return;
-                    }
-
                     let loc = builder.get_loc(bc.get_attr_id());
                     builder.fun_env.module_env.env.add_diag(
                         Diagnostic::new(Severity::Error)
@@ -376,17 +364,13 @@ fn collect_dynamic_field_info(
                     return None;
                 }
 
-                let info = match targets.get_data(fun_id_with_info, &FunctionVariant::Baseline) {
-                    Some(data) => get_fun_info(data),
-                    None => {
-                        // dbg!(&format!(
-                        //     "callee `{}` was filtered out",
-                        //     builder.fun_env.get_full_name_str()
-                        // ));
-                        return None;
-                    }
-                };
-
+                let info = targets
+                    .get_data(fun_id_with_info, &FunctionVariant::Baseline)
+                    .map(|data| get_fun_info(data))
+                    .expect(&format!(
+                        "callee `{}` was filtered out",
+                        builder.fun_env.get_full_name_str()
+                    ));
                 Some(info.instantiate(type_inst))
             }
             _ => None,
@@ -477,7 +461,13 @@ fn compute_uid_info(
 
                 let callee_data = targets
                     .get_data(&callee_id, &FunctionVariant::Baseline)
-                    .unwrap();
+                    .expect(&format!(
+                        "callee `{}` was filtered out",
+                        fun_target
+                            .global_env()
+                            .get_function(callee_id)
+                            .get_full_name_str()
+                    ));
                 let callee_mapping = &get_fun_info(callee_data).uid_info;
 
                 for key in callee_mapping.keys() {

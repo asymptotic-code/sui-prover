@@ -441,8 +441,7 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
     }
 
     fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        let spec_ids = targets.specs().map(|id| *id).collect_vec();
-        for spec_id in spec_ids {
+        for spec_id in targets.specs_with_target().collect::<Vec<_>>() {
             let spec_env = env.get_function(spec_id);
             let spec_name = spec_env.get_full_name_str();
 

@@ -618,16 +618,11 @@ impl<'env> BoogieTranslator<'env> {
             | FunctionTranslationStyle::Opaque
             | FunctionTranslationStyle::Pure => FunctionVariant::Baseline,
         };
-        if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
+        if !self.targets.has_target(fun_env, &variant) {
             return;
         }
-        let spec_fun_target = self
-            .targets
-            .get_target_opt(fun_env, &variant)
-            .expect(&format!(
-                "Spec function was filtered out: could not find target for function: {}",
-                fun_env.get_full_name_str()
-            ));
+        let spec_fun_target = self.targets.get_target(fun_env, &variant);
+
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
         }
@@ -2510,7 +2505,10 @@ impl<'env> FunctionTranslator<'env> {
             self.parent
                 .targets
                 .get_data(spec_id, &FunctionVariant::Baseline)
-                .unwrap(),
+                .expect(&format!(
+                    "spec `{}` was filtered out",
+                    self.fun_target.func_env.get_full_name_str()
+                )),
         );
         spec_info
             .all_vars()

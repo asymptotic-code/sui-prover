@@ -906,7 +906,10 @@ fn check_caller_callee_modifies_relation(
 
         let callee_func_target = targets
             .get_target_opt(&callee_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect(&format!(
+                "callee `{}` was filtered out",
+                callee_fun_env.get_full_name_str()
+            ));
         let callee_modified_memory = usage_analysis::get_memory_usage(&callee_func_target)
             .modified
             .get_all_uninst();
