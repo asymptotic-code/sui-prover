@@ -3379,32 +3379,6 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
-                            && self.style == FunctionTranslationStyle::Default
-                        {
-                            processed = true;
-                        }
-
-                        if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
-                            && self.style == FunctionTranslationStyle::Asserts
-                        {
-                            emitln!(
-                                self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::asserts assertion does not hold\"}} {};",
-                                self.loc_str(&self.writer().get_loc()),
-                                args_str.to_string(),
-                            );
-                            processed = true;
-                        }
-
-                        if callee_env.get_qualified_id() == self.parent.env.asserts_qid()
-                            && self.style == FunctionTranslationStyle::Aborts
-                        {
-                            emitln!(self.writer(), "res := {};", args_str);
-                            emitln!(self.writer(), "if (!res) { return; }");
-                            processed = true;
-                        }
-
                         if callee_env.get_qualified_id() == self.parent.env.type_inv_qid() {
                             if self.style.is_asserts_style() {
                                 emitln!(self.writer(), "{} := true;", dest_str);
