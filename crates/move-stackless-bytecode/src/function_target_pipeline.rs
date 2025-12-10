@@ -286,10 +286,6 @@ impl FunctionTargetsHolder {
         self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs().contains(id)
     }
 
-    pub fn is_valid_spec(&self, id: &QualifiedId<FunId>) -> bool {
-        self.valid_specs.contains(id)
-    }
-
     pub fn is_function_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some()
     }
@@ -371,11 +367,7 @@ impl FunctionTargetsHolder {
     }
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
-    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
-        let func_name = func_env.get_full_name_str();
-        let is_targeted = self.filter.is_targeted(func_env);
-        println!("DEBUG: Adding target for function: {} (is_targeted: {})", func_name, is_targeted);
-        
+    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {       
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets

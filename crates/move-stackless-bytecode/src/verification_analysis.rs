@@ -272,23 +272,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             println!("DEBUG: Removing function: {}", fun_name);
             targets.remove_target(&fun_id);
         }
-        
-        let mut to_add = BTreeSet::new();
-        to_add.extend(targets.scenario_specs());
-        to_add.extend(
-            targets
-                .function_specs()
-                .iter()
-                .filter_map(|(spec_id, target_id)| {
-                    let target_env = env.get_function(*target_id);
-                    targets
-                        .has_target(&target_env, &FunctionVariant::Baseline)
-                        .then_some(*spec_id)
-                }),
-        );
-        for spec_id in to_add {
-            targets.insert_valid_spec(spec_id);
-        }
     }
 
     fn dump_result(

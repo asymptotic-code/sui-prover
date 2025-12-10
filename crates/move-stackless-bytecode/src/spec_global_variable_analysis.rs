@@ -440,49 +440,49 @@ impl FunctionTargetProcessor for SpecGlobalVariableAnalysisProcessor {
         data
     }
 
-    fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        let spec_ids = targets.valid_specs(env).map(|id| *id).collect_vec();
-        println!("DEBUG: Total valid spec functions found: {}", spec_ids.len());
+    // fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+    //     let spec_ids = targets.valid_specs(env).map(|id| *id).collect_vec();
+    //     println!("DEBUG: Total valid spec functions found: {}", spec_ids.len());
         
-        for spec_id in spec_ids {
-            let spec_env = env.get_function(spec_id);
-            let spec_name = spec_env.get_full_name_str();
-            println!("DEBUG: Processing spec function: {}", spec_name);
+    //     for spec_id in spec_ids {
+    //         let spec_env = env.get_function(spec_id);
+    //         let spec_name = spec_env.get_full_name_str();
+    //         println!("DEBUG: Processing spec function: {}", spec_name);
             
-            let spec_data = targets
-                .get_data_mut(&spec_id, &FunctionVariant::Baseline)
-                .expect(&format!(
-                    "spec function `{}` was filtered out",
-                    spec_env.get_full_name_str()
-                ));
-            let spec_target = FunctionTarget::new(&spec_env, spec_data);
+    //         let spec_data = targets
+    //             .get_data_mut(&spec_id, &FunctionVariant::Baseline)
+    //             .expect(&format!(
+    //                 "spec function `{}` was filtered out",
+    //                 spec_env.get_full_name_str()
+    //             ));
+    //         let spec_target = FunctionTarget::new(&spec_env, spec_data);
 
-            let infos_iter = spec_data.code.iter().filter_map(|bc| match bc {
-                Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), _, _) => {
-                    let callee_id = module_id.qualified(*fun_id);
-                    let loc = spec_target.get_bytecode_loc(bc.get_attr_id());
+    //         let infos_iter = spec_data.code.iter().filter_map(|bc| match bc {
+    //             Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), _, _) => {
+    //                 let callee_id = module_id.qualified(*fun_id);
+    //                 let loc = spec_target.get_bytecode_loc(bc.get_attr_id());
 
-                    if callee_id == spec_target.func_env.module_env.env.declare_global_qid() {
-                        return Some(SpecGlobalVariableInfo::singleton_imm(type_inst, &loc));
-                    }
+    //                 if callee_id == spec_target.func_env.module_env.env.declare_global_qid() {
+    //                     return Some(SpecGlobalVariableInfo::singleton_imm(type_inst, &loc));
+    //                 }
 
-                    if callee_id == spec_target.func_env.module_env.env.declare_global_mut_qid() {
-                        return Some(SpecGlobalVariableInfo::singleton_mut(type_inst, &loc));
-                    }
+    //                 if callee_id == spec_target.func_env.module_env.env.declare_global_mut_qid() {
+    //                     return Some(SpecGlobalVariableInfo::singleton_mut(type_inst, &loc));
+    //                 }
 
-                    None
-                }
-                _ => None,
-            });
-            let info = SpecGlobalVariableInfo::info_union(infos_iter);
+    //                 None
+    //             }
+    //             _ => None,
+    //         });
+    //         let info = SpecGlobalVariableInfo::info_union(infos_iter);
 
-            spec_data
-                .annotations
-                .set::<SpecGlobalVariableInfo>(info, true);
+    //         spec_data
+    //             .annotations
+    //             .set::<SpecGlobalVariableInfo>(info, true);
                 
-            println!("DEBUG: Successfully processed spec function: {}", spec_name);
-        }
-    }
+    //         println!("DEBUG: Successfully processed spec function: {}", spec_name);
+    //     }
+    // }
 
     fn dump_result(
         &self,
