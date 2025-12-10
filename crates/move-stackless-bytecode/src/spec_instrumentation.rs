@@ -12,11 +12,10 @@ use std::{
 use itertools::Itertools;
 
 use move_model::{
-    ast::Value,
     model::{
         DatatypeId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleId, QualifiedId, QualifiedInstId,
     },
-    ty::{PrimitiveType, Type, TypeDisplayContext, BOOL_TYPE},
+    ty::{Type, TypeDisplayContext, BOOL_TYPE},
 };
 
 use crate::{
@@ -28,12 +27,13 @@ use crate::{
         FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant, VerificationFlavor,
     },
     livevar_analysis::LiveVarAnalysisProcessor,
+    no_abort_analysis,
     options::ProverOptions,
     reaching_def_analysis::ReachingDefProcessor,
     spec_translator::{SpecTranslator, TranslatedSpec},
     stackless_bytecode::{
-        AbortAction, AssignKind, AttrId, BorrowEdge, BorrowNode, Bytecode, HavocKind, Label,
-        Operation, PropKind,
+        AbortAction, AssignKind, AttrId, BorrowEdge, BorrowNode, Bytecode, HavocKind, Operation,
+        PropKind,
     },
     usage_analysis, verification_analysis,
 };
@@ -108,7 +108,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
             return data;
         }
 
-        let options = ProverOptions::get(fun_env.module_env.env);
+        let options = targets.prover_options().clone();
         let verification_info =
             verification_analysis::get_info(&FunctionTarget::new(fun_env, &data));
         let is_verified = verification_info.verified;
@@ -119,8 +119,13 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
             // out of this data and into the clone.
             let mut verification_data =
                 data.fork(FunctionVariant::Verification(VerificationFlavor::Regular));
-            verification_data =
-                Instrumenter::run(&options, targets, fun_env, verification_data, scc_opt);
+            verification_data = Instrumenter::run(
+                &options.clone(),
+                targets,
+                fun_env,
+                verification_data,
+                scc_opt,
+            );
             targets.insert_target_data(
                 &fun_env.get_qualified_id(),
                 verification_data.variant.clone(),
@@ -134,7 +139,7 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
                 .get_fun_by_spec(&fun_env.get_qualified_id())
                 .is_some()
         {
-            Instrumenter::run(&options, targets, fun_env, data, scc_opt)
+            Instrumenter::run(&options.clone(), targets, fun_env, data, scc_opt)
         } else {
             // Clear code but keep function data stub.
             // TODO(refactoring): the stub is currently still needed because boogie_wrapper
@@ -185,14 +190,9 @@ impl FunctionTargetProcessor for SpecInstrumentationProcessor {
 }
 
 struct Instrumenter<'a> {
+    targets: &'a FunctionTargetsHolder,
     options: &'a ProverOptions,
     builder: FunctionDataBuilder<'a>,
-    ret_locals: Vec<TempIndex>,
-    ret_label: Label,
-    can_return: bool,
-    abort_local: TempIndex,
-    abort_label: Label,
-    can_abort: bool,
     mem_info: &'a BTreeSet<QualifiedInstId<DatatypeId>>,
 }
 
@@ -217,26 +217,7 @@ impl<'a> Instrumenter<'a> {
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
-        // Create label and locals for unified return exit point. We translate each `Ret(t..)`
-        // instruction into `Assign(r.., t..); Jump(RetLab)`.
-        let ret_locals = builder
-            .data
-            .return_types
-            .clone()
-            .into_iter()
-            .map(|ty| builder.new_temp(ty))
-            .collect_vec();
-        let ret_label = builder.new_label();
-
-        // Similarly create label and local for unified abort exit point. We translate `Abort(c)`
-        // into `Assign(r, c); Jump(AbortLabel)`, as well as `Call(..)` into `Call(..);
-        // OnAbort(AbortLabel, r)`. The `OnAbort` is a new instruction: if the last
-        // call aborted, it stores the abort code in `r` and jumps to the label.
-        let abort_local = builder.new_temp(Type::Primitive(PrimitiveType::U64));
-        let abort_label = builder.new_label();
-
-        // Translate the specification. This deals with elimination of `old(..)` expressions,
-        // as well as replaces `result_n` references with `ret_locals`.
+        // Translate the specification. This deals with elimination of `old(..)` expressions.
         let auto_trace = options.auto_trace_level.verified_functions()
             && builder.data.variant.is_verified()
             || options.auto_trace_level.functions();
@@ -247,7 +228,7 @@ impl<'a> Instrumenter<'a> {
             fun_env,
             &[],
             None,
-            &ret_locals,
+            &[],
         );
 
         // Translate inlined properties. This deals with elimination of `old(..)` expressions in
@@ -280,17 +261,12 @@ impl<'a> Instrumenter<'a> {
 
         // Create and run the instrumenter.
         let mut instrumenter = Instrumenter {
+            targets,
             options,
             builder,
-            ret_locals,
-            ret_label,
-            can_return: false,
-            abort_local,
-            abort_label,
-            can_abort: false,
             mem_info: &mem_info,
         };
-        instrumenter.instrument(&targets, &spec, &inlined_props);
+        instrumenter.instrument(&spec, &inlined_props);
 
         // Run copy propagation (reaching definitions) and then assignment
         // elimination (live vars). This cleans up some redundancy created by
@@ -308,7 +284,6 @@ impl<'a> Instrumenter<'a> {
 
     fn instrument(
         &mut self,
-        targets: &FunctionTargetsHolder,
         spec: &TranslatedSpec,
         inlined_props: &BTreeMap<AttrId, (TranslatedSpec, Exp)>,
     ) {
@@ -371,7 +346,8 @@ impl<'a> Instrumenter<'a> {
                     &self.builder.data
                 ))
                 .inlined
-                    || targets
+                    || self
+                        .targets
                         .get_fun_by_spec(&self.builder.fun_env.get_qualified_id())
                         .is_some()
             );
@@ -384,14 +360,6 @@ impl<'a> Instrumenter<'a> {
         // Instrument and generate new code
         for bc in old_code {
             self.instrument_bytecode(spec, inlined_props, bc);
-        }
-
-        // Generate return and abort blocks
-        if self.can_return {
-            self.generate_return_block(spec);
-        }
-        if self.can_abort {
-            self.generate_abort_block(spec);
         }
     }
 
@@ -436,37 +404,18 @@ impl<'a> Instrumenter<'a> {
 
         // Instrument bytecode.
         match bc {
-            Ret(id, results) => {
-                self.builder.set_loc_from_attr(id);
-                for (i, r) in self.ret_locals.clone().into_iter().enumerate() {
-                    self.builder
-                        .emit_with(|id| Assign(id, r, results[i], AssignKind::Move));
-                }
-                let ret_label = self.ret_label;
-                self.builder.emit_with(|id| Jump(id, ret_label));
-                self.can_return = true;
+            Ret(..) => {
+                self.builder.emit(bc);
             }
-            Abort(id, code) => {
-                self.builder.set_loc_from_attr(id);
-                let abort_local = self.abort_local;
-                let abort_label = self.abort_label;
-                self.builder
-                    .emit_with(|id| Assign(id, abort_local, code, AssignKind::Move));
-                self.builder.emit_with(|id| Jump(id, abort_label));
-                self.can_abort = true;
+            Abort(..) => {
+                self.builder.emit(bc);
             }
             Call(id, dests, Function(mid, fid, targs), srcs, aa) => {
                 self.instrument_call(id, dests, mid, fid, targs, srcs, aa);
             }
-            Call(id, dests, oper, srcs, _) if oper.can_abort() => {
-                self.builder.emit(Call(
-                    id,
-                    dests,
-                    oper,
-                    srcs,
-                    Some(AbortAction::Jump(self.abort_label, self.abort_local)),
-                ));
-                self.can_abort = true;
+            Call(_, _, ref oper, _, _) if oper.can_abort() => {
+                self.builder
+                    .emit(bc.update_abort_action(|_| Some(AbortAction::Check)));
             }
             Prop(id, kind @ PropKind::Assume, prop) | Prop(id, kind @ PropKind::Assert, prop) => {
                 match inlined_props.get(&id) {
@@ -564,14 +513,27 @@ impl<'a> Instrumenter<'a> {
 
         // From here on code differs depending on whether the callee is opaque or not.
         if !callee_opaque || self.options.for_interpretation {
+            // TODO: RECURSIVE FIX REQUIRED Baseline function not found
+            let abort_action = if self
+                .targets
+                .get_data(&callee_env.get_qualified_id(), &FunctionVariant::Baseline)
+                .is_none()
+                || !no_abort_analysis::does_not_abort(
+                    self.targets,
+                    &callee_env,
+                    Some(&self.builder.fun_env),
+                ) {
+                Some(AbortAction::Check)
+            } else {
+                None
+            };
             self.builder.emit(Call(
                 id,
                 dests,
                 Operation::Function(mid, fid, targs.clone()),
                 srcs,
-                Some(AbortAction::Jump(self.abort_label, self.abort_local)),
+                abort_action,
             ));
-            self.can_abort = true;
         } else {
             // Generates OpaqueCallBegin.
             self.generate_opaque_call(
@@ -584,37 +546,8 @@ impl<'a> Instrumenter<'a> {
                 true,
             );
 
-            // Emit saves for parameters used in old(..) context. Those can be referred
-            // to in aborts conditions, and must be initialized before evaluating those.
+            // Emit saves for parameters used in old(..) context.
             self.emit_save_for_old(&callee_spec.saved_params);
-
-            let callee_aborts_if_is_partial =
-                // callee_env.is_pragma_true(ABORTS_IF_IS_PARTIAL_PRAGMA, || false);
-                false;
-
-            // Translate the abort condition. If the abort_cond_temp_opt is None, it indicates
-            // that the abort condition is known to be false, so we can skip the abort handling.
-            let (abort_cond_temp_opt, code_cond) =
-                self.generate_abort_opaque_cond(callee_aborts_if_is_partial, &callee_spec);
-            if let Some(abort_cond_temp) = abort_cond_temp_opt {
-                let abort_local = self.abort_local;
-                let abort_label = self.abort_label;
-                let no_abort_label = self.builder.new_label();
-                let abort_here_label = self.builder.new_label();
-                self.builder
-                    .emit_with(|id| Branch(id, abort_here_label, no_abort_label, abort_cond_temp));
-                self.builder.emit_with(|id| Label(id, abort_here_label));
-                if let Some(cond) = code_cond {
-                    self.emit_traces(&callee_spec, &cond);
-                    self.builder.emit_with(move |id| Prop(id, Assume, cond));
-                }
-                self.builder.emit_with(move |id| {
-                    Call(id, vec![], Operation::TraceAbort, vec![abort_local], None)
-                });
-                self.builder.emit_with(|id| Jump(id, abort_label));
-                self.builder.emit_with(|id| Label(id, no_abort_label));
-                self.can_abort = true;
-            }
 
             // Emit memory state saves
             for (mem, label) in std::mem::take(&mut callee_spec.saved_memory) {
@@ -871,168 +804,6 @@ impl<'a> Instrumenter<'a> {
                 )
             });
         }
-    }
-
-    fn generate_abort_block(&mut self, spec: &TranslatedSpec) {
-        use Bytecode::*;
-        // Set the location to the function and emit label.
-        let fun_loc = self.builder.fun_env.get_loc().at_end();
-        self.builder.set_loc(fun_loc);
-        let abort_label = self.abort_label;
-        self.builder.emit_with(|id| Label(id, abort_label));
-
-        if self.is_verified() {
-            self.generate_abort_verify(spec);
-        }
-
-        // Emit abort
-        let abort_local = self.abort_local;
-        self.builder.emit_with(|id| Abort(id, abort_local));
-    }
-
-    /// Generates verification conditions for abort block.
-    fn generate_abort_verify(&mut self, spec: &TranslatedSpec) {
-        use Bytecode::*;
-        use PropKind::*;
-
-        // let is_partial = self
-        //     .builder
-        //     .fun_env
-        //     .is_pragma_true(ABORTS_IF_IS_PARTIAL_PRAGMA, || false);
-        let is_partial = false;
-
-        if !is_partial {
-            // If not partial, emit an assertion for the overall aborts condition.
-            if let Some(cond) = spec.aborts_condition(&self.builder) {
-                let loc = self.builder.fun_env.get_loc();
-                self.emit_traces(spec, &cond);
-                self.builder.set_loc_and_vc_info(loc, ABORT_NOT_COVERED);
-                self.builder.emit_with(move |id| Prop(id, Assert, cond));
-            }
-        }
-
-        if spec.has_aborts_code_specs() {
-            // If any codes are specified, emit an assertion for the code condition.
-            let actual_code = self.builder.mk_temporary(self.abort_local);
-            if let Some(code_cond) = spec.aborts_code_condition(&self.builder, &actual_code) {
-                let loc = self.builder.fun_env.get_loc();
-                self.emit_traces(spec, &code_cond);
-                self.builder
-                    .set_loc_and_vc_info(loc, ABORTS_CODE_NOT_COVERED);
-                self.builder
-                    .emit_with(move |id| Prop(id, Assert, code_cond));
-            }
-        }
-    }
-
-    /// Generates an abort condition for assumption in opaque calls. This returns a temporary
-    /// in which the abort condition is stored, plus an optional expression which constraints
-    /// the abort code. If the 1st return value is None, it indicates that the abort condition
-    /// is known to be false.
-    fn generate_abort_opaque_cond(
-        &mut self,
-        is_partial: bool,
-        spec: &TranslatedSpec,
-    ) -> (Option<TempIndex>, Option<Exp>) {
-        let aborts_cond = if is_partial {
-            None
-        } else {
-            spec.aborts_condition(&self.builder)
-        };
-        let aborts_cond_temp = if let Some(cond) = aborts_cond {
-            if matches!(cond.as_ref(), ExpData::Value(_, Value::Bool(false))) {
-                return (None, None);
-            }
-            // Introduce a temporary to hold the value of the aborts condition.
-            self.builder.emit_let(cond).0
-        } else {
-            // Introduce a havoced temporary to hold an arbitrary value for the aborts
-            // condition.
-            self.builder.emit_let_havoc(BOOL_TYPE.clone()).0
-        };
-        let aborts_code_cond = if spec.has_aborts_code_specs() {
-            let actual_code = self.builder.mk_temporary(self.abort_local);
-            spec.aborts_code_condition(&self.builder, &actual_code)
-        } else {
-            None
-        };
-        (Some(aborts_cond_temp), aborts_code_cond)
-    }
-
-    fn generate_return_block(&mut self, spec: &TranslatedSpec) {
-        use Bytecode::*;
-        use PropKind::*;
-
-        // Set the location to the function and emit label.
-        self.builder
-            .set_loc(self.builder.fun_env.get_loc().at_end());
-        let ret_label = self.ret_label;
-        self.builder.emit_with(|id| Label(id, ret_label));
-
-        // Emit specification variable updates. They are generated for both verified and inlined
-        // function variants, as the evolution of state updates is always the same.
-        let lets_emitted = if !spec.updates.is_empty() {
-            self.emit_lets(spec, true);
-            self.emit_updates(spec);
-            true
-        } else {
-            false
-        };
-
-        if self.is_verified() {
-            // Emit `let` bindings if not already emitted.
-            if !lets_emitted {
-                self.emit_lets(spec, true);
-            }
-
-            // Emit the negation of all aborts conditions.
-            for (loc, abort_cond, _) in &spec.aborts {
-                self.emit_traces(spec, abort_cond);
-                let exp = self.builder.mk_not(abort_cond.clone());
-                self.builder
-                    .set_loc_and_vc_info(loc.clone(), ABORTS_IF_FAILS_MESSAGE);
-                self.builder.emit_with(|id| Prop(id, Assert, exp))
-            }
-
-            // Emit all post-conditions which must hold as we do not abort.
-            for (loc, cond) in &spec.post {
-                self.emit_traces(spec, cond);
-                self.builder
-                    .set_loc_and_vc_info(loc.clone(), ENSURES_FAILS_MESSAGE);
-                self.builder
-                    .emit_with(move |id| Prop(id, Assert, cond.clone()))
-            }
-
-            // Emit all event `emits` checks.
-            for (loc, cond) in spec.emits_conditions(&self.builder) {
-                self.emit_traces(spec, &cond);
-                self.builder.set_loc_and_vc_info(loc, EMITS_FAILS_MESSAGE);
-                self.builder.emit_with(move |id| Prop(id, Assert, cond))
-            }
-
-            // let emits_is_partial = self
-            //     .builder
-            //     .fun_env
-            //     .is_pragma_true(EMITS_IS_PARTIAL_PRAGMA, || false);
-            // let emits_is_strict = self
-            //     .builder
-            //     .fun_env
-            //     .is_pragma_true(EMITS_IS_STRICT_PRAGMA, || false);
-            // if (!spec.emits.is_empty() && !emits_is_partial)
-            //     || (spec.emits.is_empty() && emits_is_strict)
-            // {
-            //     // If not partial, emit an assertion for the completeness of the emits specs.
-            //     let cond = spec.emits_completeness_condition(&self.builder);
-            //     let loc = self.builder.fun_env.get_spec_loc();
-            //     self.emit_traces(spec, &cond);
-            //     self.builder.set_loc_and_vc_info(loc, EMITS_NOT_COVERED);
-            //     self.builder.emit_with(move |id| Prop(id, Assert, cond));
-            // }
-        }
-
-        // Emit return
-        let ret_locals = self.ret_locals.clone();
-        self.builder.emit_with(move |id| Ret(id, ret_locals))
     }
 
     /// Generate a check whether the target can modify the given memory provided

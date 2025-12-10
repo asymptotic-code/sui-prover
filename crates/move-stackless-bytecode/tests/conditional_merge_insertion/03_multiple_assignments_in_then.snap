@@ -1,0 +1,55 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+---
+============ initial translation from Move ================
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::multiple_assignments_in_then($t0|cond: bool, $t1|input: u128): u128 {
+     var $t2|ratio#1#0: u128
+     var $t3: u128
+     var $t4: bool
+     var $t5: u128
+     var $t6: u128
+     var $t7: u128
+     var $t8: u8
+     var $t9: u128
+     var $t10: u128
+  0: $t3 := move($t1)
+  1: $t2 := $t3
+  2: $t4 := move($t0)
+  3: if ($t4) goto 4 else goto 12
+  4: label L1
+  5: $t5 := move($t2)
+  6: $t6 := 38992368544603139932233054999993551
+  7: $t7 := *($t5, $t6)
+  8: $t8 := 96
+  9: $t9 := >>($t7, $t8)
+ 10: $t2 := $t9
+ 11: goto 12
+ 12: label L0
+ 13: $t10 := move($t2)
+ 14: return $t10
+}
+
+============ after pipeline `conditional_merge_insertion` ================
+
+[variant baseline]
+fun ConditionalMergeInsertionTest::multiple_assignments_in_then($t0|cond: bool, $t1|input: u128): u128 {
+     var $t2|ratio#1#0: u128
+     var $t3: u128
+     var $t4: u128
+     var $t5: u8
+     var $t6: u128
+     var $t7: u128
+  0: $t2 := $t1
+  1: if ($t0) goto 2 else goto 7
+  2: label L1
+  3: $t3 := 38992368544603139932233054999993551
+  4: $t4 := *($t1, $t3)
+  5: $t5 := 96
+  6: $t6 := >>($t4, $t5)
+  7: label L0
+     # conditional_merge_insertion: t7 := if_then_else(t0, t6, t1)
+  8: $t7 := if_then_else($t0, $t6, $t1)
+  9: return $t7
+}

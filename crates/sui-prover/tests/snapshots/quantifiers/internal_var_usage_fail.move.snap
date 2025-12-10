@@ -1,0 +1,11 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 260
+expression: output
+---
+exiting with bytecode transformation errors
+error: Invalid quantifier macro pattern: lambda parameter is used externally
+   ┌─ tests/inputs/quantifiers/internal_var_usage_fail.move:16:49
+   │
+16 │    exists!<u64>(|j| invariant_expression(*j, i, u[*j], v[i]))
+   │                                                 ^^^^^

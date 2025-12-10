@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 271
+expression: output
+---
+exiting with bytecode transformation errors
+error: Invalid quantifier macro pattern: Invalid standalone usage of start function
+  ┌─ tests/../../../packages/prover/sources/vector.move:9:1
+  │
+9 │ public native fun begin_map_lambda<T>(v: &vector<T>): &T;
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: Invalid quantifier macro pattern: Invalid standalone usage of end function
+   ┌─ tests/../../../packages/prover/sources/prover.move:80:1
+   │
+80 │ public native fun end_exists_lambda(): bool;
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: Invalid quantifier macro pattern: Invalid standalone usage of start function
+   ┌─ tests/../../../packages/prover/sources/prover.move:74:1
+   │
+74 │ public native fun begin_forall_lambda<T>(): &T;
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

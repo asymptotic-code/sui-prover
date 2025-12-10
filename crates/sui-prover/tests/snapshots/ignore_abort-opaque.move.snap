@@ -1,0 +1,14 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: foo::bar_spec ignore_aborts
+   ┌─ tests/inputs/ignore_abort-opaque.move:17:1
+   │  
+17 │ ╭ fun bar_spec(x: u64): u64 {
+18 │ │     bar(x)
+19 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/ignore_abort-opaque.move:12: foo_spec

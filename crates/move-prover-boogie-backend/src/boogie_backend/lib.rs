@@ -20,8 +20,9 @@ use move_model::{
 };
 use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
-    function_target_pipeline::FunctionVariant,
+    function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo},
+    verification_analysis,
 };
 
 use crate::boogie_backend::{
@@ -45,11 +46,14 @@ const TABLE_ARRAY_THEORY: &[u8] = include_bytes!("prelude/table-array-theory.bpl
 const BCS_MODULE: &str = "0x1::bcs";
 const EVENT_MODULE: &str = "0x1::event";
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 struct TypeInfo {
     name: String,
     suffix: String,
     has_native_equality: bool,
+    is_bv: bool,
+    is_number: bool,
+    bit_width: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -79,12 +83,14 @@ struct TableImpl {
 struct DynamicFieldInfo {
     struct_name: String,
     insts: Vec<(TypeInfo, TypeInfo)>,
+    key_insts: Vec<TypeInfo>,
     fun_add: String,
     fun_borrow: String,
     fun_borrow_mut: String,
     fun_remove: String,
-    // fun_exists: String,
     fun_exists_with_type: String,
+    fun_exists: String,
+    fun_exists_inner: String,
 }
 
 /// Help generating vector functions for bv types
@@ -124,9 +130,29 @@ fn bv_helper() -> Vec<BvInfo> {
     bv_info
 }
 
+fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
+    let sum_func_env = env.get_function(env.prover_vec_sum_qid());
+    let sum_func_inlined = targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
+        && verification_analysis::get_info(
+            &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
+        )
+        .inlined;
+
+    let sum_range_func_env = env.get_function(env.prover_vec_sum_range_qid());
+    let sum_range_func_inlined = targets
+        .has_target(&sum_range_func_env, &FunctionVariant::Baseline)
+        && verification_analysis::get_info(
+            &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
+        )
+        .inlined;
+
+    sum_func_inlined || sum_range_func_inlined
+}
+
 /// Adds the prelude to the generated output.
 pub fn add_prelude(
     env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
     options: &BoogieOptions,
     writer: &CodeWriter,
 ) -> anyhow::Result<()> {
@@ -184,24 +210,29 @@ pub fn add_prelude(
         .collect_vec();
     let mut table_instances = vec![];
     if let Some(table_qid) = env.table_qid() {
-        table_instances.push(TableImpl::table(env, options, &mono_info, table_qid, false));
+        if mono_info.is_used_datatype(env, targets, &table_qid) {
+            table_instances.push(TableImpl::table(env, options, &mono_info, table_qid, false));
+        }
     }
     if let Some(object_table_qid) = env.object_table_qid() {
-        table_instances.push(TableImpl::object_table(
-            env,
-            options,
-            &mono_info,
-            object_table_qid,
-            false,
-        ));
+        if mono_info.is_used_datatype(env, targets, &object_table_qid) {
+            table_instances.push(TableImpl::object_table(
+                env,
+                options,
+                &mono_info,
+                object_table_qid,
+                false,
+            ));
+        }
     }
     let mut dynamic_field_instances = vec![];
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        if mono_info
-            .structs
-            .get(&struct_qid)
-            .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
+        if mono_info.is_used_datatype(env, targets, &struct_qid)
+            && mono_info
+                .structs
+                .get(&struct_qid)
+                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
         {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
@@ -211,6 +242,8 @@ pub fn add_prelude(
             ));
         }
     }
+
+    context.insert("include_vec_sum", &should_include_vec_sum(env, targets));
 
     // let mut table_instances = mono_info
     //     .table_inst
@@ -242,19 +275,41 @@ pub fn add_prelude(
     }
     context.insert("vec_instances", &vec_instances);
 
+    if let Some(option_module_env) = env.find_module_by_name(env.symbol_pool().make("option")) {
+        let option_env = option_module_env
+            .find_struct(env.symbol_pool().make("Option"))
+            .unwrap();
+        let option_instances =
+            if mono_info.is_used_datatype(env, targets, &option_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&option_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .collect_vec()
+            } else {
+                vec![]
+            };
+        context.insert("option_instances", &option_instances);
+    }
+
     if let Some(vec_set_module_env) = env.find_module_by_name(env.symbol_pool().make("vec_set")) {
         let vec_set_struct_env = vec_set_module_env
             .find_struct(env.symbol_pool().make("VecSet"))
             .unwrap();
-        let vec_set_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) if did == vec_set_struct_env.get_qualified_id() => Some(&tys[0]),
-                _ => None,
-            })
-            .map(|ty| TypeInfo::new(env, options, ty, false))
-            .collect_vec();
+        let vec_set_instances =
+            if mono_info.is_used_datatype(env, targets, &vec_set_struct_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&vec_set_struct_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .collect_vec()
+            } else {
+                vec![]
+            };
         context.insert("vec_set_instances", &vec_set_instances);
     }
 
@@ -262,23 +317,44 @@ pub fn add_prelude(
         let vec_map_struct_env = vec_map_module_env
             .find_struct(env.symbol_pool().make("VecMap"))
             .unwrap();
-        let vec_map_instances = mono_info
-            .all_types
-            .iter()
-            .filter_map(|ty| match ty.get_datatype() {
-                Some((did, tys)) if did == vec_map_struct_env.get_qualified_id() => {
-                    Some((&tys[0], &tys[1]))
-                }
-                _ => None,
-            })
-            .map(|(ty0, ty1)| {
-                (
-                    TypeInfo::new(env, options, ty0, false),
-                    TypeInfo::new(env, options, ty1, false),
-                )
-            })
-            .collect_vec();
+        let vec_map_instances =
+            if mono_info.is_used_datatype(env, targets, &vec_map_struct_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&vec_map_struct_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| {
+                        (
+                            TypeInfo::new(env, options, &tys[0], false),
+                            TypeInfo::new(env, options, &tys[1], false),
+                        )
+                    })
+                    .collect_vec()
+            } else {
+                vec![]
+            };
         context.insert("vec_map_instances", &vec_map_instances);
+    }
+
+    if let Some(table_vec_module_env) = env.find_module_by_name(env.symbol_pool().make("table_vec"))
+    {
+        let table_vec_env = table_vec_module_env
+            .find_struct(env.symbol_pool().make("TableVec"))
+            .unwrap();
+        let table_vec_instances =
+            if mono_info.is_used_datatype(env, targets, &table_vec_env.get_qualified_id()) {
+                mono_info
+                    .structs
+                    .get(&table_vec_env.get_qualified_id())
+                    .unwrap_or(&BTreeSet::new())
+                    .iter()
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .collect_vec()
+            } else {
+                vec![]
+            };
+        context.insert("table_vec_instances", &table_vec_instances);
     }
 
     context.insert("table_instances", &table_instances);
@@ -402,6 +478,9 @@ impl TypeInfo {
             name: name_fun(env, ty),
             suffix: boogie_type_suffix_bv(env, ty, bv_flag),
             has_native_equality: has_native_equality(env, options, ty),
+            is_bv: bv_flag && ty.is_number(),
+            bit_width: ty.get_bit_width().unwrap_or(8).to_string(),
+            is_number: ty.is_number(),
         }
     }
 }
@@ -555,10 +634,17 @@ impl DynamicFieldInfo {
                 )
             })
             .collect();
+        let key_insts = name_value_infos
+            .iter()
+            .map(|name_value_info| name_value_info.name())
+            .unique()
+            .map(|name| TypeInfo::new(env, options, name, false))
+            .collect_vec();
 
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
+            key_insts,
             fun_add: Self::triple_opt_to_name(env, env.dynamic_field_add_qid()),
             fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
             fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
@@ -567,6 +653,18 @@ impl DynamicFieldInfo {
                 env,
                 env.dynamic_field_exists_with_type_qid(),
             ),
+            fun_exists: Self::triple_opt_to_name(env, env.dynamic_field_exists_qid()),
+            fun_exists_inner: env
+                .dynamic_field_exists_qid()
+                .map(|fun_qid| {
+                    let fun = env.get_function(fun_qid);
+                    format!(
+                        "{}_{}",
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    )
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -588,10 +686,17 @@ impl DynamicFieldInfo {
                 )
             })
             .collect();
+        let key_insts = name_value_infos
+            .iter()
+            .map(|name_value_info| name_value_info.name())
+            .unique()
+            .map(|name| TypeInfo::new(env, options, name, false))
+            .collect_vec();
 
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
+            key_insts,
             fun_add: Self::triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
             fun_borrow: Self::triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
             fun_borrow_mut: Self::triple_opt_to_name(
@@ -603,6 +708,18 @@ impl DynamicFieldInfo {
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
             ),
+            fun_exists: Self::triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
+            fun_exists_inner: env
+                .dynamic_object_field_exists_qid()
+                .map(|fun_qid| {
+                    let fun = env.get_function(fun_qid);
+                    format!(
+                        "{}_{}",
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    )
+                })
+                .unwrap_or_default(),
         }
     }
 

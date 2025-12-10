@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::anyhow;
+use clap::ValueEnum;
 use itertools::Itertools;
 use move_command_line_common::env::{read_bool_env_var, read_env_var};
 use regex::Regex;
@@ -17,6 +18,7 @@ const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
     "-enhancedErrorMessages:1",
     //"-monomorphize",
     "-proverOpt:O:model_validate=true",
+    "-infer:j",
 ];
 
 const MIN_BOOGIE_VERSION: &str = "2.15.8";
@@ -51,6 +53,17 @@ pub struct CustomNativeOptions {
     pub module_instance_names: Vec<(String, String, bool)>,
 }
 
+/// Options to connect to a remote Move prover service.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct RemoteOptions {
+    /// URL of the remote prover service.
+    pub url: String,
+    /// API key for authentication.
+    pub api_key: String,
+    /// Concurrency level for sending requests.
+    pub concurrency: usize,
+}
+
 /// Contains information about a native method implementing mutable borrow semantics for a given
 /// type in an alternative storage model (returning &mut without taking appropriate &mut as a
 /// parameter, much like vector::borrow_mut)
@@ -70,6 +83,21 @@ impl BorrowAggregate {
             name,
             read_aggregate,
             write_aggregate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BoogieFileMode {
+    Function,
+    Module,
+}
+
+impl ToString for BoogieFileMode {
+    fn to_string(&self) -> String {
+        match self {
+            BoogieFileMode::Function => "function".to_string(),
+            BoogieFileMode::Module => "module".to_string(),
         }
     }
 }
@@ -132,6 +160,10 @@ pub struct BoogieOptions {
     pub num_instances: usize,
     /// Whether to run Boogie instances sequentially.
     pub sequential_task: bool,
+    /// Whether to force timeout handling
+    pub force_timeout: bool,
+    /// Whether to enable CI mode for continuous integration environments
+    pub ci: bool,
     /// A hard timeout for boogie execution; if the process does not terminate within
     /// this time frame, it will be killed. Zero for no timeout.
     pub hard_timeout_secs: u64,
@@ -150,6 +182,14 @@ pub struct BoogieOptions {
     pub bv_int_encoding: bool,
     /// All possible additional options as simle string
     pub string_options: Option<String>,
+    /// Boogie run mode
+    pub boogie_file_mode: BoogieFileMode,
+    /// Spec no abort only
+    pub spec_no_abort_check_only: bool,
+    /// Func abort only
+    pub func_abort_check_only: bool,
+    /// Do not verify, just validate Boogie files
+    pub no_verify: bool,
 }
 
 impl Default for BoogieOptions {
@@ -176,11 +216,12 @@ impl Default for BoogieOptions {
             proc_cores: 4,
             vc_timeout: 40,
             keep_artifacts: true,
-            eager_threshold: 100,
+            eager_threshold: 10,
             lazy_threshold: 100,
             stable_test_output: false,
             num_instances: 1,
             sequential_task: false,
+            force_timeout: false,
             hard_timeout_secs: 0,
             vector_theory: VectorTheory::BoogieArray,
             z3_trace_file: None,
@@ -188,9 +229,14 @@ impl Default for BoogieOptions {
             loop_unroll: None,
             borrow_aggregates: vec![],
             prelude_extra: Some(PathBuf::from("prelude_extra.bpl")),
-            path_split: Some(10),
+            path_split: None,
             bv_int_encoding: true,
             string_options: None,
+            boogie_file_mode: BoogieFileMode::Function,
+            spec_no_abort_check_only: false,
+            func_abort_check_only: false,
+            no_verify: false,
+            ci: false,
         }
     }
 }
@@ -205,8 +251,32 @@ impl BoogieOptions {
         }
     }
 
+    /// Extracts the key part of a boogie option (everything except the value).
+    /// For "-proverOpt:O:smt.QI.EAGER_THRESHOLD=100", returns "-proverOpt:O:smt.QI.EAGER_THRESHOLD"
+    /// For "-vcsCores:4", returns "-vcsCores"
+    fn get_option_key(option: &str) -> &str {
+        if let Some(eq_pos) = option.find('=') {
+            &option[..eq_pos]
+        } else if let Some(colon_pos) = option.rfind(':') {
+            let after_colon = &option[colon_pos + 1..];
+            if after_colon.chars().next().map_or(false, |c| {
+                c.is_ascii_digit() || after_colon.starts_with('/') || after_colon.starts_with('.')
+            }) {
+                &option[..colon_pos]
+            } else {
+                option
+            }
+        } else {
+            option
+        }
+    }
+
     /// Returns command line to call boogie.
-    pub fn get_boogie_command(&self, boogie_file: &str) -> anyhow::Result<Vec<String>> {
+    pub fn get_boogie_command(
+        &self,
+        boogie_file: &str,
+        individual_options: Option<String>,
+    ) -> anyhow::Result<Vec<String>> {
         let mut result = if self.use_exp_boogie {
             // This should have a better ux...
             vec![read_env_var("EXP_BOOGIE_EXE")]
@@ -223,6 +293,8 @@ impl BoogieOptions {
         let mut seen_options = HashSet::new();
         let mut add = |sl: &[&str]| {
             for s in sl {
+                let key = Self::get_option_key(s);
+                seen_options.retain(|existing: &String| Self::get_option_key(existing) != key);
                 seen_options.insert(s.to_string());
             }
         };
@@ -269,7 +341,7 @@ impl BoogieOptions {
                 // Error messages may appear in non-deterministic order otherwise.
                 1
             } else {
-                self.proc_cores
+                self.path_split.unwrap_or(self.proc_cores)
             }
         )]);
 
@@ -293,21 +365,39 @@ impl BoogieOptions {
         }
         if let Some(n) = self.path_split {
             add(&[
-                &format!("-vcsCores:{}", n),
                 "-verifySeparately",
                 &format!("-vcsMaxKeepGoingSplits:{}", n),
                 "-vcsSplitOnEveryAssert",
                 "-vcsFinalAssertTimeout:600",
             ]);
         }
-        add(&[boogie_file]);
 
-        let additional_options = self.string_options
+        if self.no_verify {
+            add(&["-noVerify"]);
+        }
+
+        let additional_options = self
+            .string_options
             .as_deref()
-            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect()) 
+            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect())
             .unwrap_or_else(Vec::new);
 
-        add(&additional_options.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+        add(&additional_options
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>());
+
+        let individual_options = individual_options
+            .as_deref()
+            .map(|s| s.split(' ').map(|opt| format!("-{}", opt)).collect())
+            .unwrap_or_else(Vec::new);
+
+        add(&individual_options
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>());
+
+        add(&[boogie_file]);
 
         result.extend(seen_options.into_iter());
 

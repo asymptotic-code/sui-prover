@@ -5,13 +5,12 @@
 use crate::{
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
-    // data_invariant_instrumentation::DataInvariantInstrumentationProcessor,
+    conditional_merge_insertion::ConditionalMergeInsertionProcessor,
     debug_instrumentation::DebugInstrumenter,
+    deterministic_analysis::DeterministicAnalysisProcessor,
     dynamic_field_analysis::DynamicFieldAnalysisProcessor,
     eliminate_imm_refs::EliminateImmRefsProcessor,
     function_target_pipeline::{FunctionTargetPipeline, FunctionTargetProcessor},
-    // global_invariant_analysis::GlobalInvariantAnalysisProcessor,
-    // global_invariant_instrumentation::GlobalInvariantInstrumentationProcessor,
     inconsistency_check::InconsistencyCheckInstrumenter,
     livevar_analysis::LiveVarAnalysisProcessor,
     loop_analysis::LoopAnalysisProcessor,
@@ -20,9 +19,13 @@ use crate::{
     move_loop_invariants::MoveLoopInvariantsProcessor,
     mut_ref_instrumentation::MutRefInstrumenter,
     mutation_tester::MutationTester,
+    no_abort_analysis::NoAbortAnalysisProcessor,
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
+    pure_function_analysis::PureFunctionAnalysisProcessor,
+    quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
+    replacement_analysis::ReplacementAnalysisProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
     spec_purity_analysis::SpecPurityAnalysis,
@@ -43,17 +46,31 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         // transformation and analysis
         EliminateImmRefsProcessor::new(),
         MutRefInstrumenter::new(),
+        NoAbortAnalysisProcessor::new(),
+        DeterministicAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
+        TypeInvariantAnalysisProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
         MemoryInstrumentationProcessor::new(),
+    ];
+
+    // Rerun liveness analysis and its dependencies after MemoryInstrumentation
+    // to ensure fresh liveness annotations for ConditionalMergeInsertion
+    processors.push(ReachingDefProcessor::new());
+    processors.push(LiveVarAnalysisProcessor::new());
+    processors.push(ConditionalMergeInsertionProcessor::new());
+
+    processors.append(&mut vec![
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
-        TypeInvariantAnalysisProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
-    ];
+        QuantifierIteratorAnalysisProcessor::new(),
+        ReplacementAnalysisProcessor::new(),
+        PureFunctionAnalysisProcessor::new(),
+    ]);
 
     if !options.skip_loop_analysis {
         processors.push(LoopAnalysisProcessor::new());

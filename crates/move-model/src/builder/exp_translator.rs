@@ -10,17 +10,12 @@ use std::{
 use itertools::Itertools;
 use num::{BigInt, BigUint, FromPrimitive};
 
-use move_compiler::{
-    expansion::ast as EA, parser::ast as PA, shared::Name,
-};
+use move_compiler::{expansion::ast as EA, parser::ast as PA, shared::Name};
 use move_core_types::runtime_value::MoveValue;
 
 use crate::{
     ast::Value,
-    builder::{
-        model_builder::LocalVarEntry,
-        module_builder::ModuleBuilder,
-    },
+    builder::{model_builder::LocalVarEntry, module_builder::ModuleBuilder},
     model::{Loc, NodeId},
     symbol::{Symbol, SymbolPool},
     ty::{PrimitiveType, Substitution, Type, TypeDisplayContext},
@@ -588,7 +583,7 @@ impl ExpTranslator<'_, '_, '_> {
                 Type::new_prim(PrimitiveType::U256),
             )),
             EA::Value_::Bool(x) => Some((Value::Bool(*x), Type::new_prim(PrimitiveType::Bool))),
-            EA::Value_::Bytearray(x) => {
+            EA::Value_::Bytearray(x) | EA::Value_::InferredString(x) => {
                 let ty = Type::Vector(Box::new(Type::new_prim(PrimitiveType::U8)));
                 Some((Value::ByteArray(x.clone()), ty))
             }

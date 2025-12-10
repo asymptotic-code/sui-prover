@@ -1,0 +1,121 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+---
+============ initial translation from Move ================
+
+[variant baseline]
+public fun test::f($t0|a: u32): u64 {
+     var $t1|ratio#1#0: u64
+     var $t2|temp#1#0: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: u32
+     var $t6: u32
+     var $t7: u32
+     var $t8: u32
+     var $t9: bool
+     var $t10: u64
+     var $t11: u128
+     var $t12: u64
+     var $t13: u8
+     var $t14: u64
+     var $t15: u64
+     var $t16: u64
+     var $t17: u64
+     var $t18: u64
+  0: $t3 := 1
+  1: $t1 := $t3
+  2: $t4 := 2
+  3: $t2 := $t4
+  4: $t5 := move($t0)
+  5: $t6 := 2
+  6: $t7 := &($t5, $t6)
+  7: $t8 := 0
+  8: $t9 := !=($t7, $t8)
+  9: if ($t9) goto 10 else goto 20
+ 10: label L1
+ 11: $t10 := move($t1)
+ 12: $t11 := 79236085330515764027303304731
+ 13: $t12 := (u64)($t11)
+ 14: $t13 := 96
+ 15: $t14 := test::helper($t10, $t12, $t13)
+ 16: $t1 := $t14
+ 17: $t15 := copy($t1)
+ 18: $t2 := $t15
+ 19: goto 20
+ 20: label L0
+ 21: $t16 := move($t1)
+ 22: $t17 := move($t2)
+ 23: $t18 := *($t16, $t17)
+ 24: return $t18
+}
+
+
+[variant baseline]
+fun test::helper($t0|x: u64, $t1|y: u64, $t2|_z: u8): u64 {
+     var $t3: u64
+     var $t4: u64
+     var $t5: u64
+     var $t6: u64
+  0: $t3 := move($t0)
+  1: $t4 := move($t1)
+  2: $t5 := (u64)($t4)
+  3: $t6 := +($t3, $t5)
+  4: return $t6
+}
+
+============ after pipeline `conditional_merge_insertion` ================
+
+[variant baseline]
+public fun test::f($t0|a: u32): u64 {
+     var $t1|ratio#1#0: u64
+     var $t2|temp#1#0: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: u32
+     var $t6: u32
+     var $t7: u32
+     var $t8: bool
+     var $t9: u128
+     var $t10: u64
+     var $t11: u8
+     var $t12: u64
+     var $t13: u64
+     var $t14: u64
+     var $t15: u64
+     var $t16: u64
+     var $t17: u64
+  0: $t3 := 1
+  1: $t1 := $t3
+  2: $t4 := 2
+  3: $t2 := $t4
+  4: $t5 := 2
+  5: $t6 := &($t0, $t5)
+  6: $t7 := 0
+  7: $t8 := !=($t6, $t7)
+  8: if ($t8) goto 9 else goto 16
+  9: label L1
+ 10: $t9 := 79236085330515764027303304731
+ 11: $t10 := (u64)($t9)
+ 12: $t11 := 96
+ 13: $t12 := test::helper($t3, $t10, $t11)
+ 14: $t14 := $t12
+ 15: $t15 := $t12
+ 16: label L0
+     # conditional_merge_insertion: t16 := if_then_else(t8, t14, t3)
+ 17: $t16 := if_then_else($t8, $t14, $t3)
+     # conditional_merge_insertion: t17 := if_then_else(t8, t15, t4)
+ 18: $t17 := if_then_else($t8, $t15, $t4)
+ 19: $t13 := *($t16, $t17)
+ 20: return $t13
+}
+
+
+[variant baseline]
+fun test::helper($t0|x: u64, $t1|y: u64, $t2|_z: u8): u64 {
+     var $t3: u64
+     var $t4: u64
+  0: $t3 := (u64)($t1)
+  1: $t4 := +($t0, $t3)
+  2: return $t4
+}

@@ -1,0 +1,36 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 276
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/sum_map.fail.move:24:5
+   │
+24 │     ensures(sum_map!<u64, u64>(&v, |x| x_plus_10(x)) == ELIDEDu64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/sum_map.fail.move:21: test_sum_map_fail
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/sum_map.fail.move:32:5
+   │
+32 │     ensures(sum_map_range!<u64, u64>(&v, 0, 2, |x| x_plus_10(x)) == ELIDEDu64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/sum_map.fail.move:29: test_sum_map_range_fail
+
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_sum_map_fail_x_plus_10$pure(_$t0: int) returns ($ret0: int)
+{
+    (var $t2 := 18446744073709551605;
+    (var $t3 := (_$t0 > $t2);
+    (var $t4 := 18446744073709551615;
+    (var $t5 := $t4;
+    (var $t6 := 10;
+    (var $t7 := (_$t0 + $t6);
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
+}

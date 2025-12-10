@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: deprecated usage
+   ┌─ tests/inputs/dynamic_object_field/issue_190.move:18:29
+   │
+18 │     let c_type = type_name::get<Coin>();
+   │                             ^^^ The function 'std::type_name::get' is deprecated: Renamed to `with_defining_ids` for clarity.
+   │
+   = This warning can be suppressed with '#[allow(deprecated_usage)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

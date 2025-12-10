@@ -19,7 +19,10 @@ use move_model::{
     ty::{Type, TypeDisplayContext},
 };
 use num::BigUint;
-use std::{collections::BTreeMap, fmt, fmt::Formatter};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Formatter},
+};
 
 /// A label for a branch destination.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -111,6 +114,105 @@ impl From<&u256::U256> for Constant {
     }
 }
 
+// Quantifier for macros
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum QuantifierType {
+    Forall,
+    Exists,
+    Map,
+    MapRange,
+    Filter,
+    FilterRange,
+    Find,
+    FindRange,
+    FindIndex,
+    FindIndexRange,
+    FindIndices,
+    FindIndicesRange,
+    Count,
+    CountRange,
+    Any,
+    AnyRange,
+    All,
+    AllRange,
+    SumMap,
+    SumMapRange,
+}
+
+impl QuantifierType {
+    pub fn display(&self) -> &str {
+        match self {
+            QuantifierType::Forall => "forall",
+            QuantifierType::Exists => "exists",
+            QuantifierType::Map => "map",
+            QuantifierType::MapRange => "map_range",
+            QuantifierType::Filter => "filter",
+            QuantifierType::FilterRange => "filter_range",
+            QuantifierType::Find => "find",
+            QuantifierType::FindRange => "find_range",
+            QuantifierType::FindIndex => "find_index",
+            QuantifierType::FindIndexRange => "find_index_range",
+            QuantifierType::FindIndices => "find_indices",
+            QuantifierType::FindIndicesRange => "find_indices_range",
+            QuantifierType::Count => "count",
+            QuantifierType::CountRange => "count_range",
+            QuantifierType::Any => "any",
+            QuantifierType::AnyRange => "any_range",
+            QuantifierType::All => "all",
+            QuantifierType::AllRange => "all_range",
+            QuantifierType::SumMap => "sum_map",
+            QuantifierType::SumMapRange => "sum_map_range",
+        }
+    }
+
+    pub fn can_abort(&self) -> bool {
+        false
+    }
+
+    pub fn vector_based(&self) -> bool {
+        *self != QuantifierType::Forall && *self != QuantifierType::Exists
+    }
+
+    pub fn range_based(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::MapRange
+                | QuantifierType::FilterRange
+                | QuantifierType::FindRange
+                | QuantifierType::FindIndexRange
+                | QuantifierType::FindIndicesRange
+                | QuantifierType::CountRange
+                | QuantifierType::AnyRange
+                | QuantifierType::AllRange
+                | QuantifierType::SumMapRange
+        )
+    }
+
+    pub fn is_find_or_find_index(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::Find
+                | QuantifierType::FindRange
+                | QuantifierType::FindIndex
+                | QuantifierType::FindIndexRange
+        )
+    }
+
+    pub fn requires_sum(&self) -> bool {
+        matches!(
+            self,
+            QuantifierType::SumMap
+                | QuantifierType::SumMapRange
+                | QuantifierType::Count
+                | QuantifierType::CountRange
+        )
+    }
+
+    pub fn requires_filter_indices(&self) -> bool {
+        matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
+    }
+}
+
 /// An operation -- target of a call. This contains user functions, builtin functions, and
 /// operators.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -193,6 +295,9 @@ pub enum Operation {
     Neq,
     CastU256,
 
+    // Represents conditional expressions recovered from bytecode: if (x) { y } else { z / passthrough }
+    IfThenElse,
+
     // Debugging
     TraceLocal(TempIndex),
     TraceReturn(usize),
@@ -205,6 +310,9 @@ pub enum Operation {
     // Event
     EmitEvent,
     EventStoreDiverge,
+
+    // Quantifiers
+    Quantifier(QuantifierType, QualifiedId<FunId>, Vec<Type>, usize),
 }
 
 impl Operation {
@@ -262,6 +370,7 @@ impl Operation {
             Operation::And => false,
             Operation::Eq => false,
             Operation::Neq => false,
+            Operation::IfThenElse => false,
             Operation::TraceLocal(..) => false,
             Operation::TraceAbort => false,
             Operation::TraceReturn(..) => false,
@@ -273,6 +382,7 @@ impl Operation {
             Operation::TraceGlobalMem(..) => false,
             Operation::PackVariant(_, _, _, _) => false,
             Operation::UnpackVariant(_, _, _, _, _) => false,
+            Operation::Quantifier(qt, _, _, _) => qt.can_abort(),
         }
     }
 
@@ -380,7 +490,6 @@ pub enum PropKind {
 /// jump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbortAction {
-    Jump(Label, TempIndex),
     Check,
 }
 
@@ -452,10 +561,7 @@ impl Bytecode {
     }
 
     pub fn is_conditional_branch(&self) -> bool {
-        matches!(
-            self,
-            Bytecode::Branch(..) | Bytecode::Call(_, _, _, _, Some(_))
-        )
+        matches!(self, Bytecode::Branch(..))
     }
 
     pub fn is_branch(&self) -> bool {
@@ -466,10 +572,7 @@ impl Bytecode {
     pub fn branch_dests(&self) -> Vec<Label> {
         match self {
             Bytecode::Branch(_, then_label, else_label, _) => vec![*then_label, *else_label],
-            Bytecode::Jump(_, label)
-            | Bytecode::Call(_, _, _, _, Some(AbortAction::Jump(label, _))) => {
-                vec![*label]
-            }
+            Bytecode::Jump(_, label) => vec![*label],
             Bytecode::VariantSwitch(_, _, dests) => dests.clone(),
             _ => vec![],
         }
@@ -497,30 +600,16 @@ impl Bytecode {
         let mut v = vec![];
         if !bytecode.is_branch() {
             // Fall through situation, just return the next pc.
-            v.push(pc + 1);
+            if pc + 1 < code.len() as CodeOffset {
+                v.push(pc + 1);
+            }
         } else {
             for label in bytecode.branch_dests() {
                 v.push(*label_offsets.get(&label).expect("label defined"));
             }
-            if matches!(bytecode, Bytecode::Call(_, _, _, _, Some(_))) {
-                // Falls through.
-                v.push(pc + 1);
-            }
         }
-        // always give successors in ascending order
-        if v.len() > 1 && v[0] > v[1] {
-            v.swap(0, 1);
-        }
-        v
-    }
 
-    /// Returns the code offsets at which the code exits(aborts or returns).
-    pub fn get_exits(code: &[Bytecode]) -> Vec<CodeOffset> {
-        code.iter()
-            .enumerate()
-            .filter(|(_, bytecode)| bytecode.is_exit())
-            .map(|(idx, _)| idx as CodeOffset)
-            .collect()
+        v
     }
 
     /// Remaps variables in the instruction.
@@ -555,11 +644,6 @@ impl Bytecode {
         let map = |is_src: bool, f: &mut F, v: Vec<TempIndex>| -> Vec<TempIndex> {
             v.into_iter().map(|i| f(is_src, i)).collect()
         };
-        let map_abort = |f: &mut F, aa: Option<AbortAction>| match aa {
-            Some(AbortAction::Jump(l, code)) => Some(AbortAction::Jump(l, f(false, code))),
-            Some(AbortAction::Check) => Some(AbortAction::Check),
-            None => None,
-        };
         let map_node = |f: &mut F, node: BorrowNode| match node {
             LocalRoot(tmp) => LocalRoot(f(true, tmp)),
             Reference(tmp) => Reference(f(true, tmp)),
@@ -573,22 +657,18 @@ impl Bytecode {
                 vec![],
                 WriteBack(map_node(f, node), edge),
                 map(true, f, srcs),
-                map_abort(f, aa),
+                aa,
             ),
             Call(attr, dests, IsParent(node, edge), srcs, aa) => Call(
                 attr,
                 map(false, f, dests),
                 IsParent(map_node(f, node), edge),
                 map(true, f, srcs),
-                map_abort(f, aa),
+                aa,
             ),
-            Call(attr, dests, op, srcs, aa) => Call(
-                attr,
-                map(false, f, dests),
-                op,
-                map(true, f, srcs),
-                map_abort(f, aa),
-            ),
+            Call(attr, dests, op, srcs, aa) => {
+                Call(attr, map(false, f, dests), op, map(true, f, srcs), aa)
+            }
             Ret(attr, rets) => Ret(attr, map(true, f, rets)),
             Branch(attr, if_label, else_label, cond) => {
                 Branch(attr, if_label, else_label, f(true, cond))
@@ -717,12 +797,6 @@ impl Bytecode {
         use BorrowNode::*;
         use Bytecode::*;
         use Operation::*;
-        let add_abort = |mut res: Vec<TempIndex>, aa: &Option<AbortAction>| {
-            if let Some(AbortAction::Jump(_, dest)) = aa {
-                res.push(*dest)
-            }
-            res
-        };
 
         match self {
             Assign(_, dest, _, _) => {
@@ -738,19 +812,19 @@ impl Bytecode {
                 // constants can only be values, hence no modifications on the reference
                 (vec![*dest], vec![])
             }
-            Call(_, _, Operation::WriteBack(LocalRoot(dest), ..), _, aa) => {
+            Call(_, _, Operation::WriteBack(LocalRoot(dest), ..), _, _) => {
                 // write-back to a local variable distorts the value
-                (add_abort(vec![*dest], aa), vec![])
+                (vec![*dest], vec![])
             }
-            Call(_, _, Operation::WriteBack(Reference(dest), ..), _, aa) => {
+            Call(_, _, Operation::WriteBack(Reference(dest), ..), _, _) => {
                 // write-back to a reference only distorts the value, but not the pointer itself
-                (add_abort(vec![], aa), vec![(*dest, false)])
+                (vec![], vec![(*dest, false)])
             }
-            Call(_, _, Operation::WriteRef, srcs, aa) => {
+            Call(_, _, Operation::WriteRef, srcs, _) => {
                 // write-ref only distorts the value of the reference, but not the pointer itself
-                (add_abort(vec![], aa), vec![(srcs[0], false)])
+                (vec![], vec![(srcs[0], false)])
             }
-            Call(_, dests, Function(..), srcs, aa) => {
+            Call(_, dests, Function(..), srcs, _) => {
                 let mut val_targets = vec![];
                 let mut mut_targets = vec![];
                 for src in srcs {
@@ -768,10 +842,10 @@ impl Bytecode {
                         val_targets.push(*dest);
                     }
                 }
-                (add_abort(val_targets, aa), mut_targets)
+                (val_targets, mut_targets)
             }
             // *** Double-check that this is in Wolfgang's code
-            Call(_, dests, _, _, aa) => {
+            Call(_, dests, _, _, _) => {
                 let mut val_targets = vec![];
                 let mut mut_targets = vec![];
                 for dest in dests {
@@ -783,7 +857,7 @@ impl Bytecode {
                         val_targets.push(*dest);
                     }
                 }
-                (add_abort(val_targets, aa), mut_targets)
+                (val_targets, mut_targets)
             }
             _ => (vec![], vec![]),
         }
@@ -835,6 +909,39 @@ impl Bytecode {
             _ => self.clone(),
         }
     }
+
+    pub fn replace_cast_with_assign(&self) -> Self {
+        use Bytecode::*;
+        use Operation::*;
+        if let Call(attr_id, dests, op, srcs, aa) = self {
+            if matches!(
+                op,
+                CastU8 | CastU16 | CastU32 | CastU64 | CastU128 | CastU256
+            ) {
+                return Assign(*attr_id, dests[0], srcs[0], AssignKind::Store);
+            }
+        }
+        self.clone()
+    }
+
+    pub fn get_called_function(&self) -> Option<QualifiedId<FunId>> {
+        if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = self {
+            Some(mid.qualified(*fid))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_called_functions<'a>(
+        code: &'a [Bytecode],
+    ) -> impl Iterator<Item = QualifiedId<FunId>> + 'a {
+        code.iter().filter_map(|bc| bc.get_called_function())
+    }
+
+    pub fn calls_function(code: &[Bytecode], fun_qid: &QualifiedId<FunId>) -> bool {
+        code.iter()
+            .any(|bc| bc.get_called_function() == Some(*fun_qid))
+    }
 }
 
 // =================================================================================================
@@ -883,14 +990,6 @@ impl fmt::Display for BytecodeDisplay<'_> {
                 write!(f, "{}", oper.display(self.func_target))?;
                 self.fmt_locals(f, args, true)?;
                 match aa {
-                    Some(AbortAction::Jump(label, code)) => {
-                        write!(
-                            f,
-                            " on_abort goto {} with {}",
-                            self.label_str(*label),
-                            self.lstr(*code)
-                        )?;
-                    }
                     Some(AbortAction::Check) => {
                         write!(f, "no_abort check")?;
                     }
@@ -1247,6 +1346,8 @@ impl fmt::Display for OperationDisplay<'_> {
             EmitEvent => write!(f, "emit_event")?,
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
+            IfThenElse => write!(f, "if_then_else")?,
+            Quantifier(qt, _, _, _) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
     }

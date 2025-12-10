@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 275
+expression: output
+---
+exiting with bytecode transformation errors
+error: Consider avoiding functions with specs in datatype invariants
+   ┌─ tests/inputs/spec_well_formed/spec_well_formed_datatype_inv_spec.fail.move:9:1
+   │  
+ 9 │ ╭ fun S_inv(self: &S): bool {
+10 │ │     self.get_y() > 0
+11 │ │ }
+   │ ╰─^

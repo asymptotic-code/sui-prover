@@ -1,0 +1,37 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/find_find_index_range.fail.move:36:5
+   │
+36 │     ensures(*option::borrow(&idx) == 0); // FAIL: should be 2
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/find_find_index_range.fail.move:31: test_find_index_range_wrong_index
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/find_find_index_range.fail.move:26:5
+   │
+26 │     ensures(option::is_none(result)); // FAIL: should be some
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/find_find_index_range.fail.move:22: test_find_range_wrong_value
+
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_find_find_index_range_fail_x_is_10$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 10;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}
+function {:inline} $42_quantifiers_find_find_index_range_fail_x_is_20$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 20;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}
