@@ -233,7 +233,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
         // Remove functions from targets (remove entire function entry, not just variants)
         for fun_id in functions_to_remove {
-            let fun_name = env.get_function(fun_id).get_full_name_str();
             targets.remove_target(&fun_id);
         }
     }

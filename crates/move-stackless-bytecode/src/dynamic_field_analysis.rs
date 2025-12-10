@@ -368,7 +368,13 @@ fn collect_dynamic_field_info(
                     .get_data(fun_id_with_info, &FunctionVariant::Baseline)
                     .map(|data| get_fun_info(data))
                     .expect(&format!(
-                        "callee `{}` was filtered out",
+                        "callee `{}` of `{}` was filtered out",
+                        builder
+                            .fun_env
+                            .module_env
+                            .env
+                            .get_function(*fun_id_with_info)
+                            .get_full_name_str(),
                         builder.fun_env.get_full_name_str()
                     ));
                 Some(info.instantiate(type_inst))
