@@ -1,0 +1,28 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 276
+expression: output
+---
+Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_complex_usage_invariant_expression$pure(_$t0: int, _$t1: int, _$t2: Vec (int), _$t3: Vec (int)) returns ($ret0: bool)
+{
+    (var $t5 := (_$t0 <= _$t1);
+    (var $t6 := $1_vector_length'u8'(_$t2);
+    (var $t7 := (_$t0 < $t6);
+    (var $t8 := $1_vector_length'u8'(_$t3);
+    (var $t9 := (_$t1 < $t8);
+    (var $t10 := ReadVec(_$t2, _$t0);
+    (var $t11 := ReadVec(_$t3, _$t1);
+    (var $t12 := ($t10 > $t11);
+    (var $t13 := false;
+    (var $t4 := $t13;
+    (var $t14 := false;
+    (var $t4 := $t14;
+    (var $t15 := false;
+    (var $t4 := $t15;
+    (var $t16 := (if $t9 then $t12 else $t4);
+    $t16)))))))))))))))
+}

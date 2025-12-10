@@ -33,7 +33,7 @@ impl CleanAndOptimizeProcessor {
 impl FunctionTargetProcessor for CleanAndOptimizeProcessor {
     fn process(
         &self,
-        _targets: &mut FunctionTargetsHolder,
+        targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
@@ -44,7 +44,7 @@ impl FunctionTargetProcessor for CleanAndOptimizeProcessor {
         }
 
         // Run optimizer
-        let options = ProverOptions::get(func_env.module_env.env);
+        let options = targets.prover_options();
         let instrs = std::mem::take(&mut data.code);
         let new_instrs = Optimizer {
             options: &options,

@@ -46,135 +46,166 @@ procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y:
 
 {%- if options.bv_int_encoding -%}
 
-procedure {:inline 1} $1_integer_from_u8(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u8(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_from_u16(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u16(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_from_u32(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u32(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_from_u64(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u64(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_from_u128(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u128(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_from_u256(x: int) returns (y: int) {
-    y := x;
+function {:inline} $1_integer_from_u256(x: int): int {
+    x
 }
-procedure {:inline 1} $1_integer_to_u8(x: int) returns (y: int) {
-    y := x mod 256;
+function {:inline} $1_integer_to_u8(x: int): int {
+    x mod 256
 }
-procedure {:inline 1} $1_integer_to_u16(x: int) returns (y: int) {
-    y := x mod 65536;
+function {:inline} $1_integer_to_u16(x: int): int {
+    x mod 65536
 }
-procedure {:inline 1} $1_integer_to_u32(x: int) returns (y: int) {
-    y := x mod 4294967296;
+function {:inline} $1_integer_to_u32(x: int): int {
+    x mod 4294967296
 }
-procedure {:inline 1} $1_integer_to_u64(x: int) returns (y: int) {
-    y := x mod 18446744073709551616;
+function {:inline} $1_integer_to_u64(x: int): int {
+    x mod 18446744073709551616
 }
-procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: int) {
-    y := x mod 340282366920938463463374607431768211456;
+function {:inline} $1_integer_to_u128(x: int): int {
+    x mod 340282366920938463463374607431768211456
 }
-procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: int) {
-    y := x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936;
+function {:inline} $1_integer_to_u256(x: int): int {
+    x mod 115792089237316195423570985008687907853269984665640564039457584007913129639936
 }
 
 {%- else %}
 
-procedure {:inline 1} $1_integer_from_u8(x: bv8) returns (y: int) {
-    y := $bv2int.8(x);
+function {:inline} $1_integer_from_u8(x: bv8): int {
+    $bv2int.8(x)
 }
-procedure {:inline 1} $1_integer_from_u16(x: bv16) returns (y: int) {
-    y := $bv2int.16(x);
+
+function {:inline} $1_integer_from_u16(x: bv16): int {
+    $bv2int.16(x)
 }
-procedure {:inline 1} $1_integer_from_u32(x: bv32) returns (y: int) {
-    y := $bv2int.32(x);
+
+function {:inline} $1_integer_from_u32(x: bv32): int {
+    $bv2int.32(x)
 }
-procedure {:inline 1} $1_integer_from_u64(x: bv64) returns (y: int) {
-    y := $bv2int.64(x);
+
+function {:inline} $1_integer_from_u64(x: bv64): int {
+    $bv2int.64(x)
 }
-procedure {:inline 1} $1_integer_from_u128(x: bv128) returns (y: int) {
-    y := $bv2int.128(x);
+
+function {:inline} $1_integer_from_u128(x: bv128): int {
+    $bv2int.128(x)
 }
-procedure {:inline 1} $1_integer_from_u256(x: bv256) returns (y: int) {
-    y := $bv2int.256(x);
+
+function {:inline} $1_integer_from_u256(x: bv256): int {
+    $bv2int.256(x)
 }
-procedure {:inline 1} $1_integer_to_u8(x: int) returns (y: bv8) {
-    y := $int2bv.8(x);
+
+function {:inline} $1_integer_to_u8(x: int): bv8 {
+    $int2bv.8(x)
 }
-procedure {:inline 1} $1_integer_to_u16(x: int) returns (y: bv16) {
-    y := $int2bv.16(x);
+
+function {:inline} $1_integer_to_u16(x: int): bv16 {
+    $int2bv.16(x)
 }
-procedure {:inline 1} $1_integer_to_u32(x: int) returns (y: bv32) {
-    y := $int2bv.32(x);
+
+function {:inline} $1_integer_to_u32(x: int): bv32 {
+    $int2bv.32(x)
 }
-procedure {:inline 1} $1_integer_to_u64(x: int) returns (y: bv64) {
-    y := $int2bv.64(x);
+
+function {:inline} $1_integer_to_u64(x: int): bv64 {
+    $int2bv.64(x)
 }
-procedure {:inline 1} $1_integer_to_u128(x: int) returns (y: bv128) {
-    y := $int2bv.128(x);
+
+function {:inline} $1_integer_to_u128(x: int): bv128 {
+    $int2bv.128(x)
 }
-procedure {:inline 1} $1_integer_to_u256(x: int) returns (y: bv256) {
-    y := $int2bv.256(x);
+
+function {:inline} $1_integer_to_u256(x: int): bv256 {
+    $int2bv.256(x)
 }
 
 {%- endif %}
 
-procedure {:inline 1} $1_integer_add(x: int, y: int) returns (z: int) {
-    z := x + y;
+function {:inline} $1_integer_add(x: int, y: int): int {
+    x + y
 }
-procedure {:inline 1} $1_integer_sub(x: int, y: int) returns (z: int) {
-    z := x - y;
+
+function {:inline} $1_integer_sub(x: int, y: int): int {
+    x - y
 }
-procedure {:inline 1} $1_integer_neg(x: int) returns (z: int) {
-    z := -x;
+
+function {:inline} $1_integer_neg(x: int): int {
+    -x
 }
-procedure {:inline 1} $1_integer_mul(x: int, y: int) returns (z: int) {
-    z := x * y;
+
+function {:inline} $1_integer_mul(x: int, y: int): int {
+    x * y
 }
-procedure {:inline 1} $1_integer_div(x: int, y: int) returns (z: int) {
-    z := x div y;
+
+function {:inline} $1_integer_div(x: int, y: int): int {
+    x div y
 }
-procedure {:inline 1} $1_integer_mod(x: int, y: int) returns (z: int) {
-    z := x mod y;
+
+function {:inline} $1_integer_mod(x: int, y: int): int {
+    x mod y
 }
-procedure {:inline 1} $1_integer_pow(x: int, y: int) returns (z: int) {
-    z := $pow(x, y);
+
+function {:inline} $1_integer_pow(x: int, y: int): int {
+    $pow(x, y)
 }
+
+function {:inline} $1_integer_sqrt(x: int): int {
+    $sqrt_int(x)
+}
+
 function $andInt(x: int, y: int) returns (int);
 function $orInt(x: int, y: int) returns (int);
 function $xorInt(x: int, y: int) returns (int);
 function $notInt(x: int) returns (int);
-procedure {:inline 1} $1_integer_bit_and(x: int, y: int) returns (z: int) {
-    z := $andInt(x, y);
+
+function {:inline} $1_integer_bit_and(x: int, y: int): int {
+    $andInt(x, y)
 }
-procedure {:inline 1} $1_integer_bit_or(x: int, y: int) returns (z: int) {
-    z := $orInt(x, y);
+
+function {:inline} $1_integer_bit_or(x: int, y: int): int {
+    $orInt(x, y)
 }
-procedure {:inline 1} $1_integer_bit_xor(x: int, y: int) returns (z: int) {
-    z := $xorInt(x, y);
+
+function {:inline} $1_integer_bit_xor(x: int, y: int): int {
+    $xorInt(x, y)
 }
-procedure {:inline 1} $1_integer_bit_not(x: int) returns (z: int) {
-    z := $notInt(x);
+
+function {:inline} $1_integer_bit_not(x: int): int {
+    $notInt(x)
 }
-procedure {:inline 1} $1_integer_lt(x: int, y: int) returns (z: bool) {
-    z := x < y;
+
+function {:inline} $1_integer_lt(x: int, y: int): bool {
+    x < y
 }
-procedure {:inline 1} $1_integer_gt(x: int, y: int) returns (z: bool) {
-    z := x > y;
+
+function {:inline} $1_integer_gt(x: int, y: int): bool {
+    x > y
 }
-procedure {:inline 1} $1_integer_lte(x: int, y: int) returns (z: bool) {
-    z := x <= y;
+
+function {:inline} $1_integer_lte(x: int, y: int): bool {
+    x <= y
 }
-procedure {:inline 1} $1_integer_gte(x: int, y: int) returns (z: bool) {
-    z := x >= y;
+
+function {:inline} $1_integer_gte(x: int, y: int): bool {
+    x >= y
 }
-procedure {:inline 1} $1_integer_div_real(x: int, y: int) returns (z: real) {
-    z := x / y;
+
+function {:inline} $1_integer_div_real(x: int, y: int): real {
+    x / y
 }
 
 function $to_u8(x: int): int {
@@ -246,45 +277,68 @@ function {:inline} $IsValid'$1_real_Real'(x: real): bool {
 function {:inline} $IsEqual'$1_real_Real'(x: real, y: real): bool {
     x == y
 }
-procedure {:inline 1} $0_prover_type_inv'$1_real_Real'(x: real) returns (y: bool) {
-    y := true;
+
+function {:inline} $0_prover_type_inv'$1_real_Real'(x: real): bool {
+    true
 }
-procedure {:inline 1} $1_real_from_integer(x: int) returns (y: real) {
-    y := real(x);
+
+function {:inline} $1_real_from_integer(x: int): real {
+    real(x)
 }
-procedure {:inline 1} $1_real_to_integer(x: real) returns (y: int) {
-    y := int(x);
+
+function {:inline} $1_real_to_integer(x: real): int {
+    int(x)
 }
-procedure {:inline 1} $1_real_add(x: real, y: real) returns (z: real) {
-    z := x + y;
+
+function {:inline} $1_real_add(x: real, y: real): real {
+    x + y
 }
-procedure {:inline 1} $1_real_sub(x: real, y: real) returns (z: real) {
-    z := x - y;
+
+function {:inline} $1_real_sub(x: real, y: real): real {
+    x - y
 }
-procedure {:inline 1} $1_real_neg(x: real) returns (z: real) {
-    z := -x;
+
+function {:inline} $1_real_neg(x: real): real {
+    -x
 }
-procedure {:inline 1} $1_real_mul(x: real, y: real) returns (z: real) {
-    z := x * y;
+
+function {:inline} $1_real_mul(x: real, y: real): real {
+    x * y
 }
-procedure {:inline 1} $1_real_div(x: real, y: real) returns (z: real) {
-    z := x / y;
+
+function {:inline} $1_real_div(x: real, y: real): real {
+    x / y
 }
-procedure {:inline 1} $1_real_exp(x: real, y: real) returns (z: real) {
-    z := x ** y;
+
+function {:inline} $1_real_exp(x: real, y: int): real {
+    // simplifications
+    if y == 0 then 1.0
+    else if y == 1 || y == -1 then x
+    else if y == 2 then x * x
+    else if y == 3 then x * x * x
+    else $pow_real(x, y)
 }
-procedure {:inline 1} $1_real_lt(x: real, y: real) returns (z: bool) {
-    z := x < y;
+
+function {:inline} $1_real_lt(x: real, y: real): bool {
+    x < y
 }
-procedure {:inline 1} $1_real_gt(x: real, y: real) returns (z: bool) {
-    z := x > y;
+
+function {:inline} $1_real_gt(x: real, y: real): bool {
+    x > y
 }
-procedure {:inline 1} $1_real_lte(x: real, y: real) returns (z: bool) {
-    z := x <= y;
+
+function {:inline} $1_real_lte(x: real, y: real): bool {
+    x <= y
 }
-procedure {:inline 1} $1_real_gte(x: real, y: real) returns (z: bool) {
-    z := x >= y;
+
+function {:inline} $1_real_gte(x: real, y: real): bool {
+    x >= y
 }
+
+function {:inline} $1_real_sqrt(x: real): real {
+    $sqrt_real(x)
+}
+
 
 // temporary stuff
 procedure {:inline 1} $0_prover_requires_begin() {}
@@ -965,6 +1019,15 @@ function $pow(n: int, e: int): int {
     else $undefined_int()
 }
 
+function $pow_real(n: real, e: int): real {
+    if n == 0.0 then 0.0
+    else (
+        if e == 0 then 1.0
+        else if e > 0 then n * $pow_real(n, e - 1)
+        else 1.0 / $pow_real(n, -e)
+    )
+}
+
 function $shl(src1: int, p: int): int {
     src1 * $pow(2, p)
 }
@@ -996,6 +1059,34 @@ function $shlU256(src1: int, p: int): int {
 function $shr(src1: int, p: int): int {
     src1 div $pow(2, p)
 }
+
+// Integer 2 root function (floor)
+// $sqrt_int(x) returns the largest integer r such that r^2 <= x
+// i.e., floor(x^(1/2))
+// Undefined for x < 0
+function $sqrt_int(x: int): int;
+
+// Core axioms for $sqrt_int (these uniquely define the function)
+axiom (forall x: int :: x >= 0 ==> $sqrt_int(x) >= 0);
+axiom (forall x: int :: x >= 0 ==> $sqrt_int(x) * $sqrt_int(x) <= x);
+axiom (forall x: int :: x >= 0 ==> ($sqrt_int(x) + 1) * ($sqrt_int(x) + 1) > x);
+
+// Edge case axioms for $sqrt_int (derived, but help SMT solver)
+axiom $sqrt_int(0) == 0;
+axiom $sqrt_int(1) == 1;
+
+// Real 2 root function
+// $sqrt_real(x, 2) returns x^(1/2) - the 2-th root of x
+// Undefined for x < 0
+function $sqrt_real(x: real): real;
+
+// Core axioms for $sqrt_real
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x) >= 0.0);
+axiom (forall x: real :: x >= 0.0 ==> $sqrt_real(x) * $sqrt_real(x) == x);
+
+// Edge case axioms for $sqrt_real
+axiom $sqrt_real(0.0) == 0.0;
+axiom $sqrt_real(1.0) == 1.0;
 
 // We need to know the size of the destination in order to drop bits
 // that have been shifted left more than that, so we have $ShlU8/16/32/64/128/256
@@ -1325,6 +1416,17 @@ procedure {:inline 1} $Not(src: bool) returns (dst: bool)
 
 // Pack and Unpack are auto-generated for each type T
 
+// ==================================================================================
+// Native Option
+
+{%- for instance in option_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native Option implementation for element type `{{instance.suffix}}`
+
+{{ native::option_module(instance=instance) -}}
+{%- endfor %}
+
 
 // ==================================================================================
 // Native Vector
@@ -1350,6 +1452,17 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 // Native VecSet implementation for element type `{{instance.suffix}}`
 
 {{ native::vec_set_module(instance=instance) -}}
+{%- endfor %}
+
+// ==================================================================================
+// Native TableVec
+
+{%- for instance in table_vec_instances %}
+
+// ----------------------------------------------------------------------------------
+// Native TableVec implementation for element type `{{instance.suffix}}`
+
+{{ native::table_vec_module(instance=instance) -}}
 {%- endfor %}
 
 // ==================================================================================
@@ -1400,6 +1513,14 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 
 {{ native::dynamic_field_module(impl=impl, instance=instance) -}}
 {%- endfor %}
+
+{%- for instance in impl.key_insts %}
+
+// ----------------------------------------------------------------------------------
+// Native dynamic fields implementation for key type `({{instance.suffix}})`
+
+{{ native::dynamic_field_key_module(impl=impl, instance=instance) -}}
+{%- endfor %}
 {%- endfor %}
 
 // ==================================================================================
@@ -1447,26 +1568,6 @@ ensures LenVec(res) == 32;               // result is 32 bytes.
 function {:inline} $1_hash_$sha3_256(val: Vec int): Vec int {
     $1_hash_sha3(val)
 }
-
-// ==================================================================================
-// Native string
-
-// TODO: correct implementation of strings
-
-procedure {:inline 1} $1_string_internal_check_utf8(x: Vec int) returns (r: bool) {
-}
-
-procedure {:inline 1} $1_string_internal_sub_string(x: Vec int, i: int, j: int) returns (r: Vec int) {
-}
-
-procedure {:inline 1} $1_string_internal_index_of(x: Vec int, y: Vec int) returns (r: int) {
-}
-
-procedure {:inline 1} $1_string_internal_is_char_boundary(x: Vec int, i: int) returns (r: bool) {
-}
-
-
-
 
 // ==================================================================================
 // Native diem_account

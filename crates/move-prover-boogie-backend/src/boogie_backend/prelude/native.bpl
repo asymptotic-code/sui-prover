@@ -2,6 +2,21 @@
    SPDX-License-Identifier: Apache-2.0
 #}
 
+{# Option
+   =======
+#}
+
+{% macro option_module(instance) %}
+{%- set T = instance.name -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+function $IsValid'$1_option_Option{{S}}'(opt: $1_option_Option{{S}}): bool {
+    $IsValid'vec{{S}}'(opt->$vec) &&
+    (LenVec(opt->$vec) == 0 || LenVec(opt->$vec) == 1)
+}
+
+{% endmacro option_module %}
+
 {# Vectors
    =======
 #}
@@ -79,20 +94,16 @@ function {:inline} $EmptyVec{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
 
-procedure {:inline 1} $1_vector_empty{{S}}() returns (v: Vec ({{T}})) {
-    v := EmptyVec();
-}
-
-function {:inline} $1_vector_$empty{{S}}(): Vec ({{T}}) {
+function {:inline} $1_vector_empty{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
 
-procedure {:inline 1} $1_vector_is_empty{{S}}(v: Vec ({{T}})) returns (b: bool) {
-    b := IsEmptyVec(v);
+function {:inline} $1_vector_is_empty{{S}}(v: Vec ({{T}})): bool {
+    IsEmptyVec(v)
 }
 
-procedure {:inline 1} $1_vector_push_back{{S}}(m: $Mutation (Vec ({{T}})), val: {{T}}) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ExtendVec($Dereference(m), val));
+function {:inline} $1_vector_push_back{{S}}(m: $Mutation (Vec ({{T}})), val: {{T}}): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ExtendVec($Dereference(m), val))
 }
 
 function {:inline} $1_vector_$push_back{{S}}(v: Vec ({{T}}), val: {{T}}): Vec ({{T}}) {
@@ -112,16 +123,16 @@ procedure {:inline 1} $1_vector_pop_back{{S}}(m: $Mutation (Vec ({{T}}))) return
     m' := $UpdateMutation(m, RemoveVec(v));
 }
 
-procedure {:inline 1} $1_vector_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ConcatVec($Dereference(m), other));
+function {:inline} $1_vector_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ConcatVec($Dereference(m), other))
 }
 
-procedure {:inline 1} $1_vector_reverse{{S}}(m: $Mutation (Vec ({{T}}))) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ReverseVec($Dereference(m)));
+function {:inline} $1_vector_reverse{{S}}(m: $Mutation (Vec ({{T}}))): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ReverseVec($Dereference(m)))
 }
 
-procedure {:inline 1} $1_vector_reverse_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})) returns (m': $Mutation (Vec ({{T}}))) {
-    m' := $UpdateMutation(m, ConcatVec($Dereference(m), ReverseVec(other)));
+function {:inline} $1_vector_reverse_append{{S}}(m: $Mutation (Vec ({{T}})), other: Vec ({{T}})): $Mutation (Vec ({{T}})) {
+    $UpdateMutation(m, ConcatVec($Dereference(m), ReverseVec(other)))
 }
 
 procedure {:inline 1} $1_vector_trim_reverse{{S}}(m: $Mutation (Vec ({{T}})), new_len: int) returns (v: (Vec ({{T}})), m': $Mutation (Vec ({{T}}))) {
@@ -231,11 +242,7 @@ procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), i: int, 
     }
 }
 
-procedure {:inline 1} $1_vector_length{{S}}(v: Vec ({{T}})) returns (l: int) {
-    l := LenVec(v);
-}
-
-function {:inline} $1_vector_$length{{S}}(v: Vec ({{T}})): int {
+function {:inline} $1_vector_length{{S}}(v: Vec ({{T}})): int {
     LenVec(v)
 }
 
@@ -364,6 +371,90 @@ procedure {:inline 1} $1_vector_skip{{S}}(v: Vec ({{T}}), n: int) returns (res: 
 function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
+
+procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
+    res := SliceVec(v, start, end);
+}
+
+{%- if instance.is_number -%}
+{%- if include_vec_sum -%}
+
+function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
+
+{%- if instance.is_bv -%}
+{# Different axioms for bit vectors #}
+
+// the sum over an empty range is zero
+axiom (forall v: Vec ({{T}}), start: int, end: int ::
+      { $0_vec_$sum{{S}}(v, start, end)}
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv{{instance.bit_width}}));
+
+// the sum of a range can be split in two
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
+  0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
+    $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
+
+// the sum over a singleton range is the vector element there
+axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+  { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
+  0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
+
+// for vectors nested ranges have sums bounded by the larger
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+    $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+
+// equal vectors have equal sums over the same range
+axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  $IsEqual'vec{{S}}'(u, v) &&
+   0 <= from && from <= to && to <= LenVec(u) ==>
+   $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+{%- else -%}
+
+// the sum over an empty range is zero
+axiom (forall v: Vec ({{T}}), start: int, end: int ::
+      { $0_vec_$sum{{S}}(v, start, end)}
+   (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0));
+
+// the sum of a range can be split in two
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
+  0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
+    $0_vec_$sum{{S}}(v, a, b) + $0_vec_$sum{{S}}(v, c, d) ==  $0_vec_$sum{{S}}(v, a, d)) ;
+
+// the sum over a singleton range is the vector element there
+axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+  { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
+  0 <= a && a < LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
+
+// for vectors nested ranges have sums bounded by the larger
+axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+  { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
+  $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
+    $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
+
+// equal vectors have equal sums over the same range
+axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  $IsEqual'vec{{S}}'(u, v) &&
+   0 <= from && from <= to && to <= LenVec(u) ==>
+   $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+{%- endif %}
+
+procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
+    res := $0_vec_$sum{{S}}(v, 0, LenVec(v));
+}
+
+procedure {:inline 1} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: {{T}}) {
+    res := $0_vec_$sum{{S}}(v, start, end);
+}
+
+{%- endif %}
+{%- endif %}
+
 {% endmacro vector_module %}
 
 {# VecSet
@@ -400,11 +491,11 @@ procedure {:inline 1} $2_vec_set_from_keys{{S}}(v: Vec ({{T}})) returns (res: $2
     res := $2_vec_set_VecSet{{S}}(v);
 }
 
-procedure {:inline 1} $2_vec_set_contains{{S}}(
+function {:inline} $2_vec_set_contains{{S}}(
     s: $2_vec_set_VecSet{{S}},
     e: {{T}}
-) returns (res: bool) {
-    res := $ContainsVec{{S}}(s->$contents, e);
+): bool {
+    $ContainsVec{{S}}(s->$contents, e)
 }
 
 procedure {:inline 1} $2_vec_set_remove{{S}}(
@@ -425,6 +516,22 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
 }
 
 {% endmacro vec_set_module %}
+
+{# TableVec
+   =======
+#}
+
+{% macro table_vec_module(instance) %}
+{%- set T = instance.name -%}
+{%- set T_S = instance.suffix -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+
+function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bool {
+    $IsValid'$2_table_Table'u64_{{T_S}}''(s->$contents) &&
+    (forall i: int :: (0 <= i && i < LenTable(s->$contents->$contents)) <==> ContainsTable(s->$contents->$contents, $EncodeKey'u64'(i)))
+}
+
+{% endmacro table_vec_module %}
 
 {# VecMap
    =======
@@ -448,19 +555,6 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
         (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
 
-procedure {:inline 1} $2_vec_map_get_idx_opt{{S}}(
-    m: $2_vec_map_VecMap{{S}},
-    k: {{K}}
-) returns (res: $1_option_Option'u64') {
-    var res0: int;
-    res0 := $IndexOfVecMap{{S}}(m->$contents, k);
-    if (res0 >= 0) {
-        res := $1_option_Option'u64'(MakeVec1(res0));
-    } else {
-        res := $1_option_Option'u64'(EmptyVec());
-    }
-}
-
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
 axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
     (var keys := $VecMapKeys{{S}}(v);
@@ -473,8 +567,8 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapValues{{S}}(v)}
      LenVec(values) == LenVec(v) &&
      (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{V_S}}(ReadVec(values, i), ReadVec(v, i)->$value))));
 
-procedure {:inline 1} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res: Vec ({{K}})) {
-    res := $VecMapKeys{{S}}(m->$contents);
+function {:inline} $2_vec_map_keys{{S}}(m: $2_vec_map_VecMap{{S}}): Vec ({{K}}) {
+    $VecMapKeys{{S}}(m->$contents)
 }
 
 procedure {:inline 1} $2_vec_map_into_keys_values{{S}}(m: $2_vec_map_VecMap{{S}}) returns (res0: Vec ({{K}}), res1: Vec ({{V}})) {
@@ -506,6 +600,60 @@ procedure {:inline 1} $2_vec_map_from_keys_values{{S}}(keys: Vec ({{K}}), values
         return;
     }
     res := $2_vec_map_VecMap{{S}}(entries);
+}
+
+procedure {:inline 1} $2_vec_map_remove{{S}}(m: $Mutation ($2_vec_map_VecMap{{S}}), key: {{K}}) returns (res0: {{K}}, res1: {{V}}, m': $Mutation ($2_vec_map_VecMap{{S}})) {
+    var idx: int;
+    var entry: $2_vec_map_Entry{{S}};
+    var v: Vec ($2_vec_map_Entry{{S}});
+
+    v := $Dereference(m)->$contents;
+
+    idx := $IndexOfVecMap{{S}}(v, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+    
+    entry := ReadVec(v, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+
+    m' := $UpdateMutation(m, $2_vec_map_VecMap{{S}}(RemoveAtVec(v, idx)));
+}
+
+function {:inline} $2_vec_map_contains{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): bool {
+    $ContainsVecMap{{S}}(vm->$contents, key)
+}
+
+procedure {:inline 1} $2_vec_map_get{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
+    var idx: int;
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+
+    res := ReadVec(vm->$contents, idx)->$value;
+}
+
+procedure {:inline 1} $2_vec_map_get_idx{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (idx: int) {
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    
+    if (idx < 0) {
+        call $ExecFailureAbort();
+        return;
+    }
+}
+
+function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $1_option_Option'u64' {
+    (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+     if idx >= 0 then
+         $1_option_Option'u64'(MakeVec1(idx))
+     else 
+         $1_option_Option'u64'(EmptyVec()))
 }
 
 {% endmacro vec_map_module %}
@@ -686,6 +834,10 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 }
 {%- endif %}
 
+{%- if impl.fun_drop != "" %}
+procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
+{%- endif %}
+
 {% endmacro table_module %}
 
 
@@ -699,11 +851,13 @@ procedure {:inline 2} {{impl.fun_destroy_empty}}{{S}}(t: {{Type}}{{S}}) {
 {%- set Type = impl.struct_name -%}
 {%- set Self = "Table int (" ~ V ~ ")" -%}
 {%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
+{%- set SK = "'" ~ instance.0.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
+{%- set DF_S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
 
 {%- if impl.fun_add != "" %}
-procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
+procedure {:inline 2} {{impl.fun_add}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -717,7 +871,7 @@ procedure {:inline 2} {{impl.fun_add}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}, v
 {%- endif %}
 
 {%- if impl.fun_borrow != "" %}
-procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
+procedure {:inline 2} {{impl.fun_borrow}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
     var enc_k: int;
     enc_k := {{ENC}}(k);
     if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
@@ -729,7 +883,7 @@ procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}, k: {{K}}) returns (v
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
-procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
+procedure {:inline 2} {{impl.fun_borrow_mut}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -744,7 +898,7 @@ procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}), k: {
 {%- endif %}
 
 {%- if impl.fun_remove != "" %}
-procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: {{V}}, m': $Mutation({{Type}})) {
+procedure {:inline 2} {{impl.fun_remove}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: {{V}}, m': $Mutation({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     enc_k := {{ENC}}(k);
@@ -759,13 +913,33 @@ procedure {:inline 2} {{impl.fun_remove}}{{S}}(m: $Mutation ({{Type}}), k: {{K}}
 {%- endif %}
 
 {%- if impl.fun_exists_with_type != "" %}
-procedure {:inline 2} {{impl.fun_exists_with_type}}{{S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
+procedure {:inline 2} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
     r := ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
 }
 {%- endif %}
 
+{%- if impl.fun_exists != "" %}
+axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
+   ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k)) ==> {{impl.fun_exists_inner}}{{SK}}(t, k));
+{%- endif %}
+
 {% endmacro dynamic_field_module %}
 
+{% macro dynamic_field_key_module(impl, instance) %}
+{%- set Type = impl.struct_name -%}
+{%- set T = instance.name -%}
+{%- set S = "'" ~ instance.suffix ~ "'" -%}
+{%- set DF_S = "'" ~ instance.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
+
+{%- if impl.fun_exists != "" %}
+function {{impl.fun_exists_inner}}{{DF_S}}(t: ({{Type}}), k: {{T}}): bool;
+
+procedure {:inline 2} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}) returns (r: bool) {
+    r := {{impl.fun_exists_inner}}{{DF_S}}(t, k);
+}
+{%- endif %}
+
+{% endmacro dynamic_field_key_module %}
 
 {# BCS
    ====
@@ -792,10 +966,7 @@ axiom (forall v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
                             LenVec(r) <= {{options.serialize_bound}} ));
 {% endif %}
 
-procedure $1_bcs_to_bytes{{S}}(v: {{T}}) returns (res: Vec int);
-ensures res == $1_bcs_serialize{{S}}(v);
-
-function {:inline} $1_bcs_$to_bytes{{S}}(v: {{T}}): Vec int {
+function {:inline} $1_bcs_to_bytes{{S}}(v: {{T}}): Vec int {
     $1_bcs_serialize{{S}}(v)
 }
 

@@ -3,15 +3,17 @@ use std::path::PathBuf;
 use clap::*;
 use colored::Colorize;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use prove::{GeneralConfig, BuildConfig, execute};
+use prove::{execute, BuildConfig, GeneralConfig};
+use remote_config::RemoteConfig;
 use tracing::debug;
 
-mod prove;
+mod build_model;
+mod legacy_builder;
 mod llm_explain;
 mod prompts;
-mod legacy_builder;
+mod prove;
+mod remote_config;
 mod system_dependencies;
-mod build_model;
 
 #[derive(Parser)]
 #[clap(
@@ -21,7 +23,7 @@ mod build_model;
     author,
     version = env!("CARGO_PKG_VERSION"),
 )]
-struct Args {
+pub struct Args {
     /// Path to package directory with a Move.toml inside
     #[clap(long = "path", short = 'p', global = true)]
     pub package_path: Option<PathBuf>,
@@ -41,6 +43,10 @@ struct Args {
     /// Filtering options
     #[clap(flatten)]
     pub filter_config: TargetFilterOptions,
+
+    /// Remote prover options
+    #[clap(flatten)]
+    pub remote_config: RemoteConfig,
 }
 
 #[tokio::main]
@@ -59,13 +65,19 @@ async fn main() {
 
     debug!("Sui-Prover CLI version: {}", env!("CARGO_PKG_VERSION"));
 
-    let result = execute(
-        args.package_path.as_deref(),
-        args.general_config,
-        args.build_config,
-        args.boogie_config,
-        args.filter_config,
-    ).await;
+    let result = if args.remote_config.cloud_config_create {
+        args.remote_config.create()
+    } else {
+        execute(
+            args.package_path.as_deref(),
+            args.general_config,
+            args.remote_config,
+            args.build_config,
+            args.boogie_config,
+            args.filter_config,
+        )
+        .await
+    };
 
     match result {
         Ok(_) => (),

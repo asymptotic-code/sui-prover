@@ -15,21 +15,26 @@ pub mod ast;
 pub mod borrow_analysis;
 pub mod clean_and_optimize;
 pub mod compositional_analysis;
+pub mod conditional_merge_insertion;
+pub mod control_flow_reconstruction;
 pub mod data_invariant_instrumentation;
 pub mod dataflow_analysis;
 pub mod dataflow_domains;
 pub mod debug_instrumentation;
+pub mod deterministic_analysis;
 pub mod dynamic_field_analysis;
 pub mod eliminate_imm_refs;
 pub mod escape_analysis;
 pub mod exp_generator;
 pub mod exp_rewriter;
 pub mod function_data_builder;
+pub mod function_stats;
 pub mod function_target;
 pub mod function_target_pipeline;
 pub mod global_invariant_analysis;
 pub mod global_invariant_instrumentation;
 pub mod graph;
+pub mod helpers;
 pub mod inconsistency_check;
 pub mod livevar_analysis;
 pub mod loop_analysis;
@@ -38,25 +43,31 @@ pub mod mono_analysis;
 pub mod move_loop_invariants;
 pub mod mut_ref_instrumentation;
 pub mod mutation_tester;
+pub mod no_abort_analysis;
 pub mod number_operation;
 pub mod number_operation_analysis;
 pub mod options;
+pub mod package_targets;
 pub mod packed_types_analysis;
 pub mod pipeline_factory;
+pub mod pure_function_analysis;
+pub mod quantifier_iterator_analysis;
 pub mod reaching_def_analysis;
+pub mod replacement_analysis;
 pub mod spec_global_variable_analysis;
+pub mod spec_hierarchy;
 pub mod spec_instrumentation;
+pub mod spec_purity_analysis;
 pub mod spec_translator;
+pub mod spec_well_formed_analysis;
 pub mod stackless_bytecode;
 pub mod stackless_bytecode_generator;
 pub mod stackless_control_flow_graph;
+pub mod target_filter;
 pub mod type_invariant_analysis;
 pub mod usage_analysis;
 pub mod verification_analysis;
 pub mod well_formed_instrumentation;
-pub mod spec_purity_analysis;
-pub mod spec_well_formed_analysis;
-pub mod target_filter;
 
 /// Print function targets for testing and debugging.
 pub fn print_targets_for_test(
@@ -71,6 +82,36 @@ pub fn print_targets_for_test(
             for (variant, target) in targets.get_targets(&func_env) {
                 if !target.data.code.is_empty() || target.func_env.is_native() {
                     target.register_annotation_formatters_for_test();
+                    writeln!(&mut text, "\n[variant {}]\n{}", variant, target).unwrap();
+                }
+            }
+        }
+    }
+    text
+}
+
+/// Variant of `print_targets_for_test` with toggles to select which annotations
+/// are rendered in-line with the printed bytecode (e.g., hide live vars by default
+/// for cleaner snapshot diffs).
+pub fn print_targets_for_test_with_flags(
+    env: &GlobalEnv,
+    header: &str,
+    targets: &FunctionTargetsHolder,
+    show_livevars: bool,
+    show_borrow: bool,
+    show_reach: bool,
+) -> String {
+    let mut text = String::new();
+    writeln!(&mut text, "============ {} ================", header).unwrap();
+    for module_env in env.get_modules() {
+        for func_env in module_env.get_functions() {
+            for (variant, target) in targets.get_targets(&func_env) {
+                if !target.data.code.is_empty() || target.func_env.is_native() {
+                    target.register_annotation_formatters_for_test_with_flags(
+                        show_livevars,
+                        show_borrow,
+                        show_reach,
+                    );
                     writeln!(&mut text, "\n[variant {}]\n{}", variant, target).unwrap();
                 }
             }

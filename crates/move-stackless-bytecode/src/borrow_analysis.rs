@@ -10,7 +10,7 @@ use itertools::Itertools;
 
 use move_binary_format::file_format::CodeOffset;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, QualifiedInstId, RefType},
+    model::{DatatypeId, FunctionEnv, GlobalEnv, QualifiedId, QualifiedInstId, RefType},
     ty::Type,
     well_known::{BORROW_CHILD_OBJECT_MUT, VECTOR_BORROW_MUT},
 };
@@ -19,13 +19,13 @@ use crate::{
     ast::TempIndex,
     dataflow_analysis::{DataflowAnalysis, TransferFunctions},
     dataflow_domains::{AbstractDomain, JoinResult, MapDomain, SetDomain},
-    dynamic_field_analysis,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     livevar_analysis::LiveVarAnnotation,
     spec_global_variable_analysis,
     stackless_bytecode::{AssignKind, BorrowEdge, BorrowNode, Bytecode, IndexEdgeKind, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
+    verification_analysis::VerificationInfo,
 };
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Default)]
@@ -51,6 +51,11 @@ pub struct WriteBackAction {
     pub edge: BorrowEdge,
 }
 
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub struct WriteBackDatatypeInfo {
+    pub datatypes: Vec<QualifiedId<DatatypeId>>,
+}
+
 impl BorrowInfo {
     /// Gets the children of this node.
     fn get_children(&self, node: &BorrowNode) -> Vec<&BorrowNode> {
@@ -61,7 +66,7 @@ impl BorrowInfo {
     }
 
     /// Gets the parents (together with the edges) of this node.
-    fn get_incoming(&self, node: &BorrowNode) -> Vec<&(BorrowNode, BorrowEdge)> {
+    pub fn get_incoming(&self, node: &BorrowNode) -> Vec<&(BorrowNode, BorrowEdge)> {
         self.borrows_from
             .get(node)
             .map(|s| s.iter().collect())
@@ -454,12 +459,51 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
         data
     }
 
-    fn finalize(&self, _env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+    fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         for (fun_id, variant) in targets.get_funs_and_variants().collect_vec() {
             if let Some(data) = targets.get_data_mut(&fun_id, &variant) {
                 data.annotations.remove::<LiveVarAnnotation>();
             }
         }
+
+        // collect all writeback datatypes from all verified or inlined functions
+        let writeback_datatype_info = WriteBackDatatypeInfo {
+            datatypes: targets
+                .get_funs_and_variants()
+                .flat_map(|(fun_id, variant)| targets.get_data(&fun_id, &variant))
+                .filter(|data| {
+                    let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
+                    verification_info.verified || verification_info.inlined
+                })
+                .flat_map(|data| {
+                    data.annotations
+                        .get::<BorrowAnnotation>()
+                        .unwrap()
+                        .code_map
+                        .values()
+                        .flat_map(|info| {
+                            info.before
+                                .dying_nodes(&info.after)
+                                .iter()
+                                .flat_map(|(_, actions)| actions)
+                                .flatten()
+                                .flat_map(|action| action.edge.flatten())
+                                .filter_map(|edge| match edge {
+                                    BorrowEdge::Field(qualified_inst_id, _)
+                                    | BorrowEdge::EnumField(qualified_inst_id, _, _)
+                                    | BorrowEdge::DynamicField(qualified_inst_id, _, _) => {
+                                        Some(qualified_inst_id.to_qualified_id())
+                                    }
+                                    BorrowEdge::Direct | BorrowEdge::Index(_) => None,
+                                    BorrowEdge::Hyper(borrow_edges) => unreachable!(),
+                                })
+                                .collect_vec()
+                        })
+                })
+                .unique()
+                .collect_vec(),
+        };
+        env.set_extension(writeback_datatype_info);
     }
 
     fn name(&self) -> String {
@@ -546,7 +590,7 @@ fn get_custom_annotation_or_none(
                 // TODO: use table for dynamic fields--is that what we wabt
                 Some(summarize_custom_borrow(IndexEdgeKind::Table, &[0], &[0]))
             } else if fun_env.is_well_known("dynamic_field::borrow_mut")
-                || fun_env.is_well_known("dynamic_field_object::borrow_mut")
+                || fun_env.is_well_known("dynamic_object_field::borrow_mut")
             {
                 let mut an = BorrowAnnotation::default();
                 let param_node = BorrowNode::Reference(0);

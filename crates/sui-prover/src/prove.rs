@@ -1,15 +1,28 @@
-use clap::Args;
-use move_compiler::{editions::{Edition, Flavor}, shared::known_attributes::ModeAttribute};
-use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
-use move_core_types::account_address::AccountAddress;
-use log::LevelFilter;
-use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use std::{collections::BTreeMap, path::{Path,PathBuf}};
-use codespan_reporting::term::termcolor::Buffer;
-use crate::{build_model::build_model};
+use crate::build_model::build_model;
 use crate::llm_explain::explain_err;
-
-use move_prover_boogie_backend::{generator::{run_boogie_gen, run_move_prover_with_model}, generator_options::{BoogieFileMode, Options}};
+use crate::remote_config::RemoteConfig;
+use clap::{Args, ValueEnum};
+use codespan_reporting::term::termcolor::Buffer;
+use log::LevelFilter;
+use move_compiler::editions::{Edition, Flavor};
+use move_compiler::shared::known_attributes::ModeAttribute;
+use move_core_types::account_address::AccountAddress;
+use move_model::model::GlobalEnv;
+use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
+use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
+use move_prover_boogie_backend::generator::create_and_process_bytecode;
+use move_prover_boogie_backend::generator::run_boogie_gen;
+use move_prover_boogie_backend::generator_options::Options;
+use move_stackless_bytecode::function_stats;
+use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
+use move_stackless_bytecode::package_targets::PackageTargets;
+use move_stackless_bytecode::spec_hierarchy;
+use move_stackless_bytecode::target_filter::TargetFilterOptions;
+use std::fmt::{Display, Formatter};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 impl From<BuildConfig> for MoveBuildConfig {
     fn from(config: BuildConfig) -> Self {
@@ -46,9 +59,17 @@ pub struct GeneralConfig {
     #[clap(name = "timeout", long, short = 't', global = true)]
     pub timeout: Option<usize>,
 
+    /// Force kill boogie process if boogie vc timeout is broken
+    #[clap(name = "force-timeout", long, global = true)]
+    pub force_timeout: bool,
+
     /// Don't delete temporary files after verification
     #[clap(name = "keep-temp", long, short = 'k', global = true)]
     pub keep_temp: bool,
+
+    /// Only generate Boogie code, without running the prover
+    #[clap(name = "generate-only", long, short = 'g', global = true)]
+    pub generate_only: bool,
 
     /// Display detailed verification progress
     #[clap(name = "verbose", long, short = 'v', global = true)]
@@ -58,7 +79,7 @@ pub struct GeneralConfig {
     #[clap(name = "no-counterexample-trace", long, global = true)]
     pub no_counterexample_trace: bool,
 
-    /// Explain the proving outputs via LLM 
+    /// Explain the proving outputs via LLM
     #[clap(name = "explain", long, global = true)]
     pub explain: bool,
 
@@ -77,6 +98,30 @@ pub struct GeneralConfig {
     /// Boogie running mode
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
+
+    /// Lean running mode
+    #[clap(name = "backend", long, global = true, default_value_t = BackendOptions::Boogie)]
+    pub backend: BackendOptions,
+
+    /// Dump bytecode to file
+    #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
+    pub dump_bytecode: bool,
+
+    /// Enable conditional merge insertion pass
+    #[clap(name = "enable-conditional-merge-insertion", long, global = true)]
+    pub enable_conditional_merge_insertion: bool,
+
+    /// Skip checking spec functions that do not abort
+    #[clap(name = "skip-spec-no-abort", long, global = true)]
+    pub skip_spec_no_abort: bool,
+
+    /// Dump control-flow graphs to file
+    #[clap(name = "stats", long, global = false)]
+    pub stats: bool,
+
+    /// Whether to enable CI mode for continuous integration environments
+    #[clap(name = "ci", long, global = false)]
+    pub ci: bool,
 }
 
 #[derive(Args, Default)]
@@ -116,32 +161,114 @@ pub struct BuildConfig {
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
 }
 
+#[derive(ValueEnum, Default, Clone)]
+pub enum BackendOptions {
+    #[default]
+    Boogie,
+    Lean,
+}
+
+impl Display for BackendOptions {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackendOptions::Boogie => write!(f, "boogie"),
+            BackendOptions::Lean => write!(f, "lean"),
+        }
+    }
+}
+
+pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: usize = 45;
+
 pub async fn execute(
     path: Option<&Path>,
-    general_config: GeneralConfig,
+    mut general_config: GeneralConfig,
+    remote_config: RemoteConfig,
     build_config: BuildConfig,
     boogie_config: Option<String>,
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
-    let mut options = Options::default();
+    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci);
+
+    general_config.skip_spec_no_abort = general_config.skip_spec_no_abort
+        || package_targets.has_focus_specs()
+        || filter.is_configured();
+
+    if general_config.stats {
+        function_stats::display_function_stats(&model, &package_targets);
+        return Ok(());
+    } else if general_config.dump_bytecode {
+        let mut options = move_prover_boogie_backend::generator_options::Options::default();
+        options.filter = filter.clone();
+        let (targets, _) = create_and_process_bytecode(
+            &options,
+            &model,
+            &package_targets,
+            FunctionHolderTarget::All,
+        );
+
+        let output_dir = std::path::Path::new(&options.output_path);
+        if !output_dir.exists() {
+            std::fs::create_dir_all(output_dir)?;
+        }
+
+        spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
+    }
+
+    if matches!(general_config.backend, BackendOptions::Boogie) {
+        execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
+    } else {
+        execute_backend_lean(model, &general_config).await
+    }
+}
+
+async fn execute_backend_boogie(
+    model: GlobalEnv,
+    general_config: &GeneralConfig,
+    remote_config: RemoteConfig,
+    boogie_config: Option<String>,
+    filter: TargetFilterOptions,
+) -> anyhow::Result<()> {
+    let mut options = move_prover_boogie_backend::generator_options::Options::default();
     // don't spawn async tasks when running Boogie--causes a crash if we do
     options.backend.sequential_task = true;
     options.backend.use_array_theory = general_config.use_array_theory;
     options.backend.keep_artifacts = general_config.keep_temp;
-    options.backend.vc_timeout = general_config.timeout.unwrap_or(3000);
+    options.backend.vc_timeout = general_config
+        .timeout
+        .unwrap_or(DEFAULT_EXECUTION_TIMEOUT_SECONDS);
     options.backend.path_split = general_config.split_paths;
     options.prover.bv_int_encoding = !general_config.no_bv_int_encoding;
+    options.backend.no_verify = general_config.generate_only;
     options.backend.bv_int_encoding = !general_config.no_bv_int_encoding;
-    options.verbosity_level = if general_config.verbose { LevelFilter::Trace } else { LevelFilter::Info };
+    options.verbosity_level = if general_config.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
     options.backend.string_options = boogie_config;
-    options.boogie_file_mode = general_config.boogie_file_mode;
+    options.backend.boogie_file_mode = general_config.boogie_file_mode.clone();
     options.backend.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
+    options.prover.dump_bytecode = general_config.dump_bytecode;
+    options.prover.enable_conditional_merge_insertion =
+        general_config.enable_conditional_merge_insertion;
+    options.remote = remote_config.to_config()?;
+    options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.backend.force_timeout = general_config.force_timeout;
+    options.backend.ci = general_config.ci;
+    options.prover.ci = general_config.ci;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
-        match run_move_prover_with_model(&model, &mut error_writer, options, None) {
+        match move_prover_boogie_backend::generator::run_move_prover_with_model(
+            &model,
+            &mut error_writer,
+            options,
+            None,
+        )
+        .await
+        {
             Ok(_) => {
                 let output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
                 println!("Output: {}", output);
@@ -152,9 +279,36 @@ pub async fn execute(
             }
         }
     } else {
-       let result_str = run_boogie_gen(&model, options)?;
-       println!("{}", result_str)
+        let result_str = run_boogie_gen(&model, options).await?;
+        println!("{}", result_str)
     }
 
+    Ok(())
+}
+
+async fn execute_backend_lean(
+    model: GlobalEnv,
+    _general_config: &GeneralConfig,
+) -> anyhow::Result<()> {
+    // Run bytecode transformation pipeline
+    let package_targets = PackageTargets::new(&model, Default::default(), true);
+    let (targets, _) = create_and_process_bytecode(
+        &Options::default(),
+        &model,
+        &package_targets,
+        FunctionHolderTarget::All,
+    );
+
+    // Determine output directory (use current working directory + output)
+    let output_dir = std::env::current_dir()?.join("output");
+
+    // Run Lean backend
+    println!("Generating Lean code...");
+    move_prover_lean_backend::run_backend(&model, &targets, &output_dir).await?;
+
+    println!(
+        "✓ Lean code generated successfully in {}",
+        output_dir.display()
+    );
     Ok(())
 }

@@ -10,7 +10,7 @@ module 0x43::foo_spec {
     use prover::prover::{ensures, requires};
     use 0x42::foo::inc;
 
-    #[spec(target = 0x42::foo::inc1)]
+    #[spec(target = 0x42::foo::inc1, prove)]
     public fun foo_spec(x: u64): u64 {
         requires(x < std::u64::max_value!());
         let res = inc(x);

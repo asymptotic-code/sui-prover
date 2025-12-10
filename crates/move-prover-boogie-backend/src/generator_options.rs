@@ -13,7 +13,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use clap::{Arg, Command, ValueEnum};
+use clap::{Arg, Command};
 use log::LevelFilter;
 use move_compiler::shared::NumericalAddress;
 use once_cell::sync::Lazy;
@@ -22,36 +22,20 @@ use simplelog::{
     CombinedLogger, Config, ConfigBuilder, LevelPadding, SimpleLogger, TermLogger, TerminalMode,
 };
 
+use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use codespan_reporting::diagnostic::Severity;
 use move_docgen::DocgenOptions;
-use move_model::{
-    model::VerificationScope, options::ModelBuilderOptions,
+use move_model::model::VerificationScope;
+use move_stackless_bytecode::{
+    options::{AutoTraceLevel, ProverOptions},
+    target_filter::TargetFilterOptions,
 };
-use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
-use move_stackless_bytecode::{options::{AutoTraceLevel, ProverOptions}, target_filter::TargetFilterOptions};
 
 /// Atomic used to prevent re-initialization of logging.
 static LOGGER_CONFIGURED: AtomicBool = AtomicBool::new(false);
 
 /// Atomic used to detect whether we are running in test mode.
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum BoogieFileMode {
-    Function,
-    Module,
-    All,
-}
-
-impl ToString for BoogieFileMode {
-    fn to_string(&self) -> String {
-        match self {
-            BoogieFileMode::Function => "function".to_string(),
-            BoogieFileMode::Module => "module".to_string(),
-            BoogieFileMode::All => "all".to_string(),
-        }
-    }
-}
 
 /// Represents options provided to the tool. Most of those options are configured via a toml
 /// source; some over the command line flags.
@@ -83,18 +67,16 @@ pub struct Options {
     pub experimental_pipeline: bool,
 
     /// BEGIN OF STRUCTURED OPTIONS. DO NOT ADD VALUE FIELDS AFTER THIS
-    /// Options for the model builder.
-    pub model_builder: ModelBuilderOptions,
     /// Options for the documentation generator.
     pub docgen: DocgenOptions,
     /// Options for the prover.
     pub prover: ProverOptions,
     /// Options for the prover backend.
     pub backend: BoogieOptions,
-    /// Boogie run mode
-    pub boogie_file_mode: BoogieFileMode,
     /// Filtering options
     pub filter: TargetFilterOptions,
+    /// Whether to run in remote mode
+    pub remote: Option<RemoteOptions>,
 }
 
 impl Default for Options {
@@ -108,18 +90,17 @@ impl Default for Options {
             move_sources: vec![],
             move_deps: vec![],
             move_named_address_values: vec![],
-            model_builder: ModelBuilderOptions::default(),
             prover: ProverOptions::default(),
             backend: BoogieOptions::default(),
             docgen: DocgenOptions::default(),
             experimental_pipeline: false,
-            boogie_file_mode: BoogieFileMode::Function,
             filter: TargetFilterOptions::default(),
+            remote: None,
         }
     }
 }
 
-pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(Options::default);
+pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(|| Options::default());
 
 impl Options {
     /// Creates options from toml configuration source.
@@ -726,9 +707,6 @@ impl Options {
                 .unwrap()
                 .parse::<usize>()?;
             options.backend.num_instances = std::cmp::max(num_instances, 1); // at least one instance
-        }
-        if matches.get_flag("sequential") {
-            options.prover.sequential_task = true;
         }
         if matches.get_flag("stable-test-output") {
             //options.prover.stable_test_output = true;

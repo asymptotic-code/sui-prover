@@ -15,9 +15,18 @@ pub struct TargetFilterOptions {
 }
 
 impl TargetFilterOptions {
+    pub fn is_configured(&self) -> bool {
+        self.modules.is_some() || self.functions.is_some()
+    }
+
     pub fn is_targeted(&self, func_env: &FunctionEnv) -> bool {
         if let Some(modules) = &self.modules {
-            let module_name = &func_env.module_env.get_name().name().display(func_env.module_env.env.symbol_pool()).to_string();
+            let module_name = &func_env
+                .module_env
+                .get_name()
+                .name()
+                .display(func_env.module_env.env.symbol_pool())
+                .to_string();
             if !modules.contains(&module_name) {
                 return false;
             }
@@ -37,7 +46,10 @@ impl TargetFilterOptions {
                 if !seen.insert(module) {
                     return Some(format!("Duplicate module `{}` found", module));
                 }
-                if env.find_module_by_name(env.symbol_pool().make(module)).is_none() {
+                if env
+                    .find_module_by_name(env.symbol_pool().make(module))
+                    .is_none()
+                {
                     return Some(format!("Module `{}` does not exist", module));
                 }
             }
@@ -47,7 +59,8 @@ impl TargetFilterOptions {
             let mut seen = HashSet::new();
 
             let available_modules: Vec<_> = match &self.modules {
-                Some(f_modules) => env.get_modules()
+                Some(f_modules) => env
+                    .get_modules()
                     .filter(|m| {
                         let name = m.get_name().name().display(env.symbol_pool()).to_string();
                         f_modules.contains(&name)
@@ -62,9 +75,9 @@ impl TargetFilterOptions {
                 }
 
                 let symbol = env.symbol_pool().make(function);
-                let found = available_modules.iter().any(|m| {
-                    env.find_function_by_name(m.get_id(), symbol).is_some()
-                });
+                let found = available_modules
+                    .iter()
+                    .any(|m| env.find_function_by_name(m.get_id(), symbol).is_some());
 
                 if !found {
                     return Some(format!("Function `{}` does not exist", function));

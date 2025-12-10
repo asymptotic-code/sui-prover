@@ -1,0 +1,31 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/count.fail.move:20:5
+   │
+20 │     ensures(count!<u64>(&v, |x| x_is_10(x)) == 3);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/count.fail.move:17: test_count_fail
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/count.fail.move:28:5
+   │
+28 │     ensures(count_range!<u64>(&v, 0, 2, |x| x_is_10(x)) == 2);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/count.fail.move:25: test_count_range_fail
+
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_count_fail_x_is_10$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 10;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}

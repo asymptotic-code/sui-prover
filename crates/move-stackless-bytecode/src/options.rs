@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use codespan_reporting::diagnostic::Severity;
-use move_model::model::{GlobalEnv, VerificationScope};
+use move_model::model::VerificationScope;
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
 pub enum AutoTraceLevel {
     Off,
     VerifiedFunction,
@@ -29,7 +28,7 @@ impl AutoTraceLevel {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
 #[serde(default, deny_unknown_fields)]
 pub struct ProverOptions {
     /// Whether to only generate backend code.
@@ -84,6 +83,8 @@ pub struct ProverOptions {
     pub for_interpretation: bool,
     /// Whether to skip loop analysis.
     pub skip_loop_analysis: bool,
+    /// Whether to enable conditional merge insertion.
+    pub enable_conditional_merge_insertion: bool,
     /// Optional names of native methods (qualified with module name, e.g., m::foo) implementing
     /// mutable borrow semantics
     pub borrow_natives: Vec<String>,
@@ -91,6 +92,10 @@ pub struct ProverOptions {
     pub ban_int_2_bv: bool,
     /// Whether to encode u8/u16/u32/u64/u128/u256 as integer or bitvector
     pub bv_int_encoding: bool,
+    /// Skip checking spec functions that do not abort
+    pub skip_spec_no_abort: bool,
+    /// CI mode
+    pub ci: bool,
 }
 
 // add custom struct for mutation options
@@ -123,19 +128,12 @@ impl Default for ProverOptions {
             unconditional_abort_as_inconsistency: false,
             for_interpretation: false,
             skip_loop_analysis: false,
+            enable_conditional_merge_insertion: false,
             borrow_natives: vec![],
             ban_int_2_bv: false,
             bv_int_encoding: true,
+            skip_spec_no_abort: false,
+            ci: false,
         }
-    }
-}
-
-impl ProverOptions {
-    pub fn get(env: &GlobalEnv) -> Rc<ProverOptions> {
-        env.get_extension::<ProverOptions>().unwrap()
-    }
-
-    pub fn set(env: &GlobalEnv, options: ProverOptions) {
-        env.set_extension::<ProverOptions>(options);
     }
 }

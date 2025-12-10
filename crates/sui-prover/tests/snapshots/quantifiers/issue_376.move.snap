@@ -1,0 +1,14 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 277
+expression: output
+---
+Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_map_ok_to_zero$pure(_$t0: $42_quantifiers_map_ok_S) returns ($ret0: int)
+{
+    (var $t1 := 0;
+    $t1)
+}

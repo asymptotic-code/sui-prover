@@ -1,0 +1,27 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
+expression: output
+---
+Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_quantifiers_any_all_range_ok_x_is_10$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 10;
+    (var $t2 := (_$t0 == $t1);
+    $t2))
+}
+function {:inline} $42_quantifiers_any_all_range_ok_x_is_greater_than_15$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 15;
+    (var $t2 := (_$t0 > $t1);
+    $t2))
+}
+function {:inline} $42_quantifiers_any_all_range_ok_x_is_positive$pure(_$t0: int) returns ($ret0: bool)
+{
+    (var $t1 := 0;
+    (var $t2 := (_$t0 > $t1);
+    $t2))
+}

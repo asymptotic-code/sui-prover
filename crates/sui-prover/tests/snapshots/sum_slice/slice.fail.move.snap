@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 271
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/sum_slice/slice.fail.move:12:5
+   │
+12 │     ensures(vector::length(slice1) == 2);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/sum_slice/slice.fail.move:8: test_slice

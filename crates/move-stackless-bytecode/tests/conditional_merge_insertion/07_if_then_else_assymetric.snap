@@ -1,0 +1,82 @@
+---
+source: crates/move-stackless-bytecode/tests/testsuite.rs
+---
+============ initial translation from Move ================
+
+[variant baseline]
+public fun test::f($t0|a: u64): u64 {
+     var $t1|x#1#0: u64
+     var $t2|y#1#0: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: u64
+     var $t6: bool
+     var $t7: u64
+     var $t8: u64
+     var $t9: u64
+     var $t10: u64
+     var $t11: u64
+     var $t12: u64
+  0: $t3 := 10
+  1: $t1 := $t3
+  2: $t4 := move($t0)
+  3: $t5 := 0
+  4: $t6 := >($t4, $t5)
+  5: if ($t6) goto 6 else goto 10
+  6: label L1
+  7: $t7 := 30
+  8: $t2 := $t7
+  9: goto 16
+ 10: label L0
+ 11: $t8 := 20
+ 12: $t1 := $t8
+ 13: $t9 := 40
+ 14: $t2 := $t9
+ 15: goto 16
+ 16: label L2
+ 17: $t10 := move($t1)
+ 18: $t11 := move($t2)
+ 19: $t12 := *($t10, $t11)
+ 20: return $t12
+}
+
+============ after pipeline `conditional_merge_insertion` ================
+
+[variant baseline]
+public fun test::f($t0|a: u64): u64 {
+     var $t1|x#1#0: u64
+     var $t2|y#1#0: u64
+     var $t3: u64
+     var $t4: u64
+     var $t5: bool
+     var $t6: u64
+     var $t7: u64
+     var $t8: u64
+     var $t9: u64
+     var $t10: u64
+     var $t11: u64
+     var $t12: u64
+     var $t13: u64
+     var $t14: u64
+  0: $t3 := 10
+  1: $t1 := $t3
+  2: $t4 := 0
+  3: $t5 := >($t0, $t4)
+  4: if ($t5) goto 5 else goto 9
+  5: label L1
+  6: $t6 := 30
+  7: $t11 := $t6
+  8: goto 14
+  9: label L0
+ 10: $t7 := 20
+ 11: $t10 := $t7
+ 12: $t8 := 40
+ 13: $t12 := $t8
+ 14: label L2
+     # conditional_merge_insertion: t13 := if_then_else(t5, t3, t10)
+ 15: $t13 := if_then_else($t5, $t3, $t10)
+     # conditional_merge_insertion: t14 := if_then_else(t5, t11, t12)
+ 16: $t14 := if_then_else($t5, $t11, $t12)
+ 17: $t9 := *($t13, $t14)
+ 18: return $t9
+}

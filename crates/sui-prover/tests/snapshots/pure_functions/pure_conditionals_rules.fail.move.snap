@@ -1,0 +1,17 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 277
+expression: output
+---
+exiting with bytecode transformation errors
+error: Pure functions with loops are not supported
+   ┌─ tests/inputs/pure_functions/pure_conditionals_rules.fail.move:4:5
+   │  
+ 4 │ ╭     public fun invalid_loop(a: u64): u64 {
+ 5 │ │         let mut b = a;
+ 6 │ │         if (b > a) {
+ 7 │ │             while (b > 0) {
+   · │
+11 │ │         a
+12 │ │     }
+   │ ╰─────^

@@ -1,0 +1,21 @@
+[package]
+name = "move-prover-lean-backend"
+version = "0.1.0"
+authors = ["Diem Association <opensource@diem.com>"]
+description = "Move prover Lean backend"
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+move-model.workspace = true
+move-stackless-bytecode.workspace = true
+stackless-to-intermediate.workspace = true
+intermediate-theorem-format.workspace = true
+
+tokio.workspace = true
+log.workspace = true
+anyhow.workspace = true
