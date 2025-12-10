@@ -2,10 +2,10 @@
 //!
 //! This module provides functionality to generate and display specification call hierarchies,
 //! showing how specs call other specs and functions. It supports two output modes:
-//! - File output: Writes detailed call trees to .log.txt files for all specs
-//! - Terminal output: Displays spec-only trees during verification (verbose mode)
+//! - File output: Writes detailed call trees to .log.txt files showing all functions and their specs
+//! - Terminal output: Displays only opaque specs (excludes no_opaque specs) during verification (verbose mode)
 //!
-//! The hierarchies respect opaque boundaries (specs marked with `no_opaque`) and filter out
+//! The hierarchies respect opaque boundaries (specs without `no_opaque`) and filter out
 //! system functions from standard libraries.
 
 use crate::function_target_pipeline::FunctionTargetsHolder;
@@ -41,7 +41,8 @@ struct CallInfo {
 ///
 /// # Tree Traversal
 /// - Recurses into functions without specs to find nested specs
-/// - Stops recursing at specs marked with `no_opaque` (opaque boundaries)
+/// - Stops recursing at opaque specs (specs without `no_opaque`)
+/// - Recurses into `no_opaque` specs since the prover uses their implementation
 /// - Prevents infinite recursion by tracking displayed functions
 ///
 /// # Arguments
@@ -202,7 +203,8 @@ fn get_tree_branch(is_last: bool, prefix: &str) -> (String, String) {
 /// Recursively builds the implementation tree for log files.
 ///
 /// Shows ALL functions in the call graph with their associated specs (if any).
-/// Stops recursing at specs with `no_opaque` (opaque boundaries).
+/// Stops recursing at opaque specs (without `no_opaque`), but recurses into
+/// `no_opaque` specs since the prover uses their implementation.
 ///
 /// # Arguments
 /// * `displayed` - Set tracking already displayed functions to prevent cycles
@@ -242,7 +244,7 @@ fn build_implementation_tree(
         ));
 
         let should_recurse = if let Some(spec_id) = call_info.spec_id {
-            !targets.omits_opaque(&spec_id)
+            targets.omits_opaque(&spec_id)
         } else {
             true
         };
@@ -276,9 +278,10 @@ fn build_implementation_tree(
 ///
 /// # Behavior
 /// - Traverses the underlying function's call graph
-/// - Only displays functions that have specs (without `no_opaque`)
+/// - Only displays opaque specs (specs without `no_opaque`)
+/// - Does NOT display `no_opaque` specs, but recurses through them to find nested opaque specs
 /// - Recursively explores functions without specs to find nested specs
-/// - Stops recursing at specs with `no_opaque` (opaque boundaries)
+/// - Stops recursing at opaque specs (prover uses the spec itself)
 /// - Excludes the root spec from its own tree
 /// - Returns early for scenario specs (no underlying implementation)
 ///
@@ -314,7 +317,8 @@ pub fn display_spec_tree_terminal(
 /// Recursively builds a spec-only tree for terminal output.
 ///
 /// Similar to `build_implementation_tree` but:
-/// - Only DISPLAYS functions that have specs in the current targets
+/// - Only DISPLAYS opaque specs (specs without `no_opaque`) in the current targets
+/// - Does NOT display `no_opaque` specs, but RECURSES through them to find nested opaque specs
 /// - Still RECURSES through functions without specs to find nested specs
 /// - Excludes the root spec from appearing in its own tree
 ///
@@ -343,7 +347,7 @@ fn build_spec_only_tree(
         .iter()
         .filter(|called_id| {
             if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
-                *spec_id != *root_spec_id
+                *spec_id != *root_spec_id && !targets.omits_opaque(spec_id)
             } else {
                 false
             }
@@ -357,7 +361,7 @@ fn build_spec_only_tree(
         let spec_id = targets.get_spec_by_fun(called_id);
 
         let will_display = if let Some(sid) = spec_id {
-            *sid != *root_spec_id
+            *sid != *root_spec_id && !targets.omits_opaque(sid)
         } else {
             false
         };
@@ -371,7 +375,7 @@ fn build_spec_only_tree(
 
             spec_index += 1;
 
-            let should_recurse = !targets.omits_opaque(spec_id.unwrap());
+            let should_recurse = targets.omits_opaque(spec_id.unwrap());
             if should_recurse && !displayed.contains(called_id) {
                 displayed.insert(*called_id);
                 let called_env = env.get_function(*called_id);
