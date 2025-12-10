@@ -367,7 +367,7 @@ impl FunctionTargetsHolder {
     }
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
-    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {       
+    pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
         self.targets
