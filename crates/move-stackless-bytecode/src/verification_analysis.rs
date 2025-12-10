@@ -587,36 +587,17 @@ impl VerificationAnalysisProcessor {
             let fun_env = env.get_function(fun_id);
 
             // Mark spec of func as reachable
-            let spec = targets.get_spec_by_fun(&fun_id).cloned();
-            if let Some(spec) = spec {
-                let spec_env = env.get_function(spec);
-                let mut should_mark_reachable = false;
-                for variant in targets.get_target_variants(&spec_env) {
-                    if let Some(data) = targets.get_data(&spec, &variant) {
-                        let info = get_info(&FunctionTarget::new(&spec_env, data));
-
-                        // Skip if already processed (verified, inlined, essential, or reachable)
-                        if info.verified || info.inlined || info.essential || info.reachable {
-                            break;
-                        }
-
-                        should_mark_reachable = true;
-                        break;
+            if let Some(spec) = targets.get_spec_by_fun(&fun_id).cloned() {
+                if let Some(data) = targets.get_data_mut(&spec, &FunctionVariant::Baseline) {
+                    let info = data
+                        .annotations
+                        .get_or_default_mut::<VerificationInfo>(true);
+                    // Skip if already processed (verified, inlined, essential, or reachable)
+                    if !info.verified && !info.inlined && !info.essential && !info.reachable {
+                        info.reachable = true;
+                        work_queue.push(spec);
+                        reachable_functions.insert(spec);
                     }
-                }
-
-                if should_mark_reachable {
-                    // Mark as reachable across all variants
-                    for variant in targets.get_target_variants(&spec_env) {
-                        if let Some(data) = targets.get_data_mut(&spec, &variant) {
-                            let info = data
-                                .annotations
-                                .get_or_default_mut::<VerificationInfo>(true);
-                            info.reachable = true;
-                        }
-                    }
-                    work_queue.push(spec);
-                    reachable_functions.insert(spec);
                 }
             }
 
