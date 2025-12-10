@@ -393,7 +393,9 @@ async fn verify_bpl<W: WriteColor>(
 
     if let Some(qid) = &file.qid {
         if options.verbosity_level > LevelFilter::Info {
-            spec_hierarchy::display_spec_tree_terminal(env, &file.targets, qid);
+            if file.file_name.ends_with("_Check") {
+                spec_hierarchy::display_spec_tree_terminal(env, &file.targets, qid);
+            }
         }
     }
 
