@@ -390,6 +390,13 @@ impl PackageTargets {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
+            if let Some(skip_reason) = skip {
+                if filter.is_targeted(func_env) {
+                    self.skipped_specs
+                        .insert(func_env.get_qualified_id(), skip_reason.clone());
+                }
+            }
+
             if !func_env.module_env.is_target()
                 || skip.is_some()
                 || !filter.is_targeted(func_env)
