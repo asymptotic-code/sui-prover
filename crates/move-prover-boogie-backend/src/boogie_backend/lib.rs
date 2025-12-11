@@ -22,11 +22,15 @@ use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo},
+    quantifier_iterator_analysis::{self, PureQuantifierHelperInfo},
     verification_analysis,
 };
 
 use crate::boogie_backend::{
-    boogie_helpers::{boogie_bv_type, boogie_module_name, boogie_type, boogie_type_suffix_bv},
+    boogie_helpers::{
+        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type, boogie_type_suffix,
+        boogie_type_suffix_bv, FunctionTranslationStyle,
+    },
     bytecode_translator::has_native_equality,
     options::{BoogieOptions, VectorTheory},
 };
@@ -54,6 +58,18 @@ struct TypeInfo {
     is_bv: bool,
     is_number: bool,
     bit_width: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+struct QuantifierHelperInfo {
+    qht: String,
+    name: String,
+    quantifier_params: String,
+    quantifier_args: String,
+    result_type: String,
+    result_suffix: String,
+    extra_args_before: String,
+    extra_args_after: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -456,6 +472,15 @@ pub fn add_prelude(
         }
     }
 
+    context.insert(
+        "quantifier_helpers_instances",
+        &quantifier_iterator_analysis::get_info(env)
+            .helpers
+            .iter()
+            .map(|info| QuantifierHelperInfo::new(env, info))
+            .collect_vec(),
+    );
+
     let mut tera = Tera::default();
     tera.add_raw_templates(templates)?;
 
@@ -469,6 +494,69 @@ pub fn add_prelude(
     }
 
     Ok(())
+}
+
+impl QuantifierHelperInfo {
+    fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
+        let func_env = env.get_function(info.function);
+        let params_types = func_env.get_parameter_types();
+        let dst_elem_boogie_type = &func_env.get_return_type(0);
+
+        // todo include additional args
+        let mut quantifier_params = format!(
+            "v: Vec ({}), start: int, end: int",
+            boogie_type(env, params_types[info.li].skip_reference())
+        );
+
+        let dst_elem_boogie_type =
+            if matches!(dst_elem_boogie_type, Type::Primitive(PrimitiveType::Bool)) {
+                // Note: Bool means that we are looking for index or indices
+                &Type::Primitive(PrimitiveType::U64)
+            } else {
+                dst_elem_boogie_type
+            };
+
+        let result_suffix = boogie_type_suffix(env, dst_elem_boogie_type);
+        let result_type = boogie_type(env, dst_elem_boogie_type);
+
+        let extra_args_before = (0..info.li)
+            .map(|i| format!("$t{}, ", i.to_string()))
+            .join("");
+
+        let extra_args_after = (info.li + 1..func_env.get_parameter_count())
+            .map(|i| format!(", $t{}", i.to_string()))
+            .join("");
+
+        let quantifier_args = format!("v, start, end{}", extra_args_after);
+
+        if func_env.get_parameter_count() > 1 {
+            let extra_params = (0..func_env.get_parameter_count())
+                .skip(info.li)
+                .enumerate()
+                .filter(|(idx, _)| *idx != info.li)
+                .map(|(_, val)| {
+                    format!(
+                        "$t{}: {}",
+                        val.to_string(),
+                        boogie_type(env, &params_types[val])
+                    )
+                })
+                .join(", ");
+
+            quantifier_params = format!("{}, {}", quantifier_params, extra_params);
+        }
+
+        Self {
+            qht: info.qht.str().to_string(),
+            name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
+            quantifier_params,
+            quantifier_args,
+            result_type,
+            result_suffix,
+            extra_args_before,
+            extra_args_after,
+        }
+    }
 }
 
 impl TypeInfo {

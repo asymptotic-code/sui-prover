@@ -168,254 +168,6 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
-    pub fn emit_map_quantifier(
-        &self,
-        function_name: &str,
-        src_elem_boogie_type: &str,
-        dst_elem_boogie_type: &str,
-        cr_args: &dyn Fn(&str) -> String,
-    ) {
-        let map_quant_name =
-            self.get_quantifier_helper_name(QuantifierHelperType::Map, function_name);
-
-        if !self
-            .qt_helpers
-            .borrow_mut()
-            .map_quantifiers
-            .insert(map_quant_name.clone())
-        {
-            return;
-        }
-
-        emitln!(
-            self.writer,
-            "function {}(v: Vec ({}), start: int, end: int): Vec ({});",
-            map_quant_name,
-            src_elem_boogie_type,
-            dst_elem_boogie_type
-        );
-        emitln!(
-            self.writer,
-            "axiom (forall v: Vec ({}), start: int, end: int :: {{{}(v, start, end)}}",
-            src_elem_boogie_type,
-            map_quant_name
-        );
-        emitln!(self.writer, "(");
-        self.writer.indent();
-        emitln!(self.writer, "var res := {}(v, start, end);", map_quant_name);
-        self.writer.indent();
-        emitln!(self.writer, "LenVec(res) == end - start &&");
-        emitln!(
-            self.writer,
-            "(forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == {}({}))",
-            function_name,
-            cr_args("i")
-        );
-        self.writer.unindent();
-        emitln!(self.writer, ")");
-        self.writer.unindent();
-        emitln!(self.writer, ");");
-        emitln!(self.writer);
-    }
-
-    pub fn emit_find_index_quantifier(
-        &self,
-        function_name: &str,
-        src_elem_boogie_type: &str,
-        cr_args: &dyn Fn(&str) -> String,
-    ) {
-        let find_quant_name =
-            self.get_quantifier_helper_name(QuantifierHelperType::FindIndex, function_name);
-
-        if !self
-            .qt_helpers
-            .borrow_mut()
-            .find_index_quantifiers
-            .insert(find_quant_name.clone())
-        {
-            return;
-        }
-
-        emitln!(
-            self.writer,
-            "function {}(v: Vec ({}), start: int, end: int): int;",
-            find_quant_name,
-            src_elem_boogie_type
-        );
-        emitln!(
-            self.writer,
-            "axiom (forall v: Vec ({}), start: int, end: int :: {{{}(v, start, end)}}",
-            src_elem_boogie_type,
-            find_quant_name
-        );
-        emitln!(self.writer, "(");
-        self.writer.indent();
-        emitln!(
-            self.writer,
-            "var res := {}(v, start, end);",
-            find_quant_name
-        );
-        self.writer.indent();
-        emitln!(
-            self.writer,
-            "if (forall i: int :: start <= i && i < end ==> !{}({})) then res == -1",
-            function_name,
-            cr_args("i")
-        );
-        emitln!(
-            self.writer,
-            "else start <= res && res < end && {}({}) &&",
-            function_name,
-            cr_args("res")
-        );
-        self.writer.indent();
-        emitln!(
-            self.writer,
-            "(forall j: int :: start <= j && j < res ==> !{}({}))",
-            function_name,
-            cr_args("j")
-        );
-        self.writer.unindent();
-        self.writer.unindent();
-        emitln!(self.writer, ")");
-        self.writer.unindent();
-        emitln!(self.writer, ");");
-        emitln!(self.writer);
-    }
-
-    pub fn emit_find_indices_quantifier(
-        &self,
-        function_name: &str,
-        src_elem_boogie_type: &str,
-        cr_args: &dyn Fn(&str) -> String,
-    ) {
-        let find_indices_quant_name =
-            self.get_quantifier_helper_name(QuantifierHelperType::FindIndices, function_name);
-
-        if !self
-            .qt_helpers
-            .borrow_mut()
-            .find_indices_quantifiers
-            .insert(find_indices_quant_name.clone())
-        {
-            return;
-        }
-
-        emitln!(
-            self.writer,
-            "function {}(v: Vec ({}), start: int, end: int): Vec (int);",
-            find_indices_quant_name,
-            src_elem_boogie_type
-        );
-        emitln!(
-            self.writer,
-            "axiom (forall v: Vec ({}), start: int, end: int :: {{{}(v, start, end)}}",
-            src_elem_boogie_type,
-            find_indices_quant_name
-        );
-        emitln!(self.writer, "(");
-        self.writer.indent();
-        emitln!(
-            self.writer,
-            "var res := {}(v, start, end);",
-            find_indices_quant_name
-        );
-        self.writer.indent();
-        emitln!(self.writer, "LenVec(res) <= end - start &&");
-        emitln!(
-            self.writer,
-            "(forall i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&"
-        );
-        emitln!(
-            self.writer,
-            "(forall i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&"
-        );
-        emitln!(
-            self.writer,
-            "(forall i: int :: 0 <= i && i < LenVec(res) ==> {}({})) &&",
-            function_name,
-            "ReadVec(res, i)" // TODO: fix for multiple arguments
-        );
-        emitln!(
-            self.writer,
-            "(forall j: int :: start <= j && j < end && {}({}) ==> $ContainsVec'u64'(res, j))",
-            function_name,
-            cr_args("j")
-        );
-        self.writer.unindent();
-        emitln!(self.writer, ")");
-        self.writer.unindent();
-        emitln!(self.writer, ");");
-        emitln!(self.writer);
-    }
-
-    pub fn emit_filter_quantifier(
-        &self,
-        function_name: &str,
-        src_elem_boogie_type: &str,
-        dst_elem_boogie_type: &str,
-        dst_elem_suffix: &str,
-        cr_args: &dyn Fn(&str) -> String,
-    ) {
-        let filter_quant_name =
-            self.get_quantifier_helper_name(QuantifierHelperType::Filter, function_name);
-
-        if !self
-            .qt_helpers
-            .borrow_mut()
-            .filter_quantifiers
-            .insert(filter_quant_name.clone())
-        {
-            return;
-        }
-
-        emitln!(
-            self.writer,
-            "function {}(v: Vec ({}), start: int, end: int): Vec ({});",
-            filter_quant_name,
-            src_elem_boogie_type,
-            dst_elem_boogie_type
-        );
-        emitln!(
-            self.writer,
-            "axiom (forall v: Vec ({}), start: int, end: int :: {{{}(v, start, end)}}",
-            src_elem_boogie_type,
-            filter_quant_name
-        );
-        emitln!(self.writer, "(");
-        self.writer.indent();
-        emitln!(
-            self.writer,
-            "var res := {}(v, start, end);",
-            filter_quant_name
-        );
-        self.writer.indent();
-        emitln!(self.writer, "LenVec(res) <= end - start &&");
-        emitln!(
-            self.writer,
-            "(forall i: int :: 0 <= i && i < LenVec(res) ==> {}({})) &&",
-            function_name,
-            cr_args(&format!("ReadVec(res, i)"))
-        );
-        emitln!(
-            self.writer,
-            "(forall i: int :: 0 <= i && i < LenVec(res) ==> $ContainsVec'{}'(v, ReadVec(res, i))) &&",
-            dst_elem_suffix,
-        );
-        emitln!(
-            self.writer,
-            "(forall j: int :: start <= j && j < end && {}({}) ==> $ContainsVec'{}'(res, ReadVec(v, j)))",
-            function_name,
-            cr_args("j"),
-            dst_elem_suffix,
-        );
-        self.writer.unindent();
-        emitln!(self.writer, ")");
-        self.writer.unindent();
-        emitln!(self.writer, ");");
-        emitln!(self.writer);
-    }
-
     pub fn translate(&mut self) {
         let writer = self.writer;
         let env = self.env;
@@ -2183,113 +1935,8 @@ impl<'env> FunctionTranslator<'env> {
             .instantiate(self.type_inst)
     }
 
-    fn emit_quantifier_helpers(&self) {
-        use Bytecode::*;
-        use Operation::*;
-
-        if self.style != FunctionTranslationStyle::Pure {
-            return;
-        }
-
-        for bc in self.fun_target.get_bytecode() {
-            if let Call(_, dests, Quantifier(qt, qid, inst, li), srcs, _) = bc {
-                let function_name = boogie_function_name(
-                    &self.parent.env.get_function(*qid),
-                    &self.inst_slice(inst),
-                    FunctionTranslationStyle::Pure,
-                );
-                let src_elem_boogie_type = if let Type::Vector(inner) = self.get_local_type(srcs[0])
-                {
-                    boogie_type(self.parent.env, inner.as_ref())
-                } else {
-                    panic!("Expected vector type for SumMap")
-                };
-
-                let dst_elem_boogie_type =
-                    if let Type::Vector(inner) = self.get_local_type(dests[0]) {
-                        boogie_type(self.parent.env, inner.as_ref())
-                    } else {
-                        "int".to_string()
-                    };
-
-                let cr_args = |local_name: &str| {
-                    srcs.iter()
-                        .skip(if qt.range_based() { 3 } else { 1 })
-                        .enumerate()
-                        .map(|(index, vidx)| {
-                            if index == *li {
-                                format!("ReadVec(v, {})", local_name)
-                            } else {
-                                format!("$t{}", vidx)
-                            }
-                        })
-                        .join(", ")
-                        .to_string()
-                };
-
-                match qt {
-                    QuantifierType::Forall
-                    | QuantifierType::Exists
-                    | QuantifierType::Any
-                    | QuantifierType::AnyRange
-                    | QuantifierType::All
-                    | QuantifierType::AllRange => {} // Helpers are not needed for primitive quantifiers
-                    QuantifierType::SumMap
-                    | QuantifierType::SumMapRange
-                    | QuantifierType::Map
-                    | QuantifierType::MapRange => {
-                        self.parent.emit_map_quantifier(
-                            &function_name,
-                            &src_elem_boogie_type,
-                            &dst_elem_boogie_type,
-                            &cr_args,
-                        );
-                    }
-                    QuantifierType::Find
-                    | QuantifierType::FindRange
-                    | QuantifierType::FindIndex
-                    | QuantifierType::FindIndexRange => {
-                        self.parent.emit_find_index_quantifier(
-                            &function_name,
-                            &src_elem_boogie_type,
-                            &cr_args,
-                        );
-                    }
-                    QuantifierType::FindIndices
-                    | QuantifierType::FindIndicesRange
-                    | QuantifierType::Count
-                    | QuantifierType::CountRange => {
-                        self.parent.emit_find_indices_quantifier(
-                            &function_name,
-                            &src_elem_boogie_type,
-                            &cr_args,
-                        );
-                    }
-                    QuantifierType::Filter | QuantifierType::FilterRange => {
-                        let dst_elem_suffix =
-                            if let Type::Vector(inner) = self.get_local_type(srcs[0]) {
-                                boogie_type_suffix(self.parent.env, inner.as_ref())
-                            } else {
-                                panic!("Expected vector type for Filter")
-                            };
-
-                        self.parent.emit_filter_quantifier(
-                            &function_name,
-                            &src_elem_boogie_type,
-                            &dst_elem_boogie_type,
-                            &dst_elem_suffix,
-                            &cr_args,
-                        );
-                    }
-                };
-            }
-        }
-    }
-
     /// Translates the given function.
     fn translate(mut self) {
-        self.emit_quantifier_helpers();
-
         let writer = self.parent.writer;
         let fun_target = self.fun_target;
         let env = fun_target.global_env();
@@ -3097,14 +2744,8 @@ impl<'env> FunctionTranslator<'env> {
                         } else if let Quantifier(qt, qid, inst, li) = op {
                             let qfun_env = fun_target.global_env().get_function(*qid);
                             let inst = &self.inst_slice(inst);
-                            let qfun_name = boogie_function_name(
-                                &qfun_env,
-                                inst,
-                                FunctionTranslationStyle::Pure,
-                            );
-
                             self.generate_pure_quantifier_expr(
-                                qt, &qfun_name, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
+                                qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
                             )
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
@@ -3196,7 +2837,6 @@ impl<'env> FunctionTranslator<'env> {
     fn generate_pure_quantifier_expr<F>(
         &self,
         qt: &QuantifierType,
-        fun_name: &str,
         fun_env: &FunctionEnv,
         inst: &[Type],
         srcs: &[TempIndex],
@@ -3208,6 +2848,7 @@ impl<'env> FunctionTranslator<'env> {
         F: Fn(usize) -> String,
     {
         let env = self.fun_target.global_env();
+        let fun_name = &boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
 
         let cr_args = |local_name: &str| -> String {
             if !qt.vector_based() {
@@ -3243,14 +2884,19 @@ impl<'env> FunctionTranslator<'env> {
                 panic!("Expected vector type for Find quantifier")
             };
 
-        let src_elem_boogie_type = boogie_type(env, src_type);
-        let src_elem_suffix = boogie_type_suffix(env, src_type);
-
-        let dst_elem_boogie_type = if let Type::Vector(inner) = self.get_local_type(dests[0]) {
-            boogie_type(env, inner.as_ref())
+        let extra_args = if fun_env.get_parameter_count() > 1 {
+            srcs.iter()
+                .skip(if qt.range_based() { 3 } else { 1 })
+                .map(|i| format!(", $t{}", i.to_string()))
+                .join("")
         } else {
-            "int".to_string()
+            String::new()
         };
+
+        println!(
+            "Generating pure quantifier expr for {:?} [{}]",
+            qt, extra_args
+        );
 
         match qt {
             QuantifierType::Forall => {
@@ -3327,9 +2973,10 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
                 format!(
-                    "{0}({1}, 0, LenVec({1}))",
+                    "{0}({1}, 0, LenVec({1}){2})",
                     map_quant_name,
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::MapRange => {
@@ -3337,11 +2984,12 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
                 format!(
-                    "{}({}, {}, {})",
+                    "{}({}, {}, {}{})",
                     map_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
             QuantifierType::Count => {
@@ -3349,10 +2997,11 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
                 format!(
-                    "LenVec({}({}, 0, LenVec({})))",
+                    "LenVec({}({}, 0, LenVec({}){}))",
                     find_indices_quant_name,
                     fmt_temp(srcs[0]),
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::CountRange => {
@@ -3360,11 +3009,12 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
                 format!(
-                    "LenVec({}({}, {}, {}))",
+                    "LenVec({}({}, {}, {}{}))",
                     find_indices_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
-                    fmt_temp(srcs[2])
+                    fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
             QuantifierType::SumMap => {
@@ -3372,20 +3022,22 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
                 format!(
-                    "$0_vec_$sum'u64'({0}({1}, 0, LenVec({1})), 0, LenVec({1}))",
+                    "$0_vec_$sum'u64'({0}({1}, 0, LenVec({1}){2}), 0, LenVec({1}))",
                     map_quant_name,
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::SumMapRange => {
                 let map_quant_name = self
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
-                format!("(var $temp_map := {}({}, {}, {}); $0_vec_$sum'u64'($temp_map, 0, LenVec($temp_map)))",
+                format!("(var $temp_map := {}({}, {}, {}{}); $0_vec_$sum'u64'($temp_map, 0, LenVec($temp_map)))",
                     map_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
             QuantifierType::FindIndex => {
@@ -3393,10 +3045,11 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndex, fun_name);
                 format!(
-                    "(var $find_res := {}({}, 0, LenVec({})); if $find_res >= 0 then $1_option_Option'u64'(MakeVec1($find_res)) else $1_option_Option'u64'(EmptyVec()))",
+                    "(var $find_res := {}({}, 0, LenVec({}){}); if $find_res >= 0 then $1_option_Option'u64'(MakeVec1($find_res)) else $1_option_Option'u64'(EmptyVec()))",
                     find_quant_name,
                     fmt_temp(srcs[0]),
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::FindIndexRange => {
@@ -3404,29 +3057,32 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndex, fun_name);
                 format!(
-                    "(var $find_res := {}({}, {}, {}); if $find_res >= 0 then $1_option_Option'u64'(MakeVec1($find_res)) else $1_option_Option'u64'(EmptyVec()))",
+                    "(var $find_res := {}({}, {}, {}{}); if $find_res >= 0 then $1_option_Option'u64'(MakeVec1($find_res)) else $1_option_Option'u64'(EmptyVec()))",
                     find_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
-                    fmt_temp(srcs[2])
+                    fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
             QuantifierType::Find => {
+                let src_elem_suffix = boogie_type_suffix(env, src_type);
                 let find_quant_name = self
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndex, fun_name);
                 format!(
-                    "(var $find_res := {0}({1}, 0, LenVec({1})); if $find_res >= 0 then $1_option_Option'{2}'(MakeVec1(ReadVec({1}, $find_res))) else $1_option_Option'{2}'(EmptyVec()))",
-                    find_quant_name, fmt_temp(srcs[0]), src_elem_suffix
+                    "(var $find_res := {0}({1}, 0, LenVec({1}){3}); if $find_res >= 0 then $1_option_Option'{2}'(MakeVec1(ReadVec({1}, $find_res))) else $1_option_Option'{2}'(EmptyVec()))",
+                    find_quant_name, fmt_temp(srcs[0]), src_elem_suffix, extra_args,
                 )
             }
             QuantifierType::FindRange => {
+                let src_elem_suffix = boogie_type_suffix(env, src_type);
                 let find_quant_name = self
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndex, fun_name);
                 format!(
-                    "(var $find_res := {0}({1}, {2}, {3}); if $find_res >= 0 then $1_option_Option'{4}'(MakeVec1(ReadVec({1}, $find_res))) else $1_option_Option'{4}'(EmptyVec()))",
-                    find_quant_name, fmt_temp(srcs[0]), fmt_temp(srcs[1]), fmt_temp(srcs[2]), src_elem_suffix
+                    "(var $find_res := {0}({1}, {2}, {3}{5}); if $find_res >= 0 then $1_option_Option'{4}'(MakeVec1(ReadVec({1}, $find_res))) else $1_option_Option'{4}'(EmptyVec()))",
+                    find_quant_name, fmt_temp(srcs[0]), fmt_temp(srcs[1]), fmt_temp(srcs[2]), src_elem_suffix, extra_args,
                 )
             }
             QuantifierType::FindIndices => {
@@ -3434,10 +3090,11 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
                 format!(
-                    "{}({}, 0, LenVec({}))",
+                    "{}({}, 0, LenVec({}){})",
                     find_indices_quant_name,
                     fmt_temp(srcs[0]),
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::FindIndicesRange => {
@@ -3445,11 +3102,12 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
                 format!(
-                    "{}({}, {}, {})",
+                    "{}({}, {}, {}{})",
                     find_indices_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
-                    fmt_temp(srcs[2])
+                    fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
             QuantifierType::Filter => {
@@ -3457,10 +3115,11 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Filter, fun_name);
                 format!(
-                    "{}({}, 0, LenVec({}))",
+                    "{}({}, 0, LenVec({}){})",
                     filter_quant_name,
                     fmt_temp(srcs[0]),
-                    fmt_temp(srcs[0])
+                    fmt_temp(srcs[0]),
+                    extra_args,
                 )
             }
             QuantifierType::FilterRange => {
@@ -3468,11 +3127,12 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::Filter, fun_name);
                 format!(
-                    "{}({}, {}, {})",
+                    "{}({}, {}, {}{})",
                     filter_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
-                    fmt_temp(srcs[2])
+                    fmt_temp(srcs[2]),
+                    extra_args,
                 )
             }
         }
