@@ -709,13 +709,10 @@ impl<'env> BoogieTranslator<'env> {
                     .get_inv_by_datatype(&struct_env.get_qualified_id())
                 {
                     let inv_fun_env = self.env.get_function(*inv_fun_id);
-                    let inv_fun_target = match self
+                    let inv_fun_target = self
                         .targets
                         .get_target_opt(&inv_fun_env, &FunctionVariant::Baseline)
-                    {
-                        Some(target) => target,
-                        None => continue, // Invariant function was filtered out (shouldn't happen)
-                    };
+                        .expect("Invariant function was filtered out: could not find baseline target for invariant function");
                     let struct_type_instances = mono_info
                         .structs
                         .get(&struct_env.get_qualified_id())
@@ -895,13 +892,10 @@ impl<'env> BoogieTranslator<'env> {
             | FunctionTranslationStyle::Opaque
             | FunctionTranslationStyle::Pure => FunctionVariant::Baseline,
         };
-        if variant.is_verified() && !self.targets.has_target(fun_env, &variant) {
+        if !self.targets.has_target(fun_env, &variant) {
             return;
         }
-        let spec_fun_target = match self.targets.get_target_opt(fun_env, &variant) {
-            Some(target) => target,
-            None => return, // Function was filtered out
-        };
+        let spec_fun_target = self.targets.get_target(fun_env, &variant);
 
         if !variant.is_verified() && !verification_analysis::get_info(&spec_fun_target).inlined {
             return;
@@ -1300,13 +1294,13 @@ impl<'env> BoogieTranslator<'env> {
         let ghost_global_fun_target = self
             .targets
             .get_target_opt(&ghost_global_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect("ghost global function target should exist");
 
         let ghost_havoc_global_fun_env = self.env.get_function(self.env.havoc_global_qid());
         let ghost_havoc_global_fun_target = self
             .targets
             .get_target_opt(&ghost_havoc_global_fun_env, &FunctionVariant::Baseline)
-            .unwrap();
+            .expect("ghost havoc global function target should exist");
 
         let empty_set = &BTreeSet::new();
         let ghost_global_type_instances = mono_info
@@ -2890,7 +2884,10 @@ impl<'env> FunctionTranslator<'env> {
             self.parent
                 .targets
                 .get_data(spec_id, &FunctionVariant::Baseline)
-                .unwrap(),
+                .expect(&format!(
+                    "spec `{}` was filtered out",
+                    self.fun_target.func_env.get_full_name_str()
+                )),
         );
         spec_info
             .all_vars()

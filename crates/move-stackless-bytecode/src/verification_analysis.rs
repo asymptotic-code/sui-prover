@@ -192,6 +192,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         // Keep functions that are verified, inlined, or essential
         for fun_id in targets.get_funs() {
             let fun_env = env.get_function(fun_id);
+
             // Check verification status across all variants
             for variant in targets.get_target_variants(&fun_env) {
                 let data = targets.get_data(&fun_id, &variant).unwrap();
@@ -461,21 +462,11 @@ impl VerificationAnalysisProcessor {
 
         // Handle ghost functions first (since they're also native)
         if name.contains("ghost::") {
-            return true; // Keep all ghost functions
+            return true;
         }
 
         // All prover functions are essential
         if name.contains("prover::") {
-            return true;
-        }
-
-        // Essential stdlib functions that are needed for verification
-        if name.starts_with("vector::")
-            || name.starts_with("option::")
-            || name.starts_with("object::")
-            || name.starts_with("tx_context::")
-            || name.starts_with("integer::")
-        {
             return true;
         }
 
@@ -594,6 +585,21 @@ impl VerificationAnalysisProcessor {
             processed.insert(fun_id);
 
             let fun_env = env.get_function(fun_id);
+
+            // Mark spec of func as reachable
+            if let Some(spec) = targets.get_spec_by_fun(&fun_id).cloned() {
+                if let Some(data) = targets.get_data_mut(&spec, &FunctionVariant::Baseline) {
+                    let info = data
+                        .annotations
+                        .get_or_default_mut::<VerificationInfo>(true);
+                    // Skip if already processed (verified, inlined, essential, or reachable)
+                    if !info.verified && !info.inlined && !info.essential && !info.reachable {
+                        info.reachable = true;
+                        work_queue.push(spec);
+                        reachable_functions.insert(spec);
+                    }
+                }
+            }
 
             // Mark all callees as reachable
             for callee in fun_env.get_called_functions() {

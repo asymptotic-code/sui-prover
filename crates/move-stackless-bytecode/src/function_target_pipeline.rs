@@ -308,6 +308,12 @@ impl FunctionTargetsHolder {
             .chain(self.package_targets.scenario_specs().iter())
     }
 
+    pub fn specs_with_target(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
+        self.specs()
+            .filter(|spec_id| self.targets.get(spec_id).is_some())
+            .cloned()
+    }
+
     pub fn get_inv_by_datatype(&self, id: &QualifiedId<DatatypeId>) -> Option<&QualifiedId<FunId>> {
         self.datatype_invs.get_by_left(id)
     }
@@ -742,9 +748,10 @@ impl FunctionTargetPipeline {
         H1: Fn(&FunctionTargetsHolder),
         H2: Fn(usize, &dyn FunctionTargetProcessor, &FunctionTargetsHolder),
     {
-        let topological_order = Self::sort_targets_in_topological_order(env, targets);
         hook_before_pipeline(targets);
         for (step_count, processor) in self.processors.iter().enumerate() {
+            let topological_order: Vec<Either<QualifiedId<FunId>, Vec<QualifiedId<FunId>>>> =
+                Self::sort_targets_in_topological_order(env, targets);
             if processor.is_single_run() {
                 processor.run(env, targets);
             } else {
