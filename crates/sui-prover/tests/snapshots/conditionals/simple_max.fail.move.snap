@@ -1,5 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 277
 expression: output
 ---
 exiting with verification errors
@@ -22,6 +23,14 @@ error: prover::ensures does not hold
 
 
 == Generated Boogie Code ==
+function {:inline} $42_simple_max_failure_test_simple_max$pure(_$t0: int, _$t1: int) returns ($ret0: int)
+{
+    (var $t3 := (_$t0 >= _$t1);
+    (var $t4 := _$t1;
+    (var $t5 := _$t0;
+    (var $t6 := (if $t3 then $t4 else $t5);
+    $t6))))
+}
 procedure {:inline 1} $42_simple_max_failure_test_simple_max$impl(_$t0: int, _$t1: int) returns ($ret0: int)
 {
     // declare local variables
@@ -71,12 +80,4 @@ procedure {:inline 1} $42_simple_max_failure_test_simple_max$impl(_$t0: int, _$t
     $ret0 := $t6;
     return;
 
-}
-function {:inline} $42_simple_max_failure_test_simple_max$pure(_$t0: int, _$t1: int) returns ($ret0: int)
-{
-    (var $t3 := (_$t0 >= _$t1);
-    (var $t4 := _$t1;
-    (var $t5 := _$t0;
-    (var $t6 := (if $t3 then $t4 else $t5);
-    $t6))))
 }
