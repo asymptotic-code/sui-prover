@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 277
+expression: output
+---
+Verification successful
+
+
+== Generated Boogie Code ==
+function {:inline} $42_map_loop_ok_pred$pure(_$t0: int) returns ($ret0: int)
+{
+    (var $t2 := 0;
+    (var $t3 := (_$t0 == $t2);
+    (var $t4 := 0;
+    (var $t5 := $t4;
+    (var $t6 := 1;
+    (var $t7 := (_$t0 - $t6);
+    (var $t8 := (if $t3 then $t5 else $t7);
+    $t8)))))))
+}
