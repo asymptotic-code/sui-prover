@@ -4,18 +4,37 @@ assertion_line: 277
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Recursive functions are not supported for specifications. foo::my_spec_simple -> foo::factorial -> foo::factorial
-   ┌─ tests/inputs/recursion.fail.move:15:1
+error: Recursive functions are not supported for specifications.
+Path: foo::factorial_complex -> foo::factorial_helper
+   ┌─ tests/inputs/recursion.fail.move:24:1
    │  
-15 │ ╭ public fun my_spec_simple() {
-16 │ │   ensures(factorial(5) == 120);
-17 │ │ }
+24 │ ╭ public fun factorial_complex(x: u64): u64 {
+25 │ │   if (x == 0) {
+26 │ │     1
+27 │ │   } else {
+28 │ │     factorial_helper(x - 1)
+29 │ │   }
+30 │ │ }
    │ ╰─^
 
-error: Recursive functions are not supported for specifications. foo::my_spec_complex -> foo::factorial_complex -> foo::factorial_helper -> foo::factorial_complex
-   ┌─ tests/inputs/recursion.fail.move:33:1
+error: Recursive functions are not supported for specifications.
+Path: foo::factorial_complex -> foo::factorial_helper
+   ┌─ tests/inputs/recursion.fail.move:20:1
    │  
-33 │ ╭ public fun my_spec_complex() {
-34 │ │   ensures(factorial_complex(5) == 120);
-35 │ │ }
+20 │ ╭ public fun factorial_helper(x: u64): u64 {
+21 │ │   x * factorial_complex(x)
+22 │ │ }
+   │ ╰─^
+
+error: Recursive functions are not supported for specifications.
+Path: foo::factorial -> foo::factorial
+   ┌─ tests/inputs/recursion.fail.move:6:1
+   │  
+ 6 │ ╭ public fun factorial(x: u64): u64 {
+ 7 │ │   if (x == 0) {
+ 8 │ │     1
+ 9 │ │   } else {
+10 │ │     x * factorial(x - 1)
+11 │ │   }
+12 │ │ }
    │ ╰─^

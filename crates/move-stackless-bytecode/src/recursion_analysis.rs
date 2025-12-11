@@ -1,10 +1,9 @@
 use crate::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    verification_analysis::VerificationInfo,
 };
 use codespan_reporting::diagnostic::Severity;
-use move_model::model::{FunId, FunctionEnv, QualifiedId};
+use move_model::model::FunctionEnv;
 
 pub struct RecursionAnalysisProcessor();
 
@@ -13,47 +12,14 @@ impl RecursionAnalysisProcessor {
         Box::new(Self())
     }
 
-    pub fn find_recursive_functions(
-        &self,
-        fun_env: &FunctionEnv,
-        data: &FunctionData,
-    ) -> Option<Vec<String>> {
-        self.find_recursive_functions_r(fun_env, data, vec![fun_env.get_qualified_id()])
-    }
-
-    fn find_recursive_functions_r(
-        &self,
-        fun_env: &FunctionEnv,
-        data: &FunctionData,
-        trace: Vec<QualifiedId<FunId>>,
-    ) -> Option<Vec<String>> {
+    pub fn find_simple_recursion(&self, fun_env: &FunctionEnv) -> Vec<String> {
         for qid in fun_env.get_called_functions() {
-            let callee_env = fun_env.module_env.env.get_function(qid);
-            let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
-            if !verification_info.inlined
-                && !verification_info.verified
-                && !verification_info.reachable
-            {
-                continue;
-            }
-
-            if trace.contains(&qid) {
-                let mut result = vec![];
-                for id in &trace {
-                    result.push(fun_env.module_env.env.get_function(*id).get_full_name_str());
-                }
-                result.push(callee_env.get_full_name_str());
-                return Some(result);
-            } else {
-                let mut new_trace = trace.clone();
-                new_trace.push(qid);
-
-                if let Some(trace) = self.find_recursive_functions_r(&callee_env, data, new_trace) {
-                    return Some(trace);
-                }
+            if qid == fun_env.get_qualified_id() {
+                return vec![fun_env.get_full_name_str(), fun_env.get_full_name_str()];
             }
         }
-        None
+
+        vec![]
     }
 }
 
@@ -63,21 +29,21 @@ impl FunctionTargetProcessor for RecursionAnalysisProcessor {
         targets: &mut FunctionTargetsHolder,
         fun_env: &FunctionEnv,
         data: FunctionData,
-        _scc_opt: Option<&[FunctionEnv]>,
+        scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if !targets.is_spec(&fun_env.get_qualified_id())
-            && !targets.is_function_with_abort_check(&fun_env.get_qualified_id())
-        {
-            // NOTE: build trace only from meaningful functions
-            return data;
-        }
+        let trace = if let Some(scc) = scc_opt {
+            scc.iter().map(|f| f.get_full_name_str()).collect()
+        } else {
+            // NOTE: also check for simple direct recursion (scc is not handling it)
+            self.find_simple_recursion(fun_env)
+        };
 
-        if let Some(trace) = self.find_recursive_functions(fun_env, &data) {
+        if !trace.is_empty() {
             fun_env.module_env.env.diag(
                 Severity::Error,
                 &fun_env.get_loc(),
                 &format!(
-                    "Recursive functions are not supported for specifications. {}",
+                    "Recursive functions are not supported for specifications.\nPath: {}",
                     trace.join(" -> ")
                 ),
             );
