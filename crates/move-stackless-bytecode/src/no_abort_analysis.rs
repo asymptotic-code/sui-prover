@@ -16,14 +16,6 @@ pub fn has_no_abort_spec(targets: &FunctionTargetsHolder, fun_env: &FunctionEnv)
     targets
         .get_spec_by_fun(&fun_env.get_qualified_id())
         .is_some_and(|spec_qid| {
-            // TODO: remove this check once unused functions are properly removed from targets
-            if targets
-                .get_data(&spec_qid, &FunctionVariant::Baseline)
-                .is_none()
-            {
-                return false;
-            }
-
             let spec_data = targets
                 .get_data(&spec_qid, &FunctionVariant::Baseline)
                 .expect(&format!(
@@ -46,6 +38,13 @@ pub fn does_not_abort(
     callee_env: &FunctionEnv,
     caller_env: Option<&FunctionEnv>,
 ) -> bool {
+    if callee_env.is_native() {
+        return callee_env
+            .module_env
+            .env
+            .func_not_aborts(callee_env.get_qualified_id())
+            .unwrap();
+    }
     let no_abort_info = targets
         .get_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline);
     let use_no_abort_spec = targets.get_spec_by_fun(&callee_env.get_qualified_id())
