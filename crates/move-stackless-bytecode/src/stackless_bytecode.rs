@@ -299,7 +299,7 @@ pub enum Operation {
     IfThenElse,
 
     // Debugging
-    TraceLocal(TempIndex),
+    TraceLocal(TempIndex, bool),
     TraceReturn(usize),
     TraceAbort,
     TraceExp(TraceKind, NodeId),
@@ -1280,12 +1280,13 @@ impl fmt::Display for OperationDisplay<'_> {
             Neq => write!(f, "!=")?,
 
             // Debugging
-            TraceLocal(l) => {
+            TraceLocal(l, s) => {
                 let name = self.func_target.get_local_name(*l);
                 write!(
                     f,
-                    "trace_local[{}]",
-                    name.display(self.func_target.symbol_pool())
+                    "trace_local[{}, {}]",
+                    name.display(self.func_target.symbol_pool()),
+                    if *s { "special" } else { "normal" }
                 )?
             }
             TraceAbort => write!(f, "trace_abort")?,

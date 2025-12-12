@@ -1,0 +1,17 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 267
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/log.ok.move:16:5
+   │
+16 │     ensures(res == 5); // should fail
+   │     ^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/log.ok.move:12: foo_spec
+   =     test log
+   =     at tests/inputs/log.ok.move:14: foo_spec
+   =         r = 0u64
+   =     at tests/inputs/log.ok.move:15: foo_spec

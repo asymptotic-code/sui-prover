@@ -18,3 +18,5 @@ error: prover::ensures does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/prettyprint-enum.move:20: foo_spec
+   =         res#1#0 = foo::MyEnum::B{pos0 = ELIDEDu64}
+   =     at tests/inputs/prettyprint-enum.move:23: foo_spec

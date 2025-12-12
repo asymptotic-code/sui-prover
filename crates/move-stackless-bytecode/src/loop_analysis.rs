@@ -224,7 +224,7 @@ impl LoopAnalysisProcessor {
                                 Bytecode::Call(
                                     id,
                                     vec![],
-                                    Operation::TraceLocal(*idx),
+                                    Operation::TraceLocal(*idx, false),
                                     vec![*idx],
                                     None,
                                 )

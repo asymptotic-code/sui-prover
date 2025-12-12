@@ -229,7 +229,7 @@ fn translate_call(
 
         // Skipped debug ops
         Operation::Destroy
-        | Operation::TraceLocal(_)
+        | Operation::TraceLocal(_, _)
         | Operation::TraceReturn(_)
         | Operation::TraceAbort
         | Operation::TraceExp(_, _)

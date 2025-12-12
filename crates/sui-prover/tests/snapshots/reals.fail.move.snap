@@ -10,3 +10,5 @@ error: prover::ensures does not hold
    │   ^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/reals.fail.move:16: foo_spec
+   =         y_real#1#0 = 1.0/7.0
+   =     at tests/inputs/reals.fail.move:21: foo_spec

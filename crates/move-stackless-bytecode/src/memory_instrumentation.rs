@@ -332,7 +332,7 @@ impl<'a> Instrumenter<'a> {
                                     Bytecode::Call(
                                         id,
                                         vec![],
-                                        Operation::TraceLocal(temp),
+                                        Operation::TraceLocal(temp, false),
                                         vec![temp],
                                         None,
                                     )

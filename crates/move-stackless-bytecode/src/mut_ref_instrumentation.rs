@@ -61,7 +61,7 @@ impl FunctionTargetProcessor for MutRefInstrumenter {
                     builder.set_loc_from_attr(attr_id);
                     for added in &mut_ref_params {
                         builder.emit_with(|id| {
-                            Call(id, vec![], TraceLocal(*added), vec![*added], None)
+                            Call(id, vec![], TraceLocal(*added, false), vec![*added], None)
                         });
                     }
                     builder.emit(Ret(attr_id, rets));
