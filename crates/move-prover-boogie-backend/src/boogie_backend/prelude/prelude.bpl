@@ -1523,6 +1523,12 @@ function {:inline} $SliceVecByRange<T>(v: Vec T, r: $Range): Vec T {
 {%- endfor %}
 {%- endfor %}
 
+{%- for instance in quantifier_helpers_instances %}
+// ----------------------------------------------------------------------------------
+// Native Quantifier helper `{{instance.qht}}` implementation for func `{{instance.name}}`
+{{ native::quantifier_helpers_module(instance=instance) -}}
+{%- endfor %}
+
 // ==================================================================================
 // Native Hash
 

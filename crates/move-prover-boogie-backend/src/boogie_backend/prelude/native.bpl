@@ -925,6 +925,67 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 
 {% endmacro dynamic_field_module %}
 
+{% macro quantifier_helpers_module(instance) %}
+{%- set QP = instance.quantifier_params -%}
+{%- set QA = instance.quantifier_args -%}
+{%- set FN = instance.name -%}
+{%- set RS = instance.result_suffix -%}
+{%- set RT = instance.result_type -%}
+{%- set EAB = instance.extra_args_before -%}
+{%- set EAA = instance.extra_args_after -%}
+
+{%- if instance.qht == "find_indices" %}
+function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
+(
+    var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
+        LenVec(res) <= end - start &&
+        (forall i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> $ContainsVec'{{RS}}'(res, j))
+    )
+);
+{%- endif %}
+
+{%- if instance.qht == "filter" %}
+function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+(
+    var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+        LenVec(res) <= end - start &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> $ContainsVec'{{RS}}'(v, ReadVec(res, i))) &&
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> $ContainsVec'{{RS}}'(res, ReadVec(v, j)))
+    )
+);
+{%- endif %}
+
+{%- if instance.qht == "find_index" %}
+function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
+axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+(
+    var res := $FindIndexQuantifierHelper_{{FN}}({{QA}});
+        if (forall i: int :: start <= i && i < end ==> !{{FN}}({{EAB}}ReadVec(v, i){{EAA}})) then res == -1
+        else start <= res && res < end && {{FN}}({{EAB}}ReadVec(v, res){{EAA}}) &&
+            (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
+    )
+);
+{%- endif %}
+
+{%- if instance.qht == "map" %}
+function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
+(
+    var res := $MapQuantifierHelper_{{FN}}({{QA}});
+        LenVec(res) == end - start &&
+        (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
+    )
+);
+{%- endif %}
+
+{% endmacro quantifier_helpers_module %}
+
 {% macro dynamic_field_key_module(impl, instance) %}
 {%- set Type = impl.struct_name -%}
 {%- set T = instance.name -%}
