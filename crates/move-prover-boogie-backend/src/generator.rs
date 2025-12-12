@@ -113,7 +113,7 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
         fs::create_dir_all(output_path)?;
     }
 
-    if !targets.has_function_checks() {
+    if targets.target_no_abort_check_functions().is_empty() {
         if !targets.has_specs() {
             return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
         }

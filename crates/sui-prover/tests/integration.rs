@@ -128,17 +128,7 @@ integration-test = "0x9"
                         }
                     };
 
-                    // Extract and append Boogie code for conditional tests.
-                    let boogie_code =
-                        extract_boogie_function(&options.output_path, is_conditionals_test);
-                    if !boogie_code.is_empty() {
-                        format!(
-                            "{}\n\n== Generated Boogie Code ==\n{}",
-                            prover_result, boogie_code
-                        )
-                    } else {
-                        prover_result
-                    }
+                    prover_result
                 })
             }
             Err(err) => {

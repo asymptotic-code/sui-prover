@@ -272,7 +272,9 @@ impl FunctionTargetsHolder {
     }
 
     pub fn should_generate_abort_check(&self, id: &QualifiedId<FunId>) -> bool {
-        self.is_function_with_abort_check(id)
+        self.package_targets
+            .target_no_abort_check_functions()
+            .contains(id)
             && !self
                 .get_annotation::<NoAbortInfo>(id, &FunctionVariant::Baseline)
                 .does_not_abort

@@ -390,10 +390,8 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
-                        if !self.options.spec_no_abort_check_only
-                            && !self.options.func_abort_check_only
-                        {
+                        // BUT: Don't emit Pure variants in func_abort_check modes
+                        if !self.options.func_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -416,10 +414,8 @@ impl<'env> BoogieTranslator<'env> {
                             .translate();
                         }
                         // Attempt to emit Pure variant if eligible
-                        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
-                        if !self.options.spec_no_abort_check_only
-                            && !self.options.func_abort_check_only
-                        {
+                        // BUT: Don't emit Pure variants in func_abort_check modes
+                        if !self.options.func_abort_check_only {
                             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                         }
                     }
@@ -525,8 +521,8 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
         }
         // Emit Pure variant if eligible (gated inside)
-        // BUT: Don't emit Pure variants in spec_no_abort_check and func_abort_check modes
-        if !self.options.spec_no_abort_check_only && !self.options.func_abort_check_only {
+        // BUT: Don't emit Pure variants in func_abort_check modes
+        if !self.options.func_abort_check_only {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }

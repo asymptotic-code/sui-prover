@@ -1,6 +1,5 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 276
 expression: output
 ---
 exiting with verification errors
@@ -19,18 +18,3 @@ error: prover::ensures does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/map_range.fail.move:29: test_map_range_wrong_subrange
-
-
-
-== Generated Boogie Code ==
-function {:inline} $42_quantifiers_map_range_fail_x_plus_10$pure(_$t0: int) returns ($ret0: int)
-{
-    (var $t2 := 18446744073709551605;
-    (var $t3 := (_$t0 < $t2);
-    (var $t4 := 10;
-    (var $t5 := (_$t0 + $t4);
-    (var $t6 := 18446744073709551615;
-    (var $t7 := $t6;
-    (var $t8 := (if $t3 then $t5 else $t7);
-    $t8)))))))
-}
