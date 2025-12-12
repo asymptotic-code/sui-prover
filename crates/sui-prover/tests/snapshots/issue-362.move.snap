@@ -1,0 +1,23 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 267
+expression: output
+---
+exiting with verification errors
+warning: unused alias
+  ┌─ tests/inputs/issue-362.move:3:31
+  │
+3 │     use prover::vector_iter::{any_range, find_index};
+  │                               ^^^^^^^^^ Unused 'use' of alias 'any_range'. Consider removing it
+  │
+  = This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/issue-362.move:19:9
+   │
+19 │         ensures(r == find_index!(w, |j| is_odd(j)));
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/issue-362.move:17: find_odd_index2_spec
+   =     enter loop, variable(s) i#1#6 havocked and reassigned
+   =     at tests/inputs/issue-362.move:31: find_odd_index2
