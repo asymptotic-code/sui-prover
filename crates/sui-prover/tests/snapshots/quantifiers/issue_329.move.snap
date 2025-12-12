@@ -1,22 +1,5 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 276
 expression: output
 ---
 Verification successful
-
-
-== Generated Boogie Code ==
-function {:inline} $42_issue_329_some_x_is_10$pure(v: Vec int): bool {
-    (exists i:int :: 0 <= i && i < LenVec(v) && $42_issue_329_x_is_10$pure(ReadVec(v, i)))
-}
-
-
-
-//==================================
-function {:inline} $42_issue_329_x_is_10$pure(_$t0: int) returns ($ret0: bool)
-{
-    (var $t3 := 10;
-    (var $t4 := (_$t0 == $t3);
-    $t4))
-}
