@@ -151,6 +151,40 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
+    fn generate_axiom_function(&mut self, func_env: &FunctionEnv) {
+        let func_name = boogie_function_name(func_env, &[], FunctionTranslationStyle::Pure);
+
+        let params_types = func_env.get_parameter_types();
+        let params = (0..func_env.get_parameter_count())
+            .map(|val| {
+                format!(
+                    "$t{}: {}",
+                    val.to_string(),
+                    boogie_type(self.env, &params_types[val],)
+                )
+            })
+            .join(", ");
+
+        let args = (0..func_env.get_parameter_count())
+            .map(|val| format!("$t{}", val.to_string()))
+            .join(", ");
+
+        emitln!(
+            self.writer,
+            "// axiom function for {} {}",
+            func_env.get_full_name_str(),
+            func_env.get_loc().display(self.env)
+        );
+        emitln!(
+            self.writer,
+            "axiom (forall {} :: {}({}));",
+            params,
+            func_name,
+            args
+        );
+        emitln!(self.writer);
+    }
+
     pub fn translate(&mut self) {
         let writer = self.writer;
         let env = self.env;
@@ -354,6 +388,12 @@ impl<'env> BoogieTranslator<'env> {
 
             for ref fun_env in module_env.get_functions() {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    continue;
+                }
+
+                if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
+                    self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+                    self.generate_axiom_function(fun_env);
                     continue;
                 }
 
@@ -890,6 +930,9 @@ impl<'env> BoogieTranslator<'env> {
             if !self
                 .targets
                 .is_pure_fun(&fun_target.func_env.get_qualified_id())
+                && !self
+                    .targets
+                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
             {
                 return; // Only emit if #[ext(pure)] is present
             }

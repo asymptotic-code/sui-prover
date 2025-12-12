@@ -23,7 +23,6 @@ impl PureFunctionAnalysisProcessor {
     }
 
     fn check_function(
-        &self,
         mid: ModuleId,
         fid: FunId,
         env: &GlobalEnv,
@@ -48,6 +47,55 @@ impl PureFunctionAnalysisProcessor {
                 },
             ));
         }
+    }
+
+    // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
+    // Control flow instructions (jumps, branches, labels) are silently skipped since
+    // if_then_else expressions have already summarized their effects.
+    pub fn check_bytecode(
+        fun_env: &FunctionEnv,
+        data: &FunctionData,
+        targets: &FunctionTargetsHolder,
+    ) -> Option<(move_model::model::Loc, String)> {
+        for bc in data.code.iter() {
+            use Bytecode::*;
+            let error = match bc {
+                Assign(_, _, _, _) => None,
+                Load(_, _, _) => None,
+                Call(_, _, op, _, _) => match op {
+                    Operation::Function(mid, fid, _) => {
+                        Self::check_function(*mid, *fid, fun_env.module_env.env, &targets)
+                    }
+                    _ => None,
+                },
+                Ret(_, _) => None,
+                Nop(_) => None,
+                Jump(_, _) => None,
+                Branch(_, _, _, _) => None,
+                Label(_, _) => None,
+                VariantSwitch(_, _, _) => {
+                    Some("Pure functions cannot have variant switch operations".to_string())
+                }
+                Abort(_, _) => Some("Pure functions cannot abort".to_string()),
+                // should be unreachable
+                SaveMem(_, _, _) => {
+                    Some("Pure functions cannot use memory save operations".to_string())
+                }
+                Prop(_, _, _) => {
+                    Some("Pure functions cannot have specification properties".to_string())
+                }
+            };
+            if let Some(reason) = error {
+                let loc = data
+                    .locations
+                    .get(&bc.get_attr_id())
+                    .cloned()
+                    .unwrap_or_else(|| fun_env.get_loc());
+                return Some((loc, reason));
+            }
+        }
+
+        None
     }
 
     fn check_parameters(&self, func_env: &FunctionEnv) -> bool {
@@ -106,46 +154,9 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
             return data;
         }
 
-        // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
-        // Control flow instructions (jumps, branches, labels) are silently skipped since
-        // if_then_else expressions have already summarized their effects.
-        for bc in data.code.iter() {
-            use Bytecode::*;
-            let error = match bc {
-                Assign(_, _, _, _) => None,
-                Load(_, _, _) => None,
-                Call(_, _, op, _, _) => match op {
-                    Operation::Function(mid, fid, _) => {
-                        self.check_function(*mid, *fid, fun_env.module_env.env, &targets)
-                    }
-                    _ => None,
-                },
-                Ret(_, _) => None,
-                Nop(_) => None,
-                Jump(_, _) => None,
-                Branch(_, _, _, _) => None,
-                Label(_, _) => None,
-                VariantSwitch(_, _, _) => {
-                    Some("Pure functions cannot have variant switch operations".to_string())
-                }
-                Abort(_, _) => Some("Pure functions cannot abort".to_string()),
-                // should be unreachable
-                SaveMem(_, _, _) => {
-                    Some("Pure functions cannot use memory save operations".to_string())
-                }
-                Prop(_, _, _) => {
-                    Some("Pure functions cannot have specification properties".to_string())
-                }
-            };
-            if let Some(reason) = error {
-                let loc = data
-                    .locations
-                    .get(&bc.get_attr_id())
-                    .cloned()
-                    .unwrap_or_else(|| fun_env.get_loc());
-                fun_env.module_env.env.diag(Severity::Error, &loc, &reason);
-                return data;
-            }
+        if let Some((loc, reason)) = Self::check_bytecode(fun_env, &data, targets) {
+            fun_env.module_env.env.diag(Severity::Error, &loc, &reason);
+            return data;
         }
 
         data

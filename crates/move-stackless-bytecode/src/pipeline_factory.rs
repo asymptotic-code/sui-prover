@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    axiom_function_analysis::AxiomFunctionAnalysisProcessor,
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
@@ -55,6 +56,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
         MemoryInstrumentationProcessor::new(),
+        AxiomFunctionAnalysisProcessor::new(),
     ];
 
     // Rerun liveness analysis and its dependencies after MemoryInstrumentation
