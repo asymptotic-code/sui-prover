@@ -10,7 +10,7 @@ module 0x42::A {
 
     #[spec_only(loop_inv(target=0x42::foo::find_odd_index2)), ext(pure)]
     fun foo_inv(v: &vector<u64>, i: u64): bool {
-        i <= v.length() && ! any_range!(v, 0, i, |x| is_odd(x))
+        i <= v.length() && !any_range!(v, 0, i, |x| is_odd(x))
     }
 
     #[spec(prove, target=0x42::foo::find_odd_index2)]
