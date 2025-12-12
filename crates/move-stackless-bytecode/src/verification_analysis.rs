@@ -92,7 +92,9 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             info.essential = true;
         }
 
-        if targets.is_function_with_abort_check(&fun_env.get_qualified_id()) {
+        if targets.is_function_with_abort_check(&fun_env.get_qualified_id())
+            || targets.is_axiom_fun(&fun_env.get_qualified_id())
+        {
             let info = data
                 .annotations
                 .get_or_default_mut::<VerificationInfo>(true);

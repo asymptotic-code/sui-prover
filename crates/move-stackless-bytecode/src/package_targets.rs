@@ -26,6 +26,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    axiom_functions: BTreeSet<QualifiedId<FunId>>,
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
@@ -49,6 +50,7 @@ impl PackageTargets {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            axiom_functions: BTreeSet::new(),
             target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
@@ -511,6 +513,13 @@ impl PackageTargets {
                         .insert(func_env.get_qualified_id());
                 }
             }
+
+            if attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "axiom".to_string())
+            {
+                self.axiom_functions.insert(func_env.get_qualified_id());
+            }
         }
     }
 
@@ -708,6 +717,10 @@ impl PackageTargets {
 
     pub fn pure_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.pure_functions
+    }
+
+    pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.axiom_functions
     }
 
     pub fn skipped_specs(&self) -> &BTreeMap<QualifiedId<FunId>, String> {

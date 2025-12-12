@@ -139,6 +139,25 @@ pub enum QuantifierType {
     SumMapRange,
 }
 
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub enum QuantifierHelperType {
+    Map,
+    FindIndex,
+    FindIndices,
+    Filter,
+}
+
+impl QuantifierHelperType {
+    pub fn str(&self) -> &str {
+        match self {
+            QuantifierHelperType::Map => "map",
+            QuantifierHelperType::FindIndex => "find_index",
+            QuantifierHelperType::FindIndices => "find_indices",
+            QuantifierHelperType::Filter => "filter",
+        }
+    }
+}
+
 impl QuantifierType {
     pub fn display(&self) -> &str {
         match self {
@@ -210,6 +229,27 @@ impl QuantifierType {
 
     pub fn requires_filter_indices(&self) -> bool {
         matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
+    }
+
+    pub fn into_quantifier_helper_type(&self) -> Option<QuantifierHelperType> {
+        match self {
+            QuantifierType::Map
+            | QuantifierType::MapRange
+            | QuantifierType::SumMap
+            | QuantifierType::SumMapRange => Some(QuantifierHelperType::Map),
+            QuantifierType::FindIndex
+            | QuantifierType::FindIndexRange
+            | QuantifierType::Find
+            | QuantifierType::FindRange => Some(QuantifierHelperType::FindIndex),
+            QuantifierType::FindIndices
+            | QuantifierType::FindIndicesRange
+            | QuantifierType::Count
+            | QuantifierType::CountRange => Some(QuantifierHelperType::FindIndices),
+            QuantifierType::Filter | QuantifierType::FilterRange => {
+                Some(QuantifierHelperType::Filter)
+            }
+            _ => None,
+        }
     }
 }
 

@@ -11,13 +11,12 @@ fun x_is_10(x: &u64): bool {
     x == 10
 }
 
-#[ext(no_abort)]
+#[ext(pure)]
 fun some_x_is_10(v: &vector<u64>): bool {
     any!(v, |x| x_is_10(x))
 }
 
 #[spec(prove)]
 fun test_spec(v: &vector<vector<u64>>) {
-    // todo: fix in #391
-    // requires(all!(v, |u| some_x_is_10(u)));
+    requires(all!(v, |u| some_x_is_10(u)));
 }

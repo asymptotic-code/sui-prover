@@ -284,6 +284,10 @@ impl FunctionTargetsHolder {
         self.package_targets.pure_functions().contains(id)
     }
 
+    pub fn is_axiom_fun(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.axiom_functions().contains(id)
+    }
+
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs().contains(id)
     }
