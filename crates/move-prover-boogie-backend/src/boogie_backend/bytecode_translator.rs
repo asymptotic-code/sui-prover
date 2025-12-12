@@ -4501,12 +4501,12 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                     Destroy => {}
-                    TraceLocal(idx) => {
+                    TraceLocal(idx, special) => {
                         let num_oper = global_state
                             .get_temp_index_oper(mid, fid, srcs[0], baseline_flag)
                             .unwrap();
                         let bv_flag = self.bv_flag(num_oper);
-                        self.track_local(*idx, srcs[0], bv_flag);
+                        self.track_local(*idx, srcs[0], bv_flag, *special);
                     }
                     TraceReturn(i) => {
                         let oper_map = global_state.get_ret_map();
@@ -5332,7 +5332,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     /// Generates an update of the debug information about temporary.
-    fn track_local(&self, origin_idx: TempIndex, idx: TempIndex, bv_flag: bool) {
+    fn track_local(&self, origin_idx: TempIndex, idx: TempIndex, bv_flag: bool, special: bool) {
         self.parent.add_type(&self.get_local_type(idx));
         emitln!(
             self.writer(),
@@ -5341,7 +5341,8 @@ impl<'env> FunctionTranslator<'env> {
                 origin_idx,
                 idx,
                 &self.get_local_type(idx),
-                bv_flag
+                bv_flag,
+                special
             )
         );
     }
@@ -5442,7 +5443,7 @@ impl<'env> FunctionTranslator<'env> {
                         let bv_flag = self.bv_flag_from_map(idx, ret_oper_map);
                         need(ty, bv_flag, 1)
                     }
-                    TraceLocal(_) => {
+                    TraceLocal(_, _) => {
                         let ty = &self.get_local_type(srcs[0]);
                         let num_oper = &global_state
                             .get_temp_index_oper(mid, fid, srcs[0], baseline_flag)
