@@ -424,7 +424,7 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
-                        }     
+                        }
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -443,7 +443,7 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
-                        }              
+                        }
                     }
                 }
             }
