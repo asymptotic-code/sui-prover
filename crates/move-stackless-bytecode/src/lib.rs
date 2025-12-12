@@ -53,6 +53,7 @@ pub mod pipeline_factory;
 pub mod pure_function_analysis;
 pub mod quantifier_iterator_analysis;
 pub mod reaching_def_analysis;
+pub mod recursion_analysis;
 pub mod replacement_analysis;
 pub mod spec_global_variable_analysis;
 pub mod spec_hierarchy;
