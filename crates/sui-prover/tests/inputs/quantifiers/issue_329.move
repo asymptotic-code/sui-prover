@@ -18,6 +18,5 @@ fun some_x_is_10(v: &vector<u64>): bool {
 
 #[spec(prove)]
 fun test_spec(v: &vector<vector<u64>>) {
-    // todo: fix in #391
-    // requires(all!(v, |u| some_x_is_10(u)));
+    requires(all!(v, |u| some_x_is_10(u)));
 }
