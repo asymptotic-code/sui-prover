@@ -2693,7 +2693,7 @@ impl<'env> FunctionTranslator<'env> {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else {
-                                continue;
+                                unreachable!("expected pure function call");
                             }
                         } else if let Operation::GetField(mid, sid, inst, field_offset) = op {
                             // Handle field access
@@ -2709,8 +2709,34 @@ impl<'env> FunctionTranslator<'env> {
                                 }
                                 format!("{}->{}", src_str, sel_fun)
                             } else {
-                                continue;
+                                unreachable!("expected one source for GetField expression");
                             }
+                        } else if let Operation::Pack(mid, sid, inst) = op {
+                            let inst = &self.inst_slice(inst);
+                            let struct_env =
+                                fun_target.global_env().get_module(*mid).into_struct(*sid);
+
+                            // Get regular field arguments
+                            let regular_args = srcs.iter().cloned().map(fmt_temp).collect_vec();
+
+                            // Get dynamic field arguments
+                            let struct_type = Type::Datatype(*mid, *sid, inst.to_owned());
+                            let dynamic_field_info =
+                                dynamic_field_analysis::get_env_info(fun_target.global_env());
+                            let dynamic_field_names_values = dynamic_field_info
+                                .dynamic_field_names_values(&struct_type)
+                                .collect_vec();
+
+                            // Create EmptyTable() arguments for each dynamic field
+                            let dynamic_args = dynamic_field_names_values
+                                .iter()
+                                .map(|_| "EmptyTable()".to_string())
+                                .collect_vec();
+
+                            // Combine all arguments
+                            let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
+
+                            format!("{}({})", boogie_struct_name(&struct_env, inst), all_args)
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
                                 // Bitwise operations and shifts are functions, not operators
@@ -2744,12 +2770,28 @@ impl<'env> FunctionTranslator<'env> {
                                     format!("({} {} {})", fmt_temp(srcs[0]), sym, fmt_temp(srcs[1]))
                                 }
                             } else {
-                                continue;
+                                unreachable!(
+                                    "unexpected {} sources for operation {:?} in function {}",
+                                    srcs.len(),
+                                    op,
+                                    fun_target.func_env.get_full_name_str()
+                                );
                             }
                         } else {
-                            continue;
+                            panic!(
+                                "unexpected operation {:?} in function {}",
+                                op,
+                                fun_target.func_env.get_full_name_str()
+                            );
                         };
                         bindings.push((*dest, expr));
+                    } else {
+                        panic!(
+                            "unexpected {} destinations for Call operation {:?} in function {}",
+                            dests.len(),
+                            op,
+                            fun_target.func_env.get_full_name_str()
+                        );
                     }
                 }
                 Ret(_, srcs) => {
