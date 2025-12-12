@@ -2876,18 +2876,18 @@ impl<'env> FunctionTranslator<'env> {
             };
 
         let extra_args = if fun_env.get_parameter_count() > 1 {
-            srcs.iter()
-                .skip(if qt.range_based() { 3 } else { 1 })
-                .map(|i| format!(", $t{}", i.to_string()))
-                .join("")
+            format!(
+                ", {}",
+                srcs.iter()
+                    .skip(if qt.range_based() { 3 } else { 1 })
+                    .enumerate()
+                    .filter(|(i, _)| *i != li)
+                    .map(|(_, val)| fmt_temp(*val))
+                    .join(", ")
+            )
         } else {
             String::new()
         };
-
-        println!(
-            "Generating pure quantifier expr for {:?} [{}]",
-            qt, extra_args
-        );
 
         match qt {
             QuantifierType::Forall => {

@@ -954,7 +954,7 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         LenVec(res) <= end - start &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})) &&
         (forall i: int :: 0 <= i && i < LenVec(res) ==> $ContainsVec'{{RS}}'(v, ReadVec(res, i))) &&
         (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> $ContainsVec'{{RS}}'(res, ReadVec(v, j)))
     )
