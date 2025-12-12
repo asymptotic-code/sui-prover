@@ -51,7 +51,7 @@ use move_stackless_bytecode::{
     spec_global_variable_analysis::{self},
     stackless_bytecode::{
         AbortAction, BorrowEdge, BorrowNode, Bytecode, Constant, HavocKind, IndexEdgeKind,
-        Operation, PropKind, QuantifierType,
+        Operation, PropKind, QuantifierHelperType, QuantifierType,
     },
     verification_analysis,
 };
@@ -77,21 +77,6 @@ use crate::boogie_backend::{
 
 use super::boogie_helpers::boogie_enum_field_sel;
 
-pub enum QuantifierHelperType {
-    Map,
-    FindIndex,
-    FindIndices,
-    Filter,
-}
-
-#[derive(Default)]
-pub struct QuantifierHelpers {
-    pub map_quantifiers: BTreeSet<String>,
-    pub find_index_quantifiers: BTreeSet<String>,
-    pub find_indices_quantifiers: BTreeSet<String>,
-    pub filter_quantifiers: BTreeSet<String>,
-}
-
 pub struct BoogieTranslator<'env> {
     env: &'env GlobalEnv,
     options: &'env BoogieOptions,
@@ -100,7 +85,6 @@ pub struct BoogieTranslator<'env> {
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     asserts_mode: AssertsMode,
-    qt_helpers: RefCell<QuantifierHelpers>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -147,7 +131,6 @@ impl<'env> BoogieTranslator<'env> {
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
             asserts_mode,
-            qt_helpers: RefCell::new(QuantifierHelpers::default()),
         }
     }
 

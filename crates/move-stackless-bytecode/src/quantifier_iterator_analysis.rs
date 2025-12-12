@@ -166,9 +166,7 @@ impl QuantifierIteratorAnalysisProcessor {
         Box::new(Self())
     }
 
-    fn prepare_pure_quantifiers_helpers_data(&self, func_env: &FunctionEnv, data: FunctionData) {
-        use Bytecode::*;
-        use Operation::*;
+    fn prepare_pure_quantifiers_helpers_data(&self, func_env: &FunctionEnv, code: &[Bytecode]) {
         let env = func_env.module_env.env;
 
         let mut info = if let Some(info) = env.get_extension::<PureQuantifierHelpersInfo>() {
@@ -179,8 +177,9 @@ impl QuantifierIteratorAnalysisProcessor {
             }
         };
 
-        for bc in &data.code {
-            if let Call(_, dests, Quantifier(qt, qid, inst, li), srcs, _) = bc {
+        for bc in code {
+            if let Bytecode::Call(_, dests, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc
+            {
                 if let Some(qht) = qt.into_quantifier_helper_type() {
                     info.helpers.insert(PureQuantifierHelperInfo {
                         qht,
@@ -522,13 +521,12 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
 
         self.scan_for_broken_patterns(&patterns.to_vec(), env, &bc);
 
-        let mut data = data.clone();
-        data.code = bc;
-
         if targets.is_pure_fun(&func_env.get_qualified_id()) {
-            self.prepare_pure_quantifiers_helpers_data(func_env, data.clone());
+            self.prepare_pure_quantifiers_helpers_data(func_env, &bc);
         }
 
+        let mut data = data.clone();
+        data.code = bc;
         data
     }
 

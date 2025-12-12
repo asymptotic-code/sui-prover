@@ -502,7 +502,6 @@ impl QuantifierHelperInfo {
         let params_types = func_env.get_parameter_types();
         let dst_elem_boogie_type = &func_env.get_return_type(0);
 
-        // todo include additional args
         let mut quantifier_params = format!(
             "v: Vec ({}), start: int, end: int",
             boogie_type(env, params_types[info.li].skip_reference())
@@ -516,44 +515,39 @@ impl QuantifierHelperInfo {
                 dst_elem_boogie_type
             };
 
-        let result_suffix = boogie_type_suffix(env, dst_elem_boogie_type);
-        let result_type = boogie_type(env, dst_elem_boogie_type);
-
-        let extra_args_before = (0..info.li)
-            .map(|i| format!("$t{}, ", i.to_string()))
-            .join("");
+        if func_env.get_parameter_count() > 1 {
+            quantifier_params = format!(
+                "{}, {}",
+                quantifier_params,
+                (0..func_env.get_parameter_count())
+                    .skip(info.li)
+                    .enumerate()
+                    .filter(|(idx, _)| *idx != info.li)
+                    .map(|(_, val)| {
+                        format!(
+                            "$t{}: {}",
+                            val.to_string(),
+                            boogie_type(env, &params_types[val])
+                        )
+                    })
+                    .join(", ")
+            );
+        }
 
         let extra_args_after = (info.li + 1..func_env.get_parameter_count())
             .map(|i| format!(", $t{}", i.to_string()))
             .join("");
 
-        let quantifier_args = format!("v, start, end{}", extra_args_after);
-
-        if func_env.get_parameter_count() > 1 {
-            let extra_params = (0..func_env.get_parameter_count())
-                .skip(info.li)
-                .enumerate()
-                .filter(|(idx, _)| *idx != info.li)
-                .map(|(_, val)| {
-                    format!(
-                        "$t{}: {}",
-                        val.to_string(),
-                        boogie_type(env, &params_types[val])
-                    )
-                })
-                .join(", ");
-
-            quantifier_params = format!("{}, {}", quantifier_params, extra_params);
-        }
-
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
-            quantifier_args,
-            result_type,
-            result_suffix,
-            extra_args_before,
+            quantifier_args: format!("v, start, end{}", extra_args_after),
+            result_type: boogie_type(env, dst_elem_boogie_type),
+            result_suffix: boogie_type_suffix(env, dst_elem_boogie_type),
+            extra_args_before: (0..info.li)
+                .map(|i| format!("$t{}, ", i.to_string()))
+                .join(""),
             extra_args_after,
         }
     }
