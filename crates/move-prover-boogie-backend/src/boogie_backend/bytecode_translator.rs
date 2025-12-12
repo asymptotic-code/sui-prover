@@ -374,11 +374,7 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
-                // Attempt to emit Pure variant if eligible
-                // BUT: Don't emit Pure variants in spec_no_abort_check mode
-                if !self.options.spec_no_abort_check_only {
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
-                }
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
 
                 if self.options.func_abort_check_only
                     && self
@@ -428,7 +424,7 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
-                        }
+                        }     
                     }
                     _ => {
                         // This variant is inlined, so translate for all type instantiations.
@@ -447,7 +443,7 @@ impl<'env> BoogieTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             )
                             .translate();
-                        }
+                        }              
                     }
                 }
             }
@@ -549,11 +545,6 @@ impl<'env> BoogieTranslator<'env> {
             self.translate_function_style(fun_env, FunctionTranslationStyle::Default);
             self.translate_function_style(fun_env, FunctionTranslationStyle::Asserts);
             self.translate_function_style(fun_env, FunctionTranslationStyle::SpecNoAbortCheck);
-        }
-        // Emit Pure variant if eligible (gated inside)
-        // BUT: Don't emit Pure variants in spec_no_abort_check
-        if !self.options.spec_no_abort_check_only {
-            self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
         }
     }
 
@@ -5193,9 +5184,19 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::CountRange => {
                                 emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) == (if {}({}) then 1 else 0));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, $t{}, $t{});",
+                                    dests[0],
+                                    srcs[1],
+                                    srcs[2]
+                                );
                             }
                             QuantifierType::SumMap => {
                                 emitln!(self.writer(), "havoc $quantifier_temp_vec;");

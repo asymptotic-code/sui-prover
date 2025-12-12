@@ -26,6 +26,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
@@ -38,6 +39,7 @@ pub struct PackageTargets {
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
+    filter: TargetFilterOptions,
     allow_focus_attr: bool,
 }
 
@@ -47,6 +49,7 @@ impl PackageTargets {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
@@ -60,9 +63,10 @@ impl PackageTargets {
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
+            filter,
             allow_focus_attr,
         };
-        s.collect_targets(env, filter);
+        s.collect_targets(env);
         s
     }
 
@@ -267,12 +271,12 @@ impl PackageTargets {
         }
     }
 
-    fn collect_targets(&mut self, env: &GlobalEnv, filter: TargetFilterOptions) {
+    fn collect_targets(&mut self, env: &GlobalEnv) {
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
-                self.check_spec_scope(&func_env, filter.clone());
-                self.check_spec_only_scope(&func_env, filter.clone());
-                self.check_abort_check_scope(&func_env, filter.clone());
+                self.check_spec_scope(&func_env);
+                self.check_spec_only_scope(&func_env);
+                self.check_abort_check_scope(&func_env);
             }
             self.handle_module_explicit_spec_attributes(&module_env);
         }
@@ -287,7 +291,7 @@ impl PackageTargets {
         }
     }
 
-    fn check_spec_only_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) {
+    fn check_spec_only_scope(&mut self, func_env: &FunctionEnv) {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target,
             loop_inv,
@@ -352,7 +356,7 @@ impl PackageTargets {
         }
     }
 
-    fn check_spec_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) {
+    fn check_spec_scope(&mut self, func_env: &FunctionEnv) {
         let env = func_env.module_env.env;
         if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
             focus,
@@ -390,11 +394,14 @@ impl PackageTargets {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
-            if !func_env.module_env.is_target()
-                || skip.is_some()
-                || !filter.is_targeted(func_env)
-                || (!*prove && !*focus)
-            {
+            if let Some(skip_reason) = skip {
+                if self.is_target(func_env) {
+                    self.skipped_specs
+                        .insert(func_env.get_qualified_id(), skip_reason.clone());
+                }
+            }
+
+            if !self.is_target(func_env) || skip.is_some() || (!*prove && !*focus) {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
             } else {
                 if *focus {
@@ -477,7 +484,7 @@ impl PackageTargets {
         }
     }
 
-    fn check_abort_check_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) {
+    fn check_abort_check_scope(&mut self, func_env: &FunctionEnv) {
         if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::External)
@@ -489,12 +496,20 @@ impl PackageTargets {
             {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
+                if self.is_target(func_env) {
+                    self.target_no_abort_check_functions
+                        .insert(func_env.get_qualified_id());
+                }
             }
             if attrs
                 .into_iter()
                 .any(|attr| attr.2.value.name().value.as_str() == "pure".to_string())
             {
                 self.pure_functions.insert(func_env.get_qualified_id());
+                if self.is_target(func_env) {
+                    self.target_no_abort_check_functions
+                        .insert(func_env.get_qualified_id());
+                }
             }
         }
     }
@@ -546,6 +561,10 @@ impl PackageTargets {
 
     pub fn is_system_spec(&self, qid: &QualifiedId<FunId>) -> bool {
         self.system_specs.contains(qid)
+    }
+
+    pub fn is_target(&self, func_env: &FunctionEnv) -> bool {
+        func_env.module_env.is_target() && self.filter.is_targeted(func_env)
     }
 
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
@@ -643,8 +662,8 @@ impl PackageTargets {
         (self.target_specs.len() + self.no_verify_specs.len() - self.system_specs.len()) > 0
     }
 
-    pub fn has_function_checks(&self) -> bool {
-        !self.abort_check_functions.is_empty() || !self.pure_functions.is_empty()
+    pub fn target_no_abort_check_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.target_no_abort_check_functions
     }
 
     pub fn has_focus_specs(&self) -> bool {
