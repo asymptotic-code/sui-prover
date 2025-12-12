@@ -25,6 +25,7 @@ use crate::{
     pure_function_analysis::PureFunctionAnalysisProcessor,
     quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
+    recursion_analysis::RecursionAnalysisProcessor,
     replacement_analysis::ReplacementAnalysisProcessor,
     spec_global_variable_analysis::SpecGlobalVariableAnalysisProcessor,
     spec_instrumentation::SpecInstrumentationProcessor,
@@ -40,6 +41,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     // NOTE: the order of these processors is import!
     let mut processors: Vec<Box<dyn FunctionTargetProcessor>> = vec![
         VerificationAnalysisProcessor::new(),
+        RecursionAnalysisProcessor::new(),
         SpecGlobalVariableAnalysisProcessor::new(),
         SpecPurityAnalysis::new(),
         DebugInstrumenter::new(),
