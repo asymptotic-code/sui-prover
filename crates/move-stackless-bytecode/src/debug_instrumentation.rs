@@ -16,6 +16,8 @@ use itertools::Itertools;
 
 use move_model::model::FunctionEnv;
 
+use codespan_reporting::diagnostic::Severity;
+
 use crate::{
     exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
@@ -38,13 +40,50 @@ impl FunctionTargetProcessor for DebugInstrumenter {
         &self,
         targets: &mut FunctionTargetsHolder,
         fun_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         use Bytecode::*;
 
         if fun_env.is_native() {
             // Nothing to do
+            return data;
+        }
+
+        if targets.is_pure_fun(&fun_env.get_qualified_id()) {
+            // a pure functions is translated to a Boogie function, not
+            // a procedure, so it doesn't support trace instructions.
+            // warn and remove log::* calls.
+            data.code = data
+                .code
+                .into_iter()
+                .filter(|bc| {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = bc {
+                        let qid = mid.qualified(*fid);
+                        if qid == fun_env.module_env.env.log_text_qid()
+                            || qid == fun_env.module_env.env.log_var_qid()
+                            || qid == fun_env.module_env.env.log_ghost_qid()
+                        {
+                            let loc = data
+                                .locations
+                                .get(&bc.get_attr_id())
+                                .cloned()
+                                .unwrap_or_else(|| fun_env.get_loc());
+                            fun_env.module_env.env.diag(
+                                Severity::Warning,
+                                &loc,
+                                &format!(
+                                    "`{}` is not supported in #[ext(pure)] functions and is ignored",
+                                    fun_env.module_env.env.get_function(qid).get_full_name_str()
+                                ),
+                            );
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
+
             return data;
         }
 
