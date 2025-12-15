@@ -4918,12 +4918,28 @@ impl<'env> FunctionTranslator<'env> {
                                 );
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
                                 emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'vec'u64''($quantifier_temp_vec);"
+                                );
                             }
                             QuantifierType::SumMapRange => {
                                 emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, $t{}, $t{});", dests[0], srcs[1], srcs[2]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume (forall i: int ::  0 <= i && i < LenVec($quantifier_temp_vec) ==> $0_vec_$sum'u64'($quantifier_temp_vec, i, i+1) == {}({}));",
+                                    fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'vec'u64''($quantifier_temp_vec);"
+                                );
                             }
                             QuantifierType::Filter => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
