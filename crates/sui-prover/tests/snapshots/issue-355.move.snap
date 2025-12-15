@@ -1,0 +1,27 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 267
+expression: output
+---
+exiting with bytecode transformation errors
+error: Recursive functions are not supported for specifications.
+Path: foo::bar_spec -> foo::foo_spec
+   ┌─ tests/inputs/issue-355.move:21:1
+   │  
+21 │ ╭ fun bar_spec(x: u64): u64 {
+22 │ │     let result = bar(x);
+23 │ │     prover::ensures(result < foo(x));
+24 │ │     result
+25 │ │ }
+   │ ╰─^
+
+error: Recursive functions are not supported for specifications.
+Path: foo::bar_spec -> foo::foo_spec
+   ┌─ tests/inputs/issue-355.move:14:1
+   │  
+14 │ ╭ fun foo_spec(x: u64): u64 {
+15 │ │     let result = foo(x);
+16 │ │     prover::ensures(result < bar(x));
+17 │ │     result
+18 │ │ }
+   │ ╰─^

@@ -1,5 +1,3 @@
-use std::{collections::BTreeSet, rc::Rc};
-
 use codespan_reporting::diagnostic::Severity;
 use move_model::{
     model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
@@ -10,21 +8,8 @@ use crate::{
     deterministic_analysis,
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
-    stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierHelperType, QuantifierType},
+    stackless_bytecode::{AttrId, Bytecode, Operation, QuantifierType},
 };
-
-#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
-pub struct PureQuantifierHelperInfo {
-    pub qht: QuantifierHelperType,
-    pub function: QualifiedId<FunId>,
-    pub li: usize,
-    pub inst: Vec<Type>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PureQuantifierHelpersInfo {
-    pub helpers: BTreeSet<PureQuantifierHelperInfo>,
-}
 
 #[derive(Debug, Clone)]
 pub struct QuantifierPattern {
@@ -164,34 +149,6 @@ pub struct QuantifierIteratorAnalysisProcessor();
 impl QuantifierIteratorAnalysisProcessor {
     pub fn new() -> Box<Self> {
         Box::new(Self())
-    }
-
-    fn prepare_pure_quantifiers_helpers_data(&self, func_env: &FunctionEnv, code: &[Bytecode]) {
-        let env = func_env.module_env.env;
-
-        let mut info = if let Some(info) = env.get_extension::<PureQuantifierHelpersInfo>() {
-            info.as_ref().clone()
-        } else {
-            PureQuantifierHelpersInfo {
-                helpers: BTreeSet::new(),
-            }
-        };
-
-        for bc in code {
-            if let Bytecode::Call(_, dests, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc
-            {
-                if let Some(qht) = qt.into_quantifier_helper_type() {
-                    info.helpers.insert(PureQuantifierHelperInfo {
-                        qht,
-                        function: *qid,
-                        li: *li,
-                        inst: inst.to_vec(),
-                    });
-                }
-            }
-        }
-
-        env.set_extension(info);
     }
 
     fn extract_fn_call_data(
@@ -496,7 +453,7 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
         &self,
         targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if func_env.is_native() {
@@ -521,11 +478,6 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
 
         self.scan_for_broken_patterns(&patterns.to_vec(), env, &bc);
 
-        if targets.is_pure_fun(&func_env.get_qualified_id()) {
-            self.prepare_pure_quantifiers_helpers_data(func_env, &bc);
-        }
-
-        let mut data = data.clone();
         data.code = bc;
         data
     }
@@ -533,8 +485,4 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
     fn name(&self) -> String {
         "quantifier_iterator_analysis".to_string()
     }
-}
-
-pub fn get_info(env: &GlobalEnv) -> Rc<PureQuantifierHelpersInfo> {
-    env.get_extension::<PureQuantifierHelpersInfo>().unwrap()
 }

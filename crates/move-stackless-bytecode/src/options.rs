@@ -96,6 +96,8 @@ pub struct ProverOptions {
     pub skip_spec_no_abort: bool,
     /// CI mode
     pub ci: bool,
+    /// Whether to emit debug trace instructions for counterexample generation
+    pub debug_trace: bool,
 }
 
 // add custom struct for mutation options
@@ -134,6 +136,7 @@ impl Default for ProverOptions {
             bv_int_encoding: true,
             skip_spec_no_abort: false,
             ci: false,
+            debug_trace: true,
         }
     }
 }

@@ -249,6 +249,7 @@ async fn execute_backend_boogie(
     options.backend.string_options = boogie_config;
     options.backend.boogie_file_mode = general_config.boogie_file_mode.clone();
     options.backend.debug_trace = !general_config.no_counterexample_trace;
+    options.prover.debug_trace = !general_config.no_counterexample_trace;
     options.filter = filter;
     options.prover.dump_bytecode = general_config.dump_bytecode;
     options.prover.enable_conditional_merge_insertion =

@@ -16,6 +16,8 @@ use itertools::Itertools;
 
 use move_model::model::FunctionEnv;
 
+use codespan_reporting::diagnostic::Severity;
+
 use crate::{
     exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
@@ -38,48 +40,85 @@ impl FunctionTargetProcessor for DebugInstrumenter {
         &self,
         targets: &mut FunctionTargetsHolder,
         fun_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         use Bytecode::*;
 
         if fun_env.is_native() {
-            // Nothing to do
+            return data;
+        }
+
+        if targets.is_pure_fun(&fun_env.get_qualified_id()) {
+            // a pure functions is translated to a Boogie function, not
+            // a procedure, so it doesn't support trace instructions.
+            // warn and remove log::* calls.
+            data.code = data
+                .code
+                .into_iter()
+                .filter(|bc| {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = bc {
+                        let qid = mid.qualified(*fid);
+                        if qid == fun_env.module_env.env.log_text_qid()
+                            || qid == fun_env.module_env.env.log_var_qid()
+                            || qid == fun_env.module_env.env.log_ghost_qid()
+                        {
+                            let loc = data
+                                .locations
+                                .get(&bc.get_attr_id())
+                                .cloned()
+                                .unwrap_or_else(|| fun_env.get_loc());
+                            fun_env.module_env.env.diag(
+                                Severity::Warning,
+                                &loc,
+                                &format!(
+                                    "`{}` is not supported in #[ext(pure)] functions and is ignored",
+                                    fun_env.module_env.env.get_function(qid).get_full_name_str()
+                                ),
+                            );
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
+
             return data;
         }
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
-        // Emit trace instructions for parameters at entry.
-        builder.set_loc(builder.fun_env.get_loc().at_start());
-        for i in 0..builder.fun_env.get_parameter_count() {
-            builder.emit_with(|id| Call(id, vec![], Operation::TraceLocal(i), vec![i], None));
-        }
+        if targets.prover_options().debug_trace {
+            // Emit trace instructions for parameters at entry.
+            builder.set_loc(builder.fun_env.get_loc().at_start());
+            for i in 0..builder.fun_env.get_parameter_count() {
+                builder.emit_with(|id| Call(id, vec![], Operation::TraceLocal(i), vec![i], None));
+            }
 
-        // For spec functions, emit trace instructions for all global variables at entry.
-        if targets.is_spec(&fun_env.get_qualified_id()) {
-            for tys in spec_global_variable_analysis::get_info(&builder.data)
-                .all_vars()
-                .cloned()
-                .collect_vec()
-            {
-                builder.emit_with(|id| {
-                    Call(
-                        id,
-                        vec![],
-                        Operation::TraceGhost(tys[0].clone(), tys[1].clone()),
-                        vec![],
-                        None,
-                    )
-                });
+            // For spec functions, emit trace instructions for all global variables at entry.
+            if targets.is_spec(&fun_env.get_qualified_id()) {
+                for tys in spec_global_variable_analysis::get_info(&builder.data)
+                    .all_vars()
+                    .cloned()
+                    .collect_vec()
+                {
+                    builder.emit_with(|id| {
+                        Call(
+                            id,
+                            vec![],
+                            Operation::TraceGhost(tys[0].clone(), tys[1].clone()),
+                            vec![],
+                            None,
+                        )
+                    });
+                }
             }
         }
 
         for bc in code {
-            let bc_clone = bc.clone();
             match &bc {
-                Ret(id, locals) => {
+                Ret(id, locals) if targets.prover_options().debug_trace => {
                     // Emit trace instructions for return values.
                     builder.set_loc_from_attr(*id);
                     for (i, l) in locals.iter().enumerate() {
@@ -89,12 +128,15 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                     }
                     builder.emit(bc);
                 }
-                Abort(id, l) => {
+                Abort(id, l) if targets.prover_options().debug_trace => {
                     builder.set_loc_from_attr(*id);
                     builder.emit_with(|id| Call(id, vec![], Operation::TraceAbort, vec![*l], None));
                     builder.emit(bc);
                 }
-                Call(_, _, Operation::WriteRef, srcs, _) if srcs[0] < fun_env.get_local_count() => {
+                Call(_, _, Operation::WriteRef, srcs, _)
+                    if targets.prover_options().debug_trace
+                        && srcs[0] < fun_env.get_local_count() =>
+                {
                     builder.set_loc_from_attr(bc.get_attr_id());
                     builder.emit(bc.clone());
                     builder.emit_with(|id| {
@@ -107,6 +149,7 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                         )
                     });
                 }
+                // always convert log::* functions to trace instructions, even if debug trace is disabled
                 Call(_, dests, Operation::Function(mid, fid, _), srcs, _)
                     if mid.qualified(*fid) == fun_env.module_env.env.log_text_qid() =>
                 {
@@ -168,21 +211,23 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                     });
                 }
                 _ => {
-                    builder.set_loc_from_attr(bc.get_attr_id());
-                    builder.emit(bc.clone());
-                    // Emit trace instructions for modified values.
                     let (val_targets, mut_targets) = bc.modifies(&builder.get_target());
-                    let affected_variables: BTreeSet<_> = val_targets
-                        .into_iter()
-                        .chain(mut_targets.into_iter().map(|(idx, _)| idx))
-                        .collect();
-                    for idx in affected_variables {
-                        // Only emit this for user declared locals, not for ones introduced
-                        // by stack elimination.
-                        if !fun_env.is_temporary(idx) {
-                            builder.emit_with(|id| {
-                                Call(id, vec![], Operation::TraceLocal(idx), vec![idx], None)
-                            });
+                    builder.set_loc_from_attr(bc.get_attr_id());
+                    builder.emit(bc);
+                    if targets.prover_options().debug_trace {
+                        // Emit trace instructions for modified values.
+                        let affected_variables: BTreeSet<_> = val_targets
+                            .into_iter()
+                            .chain(mut_targets.into_iter().map(|(idx, _)| idx))
+                            .collect();
+                        for idx in affected_variables {
+                            // Only emit this for user declared locals, not for ones introduced
+                            // by stack elimination.
+                            if !fun_env.is_temporary(idx) {
+                                builder.emit_with(|id| {
+                                    Call(id, vec![], Operation::TraceLocal(idx), vec![idx], None)
+                                });
+                            }
                         }
                     }
                 }
