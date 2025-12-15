@@ -20,12 +20,12 @@ impl AxiomFunctionAnalysisProcessor {
 
     fn check_parameters(&self, func_env: &FunctionEnv) -> bool {
         for param in func_env.get_parameters() {
-            if param.1.is_reference() {
+            if param.1.is_mutable_reference() {
                 func_env.module_env.env.diag(
                     Severity::Error,
                     &func_env.get_loc(),
                     &format!(
-                        "Axiom functions cannot have reference parameters: '{}'",
+                        "Axiom functions cannot have mutable reference parameters: '{}'",
                         func_env.symbol_pool().string(param.0)
                     ),
                 );

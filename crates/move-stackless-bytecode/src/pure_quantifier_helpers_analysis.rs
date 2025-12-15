@@ -44,7 +44,9 @@ impl FunctionTargetProcessor for PureQuantifierHelpersAnalysisProcessor {
             return data;
         }
         let env = func_env.module_env.env;
-        if !targets.is_pure_fun(&func_env.get_qualified_id()) {
+        if !targets.is_pure_fun(&func_env.get_qualified_id())
+            && !targets.is_axiom_fun(&func_env.get_qualified_id())
+        {
             return data;
         }
 
@@ -80,5 +82,6 @@ impl FunctionTargetProcessor for PureQuantifierHelpersAnalysisProcessor {
 }
 
 pub fn get_info(env: &GlobalEnv) -> Rc<PureQuantifierHelpersInfo> {
-    env.get_extension::<PureQuantifierHelpersInfo>().unwrap()
+    env.get_extension::<PureQuantifierHelpersInfo>()
+        .expect("PureQuantifierHelpersInfo extension must be set")
 }

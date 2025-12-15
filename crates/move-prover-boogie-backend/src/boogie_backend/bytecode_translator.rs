@@ -154,13 +154,15 @@ impl<'env> BoogieTranslator<'env> {
     fn generate_axiom_function(&mut self, func_env: &FunctionEnv) {
         let func_name = boogie_function_name(func_env, &[], FunctionTranslationStyle::Pure);
 
-        let params_types = func_env.get_parameter_types();
-        let params = (0..func_env.get_parameter_count())
-            .map(|val| {
+        let params = func_env
+            .get_parameter_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
                 format!(
                     "$t{}: {}",
-                    val.to_string(),
-                    boogie_type(self.env, &params_types[val],)
+                    idx.to_string(),
+                    boogie_type(self.env, ty.skip_reference())
                 )
             })
             .join(", ");
@@ -2712,13 +2714,11 @@ impl<'env> FunctionTranslator<'env> {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
                         } else if let Function(mid, fid, inst) = op {
+                            let callee_env = self.parent.env.get_function(mid.qualified(*fid));
                             let native_fn =
                                 self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
                             // Handle function calls for functions that can be emitted as Boogie functions
                             if self.can_callee_be_function(mid, fid) || native_fn {
-                                let env = fun_target.global_env();
-                                let module_env = env.get_module(*mid);
-                                let callee_env = module_env.get_function(*fid);
                                 let inst = &self.inst_slice(inst);
                                 let fun_name = boogie_function_name(
                                     &callee_env,
@@ -2740,7 +2740,10 @@ impl<'env> FunctionTranslator<'env> {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else {
-                                unreachable!("expected pure function call");
+                                unreachable!(
+                                    "Cannot emit function call to {:?} as pure function",
+                                    callee_env.get_full_name_str()
+                                );
                             }
                         } else if let Operation::GetField(mid, sid, inst, field_offset) = op {
                             // Handle field access
@@ -2839,12 +2842,14 @@ impl<'env> FunctionTranslator<'env> {
                         };
                         bindings.push((*dest, expr));
                     } else {
-                        panic!(
-                            "unexpected {} destinations for Call operation {:?} in function {}",
-                            dests.len(),
-                            op,
-                            fun_target.func_env.get_full_name_str()
-                        );
+                        if !matches!(op, TraceLocal(..) | TraceReturn(..)) {
+                            panic!(
+                                "unexpected {} destinations for operation {:?} in function {}",
+                                dests.len(),
+                                op,
+                                fun_target.func_env.get_full_name_str()
+                            );
+                        }
                     }
                 }
                 Ret(_, srcs) => {
@@ -5299,7 +5304,7 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", srcs[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> $ContainsVec'u64'($quantifier_temp_vec, j)));", srcs[0], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "assume (forall j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[0], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5334,7 +5339,7 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", srcs[1], srcs[2]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> $ContainsVec'u64'($quantifier_temp_vec, j)));", srcs[1], srcs[2], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "assume (forall j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[1], srcs[2], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5353,7 +5358,7 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", dests[0], dests[0], dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> $ContainsVec'u64'($t{}, i)));", srcs[0], fun_name, cr_args("i"), dests[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> $ContainsVec($t{}, i)));", srcs[0], fun_name, cr_args("i"), dests[0]);
                             }
                             QuantifierType::FindIndicesRange => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
@@ -5376,7 +5381,7 @@ impl<'env> FunctionTranslator<'env> {
                                 emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", dests[0], srcs[1], dests[0], dests[0], srcs[2]);
                                 emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> $ContainsVec'u64'($t{}, i)));", srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> ContainsVec($t{}, i)));", srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
                             }
                         }
                     }

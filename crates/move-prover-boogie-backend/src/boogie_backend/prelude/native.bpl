@@ -372,8 +372,8 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
     (if n >= LenVec(v) then EmptyVec() else SliceVec(v, n, LenVec(v)))
 }
 
-procedure {:inline 1} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: Vec ({{T}})) {
-    res := SliceVec(v, start, end);
+function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int): Vec ({{T}}) {
+    SliceVec(v, start, end)
 }
 
 {%- if instance.is_number -%}
@@ -444,12 +444,12 @@ axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
 
 {%- endif %}
 
-procedure {:inline 1} $0_vector_iter_sum{{S}}(v: Vec ({{T}})) returns (res: {{T}}) {
-    res := $0_vec_$sum{{S}}(v, 0, LenVec(v));
+function {:inline} $0_vector_iter_sum{{S}}(v: Vec ({{T}})): {{T}} {
+    $0_vec_$sum{{S}}(v, 0, LenVec(v))
 }
 
-procedure {:inline 1} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end: int) returns (res: {{T}}) {
-    res := $0_vec_$sum{{S}}(v, start, end);
+function {:inline} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}} {
+    $0_vec_$sum{{S}}(v, start, end)
 }
 
 {%- endif %}
@@ -929,7 +929,6 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set QP = instance.quantifier_params -%}
 {%- set QA = instance.quantifier_args -%}
 {%- set FN = instance.name -%}
-{%- set RS = instance.result_suffix -%}
 {%- set RT = instance.result_type -%}
 {%- set EAB = instance.extra_args_before -%}
 {%- set EAA = instance.extra_args_after -%}
@@ -943,7 +942,7 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
         (forall i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
         (forall i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&
         (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> $ContainsVec'{{RS}}'(res, j))
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, j))
     )
 );
 {%- endif %}
@@ -955,8 +954,8 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         LenVec(res) <= end - start &&
         (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> $ContainsVec'{{RS}}'(v, ReadVec(res, i))) &&
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> $ContainsVec'{{RS}}'(res, ReadVec(v, j)))
+        (forall i: int :: 0 <= i && i < LenVec(res) ==> ContainsVec(v, ReadVec(res, i))) &&
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, ReadVec(v, j)))
     )
 );
 {%- endif %}

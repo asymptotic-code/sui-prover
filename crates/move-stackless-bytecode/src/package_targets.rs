@@ -299,6 +299,7 @@ impl PackageTargets {
             loop_inv,
             explicit_spec_modules: _,
             explicit_specs: _,
+            axiom,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -309,6 +310,10 @@ impl PackageTargets {
             }
 
             let env = func_env.module_env.env;
+
+            if *axiom {
+                self.axiom_functions.insert(func_env.get_qualified_id());
+            }
 
             if let Some(loop_inv) = loop_inv {
                 match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
@@ -494,7 +499,7 @@ impl PackageTargets {
         {
             if attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string())
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort")
             {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
@@ -505,20 +510,13 @@ impl PackageTargets {
             }
             if attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure".to_string())
+                .any(|attr| attr.2.value.name().value.as_str() == "pure")
             {
                 self.pure_functions.insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
                     self.target_no_abort_check_functions
                         .insert(func_env.get_qualified_id());
                 }
-            }
-
-            if attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "axiom".to_string())
-            {
-                self.axiom_functions.insert(func_env.get_qualified_id());
             }
         }
     }
@@ -582,6 +580,7 @@ impl PackageTargets {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
             loop_inv: _,
+            axiom: _,
             explicit_spec_modules,
             explicit_specs,
         })) = module_env

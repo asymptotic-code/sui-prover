@@ -3962,6 +3962,9 @@ impl GlobalEnv {
             self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
+            Some(self.prover_vec_slice_qid()),
+            Some(self.prover_vec_sum_qid()),
+            Some(self.prover_vec_sum_range_qid()),
         ]
         .into_iter()
         .filter_map(|x| x)
