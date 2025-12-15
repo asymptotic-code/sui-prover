@@ -520,7 +520,6 @@ impl QuantifierHelperInfo {
                 "{}, {}",
                 quantifier_params,
                 (0..func_env.get_parameter_count())
-                    .skip(info.li)
                     .enumerate()
                     .filter(|(idx, _)| *idx != info.li)
                     .map(|(_, val)| {

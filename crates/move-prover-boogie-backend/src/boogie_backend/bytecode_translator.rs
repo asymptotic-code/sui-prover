@@ -2897,7 +2897,7 @@ impl<'env> FunctionTranslator<'env> {
             if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
                 inner.as_ref()
             } else {
-                panic!("Expected vector type for Find quantifier")
+                panic!("Expected vector type for quantifier operation")
             };
 
         let extra_args = if fun_env.get_parameter_count() > 1 {
@@ -2982,7 +2982,7 @@ impl<'env> FunctionTranslator<'env> {
                     if let Type::Vector(inner) = self.get_local_type(dests[0]) {
                         boogie_type(env, inner.as_ref())
                     } else {
-                        panic!("Expected vector type for MapRange quantifier")
+                        panic!("Expected vector type for Map quantifier")
                     };
 
                 let map_quant_name = self
