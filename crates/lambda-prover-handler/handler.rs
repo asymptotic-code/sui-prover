@@ -114,6 +114,17 @@ impl ProverHandler {
         temp_dir_path: &Path,
         options: Option<String>,
     ) -> Result<(String, String, i32)> {
+        // Create sui_prover.toml from environment variable if provided
+        if let Ok(secret) = std::env::var("SUI_PROVER_SECRET") {
+            let config_dir = Path::new("/tmp/.asymptotic");
+            std::fs::create_dir_all(config_dir).context("Failed to create config directory")?;
+
+            let config_path = config_dir.join("sui_prover.toml");
+            std::fs::write(&config_path, secret).context("Failed to write sui_prover.toml")?;
+
+            println!("Created config file at {:?}", config_path);
+        }
+
         let mut child = unsafe {
             let mut c = Command::new("sui-prover");
             if let Some(opts) = options {
@@ -122,6 +133,9 @@ impl ProverHandler {
             };
 
             c.arg("--cloud")
+                .arg("--skip-fetch-latest-git-deps")
+                .env("HOME", "/tmp")
+                .env("MOVE_HOME", "/opt/.move")
                 .current_dir(temp_dir_path)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
@@ -202,7 +216,7 @@ impl ProverHandler {
             }
         }
 
-        return (default_address, default_alias);
+        (default_address, default_alias)
     }
 
     fn build_files(files: Vec<(String, String)>) -> Result<tempfile::TempDir> {
@@ -322,7 +336,7 @@ impl ProverHandler {
         Ok(ProverResponse {
             out,
             err,
-            status: status,
+            status,
             cached: false,
         })
     }

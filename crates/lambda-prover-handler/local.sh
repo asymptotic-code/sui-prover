@@ -10,8 +10,8 @@ docker build -t my-lambda-prover-function .
   -e AWS_LAMBDA_FUNCTION_TIMEOUT=1500 \
   -e AWS_LAMBDA_FUNCTION_VERSION="$LATEST" \
   -e ALLOWED_KEY_HASHES_CSV="10a6e6cc8311a3e2bcc09bf6c199adecd5dd59408c343e926b129c4914f3cb01" \
-  -e SUI_PROVER_SECRET="url = \"https://hdhs3sbtlk22w5ceivvbuege4i0devap.lambda-url.us-west-2.on.aws/\"\nkey = \"test_password\"\nconcurrency = 10" \
-  my-lambda-prover-function 
+  -e SUI_PROVER_SECRET=$'url = \'https://hdhs3sbtlk22w5ceivvbuege4i0devap.lambda-url.us-west-2.on.aws/\'\nkey = \'test_password\'\nconcurrency = 10' \
+  my-lambda-prover-function
 
 # 3.
 

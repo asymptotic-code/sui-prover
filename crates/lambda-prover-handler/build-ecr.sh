@@ -1,6 +1,6 @@
 set -e
 
-DEFAULT_ECR_URI="679720146588.dkr.ecr.us-west-2.amazonaws.com/prover/prover"
+DEFAULT_ECR_URI="679720146588.dkr.ecr.us-west-2.amazonaws.com/prover/sui-prover"
 DEFAULT_REGION="us-west-2"
 DEFAULT_TAG="latest"
 LOCAL_IMAGE_NAME="prover/sui-prover"
