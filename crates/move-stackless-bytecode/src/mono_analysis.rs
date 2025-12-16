@@ -591,6 +591,15 @@ impl Analyzer<'_> {
                     self.push_todo_fun(mid.qualified(*fid), actuals);
                 }
             }
+            Call(_, _, Quantifier(_, callee_id, targs, _), ..) => {
+                let actuals = self.instantiate_vec(targs);
+                self.info
+                    .funs
+                    .entry((*callee_id, FunctionVariant::Baseline))
+                    .or_default()
+                    .insert(actuals.clone());
+                self.push_todo_fun(*callee_id, actuals);
+            }
             Call(_, _, WriteBack(_, edge), ..) => {
                 // In very rare occasions, not all types used in the function can appear in
                 // function parameters, locals, and return values. Types hidden in the write-back
