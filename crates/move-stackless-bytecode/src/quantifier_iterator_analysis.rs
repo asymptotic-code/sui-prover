@@ -453,13 +453,12 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
         &self,
         targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
-        data: FunctionData,
+        mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if func_env.is_native() {
             return data;
         }
-
         let env = func_env.module_env.env;
         let func_target = FunctionTarget::new(func_env, &data);
         let code = func_target.get_bytecode();
@@ -479,9 +478,7 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
 
         self.scan_for_broken_patterns(&patterns.to_vec(), env, &bc);
 
-        let mut data = data.clone();
         data.code = bc;
-
         data
     }
 
