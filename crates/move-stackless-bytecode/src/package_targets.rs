@@ -3,11 +3,12 @@ use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_},
+    expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
     shared::known_attributes::{
         AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
     },
 };
+use move_ir_types::location::Spanned;
 use move_model::{
     ast::ModuleName,
     model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
@@ -37,6 +38,8 @@ pub struct PackageTargets {
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
+    function_external_attributes:
+        BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
@@ -62,6 +65,7 @@ impl PackageTargets {
             spec_timeouts: BTreeMap::new(),
             loop_invariants: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
+            function_external_attributes: BTreeMap::new(),
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
@@ -374,11 +378,22 @@ impl PackageTargets {
             ignore_abort,
             boogie_opt,
             timeout,
+            explicit_spec_modules,
+            explicit_specs,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
         {
+            if let Some(attrs) = Self::handle_explicit_spec_attributes(
+                &func_env.module_env,
+                explicit_spec_modules,
+                explicit_specs,
+            ) {
+                self.function_external_attributes
+                    .insert(func_env.get_qualified_id(), attrs);
+            }
+
             if Self::system_spec(&func_env.get_qualified_id(), env) {
                 self.system_specs.insert(func_env.get_qualified_id());
             }
@@ -574,9 +589,77 @@ impl PackageTargets {
         func_env.module_env.is_target() && self.filter.is_targeted(func_env)
     }
 
-    fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
+    fn handle_explicit_spec_attributes(
+        module_env: &ModuleEnv,
+        explicit_spec_modules: &Vec<Spanned<ModuleIdent_>>,
+        explicit_specs: &Vec<Spanned<ModuleAccess_>>,
+    ) -> Option<BTreeSet<ModuleExternalSpecAttribute>> {
         let mut result: BTreeSet<ModuleExternalSpecAttribute> = BTreeSet::new();
 
+        for mi in explicit_spec_modules {
+            let name = ModuleName::from_address_bytes_and_name(
+                mi.value.address.into_addr_bytes(),
+                module_env
+                    .env
+                    .symbol_pool()
+                    .make(&mi.value.module.to_string()),
+            );
+            if let Some(module) = module_env.env.find_module(&name) {
+                result.insert(ModuleExternalSpecAttribute::Module(module.get_id()));
+            } else {
+                module_env.env.diag(
+                    Severity::Error,
+                    &module_env.get_loc(),
+                    &format!(
+                        "Error parsing module path in explicit_spec_module '{}'",
+                        module_env.get_full_name_str()
+                    ),
+                );
+                return None;
+            }
+        }
+
+        for ms in explicit_specs {
+            match Self::parse_module_access(ms, module_env) {
+                Some((module_name, fun_name)) => {
+                    let target_module_env = module_env.env.find_module(&module_name).unwrap();
+                    if let Some(func_env) = target_module_env
+                        .find_function(module_env.env.symbol_pool().make(&fun_name))
+                    {
+                        result.insert(ModuleExternalSpecAttribute::Function(
+                            func_env.get_qualified_id(),
+                        ));
+                    } else {
+                        module_env.env.diag(
+                            Severity::Error,
+                            &module_env.get_loc(),
+                            &format!(
+                                "Function '{}' not found in module '{}'",
+                                fun_name,
+                                target_module_env.get_full_name_str(),
+                            ),
+                        );
+                        return None;
+                    }
+                }
+                None => {
+                    module_env.env.diag(
+                        Severity::Error,
+                        &module_env.get_loc(),
+                        &format!(
+                            "Error parsing module path in explicit_spec '{}'",
+                            module_env.get_full_name_str()
+                        ),
+                    );
+                    return None;
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
             loop_inv: _,
@@ -588,69 +671,15 @@ impl PackageTargets {
             .get_(&AttributeKind_::SpecOnly)
             .map(|attr| &attr.value)
         {
-            for mi in explicit_spec_modules {
-                let name = ModuleName::from_address_bytes_and_name(
-                    mi.value.address.into_addr_bytes(),
-                    module_env
-                        .env
-                        .symbol_pool()
-                        .make(&mi.value.module.to_string()),
-                );
-                if let Some(module) = module_env.env.find_module(&name) {
-                    result.insert(ModuleExternalSpecAttribute::Module(module.get_id()));
-                } else {
-                    module_env.env.diag(
-                        Severity::Error,
-                        &module_env.get_loc(),
-                        &format!(
-                            "Error parsing module path in explicit_spec_module '{}'",
-                            module_env.get_full_name_str()
-                        ),
-                    );
-                    return;
-                }
-            }
-
-            for ms in explicit_specs {
-                match Self::parse_module_access(ms, module_env) {
-                    Some((module_name, fun_name)) => {
-                        let target_module_env = module_env.env.find_module(&module_name).unwrap();
-                        if let Some(func_env) = target_module_env
-                            .find_function(module_env.env.symbol_pool().make(&fun_name))
-                        {
-                            result.insert(ModuleExternalSpecAttribute::Function(
-                                func_env.get_qualified_id(),
-                            ));
-                        } else {
-                            module_env.env.diag(
-                                Severity::Error,
-                                &module_env.get_loc(),
-                                &format!(
-                                    "Function '{}' not found in module '{}'",
-                                    fun_name,
-                                    target_module_env.get_full_name_str(),
-                                ),
-                            );
-                            return;
-                        }
-                    }
-                    None => {
-                        module_env.env.diag(
-                            Severity::Error,
-                            &module_env.get_loc(),
-                            &format!(
-                                "Error parsing module path in explicit_spec_module '{}'",
-                                module_env.get_full_name_str()
-                            ),
-                        );
-                        return;
-                    }
-                }
+            if let Some(attrs) = Self::handle_explicit_spec_attributes(
+                module_env,
+                explicit_spec_modules,
+                explicit_specs,
+            ) {
+                self.module_external_attributes
+                    .insert(module_env.get_id(), attrs);
             }
         }
-
-        self.module_external_attributes
-            .insert(module_env.get_id(), result.clone());
     }
 
     pub fn is_belongs_to_module_explicit_specs(
@@ -659,6 +688,22 @@ impl PackageTargets {
         qid: QualifiedId<FunId>,
     ) -> bool {
         if let Some(external_attrs) = self.module_external_attributes.get(&module_env.get_id()) {
+            external_attrs.contains(&ModuleExternalSpecAttribute::Module(qid.module_id))
+                || external_attrs.contains(&ModuleExternalSpecAttribute::Function(qid))
+        } else {
+            false
+        }
+    }
+
+    pub fn is_belongs_to_function_explicit_specs(
+        &mut self,
+        func_env: &FunctionEnv,
+        qid: QualifiedId<FunId>,
+    ) -> bool {
+        if let Some(external_attrs) = self
+            .function_external_attributes
+            .get(&func_env.get_qualified_id())
+        {
             external_attrs.contains(&ModuleExternalSpecAttribute::Module(qid.module_id))
                 || external_attrs.contains(&ModuleExternalSpecAttribute::Function(qid))
         } else {

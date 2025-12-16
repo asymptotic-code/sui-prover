@@ -288,6 +288,14 @@ impl FunctionTargetsHolder {
         self.package_targets.axiom_functions().contains(id)
     }
 
+    pub fn pure_translation_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
+        self.package_targets
+            .pure_functions()
+            .union(self.package_targets.axiom_functions())
+            .cloned()
+            .collect()
+    }
+
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.get_fun_by_spec(id).is_some() || self.package_targets.scenario_specs().contains(id)
     }
@@ -415,19 +423,31 @@ impl FunctionTargetsHolder {
         } else if matches!(self.target, FunctionHolderTarget::All) {
             // pass
         } else {
-            let target_module = match self.target {
-                FunctionHolderTarget::Function(qid) => qid.module_id,
-                FunctionHolderTarget::Module(mid) => mid,
+            let (is_related, target_module) = match self.target {
+                FunctionHolderTarget::Function(qid) => (
+                    self.package_targets.is_belongs_to_module_explicit_specs(
+                        &env.get_module(qid.module_id),
+                        spec_env.get_qualified_id(),
+                    ) || self.package_targets.is_belongs_to_function_explicit_specs(
+                        &env.get_function(qid),
+                        spec_env.get_qualified_id(),
+                    ),
+                    qid.module_id,
+                ),
+                FunctionHolderTarget::Module(mid) => (
+                    self.package_targets.is_belongs_to_module_explicit_specs(
+                        &env.get_module(mid),
+                        spec_env.get_qualified_id(),
+                    ),
+                    mid,
+                ),
                 FunctionHolderTarget::FunctionsAbortCheck | FunctionHolderTarget::All => {
                     unreachable!()
                 }
             };
 
             if spec_env.module_env.get_id() != target_module
-                && !self.package_targets.is_belongs_to_module_explicit_specs(
-                    &env.get_module(target_module),
-                    spec_env.get_qualified_id(),
-                )
+                && !is_related
                 && !self
                     .package_targets
                     .is_system_spec(&spec_env.get_qualified_id())

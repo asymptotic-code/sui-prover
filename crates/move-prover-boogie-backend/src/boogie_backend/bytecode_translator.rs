@@ -939,68 +939,80 @@ impl<'env> BoogieTranslator<'env> {
                 return; // Only emit if #[ext(pure)] is present
             }
         }
-        if style == FunctionTranslationStyle::Default
-            || style == FunctionTranslationStyle::Asserts
-            || style == FunctionTranslationStyle::SpecNoAbortCheck
-            || style == FunctionTranslationStyle::Pure
-        {
-            FunctionTranslator::new(self, &fun_target, &[], style).translate();
-        }
-
-        if style == FunctionTranslationStyle::Opaque || style == FunctionTranslationStyle::Aborts {
-            if self
-                .targets
-                .scenario_specs()
-                .contains(&fun_target.func_env.get_qualified_id())
-            {
-                return;
+        match style {
+            FunctionTranslationStyle::Default
+            | FunctionTranslationStyle::Asserts
+            | FunctionTranslationStyle::SpecNoAbortCheck => {
+                FunctionTranslator::new(self, &fun_target, &[], style).translate();
             }
-
-            if self.options.func_abort_check_only
-                && self
+            FunctionTranslationStyle::Opaque | FunctionTranslationStyle::Aborts => {
+                if self
                     .targets
-                    .should_generate_abort_check(&fun_env.get_qualified_id())
-                && style == FunctionTranslationStyle::Opaque
-            {
-                mono_analysis::get_info(self.env)
+                    .scenario_specs()
+                    .contains(&fun_target.func_env.get_qualified_id())
+                {
+                    return;
+                }
+
+                if self.options.func_abort_check_only
+                    && self
+                        .targets
+                        .should_generate_abort_check(&fun_env.get_qualified_id())
+                    && style == FunctionTranslationStyle::Opaque
+                {
+                    mono_analysis::get_info(self.env)
+                        .funs
+                        .get(&(
+                            fun_target.func_env.get_qualified_id(),
+                            FunctionVariant::Baseline,
+                        ))
+                        .unwrap_or(&BTreeSet::new())
+                        .iter()
+                        .for_each(|type_inst| {
+                            FunctionTranslator::new(self, &fun_target, type_inst, style)
+                                .translate();
+                        });
+                    return;
+                }
+
+                let mut type_insts = mono_analysis::get_info(self.env)
+                    .funs
+                    .get(&(
+                        *self
+                            .targets
+                            .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
+                            .unwrap(),
+                        FunctionVariant::Baseline,
+                    ))
+                    .unwrap_or(&BTreeSet::new())
+                    .clone();
+                if self.options.spec_no_abort_check_only
+                    && !self
+                        .targets
+                        .is_verified_spec(&fun_target.func_env.get_qualified_id())
+                {
+                    // add the identity type instance, if it's not already in the set
+                    type_insts.insert(
+                        (0..fun_target.func_env.get_type_parameter_count())
+                            .map(|i| Type::TypeParameter(i as u16))
+                            .collect(),
+                    );
+                }
+                for type_inst in type_insts {
+                    FunctionTranslator::new(self, &fun_target, &type_inst, style).translate();
+                }
+            }
+            FunctionTranslationStyle::Pure => {
+                for type_inst in mono_analysis::get_info(self.env)
                     .funs
                     .get(&(
                         fun_target.func_env.get_qualified_id(),
                         FunctionVariant::Baseline,
                     ))
                     .unwrap_or(&BTreeSet::new())
-                    .iter()
-                    .for_each(|type_inst| {
-                        FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
-                    });
-                return;
-            }
-
-            let mut type_insts = mono_analysis::get_info(self.env)
-                .funs
-                .get(&(
-                    *self
-                        .targets
-                        .get_fun_by_spec(&fun_target.func_env.get_qualified_id())
-                        .unwrap(),
-                    FunctionVariant::Baseline,
-                ))
-                .unwrap_or(&BTreeSet::new())
-                .clone();
-            if self.options.spec_no_abort_check_only
-                && !self
-                    .targets
-                    .is_verified_spec(&fun_target.func_env.get_qualified_id())
-            {
-                // add the identity type instance, if it's not already in the set
-                type_insts.insert(
-                    (0..fun_target.func_env.get_type_parameter_count())
-                        .map(|i| Type::TypeParameter(i as u16))
-                        .collect(),
-                );
-            }
-            for type_inst in type_insts {
-                FunctionTranslator::new(self, &fun_target, &type_inst, style).translate();
+                {
+                    FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                }
             }
         }
     }

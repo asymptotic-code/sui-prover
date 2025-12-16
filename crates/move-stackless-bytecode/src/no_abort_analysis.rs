@@ -45,6 +45,15 @@ pub fn does_not_abort(
             .func_not_aborts(callee_env.get_qualified_id())
             .unwrap();
     }
+    if callee_env.is_intrinsic()
+        && callee_env
+            .module_env
+            .env
+            .func_not_aborts(callee_env.get_qualified_id())
+            .unwrap()
+    {
+        return true;
+    }
     let no_abort_info = targets
         .get_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline);
     let use_no_abort_spec = targets.get_spec_by_fun(&callee_env.get_qualified_id())
@@ -80,6 +89,11 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
 
         if fun_env.is_native() {
             info.does_not_abort = env.func_not_aborts(qualified_id).unwrap();
+            return data;
+        }
+
+        if fun_env.is_intrinsic() && env.func_not_aborts(qualified_id).unwrap() {
+            info.does_not_abort = true;
             return data;
         }
 

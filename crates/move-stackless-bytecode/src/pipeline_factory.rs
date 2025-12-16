@@ -24,7 +24,6 @@ use crate::{
     number_operation_analysis::NumberOperationProcessor,
     options::ProverOptions,
     pure_function_analysis::PureFunctionAnalysisProcessor,
-    pure_quantifier_helpers_analysis::PureQuantifierHelpersAnalysisProcessor,
     quantifier_iterator_analysis::QuantifierIteratorAnalysisProcessor,
     reaching_def_analysis::ReachingDefProcessor,
     recursion_analysis::RecursionAnalysisProcessor,
@@ -90,7 +89,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         // DataInvariantInstrumentationProcessor::new(),
         // monomorphization
         MonoAnalysisProcessor::new(),
-        PureQuantifierHelpersAnalysisProcessor::new(),
     ]);
 
     if options.mutation {

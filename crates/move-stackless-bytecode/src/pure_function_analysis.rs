@@ -30,8 +30,7 @@ impl PureFunctionAnalysisProcessor {
     ) -> Option<String> {
         let qid = mid.qualified(fid);
         let func_env = env.get_function(qid);
-        if func_env.is_native()
-            || targets.is_pure_fun(&func_env.get_qualified_id())
+        if targets.is_pure_fun(&func_env.get_qualified_id())
             || env.should_be_used_as_func(&qid)
             || Self::special_pure_functions_map(env).contains_key(&qid)
         {
