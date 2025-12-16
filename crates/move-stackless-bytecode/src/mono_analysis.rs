@@ -259,17 +259,20 @@ impl MonoAnalysisProcessor {
             });
 
         // Analyze pure quantifier helper functions
-        targets.pure_translation_functions().iter().for_each(|fun_qid| {
-            let fun_env = env.get_function(*fun_qid);
-            if let Some(target) = targets.get_target_opt(&fun_env, &FunctionVariant::Baseline) {
-                for info in Analyzer::analyze_pure_function(target) {
-                    for ty in &info.inst {
-                        analyzer.add_type_root(ty);
+        targets
+            .pure_translation_functions()
+            .iter()
+            .for_each(|fun_qid| {
+                let fun_env = env.get_function(*fun_qid);
+                if let Some(target) = targets.get_target_opt(&fun_env, &FunctionVariant::Baseline) {
+                    for info in Analyzer::analyze_pure_function(target) {
+                        for ty in &info.inst {
+                            analyzer.add_type_root(ty);
+                        }
+                        analyzer.info.quantifier_helpers.insert(info);
                     }
-                    analyzer.info.quantifier_helpers.insert(info);
                 }
-            }
-        });
+            });
 
         // Analyze functions
         analyzer.analyze_funs();
