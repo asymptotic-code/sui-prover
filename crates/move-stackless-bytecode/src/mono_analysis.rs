@@ -29,10 +29,18 @@ use crate::{
     function_target::FunctionTarget,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     spec_global_variable_analysis,
-    stackless_bytecode::{BorrowEdge, Bytecode, Operation},
+    stackless_bytecode::{BorrowEdge, Bytecode, Operation, QuantifierHelperType},
     usage_analysis::UsageProcessor,
     verification_analysis,
 };
+
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub struct PureQuantifierHelperInfo {
+    pub qht: QuantifierHelperType,
+    pub function: QualifiedId<FunId>,
+    pub li: usize,
+    pub inst: Vec<Type>,
+}
 
 /// The environment extension computed by this analysis.
 #[derive(Clone, Default, Debug)]
@@ -44,6 +52,7 @@ pub struct MonoInfo {
     pub table_inst: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<(Type, Type)>>,
     pub native_inst: BTreeMap<ModuleId, BTreeSet<Vec<Type>>>,
     pub all_types: BTreeSet<Type>,
+    pub quantifier_helpers: BTreeSet<PureQuantifierHelperInfo>,
 }
 
 impl MonoInfo {
@@ -591,14 +600,31 @@ impl Analyzer<'_> {
                     self.push_todo_fun(mid.qualified(*fid), actuals);
                 }
             }
-            Call(_, _, Quantifier(_, callee_id, targs, _), ..) => {
+            Call(_, _, Quantifier(qt, callee_id, targs, li), ..) => {
                 let actuals = self.instantiate_vec(targs);
                 self.info
                     .funs
                     .entry((*callee_id, FunctionVariant::Baseline))
                     .or_default()
                     .insert(actuals.clone());
-                self.push_todo_fun(*callee_id, actuals);
+                self.push_todo_fun(*callee_id, actuals.clone());
+
+                if self
+                    .targets
+                    .is_pure_fun(&target.func_env.get_qualified_id())
+                {
+                    // collect quantifier helper info for pure functions
+                    if let Some(qht) = qt.into_quantifier_helper_type() {
+                        self.info
+                            .quantifier_helpers
+                            .insert(PureQuantifierHelperInfo {
+                                qht,
+                                function: *callee_id,
+                                li: *li,
+                                inst: actuals,
+                            });
+                    }
+                }
             }
             Call(_, _, WriteBack(_, edge), ..) => {
                 // In very rare occasions, not all types used in the function can appear in
