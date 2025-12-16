@@ -3,9 +3,13 @@ source: crates/sui-prover/tests/integration.rs
 assertion_line: 267
 expression: output
 ---
-exiting with bytecode transformation errors
-error: Quantifiers not allowed in pure functions yet
-   ┌─ tests/inputs/issue-362.move:13:53
-   │
-13 │         i <= v.length() && !any_range!(v, 0, i, |x| is_odd(x))
-   │                                                     ^^^^^^^^^
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/issue-362.move:31:5
+   │  
+31 │ ╭     public fun find_odd_index2(w: &vector<u64>): Option<u64> {
+32 │ │         w.find_index!(|x| is_odd(x))
+33 │ │     }
+   │ ╰─────^
+   │  
+   =     at tests/inputs/issue-362.move:17: find_odd_index2_spec
