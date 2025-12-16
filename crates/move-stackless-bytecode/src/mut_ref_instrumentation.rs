@@ -57,9 +57,9 @@ impl FunctionTargetProcessor for MutRefInstrumenter {
                     builder.emit(Assign(attr_id, dest, src, AssignKind::Copy))
                 }
                 Ret(attr_id, rets) => {
+                    builder.set_loc_from_attr(attr_id);
                     if targets.prover_options().debug_trace {
                         // Emit traces for &mut params at exit.
-                        builder.set_loc_from_attr(attr_id);
                         for added in &mut_ref_params {
                             builder.emit_with(|id| {
                                 Call(id, vec![], TraceLocal(*added), vec![*added], None)
