@@ -256,7 +256,7 @@ impl QuantifierIteratorAnalysisProcessor {
             Bytecode::Call(_, _, op, _, _) => {
                 match op {
                     // traces
-                    Operation::TraceLocal(_, _)
+                    Operation::TraceLocal(_)
                     | Operation::TraceExp(_, _)
                     | Operation::TraceGhost(_, _)
                     | Operation::TraceAbort

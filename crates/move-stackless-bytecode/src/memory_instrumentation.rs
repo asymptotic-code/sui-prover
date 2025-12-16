@@ -16,6 +16,7 @@ use crate::{
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
+    options::ProverOptions,
     stackless_bytecode::{
         BorrowNode,
         Bytecode::{self, *},
@@ -34,7 +35,7 @@ impl MemoryInstrumentationProcessor {
 impl FunctionTargetProcessor for MemoryInstrumentationProcessor {
     fn process(
         &self,
-        _targets: &mut FunctionTargetsHolder,
+        targets: &mut FunctionTargetsHolder,
         func_env: &FunctionEnv,
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
@@ -48,7 +49,8 @@ impl FunctionTargetProcessor for MemoryInstrumentationProcessor {
             .expect("borrow annotation");
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
-        let mut instrumenter = Instrumenter::new(builder, &borrow_annotation);
+        let mut instrumenter =
+            Instrumenter::new(builder, targets.prover_options(), &borrow_annotation);
         for (code_offset, bytecode) in code.into_iter().enumerate() {
             instrumenter.instrument(code_offset as CodeOffset, bytecode);
         }
@@ -62,13 +64,19 @@ impl FunctionTargetProcessor for MemoryInstrumentationProcessor {
 
 struct Instrumenter<'a> {
     builder: FunctionDataBuilder<'a>,
+    prover_options: &'a ProverOptions,
     borrow_annotation: &'a BorrowAnnotation,
 }
 
 impl<'a> Instrumenter<'a> {
-    fn new(builder: FunctionDataBuilder<'a>, borrow_annotation: &'a BorrowAnnotation) -> Self {
+    fn new(
+        builder: FunctionDataBuilder<'a>,
+        prover_options: &'a ProverOptions,
+        borrow_annotation: &'a BorrowAnnotation,
+    ) -> Self {
         Self {
             builder,
+            prover_options,
             borrow_annotation,
         }
     }
@@ -323,23 +331,24 @@ impl<'a> Instrumenter<'a> {
                             None,
                         )
                     });
-
-                    // add a trace for written back value if it's a user variable.
-                    match action.dst {
-                        BorrowNode::LocalRoot(temp) | BorrowNode::Reference(temp) => {
-                            if temp < self.builder.fun_env.get_local_count() {
-                                self.builder.emit_with(|id| {
-                                    Bytecode::Call(
-                                        id,
-                                        vec![],
-                                        Operation::TraceLocal(temp, false),
-                                        vec![temp],
-                                        None,
-                                    )
-                                });
+                    if self.prover_options.debug_trace {
+                        // add a trace for written back value if it's a user variable.
+                        match action.dst {
+                            BorrowNode::LocalRoot(temp) | BorrowNode::Reference(temp) => {
+                                if temp < self.builder.fun_env.get_local_count() {
+                                    self.builder.emit_with(|id| {
+                                        Bytecode::Call(
+                                            id,
+                                            vec![],
+                                            Operation::TraceLocal(temp),
+                                            vec![temp],
+                                            None,
+                                        )
+                                    });
+                                }
                             }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
 

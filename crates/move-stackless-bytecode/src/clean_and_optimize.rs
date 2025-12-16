@@ -201,7 +201,7 @@ impl Optimizer<'_> {
                                 // skip redundant write-backs
                                 should_skip.insert(block_cursor);
                             }
-                            Call(_, _, TraceLocal(_, _), _, _) => {
+                            Call(_, _, TraceLocal(_), _, _) => {
                                 // since the previous write-back is skipped, this trace local is redundant as well
                                 should_skip.insert(block_cursor);
                             }

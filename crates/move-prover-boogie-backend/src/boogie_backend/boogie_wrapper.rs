@@ -864,7 +864,7 @@ impl<'env> BoogieWrapper<'env> {
                     Some(info_line) => Ok(TraceEntry::InfoLine(info_line.trim().to_string())),
                     None => Ok(TraceEntry::InfoLine("".to_string())),
                 },
-                "track_local_special" => {
+                "track_local" => {
                     let (fun, idx, ty) = self.extract_fun_and_index(args)?;
                     let value = self.extract_value(value)?;
                     Ok(TraceEntry::Temporary(fun, idx, ty, value))
@@ -892,7 +892,7 @@ impl<'env> BoogieWrapper<'env> {
         } else {
             match name {
                 "at" => Ok(TraceEntry::AtLocation(self.extract_loc(args)?)),
-                "track_local" | "track_local_special" => {
+                "track_local" => {
                     let (fun, idx, ty) = self.extract_fun_and_index(args)?;
                     let value = self.extract_value(value)?;
                     Ok(TraceEntry::Temporary(fun, idx, ty, value))

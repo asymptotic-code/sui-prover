@@ -700,20 +700,8 @@ pub fn boogie_debug_track_local(
     idx: TempIndex,
     ty: &Type,
     bv_flag: bool,
-    special: bool,
 ) -> String {
-    boogie_debug_track(
-        fun_target,
-        if special {
-            "$track_local_special"
-        } else {
-            "$track_local"
-        },
-        origin_idx,
-        idx,
-        ty,
-        bv_flag,
-    )
+    boogie_debug_track(fun_target, "$track_local", origin_idx, idx, ty, bv_flag)
 }
 
 fn boogie_debug_track(

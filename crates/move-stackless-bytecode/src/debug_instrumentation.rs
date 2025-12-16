@@ -93,9 +93,7 @@ impl FunctionTargetProcessor for DebugInstrumenter {
             // Emit trace instructions for parameters at entry.
             builder.set_loc(builder.fun_env.get_loc().at_start());
             for i in 0..builder.fun_env.get_parameter_count() {
-                builder.emit_with(|id| {
-                    Call(id, vec![], Operation::TraceLocal(i, false), vec![i], None)
-                });
+                builder.emit_with(|id| Call(id, vec![], Operation::TraceLocal(i), vec![i], None));
             }
 
             // For spec functions, emit trace instructions for all global variables at entry.
@@ -145,7 +143,7 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                         Call(
                             id,
                             vec![],
-                            Operation::TraceLocal(srcs[0], false),
+                            Operation::TraceLocal(srcs[0]),
                             vec![srcs[0]],
                             None,
                         )
@@ -192,13 +190,7 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                     };
                     builder.set_loc_from_attr(bc.get_attr_id());
                     builder.emit_with(|id| {
-                        Call(
-                            id,
-                            vec![],
-                            Operation::TraceLocal(var, true),
-                            vec![var],
-                            None,
-                        )
+                        Call(id, vec![], Operation::TraceLocal(var), vec![var], None)
                     });
                 }
                 Call(_, dests, Operation::Function(mid, fid, tys), srcs, _)
@@ -233,13 +225,7 @@ impl FunctionTargetProcessor for DebugInstrumenter {
                             // by stack elimination.
                             if !fun_env.is_temporary(idx) {
                                 builder.emit_with(|id| {
-                                    Call(
-                                        id,
-                                        vec![],
-                                        Operation::TraceLocal(idx, false),
-                                        vec![idx],
-                                        None,
-                                    )
+                                    Call(id, vec![], Operation::TraceLocal(idx), vec![idx], None)
                                 });
                             }
                         }

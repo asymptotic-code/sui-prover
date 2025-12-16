@@ -124,7 +124,7 @@ impl ConditionalMergeInsertionProcessor {
                     if dests.len() == 1 && !Self::is_side_effecting_op(op) {
                         let var = dests[0];
                         last_assign_per_var.insert(var, var);
-                    } else if matches!(op, Operation::TraceLocal(_, _)) {
+                    } else if matches!(op, Operation::TraceLocal(_)) {
                         // TraceLocal, safe to ignore
                     } else {
                         simple_block = false;
