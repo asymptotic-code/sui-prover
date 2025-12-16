@@ -325,8 +325,8 @@ procedure {:inline 1} $1_vector_swap_remove{{S}}(m: $Mutation (Vec ({{T}})), i: 
     m' := $UpdateMutation(m, RemoveVec(SwapVec(v, i, len-1)));
 }
 
-procedure {:inline 1} $1_vector_contains{{S}}(v: Vec ({{T}}), e: {{T}}) returns (res: bool)  {
-    res := $ContainsVec{{S}}(v, e);
+function {:inline} $1_vector_contains{{S}}(v: Vec ({{T}}), e: {{T}}): bool {
+    $ContainsVec{{S}}(v, e)
 }
 
 procedure {:inline 1}
@@ -809,20 +809,20 @@ returns (v: {{V}}, m': $Mutation({{Type}}{{S}})) {
 {%- endif %}
 
 {%- if impl.fun_contains != "" %}
-procedure {:inline 2} {{impl.fun_contains}}{{S}}(t: ({{Type}}{{S}}), k: {{K}}) returns (r: bool) {
-    r := ContainsTable(t->$contents, {{ENC}}(k));
+function {:inline} {{impl.fun_contains}}{{S}}(t: ({{Type}}{{S}}), k: {{K}}): bool {
+    ContainsTable(t->$contents, {{ENC}}(k))
 }
 {%- endif %}
 
 {%- if impl.fun_length != "" %}
-procedure {:inline 2} {{impl.fun_length}}{{S}}(t: ({{Type}}{{S}})) returns (l: int) {
-    l := LenTable(t->$contents);
+function {:inline} {{impl.fun_length}}{{S}}(t: ({{Type}}{{S}})): int {
+    LenTable(t->$contents)
 }
 {%- endif %}
 
 {%- if impl.fun_is_empty != "" %}
-procedure {:inline 2} {{impl.fun_is_empty}}{{S}}(t: ({{Type}}{{S}})) returns (r: bool) {
-    r := LenTable(t->$contents) == 0;
+function {:inline} {{impl.fun_is_empty}}{{S}}(t: ({{Type}}{{S}})): bool {
+    LenTable(t->$contents) == 0
 }
 {%- endif %}
 
