@@ -29,10 +29,18 @@ use crate::{
     function_target::FunctionTarget,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     spec_global_variable_analysis,
-    stackless_bytecode::{BorrowEdge, Bytecode, Operation},
+    stackless_bytecode::{BorrowEdge, Bytecode, Operation, QuantifierHelperType},
     usage_analysis::UsageProcessor,
     verification_analysis,
 };
+
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub struct PureQuantifierHelperInfo {
+    pub qht: QuantifierHelperType,
+    pub function: QualifiedId<FunId>,
+    pub li: usize,
+    pub inst: Vec<Type>,
+}
 
 /// The environment extension computed by this analysis.
 #[derive(Clone, Default, Debug)]
@@ -44,6 +52,7 @@ pub struct MonoInfo {
     pub table_inst: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<(Type, Type)>>,
     pub native_inst: BTreeMap<ModuleId, BTreeSet<Vec<Type>>>,
     pub all_types: BTreeSet<Type>,
+    pub quantifier_helpers: BTreeSet<PureQuantifierHelperInfo>,
 }
 
 impl MonoInfo {
@@ -248,6 +257,19 @@ impl MonoAnalysisProcessor {
                     analyzer.add_type_root(ty);
                 }
             });
+
+        // Analyze pure quantifier helper functions
+        targets.pure_functions().iter().for_each(|fun_qid| {
+            let fun_env = env.get_function(*fun_qid);
+            if let Some(target) = targets.get_target_opt(&fun_env, &FunctionVariant::Baseline) {
+                for info in Analyzer::analyze_pure_function(target) {
+                    for ty in &info.inst {
+                        analyzer.add_type_root(ty);
+                    }
+                    analyzer.info.quantifier_helpers.insert(info);
+                }
+            }
+        });
 
         // Analyze functions
         analyzer.analyze_funs();
@@ -476,6 +498,27 @@ impl Analyzer<'_> {
                 ));
             }
         }
+    }
+
+    fn analyze_pure_function(target: FunctionTarget<'_>) -> BTreeSet<PureQuantifierHelperInfo> {
+        let mut results = BTreeSet::new();
+        let env = target.func_env.module_env.env;
+
+        for bc in &target.data.code {
+            if let Bytecode::Call(_, dests, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc
+            {
+                if let Some(qht) = qt.into_quantifier_helper_type() {
+                    results.insert(PureQuantifierHelperInfo {
+                        qht,
+                        function: *qid,
+                        li: *li,
+                        inst: inst.to_vec(),
+                    });
+                }
+            }
+        }
+
+        results
     }
 
     fn analyze_fun_types(&mut self, target: &FunctionTarget<'_>, inst_opt: Option<Vec<Type>>) {

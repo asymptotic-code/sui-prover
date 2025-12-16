@@ -21,8 +21,7 @@ use move_model::{
 use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
-    mono_analysis::{self, MonoInfo},
-    pure_quantifier_helpers_analysis::{self, PureQuantifierHelperInfo},
+    mono_analysis::{self, MonoInfo, PureQuantifierHelperInfo},
     verification_analysis,
 };
 
@@ -474,8 +473,8 @@ pub fn add_prelude(
 
     context.insert(
         "quantifier_helpers_instances",
-        &pure_quantifier_helpers_analysis::get_info(env)
-            .helpers
+        &mono_info
+            .quantifier_helpers
             .iter()
             .map(|info| QuantifierHelperInfo::new(env, info))
             .collect_vec(),
