@@ -393,13 +393,12 @@ impl<'env> BoogieTranslator<'env> {
                     continue;
                 }
 
+                self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+
                 if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
-                    self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
                     self.generate_axiom_function(fun_env);
                     continue;
                 }
-
-                self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
 
                 if self.options.func_abort_check_only
                     && self
@@ -1012,6 +1011,12 @@ impl<'env> BoogieTranslator<'env> {
                     .unwrap_or(&BTreeSet::new())
                 {
                     FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
+                }
+                if self
+                    .targets
+                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
+                {
+                    FunctionTranslator::new(self, &fun_target, &[], style).translate();
                 }
             }
         }
