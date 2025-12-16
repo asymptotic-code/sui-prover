@@ -3639,9 +3639,9 @@ impl GlobalEnv {
     pub fn func_not_aborts(&self, qid: QualifiedId<FunId>) -> anyhow::Result<bool, anyhow::Error> {
         let function_env = self.get_function(qid);
 
-        if !function_env.is_native() {
+        if !function_env.is_native() && !function_env.is_intrinsic() {
             bail!(
-                "Function {} is not native",
+                "Function {} is not native or intrinsic",
                 function_env.get_full_name_str()
             );
         }
@@ -3715,6 +3715,9 @@ impl GlobalEnv {
                 // std::vector native functions
                 self.std_vector_empty_qid(),
                 self.std_vector_length_qid(),
+                self.vector_is_empty_qid(),
+                self.vector_contains_qid(),
+                self.vector_index_of_qid(),
                 // std::hash native functions
                 self.std_hash_sha2_256_qid(),
                 self.std_hash_sha3_256_qid(),
@@ -3763,6 +3766,22 @@ impl GlobalEnv {
                 self.std_real_gt_qid(),
                 self.std_real_lte_qid(),
                 self.std_real_gte_qid(),
+                // sui::vec_set functions
+                self.vec_set_get_idx_opt_qid(),
+                self.vec_set_contains_qid(),
+                // sui::vec_map functions
+                self.vec_map_get_idx_opt_qid(),
+                self.vec_map_contains_qid(),
+                self.vec_map_into_keys_values_qid(),
+                self.vec_map_keys_qid(),
+                // sui::table functions
+                self.table_is_empty_qid(),
+                self.table_length_qid(),
+                self.table_contains_qid(),
+                // sui::object_table functions
+                self.object_table_is_empty_qid(),
+                self.object_table_length_qid(),
+                self.object_table_contains_qid(),
                 // sui::address native functions
                 self.sui_address_to_u256_qid(),
                 // sui::accumulator native functions
@@ -3954,6 +3973,7 @@ impl GlobalEnv {
             self.std_vector_empty_qid(),
             self.vector_is_empty_qid(),
             self.std_vector_length_qid(),
+            self.vector_contains_qid(),
             self.std_vector_push_back_qid(),
             self.vector_append_qid(),
             self.vector_reverse_qid(),
@@ -3962,6 +3982,13 @@ impl GlobalEnv {
             self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
+            // table and object_table native functions
+            self.table_is_empty_qid(),
+            self.table_length_qid(),
+            self.table_contains_qid(),
+            self.object_table_is_empty_qid(),
+            self.object_table_length_qid(),
+            self.object_table_contains_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
