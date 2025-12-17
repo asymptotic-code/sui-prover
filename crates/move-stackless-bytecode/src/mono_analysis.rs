@@ -258,19 +258,19 @@ impl MonoAnalysisProcessor {
                 }
             });
 
-        // Analyze pure quantifier helper functions
+        // Analyze axiom quantifier helper functions
+        // NOTE: we do it here because axiom functions is standalone and not reachable
         targets
-            .pure_translation_functions()
+            .axiom_functions()
             .iter()
             .for_each(|fun_qid| {
                 let fun_env = env.get_function(*fun_qid);
-                if let Some(target) = targets.get_target_opt(&fun_env, &FunctionVariant::Baseline) {
-                    for info in Analyzer::analyze_pure_function(target) {
-                        for ty in &info.inst {
-                            analyzer.add_type_root(ty);
-                        }
-                        analyzer.info.quantifier_helpers.insert(info);
+                let target = targets.get_target(&fun_env, &FunctionVariant::Baseline);
+                for info in Analyzer::analyze_axiom_function(target) {
+                    for ty in &info.inst {
+                        analyzer.add_type_root(ty);
                     }
+                    analyzer.info.quantifier_helpers.insert(info);
                 }
             });
 
@@ -503,10 +503,8 @@ impl Analyzer<'_> {
         }
     }
 
-    fn analyze_pure_function(target: FunctionTarget<'_>) -> BTreeSet<PureQuantifierHelperInfo> {
+    fn analyze_axiom_function(target: FunctionTarget<'_>) -> BTreeSet<PureQuantifierHelperInfo> {
         let mut results = BTreeSet::new();
-        let env = target.func_env.module_env.env;
-
         for bc in &target.data.code {
             if let Bytecode::Call(_, dests, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc
             {
@@ -637,14 +635,31 @@ impl Analyzer<'_> {
                     self.push_todo_fun(mid.qualified(*fid), actuals);
                 }
             }
-            Call(_, _, Quantifier(_, callee_id, targs, _), ..) => {
+            Call(_, _, Quantifier(qt, callee_id, targs, li), ..) => {
                 let actuals = self.instantiate_vec(targs);
                 self.info
                     .funs
                     .entry((*callee_id, FunctionVariant::Baseline))
                     .or_default()
                     .insert(actuals.clone());
-                self.push_todo_fun(*callee_id, actuals);
+                self.push_todo_fun(*callee_id, actuals.clone());
+
+                if self
+                    .targets
+                    .is_pure_fun(&target.func_env.get_qualified_id())
+                {
+                    // collect quantifier helper info for pure functions
+                    if let Some(qht) = qt.into_quantifier_helper_type() {
+                        self.info
+                            .quantifier_helpers
+                            .insert(PureQuantifierHelperInfo {
+                                qht,
+                                function: *callee_id,
+                                li: *li,
+                                inst: actuals,
+                            });
+                    }
+                }
             }
             Call(_, _, WriteBack(_, edge), ..) => {
                 // In very rare occasions, not all types used in the function can appear in
