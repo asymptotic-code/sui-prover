@@ -58,7 +58,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
         MemoryInstrumentationProcessor::new(),
-        AxiomFunctionAnalysisProcessor::new(),
     ];
 
     // Rerun liveness analysis and its dependencies after MemoryInstrumentation
@@ -74,6 +73,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
         PureFunctionAnalysisProcessor::new(),
+        AxiomFunctionAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
