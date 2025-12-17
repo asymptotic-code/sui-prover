@@ -260,19 +260,16 @@ impl MonoAnalysisProcessor {
 
         // Analyze axiom quantifier helper functions
         // NOTE: we do it here because axiom functions is standalone and not reachable
-        targets
-            .axiom_functions()
-            .iter()
-            .for_each(|fun_qid| {
-                let fun_env = env.get_function(*fun_qid);
-                let target = targets.get_target(&fun_env, &FunctionVariant::Baseline);
-                for info in Analyzer::analyze_axiom_function(target) {
-                    for ty in &info.inst {
-                        analyzer.add_type_root(ty);
-                    }
-                    analyzer.info.quantifier_helpers.insert(info);
+        targets.axiom_functions().iter().for_each(|fun_qid| {
+            let fun_env = env.get_function(*fun_qid);
+            let target = targets.get_target(&fun_env, &FunctionVariant::Baseline);
+            for info in Analyzer::analyze_axiom_function(target) {
+                for ty in &info.inst {
+                    analyzer.add_type_root(ty);
                 }
-            });
+                analyzer.info.quantifier_helpers.insert(info);
+            }
+        });
 
         // Analyze functions
         analyzer.analyze_funs();
