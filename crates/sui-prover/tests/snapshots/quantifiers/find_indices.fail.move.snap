@@ -1,5 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
 expression: output
 ---
 exiting with verification errors
@@ -26,6 +27,14 @@ error: prover::ensures does not hold
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:33: test_wrong_index
+
+error: code should not abort
+   ┌─ tests/inputs/quantifiers/find_indices.fail.move:57:14
+   │
+57 │     ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE (should be 2)
+   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/find_indices.fail.move:53: test_wrong_order
 
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:57:5

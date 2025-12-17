@@ -269,6 +269,8 @@ impl<'a> LiveVarAnalysis<'a> {
             }
         }
 
+        let mut defined_vars: BTreeSet<TempIndex> = BTreeSet::new();
+
         // optimize the function body
         let mut skip_next = false;
         for code_offset in 0..code.len() {
@@ -277,6 +279,13 @@ impl<'a> LiveVarAnalysis<'a> {
                 continue;
             }
             let bytecode = std::mem::replace(&mut code[code_offset], Bytecode::Nop(AttrId::new(0)));
+
+            let dests_defined: Vec<TempIndex> = match &bytecode {
+                Bytecode::Assign(_, dest, _, _) => vec![*dest],
+                Bytecode::Call(_, dests, op, _, _) => dests.clone(),
+                _ => vec![],
+            };
+
             let annotation_at = &annotations[&(code_offset as CodeOffset)];
             match bytecode {
                 Bytecode::Branch(attr_id, then_label, else_label, src) => {
@@ -349,7 +358,10 @@ impl<'a> LiveVarAnalysis<'a> {
                     let next_code_offset = code_offset + 1;
                     if let Bytecode::Assign(_, dest, src, _) = &code[next_code_offset] {
                         let annotation_at = &annotations[&(next_code_offset as CodeOffset)];
-                        if src == &dests[0] && !annotation_at.after.contains(src) {
+                        if src == &dests[0]
+                            && !annotation_at.after.contains(src)
+                            && defined_vars.contains(dest)
+                        {
                             transformed_code.push(Bytecode::Call(
                                 attr_id,
                                 vec![*dest],
@@ -368,6 +380,10 @@ impl<'a> LiveVarAnalysis<'a> {
                 _ => {
                     transformed_code.push(bytecode);
                 }
+            }
+
+            for d in dests_defined {
+                defined_vars.insert(d);
             }
         }
         transformed_code
