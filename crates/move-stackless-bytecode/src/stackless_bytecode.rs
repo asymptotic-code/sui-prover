@@ -652,20 +652,60 @@ impl Bytecode {
         v
     }
 
+    pub fn dests(&self) -> impl Iterator<Item = TempIndex> + '_ {
+        use Bytecode::*;
+        let slice = match self {
+            Load(_, dest, _) => std::slice::from_ref(dest),
+            Assign(_, dest, _, _) => std::slice::from_ref(dest),
+            Call(_, dests, _, _, _) => dests.as_slice(),
+            Ret(..) | Branch(..) | Jump(..) | VariantSwitch(..) | Label(..) | Abort(..)
+            | Nop(..) | SaveMem(..) | Prop(..) => &[],
+        };
+        slice.iter().copied()
+    }
+
+    pub fn srcs(&self) -> impl Iterator<Item = TempIndex> + '_ {
+        use Bytecode::*;
+        let slice = match self {
+            Assign(_, _, src, _) => std::slice::from_ref(src),
+            Call(_, _, _, srcs, _) => srcs.as_slice(),
+            Ret(_, srcs) => srcs.as_slice(),
+            Branch(_, _, _, cond) => std::slice::from_ref(cond),
+            VariantSwitch(_, idx, _) => std::slice::from_ref(idx),
+            Abort(_, src) => std::slice::from_ref(src),
+            Load(..) | Jump(..) | Label(..) | Nop(..) | SaveMem(..) | Prop(..) => &[],
+        };
+        slice.iter().copied()
+    }
+
     /// Remaps variables in the instruction.
-    pub fn remap_all_vars<F>(self, func_target: &FunctionTarget<'_>, f: &mut F) -> Self
+    pub fn remap_all_vars<F>(self, env: &GlobalEnv, f: &mut F) -> Self
     where
         F: FnMut(TempIndex) -> TempIndex,
     {
-        self.remap_vars_internal(func_target, &mut |_, idx| f(idx))
+        self.remap_vars_internal(env, &mut |_, idx| f(idx))
+    }
+
+    /// Remaps variables in destination position in the instruction.
+    pub fn remap_dest_vars<F>(self, env: &GlobalEnv, f: &mut F) -> Self
+    where
+        F: FnMut(TempIndex) -> TempIndex,
+    {
+        self.remap_vars_internal(env, &mut |is_src, idx| {
+            if !is_src {
+                f(idx)
+            } else {
+                idx
+            }
+        })
     }
 
     /// Remaps variables in source position in the instruction.
-    pub fn remap_src_vars<F>(self, func_target: &FunctionTarget<'_>, f: &mut F) -> Self
+    pub fn remap_src_vars<F>(self, env: &GlobalEnv, f: &mut F) -> Self
     where
         F: FnMut(TempIndex) -> TempIndex,
     {
-        self.remap_vars_internal(func_target, &mut |is_src, idx| {
+        self.remap_vars_internal(env, &mut |is_src, idx| {
             if is_src {
                 f(idx)
             } else {
@@ -674,7 +714,7 @@ impl Bytecode {
         })
     }
 
-    fn remap_vars_internal<F>(self, func_target: &FunctionTarget<'_>, f: &mut F) -> Self
+    fn remap_vars_internal<F>(self, env: &GlobalEnv, f: &mut F) -> Self
     where
         F: FnMut(bool, TempIndex) -> TempIndex,
     {
@@ -716,14 +756,14 @@ impl Bytecode {
             VariantSwitch(attr, idx, labels) => VariantSwitch(attr, f(true, idx), labels),
             Abort(attr, cond) => Abort(attr, f(true, cond)),
             Prop(attr, kind, exp) => {
-                let new_exp = Bytecode::remap_exp(func_target, &mut |idx| f(true, idx), exp);
+                let new_exp = Bytecode::remap_exp(env, &mut |idx| f(true, idx), exp);
                 Prop(attr, kind, new_exp)
             }
             _ => self,
         }
     }
 
-    fn remap_exp<F>(func_target: &FunctionTarget<'_>, f: &mut F, exp: Exp) -> Exp
+    fn remap_exp<F>(env: &GlobalEnv, f: &mut F, exp: Exp) -> Exp
     where
         F: FnMut(TempIndex) -> TempIndex,
     {
@@ -734,7 +774,7 @@ impl Bytecode {
                 None
             }
         };
-        ExpRewriter::new(func_target.global_env(), &mut replacer).rewrite_exp(exp)
+        ExpRewriter::new(env, &mut replacer).rewrite_exp(exp)
     }
 
     pub fn instantiate(&self, env: &GlobalEnv, params: &[Type]) -> Self {
