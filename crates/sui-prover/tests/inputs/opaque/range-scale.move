@@ -1,6 +1,6 @@
 module 0x42::opaque_tests;
 
-use prover::prover::{requires, ensures, asserts, old};
+use prover::prover::{requires, ensures, asserts, clone};
 use std::u64;
 
 public struct Range<phantom T> {
@@ -15,7 +15,7 @@ fun scale<T>(r: &mut Range<T>, k: u64) {
 
 #[spec(prove)]
 fun scale_spec<T>(r: &mut Range<T>, k: u64) {
-    let old_r = old!(r);
+    let old_r = clone!(r);
 
     requires(r.x <= r.y);
 

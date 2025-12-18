@@ -20,11 +20,11 @@ use sui::tx_context::{
     native_sponsor,
 };
 #[spec_only]
-use prover::prover::{ensures, old};
+use prover::prover::{ensures, clone};
 
 #[spec(target = sui::tx_context::fresh_object_address)]
 fun fresh_object_address_spec(ctx: &mut TxContext): address {
-    let old_ctx = old!(ctx);
+    let old_ctx = clone!(ctx);
     let result = fresh_object_address(ctx);
     // ensures(ctx.sender() == old_ctx.sender());
     ensures(ctx.digest() == old_ctx.digest());

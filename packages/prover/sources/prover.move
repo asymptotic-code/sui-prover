@@ -55,7 +55,7 @@ fun drop_spec<T>(x: T) {
 }
 
 #[spec_only]
-public macro fun old<$T>($x: &$T): &$T {
+public macro fun clone<$T>($x: &$T): &$T {
     ref(val($x))
 }
 
