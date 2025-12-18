@@ -86,9 +86,9 @@ public fun test::f($t0|a: u32): u64 {
      var $t16: u64
      var $t17: u64
   0: $t3 := 1
-  1: $t1 := $t3
+  1: $t14 := $t3
   2: $t4 := 2
-  3: $t2 := $t4
+  3: $t15 := $t4
   4: $t5 := 2
   5: $t6 := &($t0, $t5)
   6: $t7 := 0
@@ -99,14 +99,14 @@ public fun test::f($t0|a: u32): u64 {
  11: $t10 := (u64)($t9)
  12: $t11 := 96
  13: $t12 := test::helper($t3, $t10, $t11)
- 14: $t14 := $t12
- 15: $t15 := $t12
+ 14: $t16 := $t12
+ 15: $t17 := $t12
  16: label L0
-     # conditional_merge_insertion: t16 := if_then_else(t8, t14, t3)
- 17: $t16 := if_then_else($t8, $t14, $t3)
-     # conditional_merge_insertion: t17 := if_then_else(t8, t15, t4)
- 18: $t17 := if_then_else($t8, $t15, $t4)
- 19: $t13 := *($t16, $t17)
+     # conditional_merge_insertion: t1 := if_then_else(t8, t16, t14)
+ 17: $t1 := if_then_else($t8, $t16, $t14)
+     # conditional_merge_insertion: t2 := if_then_else(t8, t17, t15)
+ 18: $t2 := if_then_else($t8, $t17, $t15)
+ 19: $t13 := *($t1, $t2)
  20: return $t13
 }
 
