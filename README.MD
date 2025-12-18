@@ -72,11 +72,11 @@ A specification to verify that the price of a share doesn't decrease when withdr
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
     requires(shares_in.value() <= pool.shares.supply_value());
 
-    let cloned_pool = clone!(pool);
+    let old_pool = clone!(pool);
 
     let result = withdraw(pool, shares_in);
 
-    let old_balance = cloned_pool.balance.value().to_int();
+    let old_balance = old_pool.balance.value().to_int();
     let new_balance = pool.balance.value().to_int();
 
     let old_shares = cloned_pool.shares.supply_value().to_int();
