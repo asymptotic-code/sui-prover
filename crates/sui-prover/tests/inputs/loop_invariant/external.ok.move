@@ -1,6 +1,6 @@
 module 0x42::loop_invariant_external_ok;
 
-use prover::prover::{requires, ensures, old};
+use prover::prover::{requires, ensures, clone};
 use prover::ghost;
 use std::integer::Integer;
 
@@ -83,7 +83,7 @@ fun test2_spec(n: u64): u128 {
 fun test3_spec(mut n: u64): u128 {
     let mut s: u128 = 0;
 
-    let old_n: &u64 = old!(&n);
+    let old_n: &u64 = clone!(&n);
     while (n > 0) {
         s = s + (n as u128);
         n = n - 1;
@@ -128,7 +128,7 @@ fun emit_u64_spec(x: u64) {
 #[spec(prove, ignore_abort)]
 fun test6_spec(s: &mut u128, n: u64) {
     // mutable references are not allowed
-    let old_s: &u128 = old!(s);
+    let old_s: &u128 = clone!(s);
     let mut ss = *s;
 
     let mut i = 0;

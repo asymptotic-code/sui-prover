@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-use prover::prover::{requires, ensures, old};
+use prover::prover::{requires, ensures, clone};
 
 use sui::object_table::ObjectTable;
 
@@ -15,7 +15,7 @@ fun foo(t: &mut ObjectTable<u64, Foo>): Foo {
 #[spec(prove)]
 fun bar_spec(t: &mut ObjectTable<u64, Foo>): Foo {
   requires(t.contains(10));
-  let old_t = old!(t);
+  let old_t = clone!(t);
   let result = foo(t);
   ensures(!t.contains(10));
   ensures(result == &old_t[10]);
