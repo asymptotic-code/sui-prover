@@ -9,7 +9,6 @@ use crate::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     pure_function_analysis::PureFunctionAnalysisProcessor,
-    //stackless_bytecode::{Bytecode, Operation},
 };
 
 pub struct AxiomFunctionAnalysisProcessor();
