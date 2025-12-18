@@ -9,7 +9,7 @@ use crate::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     pure_function_analysis::PureFunctionAnalysisProcessor,
-    stackless_bytecode::{Bytecode, Operation},
+    //stackless_bytecode::{Bytecode, Operation},
 };
 
 pub struct AxiomFunctionAnalysisProcessor();
@@ -77,18 +77,18 @@ impl FunctionTargetProcessor for AxiomFunctionAnalysisProcessor {
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
         if !targets.is_axiom_fun(&fun_env.get_qualified_id()) {
-            for code in &data.code {
-                if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = code {
-                    if targets.is_axiom_fun(&mid.qualified(*fid)) {
-                        fun_env.module_env.env.diag(
-                            Severity::Error,
-                            &fun_env.get_loc(),
-                            "Axiom functions cannot be called from non-axiom functions",
-                        );
-                    }
-                }
+            if fun_env
+                .get_called_functions()
+                .iter()
+                .find(|f| targets.is_axiom_fun(f))
+                .is_some()
+            {
+                fun_env.module_env.env.diag(
+                    Severity::Error,
+                    &fun_env.get_loc(),
+                    "Axiom functions cannot be called from non-axiom functions",
+                );
             }
-
             return data;
         }
 
