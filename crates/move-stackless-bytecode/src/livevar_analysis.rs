@@ -195,7 +195,7 @@ impl LiveVarAnalysisProcessor {
             }
         };
         for bytecode in code {
-            new_code.push(bytecode.remap_all_vars(func_target, &mut transform_local));
+            new_code.push(bytecode.remap_all_vars(func_target.global_env(), &mut transform_local));
         }
         (new_code, new_vars, remap)
     }
