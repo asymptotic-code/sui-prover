@@ -1,7 +1,7 @@
 module 0x42::loop_invariant_tests;
 
 use prover::ghost;
-use prover::prover::{requires, ensures, invariant, old};
+use prover::prover::{requires, ensures, invariant, clone};
 use std::integer::Integer;
 
 #[spec(prove)]
@@ -57,7 +57,7 @@ fun test2_spec(n: u64): u128 {
 fun test3_spec(mut n: u64): u128 {
     let mut s: u128 = 0;
 
-    let old_n = old!(&n);
+    let old_n = clone!(&n);
     invariant!(|| {
         ensures(n <= *old_n);
         ensures(s == ((*old_n as u128) - (n as u128)) * ((*old_n as u128) + (n as u128) + 1) / 2);
@@ -141,7 +141,7 @@ fun test6_spec(n: u64) {
 
 #[spec(prove, ignore_abort)]
 fun test7_spec(s: &mut u128, n: u64) {
-    let old_s = old!(s);
+    let old_s = clone!(s);
 
     let mut i = 0;
 
