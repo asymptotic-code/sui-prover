@@ -177,10 +177,25 @@ impl<'env> BoogieTranslator<'env> {
             func_env.get_full_name_str(),
             func_env.get_loc().display(self.env)
         );
+
+        let conditions = func_env
+            .get_parameter_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                format!(
+                    "$IsValid'{}'($t{})",
+                    boogie_type_suffix(self.env, ty.skip_reference()),
+                    idx.to_string(),
+                )
+            })
+            .join(" && ");
+
         emitln!(
             self.writer,
-            "axiom (forall {} :: {}({}));",
+            "axiom (forall {} :: {} ==> {}({}));",
             params,
+            conditions,
             func_name,
             args
         );
@@ -1011,12 +1026,6 @@ impl<'env> BoogieTranslator<'env> {
                     .unwrap_or(&BTreeSet::new())
                 {
                     FunctionTranslator::new(self, &fun_target, type_inst, style).translate();
-                }
-                if self
-                    .targets
-                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
-                {
-                    FunctionTranslator::new(self, &fun_target, &[], style).translate();
                 }
             }
         }
@@ -2859,14 +2868,12 @@ impl<'env> FunctionTranslator<'env> {
                         };
                         bindings.push((*dest, expr));
                     } else {
-                        if !matches!(op, TraceLocal(..) | TraceReturn(..)) {
-                            panic!(
-                                "unexpected {} destinations for operation {:?} in function {}",
-                                dests.len(),
-                                op,
-                                fun_target.func_env.get_full_name_str()
-                            );
-                        }
+                        panic!(
+                            "unexpected {} destinations for operation {:?} in function {}",
+                            dests.len(),
+                            op,
+                            fun_target.func_env.get_full_name_str()
+                        );
                     }
                 }
                 Ret(_, srcs) => {

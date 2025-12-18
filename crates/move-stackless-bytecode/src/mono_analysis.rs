@@ -258,19 +258,6 @@ impl MonoAnalysisProcessor {
                 }
             });
 
-        // Analyze axiom quantifier helper functions
-        // NOTE: we do it here because axiom functions is standalone and not reachable
-        targets.axiom_functions().iter().for_each(|fun_qid| {
-            let fun_env = env.get_function(*fun_qid);
-            let target = targets.get_target(&fun_env, &FunctionVariant::Baseline);
-            for info in Analyzer::analyze_axiom_function(target) {
-                for ty in &info.inst {
-                    analyzer.add_type_root(ty);
-                }
-                analyzer.info.quantifier_helpers.insert(info);
-            }
-        });
-
         // Analyze functions
         analyzer.analyze_funs();
 
@@ -391,7 +378,8 @@ impl Analyzer<'_> {
                 for (variant, target) in self.targets.get_targets(&fun) {
                     if !(variant.is_verified()
                         || self.targets.is_spec(&fun.get_qualified_id())
-                            && verification_analysis::get_info(&target).inlined)
+                            && verification_analysis::get_info(&target).inlined
+                        || self.targets.is_axiom_fun(&fun.get_qualified_id()))
                     {
                         continue;
                     }
@@ -498,25 +486,6 @@ impl Analyzer<'_> {
                 ));
             }
         }
-    }
-
-    fn analyze_axiom_function(target: FunctionTarget<'_>) -> BTreeSet<PureQuantifierHelperInfo> {
-        let mut results = BTreeSet::new();
-        for bc in &target.data.code {
-            if let Bytecode::Call(_, dests, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc
-            {
-                if let Some(qht) = qt.into_quantifier_helper_type() {
-                    results.insert(PureQuantifierHelperInfo {
-                        qht,
-                        function: *qid,
-                        li: *li,
-                        inst: inst.to_vec(),
-                    });
-                }
-            }
-        }
-
-        results
     }
 
     fn analyze_fun_types(&mut self, target: &FunctionTarget<'_>, inst_opt: Option<Vec<Type>>) {
@@ -644,6 +613,9 @@ impl Analyzer<'_> {
                 if self
                     .targets
                     .is_pure_fun(&target.func_env.get_qualified_id())
+                    || self
+                        .targets
+                        .is_axiom_fun(&target.func_env.get_qualified_id())
                 {
                     // collect quantifier helper info for pure functions
                     if let Some(qht) = qt.into_quantifier_helper_type() {
