@@ -100,6 +100,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     }
 
     if !options.for_interpretation {
+        processors.push(SpecGlobalVariableAnalysisProcessor::new());
         processors.push(NumberOperationProcessor::new());
     }
 

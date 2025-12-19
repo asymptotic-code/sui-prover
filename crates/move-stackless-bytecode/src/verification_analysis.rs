@@ -97,7 +97,9 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .annotations
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
-                info.verified = true;
+                if targets.func_abort_check_mode() {
+                    info.verified = true;
+                }
                 info.inlined = true;
                 Self::mark_callees_inlined(fun_env, targets);
             }

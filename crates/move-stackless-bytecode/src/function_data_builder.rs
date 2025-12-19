@@ -102,6 +102,13 @@ impl<'env> FunctionDataBuilder<'env> {
         idx
     }
 
+    // Add a parameter.
+    pub fn add_parameter(&mut self, ty: Type) -> usize {
+        let idx = self.data.parameters.len();
+        self.data.parameters.push(ty);
+        idx
+    }
+
     /// Sets the default location as well as information about the verification condition
     /// message associated with the next instruction generated with `emit_with`.
     pub fn set_loc_and_vc_info(&mut self, loc: Loc, message: &str) {

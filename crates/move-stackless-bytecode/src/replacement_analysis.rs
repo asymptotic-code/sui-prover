@@ -3,9 +3,11 @@ use std::collections::BTreeMap;
 use move_model::model::{FunId, FunctionEnv, QualifiedId};
 
 use crate::{
+    exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
+    move_loop_invariants::MoveLoopInvariantsProcessor,
     stackless_bytecode::{AssignKind, Bytecode, Operation},
 };
 
@@ -30,21 +32,20 @@ impl ReplacementAnalysisProcessor {
     }
 
     pub fn find_ref_val_patterns(
-        &self,
         func_env: &FunctionEnv,
-        data: &FunctionData,
+        code: &[Bytecode],
     ) -> BTreeMap<usize, (Vec<usize>, Vec<usize>)> {
-        if data.code.len() < 2 {
+        if code.len() < 2 {
             return BTreeMap::new();
         }
 
         let mut matches = BTreeMap::new();
-        for i in 0..data.code.len() - 1 {
+        for i in 0..code.len() - 1 {
             if let Some((dest_val, srcs_val)) =
-                Self::is_fn(&data.code[i], func_env.module_env.env.prover_val_qid())
+                Self::is_fn(&code[i], func_env.module_env.env.prover_val_qid())
             {
                 if let Some((dest_ref, srcs_ref)) =
-                    Self::is_fn(&data.code[i + 1], func_env.module_env.env.prover_ref_qid())
+                    Self::is_fn(&code[i + 1], func_env.module_env.env.prover_ref_qid())
                 {
                     if dest_val == srcs_ref {
                         matches.insert(i, (dest_ref.clone(), srcs_val.clone()));
@@ -57,7 +58,6 @@ impl ReplacementAnalysisProcessor {
     }
 
     pub fn replace_patterns(
-        &self,
         patterns: BTreeMap<usize, (Vec<usize>, Vec<usize>)>,
         func_env: &FunctionEnv,
         data: FunctionData,
@@ -89,6 +89,72 @@ impl ReplacementAnalysisProcessor {
 
         builder.data
     }
+
+    pub fn replace_patterns_with_params(
+        func_env: &FunctionEnv,
+        data: FunctionData,
+    ) -> FunctionData {
+        let mut builder = FunctionDataBuilder::new(func_env, data);
+        let code = std::mem::take(&mut builder.data.code);
+        let original_params = func_env.get_parameter_count();
+
+        let patterns = Self::find_ref_val_patterns(func_env, &code);
+        if patterns.is_empty() {
+            builder.data.code = code;
+            return builder.data;
+        }
+
+        let mut param_to_extra: BTreeMap<usize, usize> = BTreeMap::new();
+        let mut next_param_idx = original_params;
+
+        for (_, (_, srcs)) in &patterns {
+            let param_idx = match MoveLoopInvariantsProcessor::trace_to_parameter(
+                srcs[0],
+                original_params,
+                &code,
+            ) {
+                Some(idx) => idx,
+                None => continue,
+            };
+
+            if param_to_extra.contains_key(&param_idx) {
+                continue;
+            }
+
+            builder.add_parameter(builder.get_local_type(param_idx).clone());
+            param_to_extra.insert(param_idx, next_param_idx);
+            next_param_idx += 1;
+        }
+
+        for (offset, bc) in code.into_iter().enumerate() {
+            if patterns.contains_key(&offset) {
+                continue;
+            } else if offset > 0 && patterns.contains_key(&(offset - 1)) {
+                let (_, srcs) = patterns.get(&(offset - 1)).unwrap();
+                // Trace source to parameter and lookup extra param
+                if let Some(param_idx) = MoveLoopInvariantsProcessor::trace_to_parameter(
+                    srcs[0],
+                    original_params,
+                    &builder.data.code,
+                ) {
+                    if let Some(extra_param_idx) = param_to_extra.get(&param_idx) {
+                        builder.emit(Bytecode::Assign(
+                            bc.get_attr_id(),
+                            *extra_param_idx,
+                            srcs[0],
+                            AssignKind::Copy,
+                        ));
+                        continue;
+                    }
+                }
+                builder.emit(bc);
+            } else {
+                builder.emit(bc);
+            }
+        }
+
+        builder.data
+    }
 }
 
 impl FunctionTargetProcessor for ReplacementAnalysisProcessor {
@@ -103,8 +169,12 @@ impl FunctionTargetProcessor for ReplacementAnalysisProcessor {
             return data;
         }
 
-        let patterns = self.find_ref_val_patterns(func_env, &data);
-        self.replace_patterns(patterns, func_env, data)
+        if targets.is_loop_inv_func(&func_env.get_qualified_id()) {
+            return Self::replace_patterns_with_params(func_env, data);
+        }
+
+        let patterns = Self::find_ref_val_patterns(func_env, &data.code);
+        Self::replace_patterns(patterns, func_env, data)
     }
 
     fn name(&self) -> String {

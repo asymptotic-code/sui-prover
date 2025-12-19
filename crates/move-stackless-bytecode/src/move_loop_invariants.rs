@@ -19,7 +19,8 @@ use crate::{
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     helpers::loop_helpers::find_loops_headers,
     no_abort_analysis,
-    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
+    replacement_analysis::ReplacementAnalysisProcessor,
+    stackless_bytecode::{AssignKind, AttrId, Bytecode, Label, Operation},
 };
 
 pub struct MoveLoopInvariantsProcessor {}
@@ -79,7 +80,9 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
                 return data;
             }
 
-            Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info)
+            Self::handle_targeted_loop_invariant_functions(
+                func_env, data, &targets, invs, &loop_info,
+            )
         } else {
             Self::handle_classical_loop_invariants(func_env, data, invariants)
         };
@@ -180,6 +183,26 @@ impl MoveLoopInvariantsProcessor {
             }
         }
         false
+    }
+
+    pub fn trace_to_parameter(
+        var_idx: usize,
+        param_count: usize,
+        code: &[Bytecode],
+    ) -> Option<usize> {
+        if var_idx < param_count {
+            return Some(var_idx);
+        }
+
+        for bc in code.iter().rev() {
+            if let Bytecode::Assign(_, dest, src, _) = bc {
+                if *dest == var_idx {
+                    return Self::trace_to_parameter(*src, param_count, code);
+                }
+            }
+        }
+
+        None
     }
 
     fn vars_in_scope(offset: usize, builder: &FunctionDataBuilder) -> Vec<(String, usize)> {
@@ -373,6 +396,7 @@ impl MoveLoopInvariantsProcessor {
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
         data: FunctionData,
+        targets: &FunctionTargetsHolder,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>,
     ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
@@ -392,14 +416,47 @@ impl MoveLoopInvariantsProcessor {
             builder.emit(bc);
 
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
-                let mut args = Self::match_invariant_arguments(
-                    &builder,
-                    &func_env.module_env.env.get_function(*qid),
-                    offset,
-                );
-                let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
+                let loop_inv_env = func_env.module_env.env.get_function(*qid);
+                let mut args = Self::match_invariant_arguments(&builder, &loop_inv_env, offset);
 
                 let mut first_attr_id = None;
+
+                let mut clone_temps = vec![];
+                let mut seen_sources = BTreeSet::new();
+                let inv_data = targets.get_data(qid, &FunctionVariant::Baseline).unwrap();
+                for (_, (_, clone_srcs)) in ReplacementAnalysisProcessor::find_ref_val_patterns(
+                    &loop_inv_env,
+                    &inv_data.code,
+                ) {
+                    let param_idx = match Self::trace_to_parameter(
+                        clone_srcs[0],
+                        loop_inv_env.get_parameter_count(),
+                        &inv_data.code,
+                    ) {
+                        Some(idx) => idx,
+                        None => {
+                            func_env.module_env.env.diag(
+                                Severity::Error,
+                                &loop_inv_env.get_loc(),
+                                &format!(
+                                    "Clone source in loop invariant function '{}' must trace back to a parameter",
+                                    loop_inv_env.get_full_name_str(),
+                                ),
+                            );
+                            break;
+                        }
+                    };
+
+                    if !seen_sources.insert(param_idx) {
+                        continue;
+                    }
+
+                    let caller_local = args[param_idx];
+                    let attr = builder.new_attr();
+                    let temp = builder.new_temp(builder.get_local_type(caller_local).clone());
+                    builder.emit(Bytecode::Assign(attr, temp, caller_local, AssignKind::Copy));
+                    clone_temps.push(temp);
+                }
 
                 for i in 0..args.len() {
                     if builder.get_local_type(args[i]).is_mutable_reference() {
@@ -422,6 +479,7 @@ impl MoveLoopInvariantsProcessor {
                     }
                 }
 
+                let call_temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
                 let call_attr_id = builder.new_attr();
                 let ensures_attr_id = builder.new_attr();
 
@@ -429,9 +487,10 @@ impl MoveLoopInvariantsProcessor {
                     first_attr_id = Some(call_attr_id);
                 }
 
+                args.extend(clone_temps);
                 builder.emit(Bytecode::Call(
                     call_attr_id,
-                    [temp].to_vec(),
+                    [call_temp].to_vec(),
                     Operation::apply_fun_qid(qid, vec![]),
                     args,
                     None,
@@ -441,7 +500,7 @@ impl MoveLoopInvariantsProcessor {
                     ensures_attr_id,
                     vec![],
                     Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
-                    [temp].to_vec(),
+                    [call_temp].to_vec(),
                     None,
                 ));
 

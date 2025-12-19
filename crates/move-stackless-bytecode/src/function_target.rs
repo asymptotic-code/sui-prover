@@ -64,6 +64,8 @@ pub struct FunctionData {
     pub local_types: Vec<Type>,
     /// The return types.
     pub return_types: Vec<Type>,
+    /// The parameter types.
+    pub parameters: Vec<Type>,
     /// The set of global resources acquired by  this function.
     pub acquires_global_resources: Vec<DatatypeId>,
     /// A map from byte code attribute to source code location.
@@ -194,14 +196,24 @@ impl<'env> FunctionTarget<'env> {
         self.data.return_types.len()
     }
 
-    /// Return the number of parameters of this function
+    /// Return the number of parameters of this function.
     pub fn get_parameter_count(&self) -> usize {
-        self.func_env.get_parameter_count()
+        self.data.parameters.len()
     }
 
-    /// Return an iterator over this function's parameters
+    /// Return an iterator over this function's parameters.
     pub fn get_parameters(&self) -> Range<usize> {
-        0..self.func_env.get_parameter_count()
+        0..self.get_parameter_count()
+    }
+
+    /// Returns parameter type at given index.
+    pub fn get_parameter_type(&self, idx: usize) -> &Type {
+        &self.data.parameters[idx]
+    }
+
+    /// Returns parameter types of this function.
+    pub fn get_parameter_types(&self) -> &[Type] {
+        &self.data.parameters
     }
 
     /// Get the name to be used for a local. If the local has a user name, use that for naming,
@@ -408,12 +420,14 @@ impl FunctionData {
             .collect();
         // let modify_targets = func_env.get_modify_targets();
         let modify_targets = Default::default();
+        let parameters = func_env.get_parameter_types();
         FunctionData {
             variant: FunctionVariant::Baseline,
             type_args: vec![],
             code,
             local_types,
             return_types,
+            parameters,
             acquires_global_resources,
             locations,
             loop_invariants,
