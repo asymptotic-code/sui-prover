@@ -104,7 +104,7 @@ impl ReachingDefProcessor {
         for (pc, bytecode) in code.into_iter().enumerate() {
             let state = defs.0.get(&(pc as CodeOffset)).unwrap_or(&default_state);
             let mut propagate = |local| Self::get_propagated_local(local, state);
-            res.push(bytecode.remap_src_vars(target, &mut propagate));
+            res.push(bytecode.remap_src_vars(target.global_env(), &mut propagate));
         }
         res
     }
