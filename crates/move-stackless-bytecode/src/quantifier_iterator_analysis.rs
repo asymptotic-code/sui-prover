@@ -270,6 +270,26 @@ impl QuantifierIteratorAnalysisProcessor {
         }
     }
 
+    fn trace_assignment_chain(
+        &self,
+        bc: &[&Bytecode],
+        start_var: usize,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Vec<usize> {
+        let mut traced_vars = vec![start_var];
+
+        for i in (start_idx + 1)..end_idx {
+            if let Bytecode::Assign(_, dst, src, _) = bc[i] {
+                if traced_vars.contains(src) {
+                    traced_vars.push(*dst);
+                }
+            }
+        }
+
+        traced_vars
+    }
+
     fn get_start_func_pos_before(
         &self,
         bc: &Vec<&Bytecode>,
@@ -296,10 +316,11 @@ impl QuantifierIteratorAnalysisProcessor {
         start_idx: usize,
         end_idx: usize,
     ) -> Vec<AttrId> {
+        let traced_vars = self.trace_assignment_chain(bc, temp_var, start_idx, end_idx);
         let mut findings = vec![];
         for i in start_idx..end_idx {
             if let Bytecode::Call(attr_id, _, _, srcs, _) = bc[i] {
-                if srcs.contains(&temp_var) {
+                if srcs.iter().any(|src| traced_vars.contains(src)) {
                     findings.push(attr_id.clone());
                 }
             }
@@ -359,7 +380,9 @@ impl QuantifierIteratorAnalysisProcessor {
                     return (all_bc.clone(), true);
                 }
 
-                let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
+                let traced_vars = self.trace_assignment_chain(&bc, dests[0], start_idx, i);
+                let lambda_index = match srcs_funcs.iter().position(|src| traced_vars.contains(src))
+                {
                     Some(idx) => idx,
                     None => {
                         let callee_env = env.get_function(callee_id);
