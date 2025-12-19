@@ -277,7 +277,6 @@ impl<'a> LiveVarAnalysis<'a> {
                 continue;
             }
             let bytecode = std::mem::replace(&mut code[code_offset], Bytecode::Nop(AttrId::new(0)));
-
             let annotation_at = &annotations[&(code_offset as CodeOffset)];
             match bytecode {
                 Bytecode::Branch(attr_id, then_label, else_label, src) => {

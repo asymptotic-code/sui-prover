@@ -271,7 +271,6 @@ impl QuantifierIteratorAnalysisProcessor {
     }
 
     fn trace_assignment_chain(
-        &self,
         bc: &[&Bytecode],
         start_var: usize,
         start_idx: usize,
@@ -310,13 +309,11 @@ impl QuantifierIteratorAnalysisProcessor {
     }
 
     fn find_lambda_variable_uses(
-        &self,
         bc: &Vec<&Bytecode>,
-        temp_var: usize,
         start_idx: usize,
         end_idx: usize,
+        traced_vars: &Vec<usize>,
     ) -> Vec<AttrId> {
-        let traced_vars = self.trace_assignment_chain(bc, temp_var, start_idx, end_idx);
         let mut findings = vec![];
         for i in start_idx..end_idx {
             if let Bytecode::Call(attr_id, _, _, srcs, _) = bc[i] {
@@ -367,7 +364,9 @@ impl QuantifierIteratorAnalysisProcessor {
 
                 // NOTE: dests[0] -> is produced "X" lambda variable
 
-                let restricted_usages = self.find_lambda_variable_uses(&bc, dests[0], start_idx, i);
+                let traced_vars = Self::trace_assignment_chain(&bc, dests[0], start_idx, i);
+                let restricted_usages =
+                    Self::find_lambda_variable_uses(&bc, start_idx, i, &traced_vars);
                 for attr in &restricted_usages {
                     env.diag(
                         Severity::Error,
@@ -380,7 +379,6 @@ impl QuantifierIteratorAnalysisProcessor {
                     return (all_bc.clone(), true);
                 }
 
-                let traced_vars = self.trace_assignment_chain(&bc, dests[0], start_idx, i);
                 let lambda_index = match srcs_funcs.iter().position(|src| traced_vars.contains(src))
                 {
                     Some(idx) => idx,

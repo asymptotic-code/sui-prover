@@ -5709,7 +5709,7 @@ impl<'env> FunctionTranslator<'env> {
                 origin_idx,
                 idx,
                 &self.get_local_type(idx),
-                bv_flag,
+                bv_flag
             )
         );
     }
