@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-use prover::prover::{ensures, old};
+use prover::prover::{ensures, clone};
 
 use sui::vec_map;
 
@@ -11,7 +11,7 @@ fun foo(m: vec_map::VecMap<u64, u8>): vec_map::VecMap<u64, u8> {
 
 #[spec(prove)]
 fun foo_spec(m: vec_map::VecMap<u64, u8>): vec_map::VecMap<u64, u8> {
-  let old_m = old!(&m);
+  let old_m = clone!(&m);
   let result = foo(m);
   ensures(&result == old_m);
   result
