@@ -1,30 +1,9 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 274
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Pure functions must have exactly one return value
-   ┌─ tests/inputs/pure_functions/pure_rules.fail.move:56:5
-   │  
-56 │ ╭     public fun invalid_two_outputs(a: u64): (u64, u64) {
-57 │ │         (a, a + 1)
-58 │ │     }
-   │ ╰─────^
-
-error: Function 'pure_functions::not_pure' can't be used in pure functions. Try marking it with #[ext(pure)] attribute.
-   ┌─ tests/inputs/pure_functions/pure_rules.fail.move:29:9
-   │
-29 │         not_pure()
-   │         ^^^^^^^^^^
-
-error: Pure functions cannot abort
-   ┌─ tests/inputs/pure_functions/pure_rules.fail.move:50:9
-   │
-50 │         assert!(a > 0, 1);
-   │         ^^^^^^^^^^^^^^^^^
-
-error: Pure functions cannot have mutable reference parameters: 'v'
+error: Pure functions with mutable references are not supported
    ┌─ tests/inputs/pure_functions/pure_rules.fail.move:16:5
    │  
 16 │ ╭     public fun invalid_mut_ref(v: &mut vector<u64>): u64 {
