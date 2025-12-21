@@ -14,9 +14,10 @@
 use intermediate_theorem_format::IRNode;
 use std::collections::BTreeSet;
 
-/// Run phi detection on the entire IR tree
-pub fn detect_phis(ir: IRNode) -> IRNode {
-    transform_node(ir, &BTreeSet::new())
+/// Run phi detection on the entire IR tree, with initial scope containing function parameters
+pub fn detect_phis(ir: IRNode, param_names: Vec<String>) -> IRNode {
+    let initial_scope: BTreeSet<String> = param_names.into_iter().collect();
+    transform_node(ir, &initial_scope)
 }
 
 fn transform_node(ir: IRNode, vars_in_scope: &BTreeSet<String>) -> IRNode {
@@ -41,13 +42,16 @@ fn transform_node(ir: IRNode, vars_in_scope: &BTreeSet<String>) -> IRNode {
             cond,
             body,
             vars: _,
+            invariants,
         } => {
             // Apply while transformation even when While appears outside of transform_block
             let cond = transform_node(*cond, vars_in_scope);
             let body = transform_node(*body, vars_in_scope);
+            // Transform invariants too
+            let invariants = invariants.into_iter().map(|inv| transform_node(inv, vars_in_scope)).collect();
             // vars will be set by transform_while_in_block, but we pass through the existing value
             // in case this is already a transformed while
-            transform_while_in_block(cond, body, vars_in_scope)
+            transform_while_in_block(cond, body, vars_in_scope, invariants)
         }
         IRNode::Let { pattern, value } => {
             // Don't extend scope here - let bindings are only visible in their block,
@@ -83,10 +87,11 @@ fn transform_block(children: Vec<IRNode>, inherited_vars: &BTreeSet<String>) -> 
                 }
                 result.push(transformed);
             }
-            IRNode::While { cond, body, .. } => {
+            IRNode::While { cond, body, invariants, .. } => {
                 let cond = transform_node(*cond, &vars_in_scope);
                 let body = transform_node(*body, &vars_in_scope);
-                let transformed = transform_while_in_block(cond, body, &vars_in_scope);
+                let invariants = invariants.into_iter().map(|inv| transform_node(inv, &vars_in_scope)).collect();
+                let transformed = transform_while_in_block(cond, body, &vars_in_scope, invariants);
                 // Update vars_in_scope with any new bindings from the transformed while
                 if let IRNode::Let { pattern, .. } = &transformed {
                     vars_in_scope.extend(pattern.iter().cloned());
@@ -124,10 +129,29 @@ fn transform_if_in_block(
         };
     }
 
-    // If one branch terminates and the other doesn't, the non-terminating branch
-    // may define variables that are used after the if. We need to make the if
-    // expression return those variables so they're in scope after.
+    // If one branch terminates and the other doesn't, check what kind of termination.
+    // For Return/Abort, we should NOT do phi detection because the terminating branch
+    // exits the entire function, not just the if-statement. This is especially important
+    // for early returns inside while loops where phi detection would create type mismatches.
     if then_terminates || else_terminates {
+        // Check if termination is via Return or Abort (function-level exit)
+        let terminating_branch = if then_terminates { &then_branch } else { &else_branch };
+        let has_function_exit = terminating_branch.iter().any(|n| {
+            matches!(n, IRNode::Return(_) | IRNode::Abort(_))
+        });
+
+        // If the terminating branch exits the function, don't do phi detection.
+        // Just keep the if-statement as a control flow statement.
+        if has_function_exit {
+            return IRNode::If {
+                cond,
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            };
+        }
+
+        // For other kinds of termination (like both branches being complete expressions),
+        // we can try to lift variables from the continuing branch.
         let (continuing_branch, terminating_branch, cond, swap_branches) = if else_terminates {
             (then_branch, else_branch, cond, false)
         } else {
@@ -254,6 +278,7 @@ fn transform_while_in_block(
     cond: IRNode,
     body: IRNode,
     vars_in_scope: &BTreeSet<String>,
+    invariants: Vec<IRNode>,
 ) -> IRNode {
     // Collect variables assigned in the body that were defined before the loop
     let body_assigned = collect_top_level_let_names(&body);
@@ -262,23 +287,63 @@ fn transform_while_in_block(
     // This includes temps (starting with $t) which will be optimized away later.
     let loop_vars: Vec<String> = body_assigned.intersection(vars_in_scope).cloned().collect();
 
+    eprintln!("PHI: transform_while_in_block: vars_in_scope={:?}", vars_in_scope);
+    eprintln!("PHI: transform_while_in_block: body_assigned={:?}", body_assigned);
+    eprintln!("PHI: transform_while_in_block: loop_vars={:?}", loop_vars);
+    eprintln!("PHI: transform_while_in_block: body={:#?}", body);
+
     if loop_vars.is_empty() {
         // No pre-existing variables modified - loop doesn't need state tracking
+        eprintln!("PHI: transform_while_in_block: returning empty vars while");
         return IRNode::While {
             cond: Box::new(cond),
             body: Box::new(body),
             vars: vec![],
+            invariants,
         };
     }
 
+    // Append a return tuple to the body that returns the updated loop variables
+    let return_tuple = IRNode::Tuple(
+        loop_vars.iter().map(|v| IRNode::Var(v.clone())).collect()
+    );
+    eprintln!("PHI: transform_while_in_block: appending return_tuple={:?}", return_tuple);
+    let body_with_return = append_to_body(body, return_tuple);
+
     // Wrap while in a let binding that captures the final state
+    eprintln!("PHI: transform_while_in_block: returning Let with loop_vars={:?}", loop_vars);
     IRNode::Let {
         pattern: loop_vars.clone(),
         value: Box::new(IRNode::While {
             cond: Box::new(cond),
-            body: Box::new(body),
+            body: Box::new(body_with_return),
             vars: loop_vars,
+            invariants,
         }),
+    }
+}
+
+/// Append a node to the end of a body (Block, If branches, or single node)
+fn append_to_body(body: IRNode, node: IRNode) -> IRNode {
+    match body {
+        IRNode::Block { mut children } => {
+            children.push(node);
+            IRNode::Block { children }
+        }
+        IRNode::If { cond, then_branch, else_branch } => {
+            // Append to both branches of the if
+            IRNode::If {
+                cond,
+                then_branch: Box::new(append_to_body(*then_branch, node.clone())),
+                else_branch: Box::new(append_to_body(*else_branch, node)),
+            }
+        }
+        other => {
+            // Wrap single node in a block with the appended node
+            IRNode::Block {
+                children: vec![other, node],
+            }
+        }
     }
 }
 
@@ -299,6 +364,12 @@ fn collect_top_level_let_names(ir: &IRNode) -> BTreeSet<String> {
             for name in pattern {
                 vars.insert(name.clone());
             }
+        }
+        IRNode::If { then_branch, else_branch, .. } => {
+            // Collect from both branches - variables assigned in either branch
+            // are modified by this if statement
+            vars.extend(collect_top_level_let_names(then_branch));
+            vars.extend(collect_top_level_let_names(else_branch));
         }
         _ => {}
     }

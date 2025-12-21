@@ -352,6 +352,18 @@ impl PackageTargets {
 
     fn check_spec_scope(&mut self, func_env: &FunctionEnv, filter: TargetFilterOptions) {
         let env = func_env.module_env.env;
+        let func_name = func_env.get_name_str();
+        let module_name = func_env.module_env.get_full_name_str();
+
+        // Debug: Check if this function has a spec attribute
+        let has_spec_attr = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::Spec)
+            .is_some();
+        if func_name.contains("tick") || func_name.contains("sqrt") {
+            eprintln!("[SPEC_DEBUG] Checking function {}::{} has_spec_attr={}", module_name, func_name, has_spec_attr);
+        }
+
         if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
             focus,
             prove,
@@ -388,9 +400,15 @@ impl PackageTargets {
                 self.ignore_aborts.insert(func_env.get_qualified_id());
             }
 
-            if !func_env.module_env.is_target()
+            let is_mod_target = func_env.module_env.is_target();
+            let is_filtered = filter.is_targeted(func_env);
+            if func_name.contains("tick") || func_name.contains("sqrt") {
+                eprintln!("[SPEC_DEBUG]   is_mod_target={} skip={:?} is_filtered={} prove={} focus={}",
+                    is_mod_target, skip, is_filtered, *prove, *focus);
+            }
+            if !is_mod_target
                 || skip.is_some()
-                || !filter.is_targeted(func_env)
+                || !is_filtered
                 || (!*prove && !*focus)
             {
                 self.no_verify_specs.insert(func_env.get_qualified_id());
@@ -410,12 +428,16 @@ impl PackageTargets {
             }
 
             if target.is_some() {
+                eprintln!("[SPEC_DEBUG] Found target spec: {}::{} with target={:?}",
+                    func_env.module_env.get_full_name_str(), func_env.get_name_str(), target);
                 match Self::parse_module_access(target.as_ref().unwrap(), &func_env.module_env) {
                     Some((module_name, func_name)) => {
+                        eprintln!("[SPEC_DEBUG]   Parsed target: module={} func={}", module_name.display(env.symbol_pool()), func_name);
                         let module_env = env.find_module(&module_name).unwrap();
                         if let Some(target_func_env) = module_env
                             .find_function(func_env.symbol_pool().make(func_name.as_str()))
                         {
+                            eprintln!("[SPEC_DEBUG]   Found target function, calling process_spec");
                             self.process_spec(func_env, &target_func_env);
                         } else {
                             env.diag(
@@ -665,6 +687,12 @@ impl PackageTargets {
 
     pub fn target_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.target_specs
+    }
+
+    /// Iterate over all spec-to-target mappings.
+    /// Returns an iterator over (target_id, spec_ids) pairs.
+    pub fn iter_all_specs(&self) -> impl Iterator<Item = (&QualifiedId<FunId>, &BTreeSet<QualifiedId<FunId>>)> {
+        self.all_specs.iter()
     }
 
     pub fn no_verify_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {

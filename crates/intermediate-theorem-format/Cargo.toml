@@ -10,6 +10,7 @@ num.workspace = true
 ethnum.workspace = true
 petgraph.workspace = true
 indexmap.workspace = true
+z3.workspace = true
 
 [lib]
 doctest = false

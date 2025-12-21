@@ -95,6 +95,11 @@ pub fn translate(ctx: &mut DiscoveryContext, offset: CodeOffset) -> IRNode {
         | Bytecode::Branch(_, _, _, _)
         | Bytecode::Nop(_) => IRNode::default(),
 
+        // Prop bytecodes are spec language constructs (assume, assert, wellformed checks)
+        // inserted by loop analysis. We skip them in our translation as we handle
+        // invariants differently.
+        Bytecode::Prop(_, _, _) => IRNode::default(),
+
         _ => panic!("BUG: Unsupported bytecode {:?}", bytecode),
     }
 }
@@ -263,17 +268,17 @@ fn translate_call(
                 "BUG: Cast operation with {} operands",
                 srcs.len()
             );
-            let op = match operation {
-                Operation::CastU8 => UnOp::CastU8,
-                Operation::CastU16 => UnOp::CastU16,
-                Operation::CastU32 => UnOp::CastU32,
-                Operation::CastU64 => UnOp::CastU64,
-                Operation::CastU128 => UnOp::CastU128,
-                Operation::CastU256 => UnOp::CastU256,
+            let bits = match operation {
+                Operation::CastU8 => 8,
+                Operation::CastU16 => 16,
+                Operation::CastU32 => 32,
+                Operation::CastU64 => 64,
+                Operation::CastU128 => 128,
+                Operation::CastU256 => 256,
                 _ => unreachable!(),
             };
             make_let(ctx, dests, IRNode::UnOp {
-                op,
+                op: UnOp::Cast(bits),
                 operand: Box::new(make_var(ctx, srcs[0])),
             })
         }
@@ -287,6 +292,14 @@ fn translate_call(
         | Operation::TraceGlobalMem(_)
         | Operation::TraceGhost(_, _) => IRNode::default(),
 
+        // Havoc operations are inserted by loop analysis for loop-modified variables
+        // In our translation, these become no-ops since we handle loop state differently
+        Operation::Havoc(_) => IRNode::default(),
+
+        // Stop is inserted at the end of loop invariant checking blocks
+        // This marks unreachable code paths and can be ignored
+        Operation::Stop => IRNode::default(),
+
         Operation::GetGlobal(..)
         | Operation::MoveFrom(..)
         | Operation::MoveTo(..)
@@ -294,7 +307,7 @@ fn translate_call(
             unreachable!("Global operations don't exist in modern Sui")
         }
 
-        _ => unreachable!(),
+        other => panic!("BUG: Unsupported operation {:?}", other),
     }
 }
 

@@ -17,6 +17,7 @@ use std::collections::HashSet;
 /// Generate requires/ensures functions for all spec functions
 pub fn generate_spec_functions(program: &mut Program) {
     // Collect base IDs that have Pure variants (created by runtime_variants)
+    // This must run AFTER generate_runtime_variants
     let has_pure_variant: HashSet<usize> = program
         .functions
         .iter()
@@ -39,7 +40,9 @@ pub fn generate_spec_functions(program: &mut Program) {
         let requires_count = func.body.iter().filter(|n| matches!(n, IRNode::Requires(_))).count();
         let ensures_count = func.body.iter().filter(|n| matches!(n, IRNode::Ensures(_))).count();
 
-        // Generate .requires variant if any requires exist - calls rewritten to Pure where available
+        // Generate .requires variant if any requires exist
+        // 1. Replace calls to target functions with their spec replacements
+        // 2. Rewrite remaining calls to Pure variants where available
         if requires_count > 0 {
             program.create_variant(
                 func_id,
@@ -50,7 +53,7 @@ pub fn generate_spec_functions(program: &mut Program) {
             );
         }
 
-        // Generate .ensures variants for each ensures clause - calls rewritten to Pure where available
+        // Generate .ensures variants for each ensures clause
         for idx in 0..ensures_count {
             program.create_variant(
                 func_id,
@@ -120,6 +123,13 @@ fn transform_spec_body(node: &IRNode, extract: SpecExtract) -> IRNode {
 
     // Combine all captured conditions with AND
     let combined = combine_with_and(captured_vars.into_iter().map(IRNode::Var).collect());
+
+    // Filter out non-Let expressions from the block since specs should only have
+    // Let bindings followed by the final combined Prop condition.
+    // This removes leftover expressions like variable references that remain
+    // after filtering out Returns.
+    let transformed = transformed.filter(|n| matches!(n, IRNode::Let { .. }));
+
     transformed.combine(combined)
 }
 

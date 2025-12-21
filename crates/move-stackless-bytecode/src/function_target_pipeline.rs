@@ -333,13 +333,25 @@ impl FunctionTargetsHolder {
 
     /// Adds a new function target. The target will be initialized from the Move byte code.
     pub fn add_target(&mut self, func_env: &FunctionEnv<'_>) {
+        let func_name = func_env.get_name_str();
+        let qid = func_env.get_qualified_id();
         let generator = StacklessBytecodeGenerator::new(func_env);
         let data = generator.generate_function();
+        let has_bytecode = !data.code.is_empty();
+        if func_name.contains("_math") {
+            eprintln!("[ADD_TARGET] Function {} has_bytecode={} bytecode_len={} qid={:?}",
+                func_name, has_bytecode, data.code.len(), qid);
+        }
         self.targets
-            .entry(func_env.get_qualified_id())
+            .entry(qid)
             .or_default()
             .insert(FunctionVariant::Baseline, data);
 
+        let func_name = func_env.get_name_str();
+        if func_name.contains("_math") {
+            let found_target = self.package_targets.find_target_spec(&qid);
+            eprintln!("[ADD_TARGET] {} checking for target_spec: found={:?}", func_name, found_target);
+        }
         if let Some(spec) = self
             .package_targets
             .find_target_spec(&func_env.get_qualified_id())
@@ -357,12 +369,16 @@ impl FunctionTargetsHolder {
 
     fn process_spec(&mut self, spec_env: &FunctionEnv, target_id: &QualifiedId<FunId>) {
         let env = spec_env.module_env.env;
+        let spec_name = spec_env.get_name_str();
 
         if matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck) {
             if !self
                 .package_targets
                 .is_system_spec(&spec_env.get_qualified_id())
             {
+                if spec_name.contains("_math") {
+                    eprintln!("[PROCESS_SPEC] {} early return - FunctionsAbortCheck non-system", spec_name);
+                }
                 return;
             }
         } else if matches!(self.target, FunctionHolderTarget::All) {
@@ -385,12 +401,18 @@ impl FunctionTargetsHolder {
                     .package_targets
                     .is_system_spec(&spec_env.get_qualified_id())
             {
+                if spec_name.contains("_math") {
+                    eprintln!("[PROCESS_SPEC] {} early return - not in target module", spec_name);
+                }
                 return;
             }
         }
 
         if let Some(qid) = self.function_specs.get_by_right(&target_id) {
             if !self.package_targets.is_system_spec(qid) {
+                if spec_name.contains("_math") {
+                    eprintln!("[PROCESS_SPEC] {} early return - duplicate target", spec_name);
+                }
                 env.diag(
                     Severity::Error,
                     &spec_env.get_loc(),
@@ -403,6 +425,9 @@ impl FunctionTargetsHolder {
             }
         }
 
+        if spec_name.contains("_math") {
+            eprintln!("[PROCESS_SPEC] {} inserting into function_specs -> target {:?}", spec_name, target_id);
+        }
         self.function_specs
             .insert(spec_env.get_qualified_id(), *target_id);
     }

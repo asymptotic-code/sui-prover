@@ -54,7 +54,7 @@ fn inline_in_node(ir: IRNode, outer_temps: &BTreeMap<String, IRNode>) -> IRNode 
                 else_branch: Box::new(else_branch),
             }
         }
-        IRNode::While { cond, body, vars } => {
+        IRNode::While { cond, body, vars, invariants } => {
             // For while loops, we need to be careful: temps assigned in the body
             // shouldn't be inlined since they change each iteration.
             // We only inline outer temps that aren't redefined in the loop.
@@ -68,6 +68,12 @@ fn inline_in_node(ir: IRNode, outer_temps: &BTreeMap<String, IRNode>) -> IRNode 
             let cond = inline_in_node(*cond, &safe_temps);
             let body = inline_in_node(*body, &safe_temps);
 
+            // Inline temps in invariants too
+            let invariants = invariants
+                .into_iter()
+                .map(|inv| inline_in_node(inv, &safe_temps))
+                .collect();
+
             // Remove any temps from the vars list that we've inlined
             let vars = vars
                 .into_iter()
@@ -78,6 +84,7 @@ fn inline_in_node(ir: IRNode, outer_temps: &BTreeMap<String, IRNode>) -> IRNode 
                 cond: Box::new(cond),
                 body: Box::new(body),
                 vars,
+                invariants,
             }
         }
         IRNode::Let { pattern, value } => {
@@ -88,6 +95,29 @@ fn inline_in_node(ir: IRNode, outer_temps: &BTreeMap<String, IRNode>) -> IRNode 
                 pattern,
                 value: Box::new(value),
             }
+        }
+        // For BinOp, recurse into operands (they may contain nested Blocks)
+        IRNode::BinOp { op, lhs, rhs } => {
+            let lhs = inline_in_node(*lhs, outer_temps);
+            let rhs = inline_in_node(*rhs, outer_temps);
+            IRNode::BinOp {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+        }
+        // For UnOp, recurse into operand
+        IRNode::UnOp { op, operand } => {
+            let operand = inline_in_node(*operand, outer_temps);
+            IRNode::UnOp {
+                op,
+                operand: Box::new(operand),
+            }
+        }
+        // For Call, recurse into args
+        IRNode::Call { function, type_args, args } => {
+            let args = args.into_iter().map(|a| inline_in_node(a, outer_temps)).collect();
+            IRNode::Call { function, type_args, args }
         }
         // For other nodes, just substitute temps in all children
         other => substitute_temps(other, outer_temps),
@@ -143,15 +173,8 @@ fn is_single_temp(pattern: &[String]) -> bool {
 
     let name = &pattern[0];
 
-    // Inline $ prefixed temps (true compiler temps)
-    if VariableRegistry::is_temp(name) {
-        return true;
-    }
-
-    // Also inline variables named "tmp" (compiler-generated but got meaningful names via TraceLocal)
-    if name == "tmp" {
-        return true;
-    }
-
-    false
+    // Only inline $ prefixed temps (true compiler temps)
+    // We CANNOT inline "tmp" because it may be defined in conditional branches
+    // and used after the conditional, which our scope-local inlining can't handle.
+    VariableRegistry::is_temp(name)
 }

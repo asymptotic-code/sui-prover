@@ -97,8 +97,21 @@ pub fn build_model_with_target(
         FunctionHolderTarget::All,
     );
 
+    eprintln!("[BUILD_MODEL] Listing all modules:");
     for module in model.get_modules() {
+        let module_name = module.get_full_name_str();
+        if module.is_target() {
+            eprintln!("[BUILD_MODEL]   Target module: {}", module_name);
+        }
         for func_env in module.get_functions() {
+            let func_name = func_env.get_name_str();
+            if func_name.contains("_math") {
+                eprintln!("[BUILD_MODEL] Function {}::{} is_native={} has_bytecode={}",
+                    module_name,
+                    func_name,
+                    func_env.is_native(),
+                    !func_env.get_bytecode().is_empty());
+            }
             targets.add_target(&func_env);
         }
     }

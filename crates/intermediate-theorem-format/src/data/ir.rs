@@ -39,6 +39,24 @@ macro_rules! traverse_ir {
                 let $value = operand.$deref();
                 $action;
             }
+            IRNode::BitOp(bit_op) => {
+                match bit_op {
+                    BitOp::Extract { operand, .. } => {
+                        let $value = operand.$deref();
+                        $action;
+                    }
+                    BitOp::Concat { high, low } => {
+                        let $value = high.$deref();
+                        $action;
+                        let $value = low.$deref();
+                        $action;
+                    }
+                    BitOp::ZeroExtend { operand, .. } | BitOp::SignExtend { operand, .. } => {
+                        let $value = operand.$deref();
+                        $action;
+                    }
+                }
+            }
             IRNode::Call { args, .. } => {
                 for $value in args {
                     $action;
@@ -56,11 +74,6 @@ macro_rules! traverse_ir {
             IRNode::Unpack { value, .. } => {
                 let $value = value.$deref();
                 $action;
-            }
-            IRNode::VecOp { args, .. } => {
-                for $value in args {
-                    $action;
-                }
             }
             IRNode::Tuple(elems) => {
                 for $value in elems {
@@ -84,11 +97,25 @@ macro_rules! traverse_ir {
                 let $value = else_branch.$deref();
                 $action;
             }
-            IRNode::While { cond, body, .. } => {
+            IRNode::While { cond, body, invariants, .. } => {
                 let $value = cond.$deref();
                 $action;
                 let $value = body.$deref();
                 $action;
+                for $value in invariants {
+                    $action;
+                }
+            }
+            IRNode::WhileAborts { cond, body_aborts, body_pure, invariants, .. } => {
+                let $value = cond.$deref();
+                $action;
+                let $value = body_aborts.$deref();
+                $action;
+                let $value = body_pure.$deref();
+                $action;
+                for $value in invariants {
+                    $action;
+                }
             }
             IRNode::Let { value, .. } => {
                 let $value = value.$deref();
@@ -139,10 +166,10 @@ pub enum IRNode {
     // === Atoms ===
     /// Variable reference by name
     Var(TempId),
-    
+
     /// Constant value
     Const(Const),
-    
+
     // === Compound Expressions ===
     /// Binary operation: lhs op rhs
     BinOp {
@@ -150,49 +177,46 @@ pub enum IRNode {
         lhs: Box<IRNode>,
         rhs: Box<IRNode>,
     },
-    
+
     /// Unary operation: op operand
     UnOp {
         op: UnOp,
         operand: Box<IRNode>,
     },
-    
+
+    /// Bit-level operation (extract, concat, extend)
+    BitOp(BitOp),
+
     /// Function call: function(args)
     Call {
         function: FunctionID,
         type_args: Vec<Type>,
         args: Vec<IRNode>,
     },
-    
+
     /// Struct construction: StructName { fields... }
     Pack {
         struct_id: StructID,
         type_args: Vec<Type>,
         fields: Vec<IRNode>,
     },
-    
+
     /// Field access: struct.field
     Field {
         struct_id: StructID,
         field_index: usize,
         base: Box<IRNode>,
     },
-    
+
     /// Struct destructuring: let (f1, f2, ...) = struct
     Unpack {
         struct_id: StructID,
         value: Box<IRNode>,
     },
-    
-    /// Vector operation
-    VecOp {
-        op: VecOp,
-        args: Vec<IRNode>,
-    },
-    
+
     /// Tuple: (a, b, c) or unit ()
     Tuple(Vec<IRNode>),
-    
+
     /// Let binding: let pattern = value in body
     Let {
         /// Variable names to bind (empty = wildcard, single = simple, multiple = tuple)
@@ -200,7 +224,7 @@ pub enum IRNode {
         /// The value being bound
         value: Box<IRNode>,
     },
-    
+
     // === Control Flow (all produce values) ===
     /// Conditional: if cond then t else e
     If {
@@ -208,7 +232,7 @@ pub enum IRNode {
         then_branch: Box<IRNode>,
         else_branch: Box<IRNode>,
     },
-    
+
     /// While loop: while cond do body
     /// Returns the final state tuple
     While {
@@ -216,20 +240,32 @@ pub enum IRNode {
         body: Box<IRNode>,
         /// Loop state variables that are carried across iterations.
         vars: Vec<TempId>,
+        /// Loop invariants (for verification)
+        invariants: Vec<IRNode>,
     },
-    
+
+    /// While loop abort predicate (for .aborts variant)
+    /// Captures both the abort condition and the pure body for reasoning
+    WhileAborts {
+        cond: Box<IRNode>,
+        body_aborts: Box<IRNode>,
+        body_pure: Box<IRNode>,
+        vars: Vec<TempId>,
+        invariants: Vec<IRNode>,
+    },
+
     // === Sequencing ===
     Block {
         children: Vec<IRNode>,
     },
-    
+
     // === Effects ===
     /// Return from function (early return)
     Return(Vec<IRNode>),
-    
+
     /// Abort execution with error code
     Abort(Box<IRNode>),
-    
+
     /// Field update: { struct with field = value }
     UpdateField {
         base: Box<IRNode>,
@@ -237,18 +273,18 @@ pub enum IRNode {
         field_index: usize,
         value: Box<IRNode>,
     },
-    
+
     /// Vector element update: vec.set(index, value)
     UpdateVec {
         base: Box<IRNode>,
         index: Box<IRNode>,
         value: Box<IRNode>,
     },
-    
+
     // === Specification ===
     /// Precondition assertion (rendered as comment)
     Requires(Box<IRNode>),
-    
+
     /// Postcondition assertion (rendered as comment)
     Ensures(Box<IRNode>),
 }
@@ -320,25 +356,35 @@ pub enum BinOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
     Not,
-    CastU8,
-    CastU16,
-    CastU32,
-    CastU64,
-    CastU128,
-    CastU256,
+    BitNot,
+    /// Cast to unsigned integer with specified bit width (8, 16, 32, 64, 128, 256)
+    Cast(u32),
 }
 
-/// Vector operations
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VecOp {
-    /// Create empty vector with element type
-    Empty(Type),
-    Length,
-    Push,
-    Pop,
-    Borrow,
-    BorrowMut,
-    Swap,
+/// Bit-level operations (extract, concat, extend)
+#[derive(Debug, Clone, PartialEq)]
+pub enum BitOp {
+    /// Extract bits [high:low] from operand
+    Extract {
+        high: u32,
+        low: u32,
+        operand: Box<IRNode>,
+    },
+    /// Concatenate high and low bitvectors
+    Concat {
+        high: Box<IRNode>,
+        low: Box<IRNode>,
+    },
+    /// Zero-extend by n bits
+    ZeroExtend {
+        bits: u32,
+        operand: Box<IRNode>,
+    },
+    /// Sign-extend by n bits
+    SignExtend {
+        bits: u32,
+        operand: Box<IRNode>,
+    },
 }
 
 impl IRNode {
@@ -346,7 +392,7 @@ impl IRNode {
     pub fn unit() -> IRNode {
         IRNode::Tuple(vec![])
     }
-    
+
     /// Get references to all nodes (including itself) recursively in this IR tree
     pub fn iter<'a>(&'a self) -> impl Iterator<Item=&'a IRNode> + 'a {
         fn collect_nodes<'a>(node: &'a IRNode, result: &mut Vec<&'a IRNode>) {
@@ -357,14 +403,14 @@ impl IRNode {
         collect_nodes(self, &mut result);
         result.into_iter()
     }
-    
+
     /// Get references to direct children (depth 1) of this IR node
     pub fn iter_children<'a>(&'a self) -> impl Iterator<Item=&'a IRNode> + 'a {
         let mut result = Vec::new();
         traverse_ir!(self, as_ir_ref, |child| result.push(child));
         result.into_iter()
     }
-    
+
     /// Transform this IR recursively (bottom-up: children first, then parent)
     pub fn map<F: FnMut(IRNode) -> IRNode>(mut self, f: &mut F) -> IRNode {
         // First recurse into children
@@ -375,7 +421,7 @@ impl IRNode {
         // Then apply f to self
         f(self)
     }
-    
+
     /// Fold over all IRNodes into a given structure
     pub fn fold<T, F>(&self, init: T, mut f: F) -> T
     where
@@ -383,7 +429,7 @@ impl IRNode {
     {
         self.iter().fold(init, |acc, node| f(acc, node))
     }
-    
+
     /// Transform all Block nodes recursively
     pub fn transform_block<F: Fn(Vec<IRNode>) -> Vec<IRNode>>(self, f: F) -> Self {
         self.map(&mut |node| match node {
@@ -393,7 +439,7 @@ impl IRNode {
             other => other,
         })
     }
-    
+
     /// Filter out nodes from blocks based on a predicate.
     /// Nodes for which the predicate returns false are removed.
     /// This traverses the entire IR tree and filters Block children.
@@ -402,7 +448,7 @@ impl IRNode {
             children.into_iter().filter(&predicate).collect()
         })
     }
-    
+
     /// Check if this is an atomic expression (doesn't need parens when used as arg)
     pub fn is_atomic(&self) -> bool {
         match self {
@@ -420,7 +466,7 @@ impl IRNode {
             _ => false,
         }
     }
-    
+
     /// Check if this is a terminating node (Return or Abort at the tail)
     pub fn terminates(&self) -> bool {
         match self {
@@ -435,7 +481,7 @@ impl IRNode {
             _ => false,
         }
     }
-    
+
     /// Extract and collect values from matching nodes in the IR tree
     /// The extractor function returns Some(T) for nodes that should be collected.
     pub fn extract<T, F>(&self, extractor: F) -> Vec<T>
@@ -444,7 +490,7 @@ impl IRNode {
     {
         self.iter().filter_map(extractor).collect()
     }
-    
+
     /// Collect all variable names used (read) in this IR tree
     pub fn used_vars(&self) -> impl Iterator<Item=&TempId> {
         self.iter().filter_map(|node| match node {
@@ -452,7 +498,7 @@ impl IRNode {
             _ => None,
         })
     }
-    
+
     /// Collect all variable names defined (bound) in this IR tree
     pub fn defined_vars(&self) -> impl Iterator<Item=&TempId> {
         self.iter().flat_map(|node| match node {
@@ -460,7 +506,28 @@ impl IRNode {
             _ => [].iter(),
         })
     }
-    
+
+    /// Check if this IR tree contains any While loops
+    pub fn has_while_loop(&self) -> bool {
+        self.iter().any(|node| matches!(node, IRNode::While { .. } | IRNode::WhileAborts { .. }))
+    }
+
+    /// Check if this IR tree contains an early return/abort inside a while loop.
+    /// This pattern cannot be properly translated to functional loop combinators.
+    pub fn has_early_return_in_while(&self) -> bool {
+        fn check_while_body(body: &IRNode) -> bool {
+            body.iter().any(|node| matches!(node, IRNode::Return(_) | IRNode::Abort(_)))
+        }
+
+        self.iter().any(|node| match node {
+            IRNode::While { body, .. } => check_while_body(body),
+            IRNode::WhileAborts { body_pure, body_aborts, .. } => {
+                check_while_body(body_pure) || check_while_body(body_aborts)
+            }
+            _ => false,
+        })
+    }
+
     /// Collect all function calls
     pub fn calls(&self) -> impl Iterator<Item=FunctionID> + '_ {
         self.iter().filter_map(|node| match node {
@@ -468,17 +535,18 @@ impl IRNode {
             _ => None,
         })
     }
-    
+
     /// Rewrite function calls to use a different variant.
-    /// Only rewrites calls where `should_rewrite(base_id)` returns true.
+    /// Only rewrites Runtime variant calls where `should_rewrite(base_id)` returns true.
+    /// Calls already at a non-Runtime variant (like Aborts) are left unchanged.
     pub fn to_variant<F>(self, variant: crate::FunctionVariant, should_rewrite: F) -> Self
     where
         F: Fn(usize) -> bool,
     {
         self.map(&mut |n| match n {
             IRNode::Call { function, type_args, args } => {
-                // Only rewrite if the function has this variant
-                let new_function = if should_rewrite(function.base) {
+                // Only rewrite Runtime variant calls - preserve other variants like Aborts
+                let new_function = if function.is_runtime() && should_rewrite(function.base) {
                     function.to_variant(variant)
                 } else {
                     function
@@ -492,12 +560,12 @@ impl IRNode {
             other => other,
         })
     }
-    
+
     /// Check if this IR is a unit value ()
     pub fn is_unit(&self) -> bool {
         matches!(self, IRNode::Tuple(elems) if elems.is_empty())
     }
-    
+
     /// Get the result expression from a Block IR (last child, or self if not a block)
     pub fn get_block_result(&self) -> &IRNode {
         match self {
@@ -505,7 +573,7 @@ impl IRNode {
             _ => self,
         }
     }
-    
+
     /// Get statements from a Block IR (all but last child)
     pub fn get_block_stmts(&self) -> &[IRNode] {
         match self {
@@ -513,12 +581,12 @@ impl IRNode {
             _ => &[],
         }
     }
-    
+
     /// Check if this IR tree contains any Abort nodes
     pub fn aborts(&self) -> bool {
         self.iter().any(|n| matches!(n, IRNode::Abort(_)))
     }
-    
+
     /// Check if ALL execution paths in this IR tree lead to Abort
     pub fn always_aborts(&self) -> bool {
         match self {
@@ -534,7 +602,7 @@ impl IRNode {
             _ => false,
         }
     }
-    
+
     /// Get the abort code if this IR is an abort (or ends in one)
     pub fn get_abort_code(&self) -> Option<&IRNode> {
         match self {
@@ -543,7 +611,7 @@ impl IRNode {
             _ => None,
         }
     }
-    
+
     /// Check if the expression is monadic
     pub fn is_monadic(&self) -> bool {
         self.iter().any(|n| match n {
@@ -551,18 +619,18 @@ impl IRNode {
             _ => false
         })
     }
-    
+
     /// Substitute variables according to a mapping
     pub fn substitute_vars(self, subs: &BTreeMap<String, String>) -> IRNode {
         self.map(&mut |node| match node {
             IRNode::Var(name) => IRNode::Var(subs.get(&name).cloned().unwrap_or(name)),
-            IRNode::While { cond, body, vars } => {
+            IRNode::While { cond, body, vars, invariants } => {
                 // Also substitute variable names in the vars metadata
                 let vars = vars
                     .into_iter()
                     .map(|v| subs.get(&v).cloned().unwrap_or(v))
                     .collect();
-                IRNode::While { cond, body, vars }
+                IRNode::While { cond, body, vars, invariants }
             }
             IRNode::Let { pattern, value } => {
                 // Also substitute variable names in let patterns
@@ -575,7 +643,7 @@ impl IRNode {
             other => other,
         })
     }
-    
+
     /// Extract top-level variable names from a tuple/var expression
     pub fn extract_top_level_vars(&self) -> Vec<&String> {
         match self {
@@ -587,7 +655,7 @@ impl IRNode {
             _ => vec![],
         }
     }
-    
+
     /// Collect all struct IDs referenced in Pack, Unpack, Field, UpdateField operations
     pub fn iter_struct_references(&self) -> impl Iterator<Item=StructID> + '_ {
         self.iter().filter_map(|node| match node {
@@ -598,7 +666,7 @@ impl IRNode {
             _ => None,
         })
     }
-    
+
     /// Collect all struct IDs referenced in type positions (type arguments)
     pub fn iter_type_struct_ids(&self) -> impl Iterator<Item=StructID> + '_ {
         self.iter()
@@ -611,13 +679,13 @@ impl IRNode {
             .flatten()
             .flat_map(|ty| ty.struct_ids())
     }
-    
+
     pub fn combine(self, other: IRNode) -> IRNode {
         let mut elements: Vec<_> = self.into();
         elements.append(&mut other.into());
         elements.into_iter().collect()
     }
-    
+
     /// Get the type of this IR expression using the type context.
     /// Returns None for control flow nodes (Return, Abort) and spec nodes (Requires, Ensures).
     /// Panics if a node that should have a type cannot resolve it.
@@ -625,7 +693,7 @@ impl IRNode {
         match self {
             // Variables: look up in registry - MUST exist
             IRNode::Var(name) => Some(ctx.vars.get_type_or_panic(name).clone()),
-            
+
             // Constants: direct type inference
             IRNode::Const(c) => Some(match c {
                 Const::Bool(_) => Type::Bool,
@@ -633,7 +701,7 @@ impl IRNode {
                 Const::Address(_) => Type::Address,
                 Const::Vector { elem_type, .. } => Type::Vector(Box::new(elem_type.clone())),
             }),
-            
+
             // Binary operations: result type depends on operation
             IRNode::BinOp { op, lhs, .. } => Some(match op {
                 BinOp::And | BinOp::Or |
@@ -643,21 +711,37 @@ impl IRNode {
                     lhs.expect_type(ctx)
                 }
             }),
-            
+
             // Unary operations
-            IRNode::UnOp { op, .. } => Some(match op {
+            IRNode::UnOp { op, operand } => Some(match op {
                 UnOp::Not => Type::Bool,
-                UnOp::CastU8 => Type::UInt(8),
-                UnOp::CastU16 => Type::UInt(16),
-                UnOp::CastU32 => Type::UInt(32),
-                UnOp::CastU64 => Type::UInt(64),
-                UnOp::CastU128 => Type::UInt(128),
-                UnOp::CastU256 => Type::UInt(256),
+                UnOp::BitNot => operand.expect_type(ctx),
+                UnOp::Cast(bits) => Type::UInt(*bits),
             }),
-            
+
+            // Bit operations
+            IRNode::BitOp(bit_op) => Some(match bit_op {
+                BitOp::Extract { high, low, .. } => Type::UInt(high - low + 1),
+                BitOp::Concat { high, low } => {
+                    let high_type = high.expect_type(ctx);
+                    let low_type = low.expect_type(ctx);
+                    match (high_type, low_type) {
+                        (Type::UInt(h), Type::UInt(l)) => Type::UInt(h + l),
+                        _ => panic!("BitOp::Concat expects UInt operands"),
+                    }
+                }
+                BitOp::ZeroExtend { bits, operand } | BitOp::SignExtend { bits, operand } => {
+                    let op_type = operand.expect_type(ctx);
+                    match op_type {
+                        Type::UInt(orig_bits) => Type::UInt(orig_bits + bits),
+                        _ => panic!("BitOp extend expects UInt operand"),
+                    }
+                }
+            }),
+
             // Function calls: look up return type from context (using base ID)
             IRNode::Call { function, .. } => Some(ctx.function_return_type(function.base).clone()),
-            
+
             // Struct construction
             IRNode::Pack { struct_id, type_args, .. } => {
                 Some(Type::Struct {
@@ -665,39 +749,23 @@ impl IRNode {
                     type_args: type_args.clone(),
                 })
             }
-            
+
             // Field access: look up field type from struct definition
             IRNode::Field { struct_id, field_index, .. } => {
                 Some(ctx.struct_field_type(*struct_id, *field_index).clone())
             }
-            
+
             // Struct destructuring: returns tuple of field types
             IRNode::Unpack { struct_id, .. } => Some(ctx.struct_fields_tuple(*struct_id)),
-            
-            // Vector operations
-            IRNode::VecOp { op, args, .. } => Some(match op {
-                VecOp::Empty(elem_type) => Type::Vector(Box::new(elem_type.clone())),
-                VecOp::Length => Type::UInt(64),
-                VecOp::Push | VecOp::Swap => Type::Tuple(vec![]), // Returns unit
-                VecOp::Pop | VecOp::Borrow | VecOp::BorrowMut => {
-                    let vec_type = args.first()
-                        .expect("VecOp::Pop/Borrow/BorrowMut requires a vector argument")
-                        .expect_type(ctx);
-                    match vec_type {
-                        Type::Vector(elem_ty) => (*elem_ty).clone(),
-                        _ => panic!("VecOp expected Vector type, got {:?}", vec_type),
-                    }
-                }
-            }),
-            
+
             // Tuples
             IRNode::Tuple(elems) => {
                 Some(Type::Tuple(elems.iter().map(|e| e.expect_type(ctx)).collect()))
             }
-            
+
             // Let: type is the type of the value being bound (if it has one)
             IRNode::Let { value, .. } => value.get_type(ctx),
-            
+
             // If: type is from the non-terminating branch
             IRNode::If { then_branch, else_branch, .. } => {
                 if !then_branch.terminates() {
@@ -706,29 +774,32 @@ impl IRNode {
                     else_branch.get_type(ctx)
                 }
             }
-            
+
             // While: returns tuple of the loop variables
             IRNode::While { vars, .. } => {
                 Some(Type::Tuple(vars.iter().map(|v| ctx.vars.get_type_or_panic(v).clone()).collect()))
             }
-            
+
+            // WhileAborts: returns Bool (whether body aborts)
+            IRNode::WhileAborts { .. } => Some(Type::Bool),
+
             // Block: type of last child (if it has one)
             IRNode::Block { children } => {
                 children.last().and_then(|c| c.get_type(ctx))
             }
-            
+
             // Control flow nodes don't have types
             IRNode::Return(_) | IRNode::Abort(_) => None,
-            
+
             // Updates return the updated value
             IRNode::UpdateField { base, .. } => base.get_type(ctx),
             IRNode::UpdateVec { base, .. } => base.get_type(ctx),
-            
+
             // Spec nodes don't produce values
             IRNode::Requires(_) | IRNode::Ensures(_) => None,
         }
     }
-    
+
     /// Get the type of this IR expression, panicking if it doesn't have one.
     /// Use this when you know the node must have a type.
     pub fn expect_type(&self, ctx: &TypeContext) -> Type {
@@ -736,8 +807,8 @@ impl IRNode {
             panic!("Expected IR node to have a type, but it doesn't: {:?}", self)
         })
     }
-    
-    
+
+
     /// Simplify blocks by unwrapping simple let-return patterns
     /// Transforms: Block([Let(x, v), Return(x)]) => Return(v)
     pub fn simplify_blocks(self) -> IRNode {
@@ -788,7 +859,7 @@ impl Into<Vec<IRNode>> for IRNode {
 impl FromIterator<IRNode> for IRNode {
     fn from_iter<T: IntoIterator<Item=IRNode>>(iter: T) -> Self {
         let mut nodes = iter.into_iter().collect::<Vec<IRNode>>();
-        
+
         match nodes.len() {
             0 => IRNode::default(),
             1 => nodes.pop().unwrap(),

@@ -85,6 +85,7 @@ datatest-stable = "0.3.2"
 sha2 = "0.10.9"
 dir-test = "0.4.1"
 indexmap = "2.12.0"
+z3 = { version = "0.12", features = ["static-link-z3"] }
 
 move-stdlib = { git = "https://github.com/asymptotic-code/sui", branch = "next" }
 move-docgen = { git = "https://github.com/asymptotic-code/sui", branch = "next" }

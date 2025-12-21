@@ -13,11 +13,16 @@ pub mod runtime;
 // Re-exports for convenience
 pub use backend::run_backend;
 
-/// Writes the lakefile.lean and lake-manifest.json for the project.
+/// Writes the lakefile.lean for the project.
+/// Note: lake-manifest.json is not generated - run `lake update` to create it with resolved dependencies.
 pub fn write_lakefile(output_path: &Path, module_name: &str) -> anyhow::Result<()> {
     let lakefile_content = format!(
         r#"import Lake
 open Lake DSL
+
+-- interval brings in mathlib as a transitive dependency
+require interval from git
+  "https://github.com/girving/interval.git" @ "main"
 
 package «{}» where
   -- add package configuration options here
@@ -30,6 +35,11 @@ lean_lib Prelude where
 lean_lib Impls where
   roots := #[`Impls]
   globs := #[.submodules `Impls]
+
+@[default_target]
+lean_lib Proofs where
+  roots := #[`Proofs]
+  globs := #[.submodules `Proofs]
 
 @[default_target]
 lean_lib Aborts where
@@ -46,16 +56,6 @@ lean_lib Specs where
 
     fs::write(output_path.join("lakefile.lean"), lakefile_content)?;
 
-    // Write minimal lake-manifest.json (compatible with Lake 4.15+)
-    let manifest = format!(
-        r#"{{"version": "1.1.0",
- "packagesDir": ".lake/packages",
- "packages": [],
- "name": "«{}»",
- "lakeDir": ".lake"}}"#,
-        module_name
-    );
-    fs::write(output_path.join("lake-manifest.json"), manifest)?;
 
     Ok(())
 }

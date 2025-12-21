@@ -131,6 +131,14 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         let is_in_target_module = target_modules
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
+        let func_name = fun_env.get_name_str();
+        if func_name.contains("_math") {
+            let is_verified_spec = targets.is_verified_spec(&fun_env.get_qualified_id());
+            let is_spec = targets.is_spec(&fun_env.get_qualified_id());
+            let in_scope = Self::is_within_verification_scope(fun_env, &targets);
+            eprintln!("[VERIFY_ANALYSIS] {} is_in_target_module={} is_verified_spec={} is_spec={} in_scope={}",
+                func_name, is_in_target_module, is_verified_spec, is_spec, in_scope);
+        }
         if is_in_target_module {
             if (targets.is_verified_spec(&fun_env.get_qualified_id())
                 || targets.is_spec(&fun_env.get_qualified_id()))

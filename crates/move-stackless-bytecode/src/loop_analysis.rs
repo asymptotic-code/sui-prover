@@ -317,6 +317,10 @@ impl LoopAnalysisProcessor {
 
         // we have unrolled the loop into a DAG, and there will be no loop invariants left
         builder.data.loop_invariants.clear();
+
+        // Store the loop annotation for later use by backends
+        builder.data.annotations.set(loop_annotation.clone(), true);
+
         builder.data
     }
 

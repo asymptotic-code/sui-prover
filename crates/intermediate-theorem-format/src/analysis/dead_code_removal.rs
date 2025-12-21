@@ -11,11 +11,32 @@ use std::collections::BTreeSet;
 
 pub fn remove_dead_code(ir: IRNode) -> IRNode {
     let used: BTreeSet<String> = ir.used_vars().cloned().collect();
-    ir.transform_block(|children| {
+    let ir = ir.transform_block(|children| {
         children
             .into_iter()
             .filter(|c| !is_dead_let(c, &used))
             .collect()
+    });
+    // Also simplify tuple patterns by replacing unused vars with "_"
+    simplify_tuple_patterns(ir, &used)
+}
+
+/// Simplify tuple patterns by replacing unused variables with "_"
+/// This transforms `let (a, b, c) := ...` to `let (_, _, c) := ...` if only c is used
+pub fn simplify_tuple_patterns(ir: IRNode, used: &BTreeSet<String>) -> IRNode {
+    ir.map(&mut |node| match node {
+        IRNode::Let { pattern, value } if pattern.len() > 1 => {
+            // For multi-element patterns, replace unused vars with "_"
+            let simplified_pattern: Vec<_> = pattern
+                .into_iter()
+                .map(|v| if used.contains(&v) { v } else { "_".to_string() })
+                .collect();
+            IRNode::Let {
+                pattern: simplified_pattern,
+                value,
+            }
+        }
+        other => other,
     })
 }
 

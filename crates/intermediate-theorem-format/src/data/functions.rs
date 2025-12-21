@@ -31,7 +31,7 @@ impl FunctionVariant {
     pub fn suffix(&self) -> &'static str {
         match self {
             FunctionVariant::Runtime => "",
-            FunctionVariant::Pure => ".pure",
+            FunctionVariant::Pure => "",
             FunctionVariant::Aborts => ".aborts",
             FunctionVariant::Requires => ".requires",
             FunctionVariant::Ensures(_) => ".ensures",
@@ -81,6 +81,11 @@ impl FunctionID {
     /// Check if this is the runtime variant
     pub fn is_runtime(&self) -> bool {
         self.variant == FunctionVariant::Runtime
+    }
+
+    /// Check if this is the aborts variant
+    pub fn is_aborts(&self) -> bool {
+        self.variant == FunctionVariant::Aborts
     }
 }
 
@@ -190,6 +195,15 @@ pub struct Function {
 
     /// Function flags (native, spec, etc.)
     pub flags: FunctionFlags,
+
+    /// If this is a spec function with `#[spec(target = X)]`, the base ID of the target function.
+    /// The spec function body provides a clean mathematical definition that can replace
+    /// the target implementation for proof purposes.
+    pub spec_target: Option<usize>,
+
+    /// If this function is targeted by a spec and its body was replaced, this stores the original body.
+    /// Used by the Lean backend to generate both `function_impl` (original) and `function` (spec).
+    pub original_body: Option<crate::IRNode>,
 }
 
 impl Function {
@@ -213,11 +227,29 @@ impl Function {
         self.flags.is_spec()
     }
 
+    /// Check if the function body contains while loops (needs `partial def` in Lean)
+    pub fn has_while_loop(&self) -> bool {
+        self.body.has_while_loop()
+    }
+
+    /// Check if the function has early returns inside while loops
+    /// (cannot be translated to functional loop combinators)
+    pub fn has_early_return_in_while(&self) -> bool {
+        self.body.has_early_return_in_while()
+    }
+
     /// Get the full name including variant suffix
     pub fn full_name(&self, variant: FunctionVariant) -> String {
+        // Validate that name doesn't already contain a variant suffix
+        debug_assert!(
+            !self.name.contains(".aborts") && !self.name.contains(".requires") && !self.name.contains(".ensures"),
+            "Function name '{}' already contains a variant suffix, which would cause duplication",
+            self.name
+        );
+
         match variant {
             FunctionVariant::Runtime => self.name.clone(),
-            FunctionVariant::Pure => format!("{}.pure", self.name),
+            FunctionVariant::Pure => self.name.clone(),
             FunctionVariant::Aborts => format!("{}.aborts", self.name),
             FunctionVariant::Requires => format!("{}.requires", self.name),
             FunctionVariant::Ensures(0) => format!("{}.ensures", self.name),

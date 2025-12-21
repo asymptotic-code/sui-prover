@@ -68,6 +68,9 @@ impl PreludeManager {
         self.copy_prelude_files()
             .context("Failed to copy Prelude files")?;
 
+        self.copy_natives_files()
+            .context("Failed to copy natives files")?;
+
         Ok(())
     }
 
@@ -125,6 +128,58 @@ impl PreludeManager {
                         format!("Failed to copy {} to {}", path.display(), dest.display())
                     })?;
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Copy natives files from lean backend to output directory
+    /// Recursively copies the natives/ directory structure to Impls/
+    fn copy_natives_files(&self) -> Result<()> {
+        let natives_source = self.source_dir.join("natives");
+
+        if !natives_source.exists() {
+            info!("No natives directory found, skipping natives copy");
+            return Ok(());
+        }
+
+        info!("Copying natives files from: {}", natives_source.display());
+
+        let output_impls = self.output_dir.join("Impls");
+        fs::create_dir_all(&output_impls).context("Failed to create Impls directory")?;
+
+        // Recursively copy all .lean files from natives/ to Impls/
+        self.copy_natives_recursive(&natives_source, &output_impls)?;
+
+        Ok(())
+    }
+
+    /// Recursively copy .lean files from source to destination, preserving directory structure
+    fn copy_natives_recursive(&self, source_dir: &Path, dest_dir: &Path) -> Result<()> {
+        if !source_dir.is_dir() {
+            return Ok(());
+        }
+
+        let entries = fs::read_dir(source_dir)
+            .with_context(|| format!("Failed to read directory: {}", source_dir.display()))?;
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_name = entry.file_name();
+
+            if path.is_dir() {
+                // Recursively copy subdirectory
+                let dest_subdir = dest_dir.join(&file_name);
+                fs::create_dir_all(&dest_subdir)
+                    .with_context(|| format!("Failed to create directory: {}", dest_subdir.display()))?;
+                self.copy_natives_recursive(&path, &dest_subdir)?;
+            } else if path.extension().and_then(|s| s.to_str()) == Some("lean") {
+                // Copy .lean file
+                let dest = dest_dir.join(&file_name);
+                fs::copy(&path, &dest).with_context(|| {
+                    format!("Failed to copy {} to {}", path.display(), dest.display())
+                })?;
             }
         }
 

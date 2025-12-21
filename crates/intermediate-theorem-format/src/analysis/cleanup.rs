@@ -12,10 +12,36 @@ use crate::data::variables::TypeContext;
 use crate::{BinOp, Const, IRNode, Type};
 
 pub fn cleanup(node: IRNode, ctx: &TypeContext) -> IRNode {
-    let node = node.filter(|n| !is_identity_let(n));
+    let node = flatten_blocks(node);
+    let node = remove_identity_lets(node);
     let node = simplify_boolean_ifs(node);
     let node = convert_boolean_ifs_to_and(node, ctx);
+    let node = collapse_branch_bindings(node);
     node
+}
+
+/// Flatten single-child blocks and merge nested blocks
+fn flatten_blocks(node: IRNode) -> IRNode {
+    node.map(&mut |n| match n {
+        IRNode::Block { children } if children.len() == 1 => {
+            // Single-child block: unwrap
+            children.into_iter().next().unwrap()
+        }
+        IRNode::Block { mut children } => {
+            // Flatten nested blocks at the end
+            if let Some(IRNode::Block { children: inner }) = children.last().cloned() {
+                children.pop();
+                children.extend(inner);
+            }
+            IRNode::Block { children }
+        }
+        other => other,
+    })
+}
+
+/// Remove identity let bindings: `let x := x` -> removed
+pub fn remove_identity_lets(node: IRNode) -> IRNode {
+    node.filter(|n| !is_identity_let(n))
 }
 
 fn is_identity_let(ir: &IRNode) -> bool {
@@ -138,4 +164,125 @@ fn is_boolean_type(node: &IRNode, ctx: &TypeContext) -> bool {
     node.get_type(ctx)
         .map(|ty| matches!(ty, Type::Bool))
         .unwrap_or(false)
+}
+
+/// Collapse common patterns where a variable is bound and immediately used.
+///
+/// Pattern 1 (Block followed by Var):
+/// ```
+/// Block {
+///     If { then: Block { Let { x = v1 } }, else: Block { Let { x = v2 } } },
+///     Var("x")
+/// }
+/// ```
+/// Transformed to: `If { then: v1, else: v2 }`
+///
+/// Pattern 2 (Let followed by Var in same block):
+/// ```
+/// Block { Let { x = v }, Var("x") }
+/// ```
+/// Transformed to: `v`
+///
+/// These patterns arise from Move code that assigns to a variable in branches
+/// but our temp inlining can't track that the variable is defined in all branches.
+fn collapse_branch_bindings(node: IRNode) -> IRNode {
+    // Run to fixpoint since transformations can expose new patterns
+    let mut result = node;
+    loop {
+        let prev = result.clone();
+        result = collapse_once(result);
+        if result == prev {
+            break;
+        }
+    }
+    result
+}
+
+fn collapse_once(node: IRNode) -> IRNode {
+    node.map(&mut |n| {
+        if let IRNode::Block { children } = n {
+            if children.len() >= 2 {
+                let last_idx = children.len() - 1;
+                let prev_idx = children.len() - 2;
+
+                // Pattern 1: [..., Let { x = v }, Var("x")] -> [..., v]
+                if let (Some(IRNode::Let { pattern, value }), Some(IRNode::Var(var_name))) =
+                    (children.get(prev_idx), children.get(last_idx))
+                {
+                    if pattern.len() == 1 && &pattern[0] == var_name {
+                        let val = (**value).clone();
+                        if children.len() == 2 {
+                            return val;
+                        } else {
+                            let mut new_children: Vec<_> =
+                                children[..prev_idx].iter().cloned().collect();
+                            new_children.push(val);
+                            return IRNode::Block {
+                                children: new_children,
+                            };
+                        }
+                    }
+                }
+
+                // Pattern 2: [..., If { ... }, Var("x")] where branches bind x
+                if let (Some(IRNode::Var(var_name)), Some(if_node)) =
+                    (children.get(last_idx), children.get(prev_idx))
+                {
+                    if let IRNode::If {
+                        cond,
+                        then_branch,
+                        else_branch,
+                    } = if_node
+                    {
+                        if let (Some(then_val), Some(else_val)) = (
+                            extract_single_let_value(then_branch, var_name),
+                            extract_single_let_value(else_branch, var_name),
+                        ) {
+                            let new_if = IRNode::If {
+                                cond: cond.clone(),
+                                then_branch: Box::new(then_val),
+                                else_branch: Box::new(else_val),
+                            };
+
+                            if children.len() == 2 {
+                                return new_if;
+                            } else {
+                                let mut new_children: Vec<_> =
+                                    children[..prev_idx].iter().cloned().collect();
+                                new_children.push(new_if);
+                                return IRNode::Block {
+                                    children: new_children,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            IRNode::Block { children }
+        } else {
+            n
+        }
+    })
+}
+
+/// Extract the value from a Block containing a single Let binding to the given variable name.
+/// Returns the value if the block is: Block { [Let { pattern: [name], value }] }
+fn extract_single_let_value(node: &IRNode, var_name: &str) -> Option<IRNode> {
+    match node {
+        IRNode::Block { children } if children.len() == 1 => {
+            if let IRNode::Let { pattern, value } = &children[0] {
+                if pattern.len() == 1 && pattern[0] == var_name {
+                    return Some((**value).clone());
+                }
+            }
+            None
+        }
+        IRNode::Let { pattern, value } => {
+            if pattern.len() == 1 && pattern[0] == var_name {
+                return Some((**value).clone());
+            }
+            None
+        }
+        _ => None,
+    }
 }

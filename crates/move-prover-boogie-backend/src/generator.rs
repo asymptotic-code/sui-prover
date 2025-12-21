@@ -26,7 +26,7 @@ use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor,
     function_target_pipeline::{
-        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
+        FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder, FunctionVariant,
     },
     number_operation::GlobalNumberOperationState,
     options::ProverOptions,
@@ -668,6 +668,17 @@ pub fn create_and_process_bytecode(
     } else {
         pipeline.run(env, &mut targets)
     };
+
+    // Debug: Check if tick_math_specs functions survived pipeline
+    for module_env in env.get_modules() {
+        for func_env in module_env.get_functions() {
+            let func_name = func_env.get_name_str();
+            if func_name.contains("_math") {
+                let has = targets.has_target(&func_env, &FunctionVariant::Baseline);
+                eprintln!("[POST_PIPELINE] Function {} has_target={}", func_name, has);
+            }
+        }
+    }
 
     (targets, res.err().map(|p| p.name()))
 }

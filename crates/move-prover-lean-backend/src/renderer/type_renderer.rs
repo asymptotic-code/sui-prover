@@ -16,13 +16,7 @@ pub fn render_type<W: Write>(ty: &Type, ctx: &mut RenderCtx<W>) {
             // Always use Prop for Bool - Lean backend only uses propositions
             ctx.write("Prop");
         }
-        Type::UInt(8) => ctx.write("UInt8"),
-        Type::UInt(16) => ctx.write("UInt16"),
-        Type::UInt(32) => ctx.write("UInt32"),
-        Type::UInt(64) => ctx.write("UInt64"),
-        Type::UInt(128) => ctx.write("UInt128"),
-        Type::UInt(256) => ctx.write("UInt256"),
-        Type::UInt(width) => ctx.write(&format!("UInt{}", width)),
+        Type::UInt(width) => ctx.write(&format!("BoundedNat (2^{})", width)),
         Type::SInt(width) => ctx.write(&format!("Int{}", width)),
         Type::Address => ctx.write("Address"),
 
@@ -37,6 +31,10 @@ pub fn render_type<W: Write>(ty: &Type, ctx: &mut RenderCtx<W>) {
             // Don't qualify Lean built-in types
             let qualified_name = if escape::is_lean_builtin(&struct_def.name) {
                 escaped_name
+            } else if struct_def.name == "Real" && module_def.name == "real" {
+                // Special case: Real from real module must be qualified as MoveReal.Real
+                // to avoid ambiguity with Mathlib's Real (ℝ)
+                "MoveReal.Real".to_string()
             } else {
                 let namespace = escape::module_name_to_namespace(&module_def.name);
                 // Don't qualify if we're in the same module

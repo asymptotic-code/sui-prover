@@ -271,8 +271,20 @@ async fn execute_backend_lean(
     model: GlobalEnv,
     general_config: &GeneralConfig,
 ) -> anyhow::Result<()> {
+    // Check for model errors
+    if model.has_errors() {
+        let mut error_writer = Buffer::no_color();
+        model.report_diag(&mut error_writer, codespan_reporting::diagnostic::Severity::Error);
+        let diagnostic_output = String::from_utf8_lossy(&error_writer.into_inner()).to_string();
+        return Err(anyhow::anyhow!(
+            "Move Model compiled with errors.\n{}",
+            diagnostic_output
+        ));
+    }
+
     // Run bytecode transformation pipeline
     let package_targets = PackageTargets::new(&model, Default::default(), true);
+
     let (targets, _) = create_and_process_bytecode(
         &Options::default(),
         &model,
@@ -285,7 +297,7 @@ async fn execute_backend_lean(
 
     // Run Lean backend
     println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(&model, &targets, &output_dir, general_config.generate_only).await?;
+    move_prover_lean_backend::run_backend(&model, &targets, &package_targets, &output_dir, general_config.generate_only).await?;
 
     println!(
         "✓ Lean code generated successfully in {}",

@@ -1,61 +1,54 @@
-import Prelude.UInt256
-import Prelude.UInt128
+import Prelude.BoundedNat
 
 -- Type conversion helpers for unsigned integer types
--- Lean's standard library defines most conversions between UInt8/16/32/64
--- We only need to add conversions to/from our custom UInt128 and UInt256
+-- Using BoundedNat for u128 and u256 types
 
--- Bool conversions to our custom UInt types
--- (Lean 4 already defines Bool.toUInt8/16/32/64)
+-- Type aliases for convenience
+abbrev U128 := BoundedNat (2^128)
+abbrev U256 := BoundedNat (2^256)
+
+-- Bool conversions to BoundedNat types
 namespace Bool
-def toUInt128 (b : Bool) : UInt128 := if b then 1 else 0
-def toUInt256 (b : Bool) : UInt256 := if b then 1 else 0
+def toU128 (b : Bool) : U128 := if b then ⟨1, by native_decide⟩ else ⟨0, by native_decide⟩
+def toU256 (b : Bool) : U256 := if b then ⟨1, by native_decide⟩ else ⟨0, by native_decide⟩
 end Bool
 
 -- UInt8 conversions (including identity for uniformity)
 namespace UInt8
-def toUInt8 (a : UInt8) : UInt8 := a
-def toUInt128 (a : UInt8) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt8) : UInt256 := UInt256.ofNat a.toNat
+def toU128 (a : UInt8) : U128 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^8 ≤ 2^128)⟩
+def toU256 (a : UInt8) : U256 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^8 ≤ 2^256)⟩
 end UInt8
 
--- UInt16 conversions (including identity for uniformity)
+-- UInt16 conversions
 namespace UInt16
-def toUInt16 (a : UInt16) : UInt16 := a
-def toUInt128 (a : UInt16) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt16) : UInt256 := UInt256.ofNat a.toNat
+def toU128 (a : UInt16) : U128 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^16 ≤ 2^128)⟩
+def toU256 (a : UInt16) : U256 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^16 ≤ 2^256)⟩
 end UInt16
 
--- UInt32 conversions (including identity for uniformity)
+-- UInt32 conversions
 namespace UInt32
-def toUInt32 (a : UInt32) : UInt32 := a
-def toUInt128 (a : UInt32) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt32) : UInt256 := UInt256.ofNat a.toNat
+def toU128 (a : UInt32) : U128 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^32 ≤ 2^128)⟩
+def toU256 (a : UInt32) : U256 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^32 ≤ 2^256)⟩
 end UInt32
 
--- UInt64 conversions (including identity for uniformity)
+-- UInt64 conversions
 namespace UInt64
-def toUInt64 (a : UInt64) : UInt64 := a
-def toUInt128 (a : UInt64) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt64) : UInt256 := UInt256.ofNat a.toNat
+def toU128 (a : UInt64) : U128 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^64 ≤ 2^128)⟩
+def toU256 (a : UInt64) : U256 :=
+  ⟨a.toNat, Nat.lt_of_lt_of_le a.toFin.isLt (by native_decide : 2^64 ≤ 2^256)⟩
 end UInt64
 
--- UInt128 conversions to standard types (including identity)
-namespace UInt128
-def toUInt8 (a : UInt128) : UInt8 := UInt8.ofNat a.toNat
-def toUInt16 (a : UInt128) : UInt16 := UInt16.ofNat a.toNat
-def toUInt32 (a : UInt128) : UInt32 := UInt32.ofNat a.toNat
-def toUInt64 (a : UInt128) : UInt64 := UInt64.ofNat a.toNat
-def toUInt128 (a : UInt128) : UInt128 := a
--- toUInt256 already defined in UInt128.lean
-end UInt128
-
--- UInt256 conversions to standard types (including identity)
-namespace UInt256
-def toUInt8 (a : UInt256) : UInt8 := UInt8.ofNat a.toNat
-def toUInt16 (a : UInt256) : UInt16 := UInt16.ofNat a.toNat
-def toUInt32 (a : UInt256) : UInt32 := UInt32.ofNat a.toNat
-def toUInt64 (a : UInt256) : UInt64 := UInt64.ofNat a.toNat
-def toUInt256 (a : UInt256) : UInt256 := a
--- toUInt128 already defined in UInt128.lean
-end UInt256
+-- BoundedNat conversions to standard types
+namespace BoundedNat
+def toUInt8 (a : BoundedNat n) : UInt8 := UInt8.ofNat a.val
+def toUInt16 (a : BoundedNat n) : UInt16 := UInt16.ofNat a.val
+def toUInt32 (a : BoundedNat n) : UInt32 := UInt32.ofNat a.val
+def toUInt64 (a : BoundedNat n) : UInt64 := UInt64.ofNat a.val
+end BoundedNat

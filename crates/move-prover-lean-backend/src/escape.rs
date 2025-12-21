@@ -21,7 +21,7 @@ const LEAN_BUILTIN_TYPES: &[&str] = &[
 /// Lean standard modules/namespaces that conflict with Move module names
 /// If a Move module matches one of these, we prefix it with "Move"
 const LEAN_BUILTIN_MODULES: &[&str] = &[
-    "vector", "option", "string", "list", "array", "nat", "int", "bool", "io", "system",
+    "vector", "option", "string", "list", "array", "nat", "int", "bool", "io", "system", "real",
 ];
 
 /// Escape struct/type names that conflict with Lean built-ins
@@ -45,6 +45,9 @@ pub fn is_lean_builtin(name: &str) -> bool {
 /// Convert a Move module name to a Lean namespace name
 /// Handles name conflicts with Lean standard modules and capitalizes
 pub fn module_name_to_namespace(module_name: &str) -> String {
+    // No special case needed - just capitalize normally
+    // The rational module becomes Rational namespace
+
     if LEAN_BUILTIN_MODULES.contains(&module_name) {
         format!("Move{}", capitalize_first(module_name))
     } else {
