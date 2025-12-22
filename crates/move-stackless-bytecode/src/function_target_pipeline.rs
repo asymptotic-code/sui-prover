@@ -284,8 +284,12 @@ impl FunctionTargetsHolder {
         self.package_targets.pure_functions().contains(id)
     }
 
-    pub fn pure_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
-        &self.package_targets.pure_functions()
+    pub fn is_axiom_fun(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.axiom_functions().contains(id)
+    }
+
+    pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.package_targets.axiom_functions()
     }
 
     pub fn is_spec(&self, id: &QualifiedId<FunId>) -> bool {

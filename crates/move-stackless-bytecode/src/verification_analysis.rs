@@ -104,6 +104,17 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             return data;
         }
 
+        if targets.is_axiom_fun(&fun_env.get_qualified_id()) {
+            let info = data
+                .annotations
+                .get_or_default_mut::<VerificationInfo>(true);
+            if !info.inlined {
+                info.inlined = true;
+                Self::mark_callees_inlined(fun_env, targets);
+            }
+            return data;
+        }
+
         // Rule 0: mark invariant functions as inlined
         if targets
             .get_datatype_by_inv(&fun_env.get_qualified_id())

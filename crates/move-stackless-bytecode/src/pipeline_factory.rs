@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    axiom_function_analysis::AxiomFunctionAnalysisProcessor,
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
@@ -72,6 +73,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
         PureFunctionAnalysisProcessor::new(),
+        AxiomFunctionAnalysisProcessor::new(),
     ]);
 
     if !options.skip_loop_analysis {
