@@ -27,7 +27,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type, boogie_type_suffix,
+        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type,
         boogie_type_suffix_bv, FunctionTranslationStyle,
     },
     bytecode_translator::has_native_equality,
@@ -66,7 +66,6 @@ struct QuantifierHelperInfo {
     quantifier_params: String,
     quantifier_args: String,
     result_type: String,
-    result_suffix: String,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -542,7 +541,6 @@ impl QuantifierHelperInfo {
             quantifier_params,
             quantifier_args: format!("v, start, end{}", extra_args_after),
             result_type: boogie_type(env, dst_elem_boogie_type),
-            result_suffix: boogie_type_suffix(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
                 .join(""),

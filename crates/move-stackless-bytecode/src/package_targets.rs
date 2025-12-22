@@ -27,6 +27,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    axiom_functions: BTreeSet<QualifiedId<FunId>>,
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
@@ -52,6 +53,7 @@ impl PackageTargets {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            axiom_functions: BTreeSet::new(),
             target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
@@ -301,6 +303,7 @@ impl PackageTargets {
             loop_inv,
             explicit_spec_modules: _,
             explicit_specs: _,
+            axiom,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -311,6 +314,10 @@ impl PackageTargets {
             }
 
             let env = func_env.module_env.env;
+
+            if *axiom {
+                self.axiom_functions.insert(func_env.get_qualified_id());
+            }
 
             if let Some(loop_inv) = loop_inv {
                 match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
@@ -507,7 +514,7 @@ impl PackageTargets {
         {
             if attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort".to_string())
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort")
             {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
@@ -518,7 +525,7 @@ impl PackageTargets {
             }
             if attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure".to_string())
+                .any(|attr| attr.2.value.name().value.as_str() == "pure")
             {
                 self.pure_functions.insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
@@ -656,6 +663,7 @@ impl PackageTargets {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
             loop_inv: _,
+            axiom: _,
             explicit_spec_modules,
             explicit_specs,
         })) = module_env
@@ -753,6 +761,10 @@ impl PackageTargets {
 
     pub fn pure_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.pure_functions
+    }
+
+    pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.axiom_functions
     }
 
     pub fn skipped_specs(&self) -> &BTreeMap<QualifiedId<FunId>, String> {
