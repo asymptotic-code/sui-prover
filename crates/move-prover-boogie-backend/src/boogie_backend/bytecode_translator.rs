@@ -3087,7 +3087,9 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::Find => {
-                let src_type = if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
+                let src_type = if let Type::Vector(inner) =
+                    self.fun_target.get_local_type(srcs[0]).skip_reference()
+                {
                     inner.as_ref()
                 } else {
                     panic!("Expected vector type for quantifier operation")
@@ -3102,7 +3104,9 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::FindRange => {
-                let src_type = if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
+                let src_type = if let Type::Vector(inner) =
+                    self.fun_target.get_local_type(srcs[0]).skip_reference()
+                {
                     inner.as_ref()
                 } else {
                     panic!("Expected vector type for quantifier operation")
