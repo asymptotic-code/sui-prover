@@ -718,7 +718,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             env.diag(
                 Severity::Warning,
                 &func_env.get_loc(), // NOTE: this is not a real location, but we don't have a better one due to the nature of the macro
-                "Consider moving old!(...) macro calls before function call",
+                "Consider moving clone!(...) macro calls before function call",
             );
         }
 

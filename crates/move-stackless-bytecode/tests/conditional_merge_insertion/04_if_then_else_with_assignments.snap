@@ -96,7 +96,6 @@ fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool,
      var $t13: u128
      var $t14: u128
      var $t15: u128
-     var $t16: u128
   0: $t4 := 1
   1: $t5 := &($t1, $t4)
   2: $t6 := 0
@@ -110,16 +109,16 @@ fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool,
  10: $t9 := 79228162514264337593543950336
  11: $t13 := $t9
  12: label L2
-     # conditional_merge_insertion: t14 := if_then_else(t7, t12, t13)
- 13: $t14 := if_then_else($t7, $t12, $t13)
- 14: $t3 := $t14
+     # conditional_merge_insertion: t2 := if_then_else(t7, t12, t13)
+ 13: $t2 := if_then_else($t7, $t12, $t13)
+ 14: $t14 := $t2
  15: if ($t0) goto 16 else goto 20
  16: label L4
  17: $t10 := 38992368544603139932233054999993551
  18: $t11 := 96
- 19: $t15 := ConditionalMergeInsertionTest::helper_function($t14, $t10, $t11)
+ 19: $t15 := ConditionalMergeInsertionTest::helper_function($t2, $t10, $t11)
  20: label L3
-     # conditional_merge_insertion: t16 := if_then_else(t0, t15, t14)
- 21: $t16 := if_then_else($t0, $t15, $t14)
- 22: return $t16
+     # conditional_merge_insertion: t3 := if_then_else(t0, t15, t14)
+ 21: $t3 := if_then_else($t0, $t15, $t14)
+ 22: return $t3
 }

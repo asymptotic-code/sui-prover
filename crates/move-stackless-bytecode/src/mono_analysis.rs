@@ -378,7 +378,8 @@ impl Analyzer<'_> {
                 for (variant, target) in self.targets.get_targets(&fun) {
                     if !(variant.is_verified()
                         || self.targets.is_spec(&fun.get_qualified_id())
-                            && verification_analysis::get_info(&target).inlined)
+                            && verification_analysis::get_info(&target).inlined
+                        || self.targets.is_axiom_fun(&fun.get_qualified_id()))
                     {
                         continue;
                     }
@@ -612,6 +613,9 @@ impl Analyzer<'_> {
                 if self
                     .targets
                     .is_pure_fun(&target.func_env.get_qualified_id())
+                    || self
+                        .targets
+                        .is_axiom_fun(&target.func_env.get_qualified_id())
                 {
                     // collect quantifier helper info for pure functions
                     if let Some(qht) = qt.into_quantifier_helper_type() {

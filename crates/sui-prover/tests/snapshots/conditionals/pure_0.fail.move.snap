@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/conditionals/pure_0.fail.move:23:5
+   │
+23 │     ensures(result <= x); // WRONG: should be >= x
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/conditionals/pure_0.fail.move:20: foo_spec

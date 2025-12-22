@@ -79,6 +79,30 @@ impl StructuredBlock {
         }
     }
 
+    /// Convert an IfElseChain into nested IfThenElse structures.
+    /// `if c1 { A } else if c2 { B } else { C }` becomes `if c1 { A } else { if c2 { B } else { C } }`
+    pub fn chain_to_if_then_else(self) -> Self {
+        match self {
+            StructuredBlock::IfElseChain {
+                branches,
+                else_branch,
+            } => {
+                let mut result = else_branch;
+
+                for (cond_at, then_branch) in branches.into_iter().rev() {
+                    result = Some(Box::new(StructuredBlock::IfThenElse {
+                        cond_at,
+                        then_branch,
+                        else_branch: result,
+                    }));
+                }
+
+                *result.unwrap()
+            }
+            other => other,
+        }
+    }
+
     /// Build the chain from the inside of the IfThenElse by looping over every else that's found
     fn build_chain_from_if(
         first_cond: CodeOffset,

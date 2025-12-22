@@ -262,6 +262,14 @@ impl Type {
         }
     }
 
+    pub fn vector_element_type(&self) -> &Type {
+        if let Type::Vector(inner) = self.skip_reference() {
+            inner.as_ref()
+        } else {
+            panic!("Expected vector type for quantifier operation")
+        }
+    }
+
     pub fn get_datatype(&self) -> Option<(QualifiedId<DatatypeId>, &[Type])> {
         if let Type::Datatype(mid, sid, targs) = self {
             Some((mid.qualified(*sid), targs.as_slice()))
