@@ -41,15 +41,15 @@ fun ConditionalMergeInsertionTest::multiple_assignments_in_then($t0|cond: bool, 
      var $t5: u8
      var $t6: u128
      var $t7: u128
-  0: $t2 := $t1
+  0: $t6 := $t1
   1: if ($t0) goto 2 else goto 7
   2: label L1
   3: $t3 := 38992368544603139932233054999993551
   4: $t4 := *($t1, $t3)
   5: $t5 := 96
-  6: $t6 := >>($t4, $t5)
+  6: $t7 := >>($t4, $t5)
   7: label L0
-     # conditional_merge_insertion: t7 := if_then_else(t0, t6, t1)
-  8: $t7 := if_then_else($t0, $t6, $t1)
-  9: return $t7
+     # conditional_merge_insertion: t2 := if_then_else(t0, t7, t6)
+  8: $t2 := if_then_else($t0, $t7, $t6)
+  9: return $t2
 }
