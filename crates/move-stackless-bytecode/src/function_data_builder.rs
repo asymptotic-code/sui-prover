@@ -105,8 +105,28 @@ impl<'env> FunctionDataBuilder<'env> {
     // Add a parameter.
     pub fn add_parameter(&mut self, ty: Type) -> usize {
         let idx = self.data.parameters.len();
-        self.data.parameters.push(ty);
+        self.data.parameters.push(ty.clone());
+        self.add_local(ty);
         idx
+    }
+
+    pub fn insert_local_at(&mut self, idx: TempIndex, ty: Type) {
+        if idx >= self.data.local_types.len() {
+            self.data.local_types.push(ty);
+        } else {
+            self.data.local_types.insert(idx, ty);
+            // Shift indices in number operation maps
+            self.fun_env
+                .module_env
+                .env
+                .update_extension::<GlobalNumberOperationState>(|state| {
+                    state.shift_local_indices_after_insert(
+                        self.fun_env.module_env.get_id(),
+                        self.fun_env.get_id(),
+                        idx,
+                    );
+                });
+        }
     }
 
     /// Sets the default location as well as information about the verification condition

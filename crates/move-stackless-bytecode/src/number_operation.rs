@@ -267,6 +267,72 @@ impl GlobalNumberOperationState {
             .insert((mid, fid), default_ret_operation_map);
     }
 
+    /// Update the function operation state to include extra arguments
+    /// This adds entries for argument indices starting from `start_idx` with the given types
+    pub fn update_func_oper_state_for_extra_args(
+        &mut self,
+        mid: ModuleId,
+        fid: FunId,
+        start_idx: usize,
+        extra_arg_types: &[Type],
+    ) {
+        // Pre-compute operations to avoid borrow conflict
+        let operations: Vec<_> = extra_arg_types
+            .iter()
+            .map(|arg_ty| self.get_default_operation_for_type(arg_ty))
+            .collect();
+
+        if let Some(temp_map) = self.temp_index_operation_map.get_mut(&(mid, fid)) {
+            for (i, oper) in operations.into_iter().enumerate() {
+                let idx = start_idx + i;
+                // Only insert if not already present
+                if !temp_map.contains_key(&idx) {
+                    temp_map.insert(idx, oper);
+                }
+            }
+        }
+    }
+
+    /// Shift indices in operation maps when a new local is inserted at a specific position.
+    /// All entries with index >= insert_idx will have their index incremented by 1.
+    pub fn shift_local_indices_after_insert(
+        &mut self,
+        mid: ModuleId,
+        fid: FunId,
+        insert_idx: usize,
+    ) {
+        // Helper to shift indices in an OperationMap
+        fn shift_map(map: &mut OperationMap, insert_idx: usize) {
+            // Collect entries that need to be shifted (in reverse order to avoid conflicts)
+            let entries_to_shift: Vec<_> = map
+                .iter()
+                .filter(|(&idx, _)| idx >= insert_idx)
+                .map(|(&idx, &oper)| (idx, oper))
+                .collect();
+
+            // Remove old entries and insert with shifted indices
+            for (idx, oper) in entries_to_shift {
+                map.remove(&idx);
+                map.insert(idx + 1, oper);
+            }
+        }
+
+        // Shift temp_index_operation_map
+        if let Some(temp_map) = self.temp_index_operation_map.get_mut(&(mid, fid)) {
+            shift_map(temp_map, insert_idx);
+        }
+
+        // Shift local_oper
+        if let Some(local_map) = self.local_oper.get_mut(&(mid, fid)) {
+            shift_map(local_map, insert_idx);
+        }
+
+        // Shift local_oper_baseline
+        if let Some(baseline_map) = self.local_oper_baseline.get_mut(&(mid, fid)) {
+            shift_map(baseline_map, insert_idx);
+        }
+    }
+
     /// Populate default state for struct operation map
     pub fn create_initial_struct_oper_state(&mut self, struct_env: &StructEnv) {
         use NumOperation::*;

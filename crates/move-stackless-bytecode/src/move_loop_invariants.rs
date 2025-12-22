@@ -199,6 +199,13 @@ impl MoveLoopInvariantsProcessor {
                 if *dest == var_idx {
                     return Self::trace_to_parameter(*src, param_count, code);
                 }
+            } else if let Bytecode::Call(_, dests, op, srcs, _) = bc {
+                if *op != Operation::ReadRef && *op != Operation::BorrowLoc {
+                    continue;
+                }
+                if dests[0] == var_idx {
+                    return Self::trace_to_parameter(srcs[0], param_count, code);
+                }
             }
         }
 

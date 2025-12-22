@@ -3,4 +3,27 @@ source: crates/sui-prover/tests/integration.rs
 assertion_line: 267
 expression: output
 ---
-Verification failed, panic during verification: ""
+exiting with verification errors
+error: function code should not abort
+  ┌─ tests/inputs/loop_invariant/external_extra.ok.move:8:70
+  │
+8 │     n <= old && (s == ((old as u128) - (n as u128)) * ((old as u128) + (n as u128) + 1) / 2)
+  │                                                                      ^
+  │
+  =     at tests/inputs/loop_invariant/external_extra.ok.move:6: loop_inv
+
+error: function code should not abort
+  ┌─ tests/inputs/loop_invariant/external_extra.ok.move:8:84
+  │
+8 │     n <= old && (s == ((old as u128) - (n as u128)) * ((old as u128) + (n as u128) + 1) / 2)
+  │                                                                                    ^
+  │
+  =     at tests/inputs/loop_invariant/external_extra.ok.move:6: loop_inv
+
+error: function code should not abort
+  ┌─ tests/inputs/loop_invariant/external_extra.ok.move:8:53
+  │
+8 │     n <= old && (s == ((old as u128) - (n as u128)) * ((old as u128) + (n as u128) + 1) / 2)
+  │                                                     ^
+  │
+  =     at tests/inputs/loop_invariant/external_extra.ok.move:6: loop_inv

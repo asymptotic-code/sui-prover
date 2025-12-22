@@ -45,14 +45,15 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecGlobalVariableAnalysisProcessor::new(),
         SpecPurityAnalysis::new(),
         DebugInstrumenter::new(),
+        ReplacementAnalysisProcessor::new(),
         // transformation and analysis
         EliminateImmRefsProcessor::new(),
         MutRefInstrumenter::new(),
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
+        DynamicFieldAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
         TypeInvariantAnalysisProcessor::new(),
-        DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
@@ -70,7 +71,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         UsageProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
-        ReplacementAnalysisProcessor::new(),
         PureFunctionAnalysisProcessor::new(),
     ]);
 
@@ -100,7 +100,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
     }
 
     if !options.for_interpretation {
-        processors.push(SpecGlobalVariableAnalysisProcessor::new());
         processors.push(NumberOperationProcessor::new());
     }
 

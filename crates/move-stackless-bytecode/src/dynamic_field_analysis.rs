@@ -474,13 +474,6 @@ fn compute_uid_info(
                             .get_function(callee_id)
                             .get_full_name_str()
                     ));
-                println!(
-                    "Processing callee: {}",
-                    fun_target
-                        .global_env()
-                        .get_function(callee_id)
-                        .get_full_name_str()
-                );
                 let callee_mapping = &get_fun_info(callee_data).uid_info;
 
                 for key in callee_mapping.keys() {
@@ -594,8 +587,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
-
-        println!("Processing function: {}", fun_env.get_full_name_str());
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
         if !info.verified && !info.inlined && !info.reachable {

@@ -733,15 +733,6 @@ impl FunctionTargetPipeline {
                 }
                 // If the callee doesn't exist in targets (was removed), skip this edge
             }
-
-            // Also add edges for loop invariant functions
-            if let Some(loop_invs) = targets.get_loop_invariants(&fun_id) {
-                for (inv_qid, _) in loop_invs.iter() {
-                    if let Some(dst_idx) = nodes.get(inv_qid) {
-                        graph.add_edge(*src_idx, *dst_idx, ());
-                    }
-                }
-            }
         }
         graph
     }
