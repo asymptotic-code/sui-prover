@@ -1,0 +1,18 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 267
+expression: output
+---
+exiting with bytecode transformation errors
+error: Recursive functions are not supported for specifications.
+Path: issue_102::fib -> issue_102::fib
+   ┌─ tests/inputs/issue-102.move:6:1
+   │  
+ 6 │ ╭ fun fib(n: u16): u16 {
+ 7 │ │     if (n <= 1) {
+ 8 │ │         1
+ 9 │ │     } else {
+10 │ │         fib(n-1) + fib(n-2)
+11 │ │     }
+12 │ │ }
+   │ ╰─^
