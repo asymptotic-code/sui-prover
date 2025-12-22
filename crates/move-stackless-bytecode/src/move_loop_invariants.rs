@@ -328,6 +328,7 @@ impl MoveLoopInvariantsProcessor {
         let invariant_labels = invariants
             .iter()
             .map(|(begin, end)| {
+                // TODO: check if the label is the header of a loop
                 if !matches!(code[*end + 1], Bytecode::Label(..)) {
                     func_env.module_env.env.diag(
                         Severity::Error,
