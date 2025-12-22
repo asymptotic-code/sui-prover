@@ -2905,13 +2905,6 @@ impl<'env> FunctionTranslator<'env> {
             }
         };
 
-        let src_type =
-            if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
-                inner.as_ref()
-            } else {
-                panic!("Expected vector type for quantifier operation")
-            };
-
         let extra_args = if fun_env.get_parameter_count() > 1 {
             format!(
                 ", {}",
@@ -3094,6 +3087,11 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::Find => {
+                let src_type = if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
+                    inner.as_ref()
+                } else {
+                    panic!("Expected vector type for quantifier operation")
+                };
                 let src_elem_suffix = boogie_type_suffix(env, src_type);
                 let find_quant_name = self
                     .parent
@@ -3104,6 +3102,11 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::FindRange => {
+                let src_type = if let Type::Vector(inner) = self.fun_target.get_local_type(srcs[0]).skip_reference() {
+                    inner.as_ref()
+                } else {
+                    panic!("Expected vector type for quantifier operation")
+                };
                 let src_elem_suffix = boogie_type_suffix(env, src_type);
                 let find_quant_name = self
                     .parent
