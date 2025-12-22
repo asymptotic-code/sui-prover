@@ -328,12 +328,14 @@ impl MoveLoopInvariantsProcessor {
         let invariant_labels = invariants
             .iter()
             .map(|(begin, end)| {
-                if matches!(code[*end + 1], Bytecode::Label(..)) {
-                    // TODO: check if the label is the header of a loop
-                    (*begin, code[*end + 1].clone())
-                } else {
-                    panic!("A loop invariant should end with a label")
+                if !matches!(code[*end + 1], Bytecode::Label(..)) {
+                    func_env.module_env.env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "Loop invariant should be declared right before the loop",
+                    );
                 }
+                (*begin, code[*end + 1].clone())
             })
             .collect::<BTreeMap<_, _>>();
 
