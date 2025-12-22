@@ -69,6 +69,11 @@ fn reconstruct_region(
                 current_block = *next;
             }
             [then_branch, else_branch] => {
+                if then_branch == else_branch {
+                    // `if (condition) {}` or `if (condition) {} else {}`
+                    current_block = *then_branch;
+                    continue;
+                }
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
