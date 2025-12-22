@@ -49,8 +49,10 @@ impl FunctionTargetProcessor for DebugInstrumenter {
             return data;
         }
 
-        if targets.is_pure_fun(&fun_env.get_qualified_id()) {
-            // a pure functions is translated to a Boogie function, not
+        if targets.is_pure_fun(&fun_env.get_qualified_id())
+            || targets.is_axiom_fun(&fun_env.get_qualified_id())
+        {
+            // a pure/axiom functions is translated to a Boogie function, not
             // a procedure, so it doesn't support trace instructions.
             // warn and remove log::* calls.
             data.code = data

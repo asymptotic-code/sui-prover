@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    axiom_function_analysis::AxiomFunctionAnalysisProcessor,
     borrow_analysis::BorrowAnalysisProcessor,
     clean_and_optimize::CleanAndOptimizeProcessor,
     conditional_merge_insertion::ConditionalMergeInsertionProcessor,
@@ -51,6 +52,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
         QuantifierIteratorAnalysisProcessor::new(),
+        DynamicFieldAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
     ];
 
@@ -60,7 +62,6 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
 
     processors.append(&mut vec![
         TypeInvariantAnalysisProcessor::new(),
-        DynamicFieldAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
@@ -79,6 +80,7 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         SpecWellFormedAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
         PureFunctionAnalysisProcessor::new(),
+        AxiomFunctionAnalysisProcessor::new(),
     ]);
 
     processors.append(&mut vec![

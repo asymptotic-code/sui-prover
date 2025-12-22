@@ -1,0 +1,14 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 267
+expression: output
+---
+exiting with bytecode transformation errors
+error: Loop invariant should be declared right before the loop
+  ┌─ tests/inputs/loop_invariant/inline_wrong_place.fail.move:5:1
+  │  
+5 │ ╭ public fun f(x: u8): u8 {
+6 │ │     invariant!(|| ensures(true) );
+7 │ │     x + 1
+8 │ │ }
+  │ ╰─^
