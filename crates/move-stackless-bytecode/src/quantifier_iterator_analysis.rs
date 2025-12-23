@@ -425,21 +425,14 @@ impl QuantifierIteratorAnalysisProcessor {
     ) {
         for pattern in patterns {
             for i in 0..bc.len() {
-                if self.is_searched_fn(&bc[i], pattern.start_qid) {
+                if self.is_searched_fn(&bc[i], pattern.start_qid)
+                    || self.is_searched_fn(&bc[i], pattern.end_qid)
+                {
                     let callee_env = env.get_function(pattern.start_qid);
                     env.diag(
                         Severity::Error,
                         &callee_env.get_loc(),
-                        "Invalid quantifier macro pattern: Invalid standalone usage of start function",
-                    );
-                    return;
-                } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
-                    let callee_env = env.get_function(pattern.end_qid);
-
-                    env.diag(
-                        Severity::Error,
-                        &callee_env.get_loc(),
-                        "Invalid quantifier macro pattern: Invalid standalone usage of end function",
+                        "Invalid quantifier macro pattern: expected a lambda function, but found an inlined expression",
                     );
                     return;
                 }
