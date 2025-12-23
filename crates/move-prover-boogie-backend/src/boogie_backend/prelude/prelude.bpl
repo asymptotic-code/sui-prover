@@ -49,8 +49,8 @@ axiom (
     forall start, end: int :: {$0_vector_iter_range(start, end)}
     (
         var res := $0_vector_iter_range(start, end);
-        LenVec(res) == end - start &&
-        (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == i)
+        LenVec(res) == (if start <= end then end - start else 0) &&
+        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == i + start)
     )
 );
 
