@@ -44,6 +44,17 @@ procedure {:inline 1} $0_prover_type_inv'$1_integer_Integer'(x: int) returns (y:
     y := true;
 }
 
+function $0_vector_iter_range(start: int, end: int) returns (Vec int);
+axiom (
+    forall start, end: int :: {$0_vector_iter_range(start, end)}
+    (
+        var res := $0_vector_iter_range(start, end);
+        LenVec(res) == end - start &&
+        (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == i)
+    )
+);
+
+
 {%- if options.bv_int_encoding -%}
 
 function {:inline} $1_integer_from_u8(x: int): int {

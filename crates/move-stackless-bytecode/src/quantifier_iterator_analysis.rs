@@ -31,7 +31,7 @@ impl QuantifierPattern {
         }
     }
 
-    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 20] {
+    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 21] {
         [
             QuantifierPattern::new(
                 env.prover_begin_forall_lambda_qid(),
@@ -132,6 +132,11 @@ impl QuantifierPattern {
                 env.prover_begin_all_range_lambda_qid(),
                 env.prover_end_all_lambda_qid(),
                 QuantifierType::AllRange,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_range_map_lambda_qid(),
+                env.prover_end_range_map_lambda_qid(),
+                QuantifierType::RangeMap,
             ),
         ]
     }
