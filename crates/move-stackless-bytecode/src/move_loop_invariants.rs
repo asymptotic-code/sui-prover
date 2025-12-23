@@ -236,7 +236,7 @@ impl MoveLoopInvariantsProcessor {
             .collect::<Vec<(String, usize)>>()
     }
 
-    fn make_invariant_arguments(
+    fn build_invariant_arguments(
         builder: &mut FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
         offset: usize,
@@ -266,24 +266,24 @@ impl MoveLoopInvariantsProcessor {
 
                     builder.emit(Bytecode::Call(
                         attr_val,
-                        [temp].to_vec(),
+                        vec![temp],
                         Operation::Function(
                             builder.global_env().prover_val_qid().module_id,
                             builder.global_env().prover_val_qid().id,
                             vec![],
                         ),
-                        [idx].to_vec(),
+                        vec![idx],
                         None,
                     ));
                     builder.emit(Bytecode::Call(
                         attr_ref,
-                        [res_temp].to_vec(),
+                        vec![res_temp],
                         Operation::Function(
                             builder.global_env().prover_ref_qid().module_id,
                             builder.global_env().prover_ref_qid().id,
                             vec![],
                         ),
-                        [temp].to_vec(),
+                        vec![temp],
                         None,
                     ));
                     args.push(res_temp);
@@ -449,7 +449,7 @@ impl MoveLoopInvariantsProcessor {
 
         for (offset, bc) in code.into_iter().enumerate() {
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
-                let mut args = Self::make_invariant_arguments(
+                let mut args = Self::build_invariant_arguments(
                     &mut builder,
                     &func_env.module_env.env.get_function(*qid),
                     offset,
@@ -474,7 +474,7 @@ impl MoveLoopInvariantsProcessor {
                             .new_temp(builder.get_local_type(args[i]).skip_reference().clone());
                         builder.emit(Bytecode::Call(
                             attr,
-                            [ty].to_vec(),
+                            vec![ty],
                             Operation::ReadRef,
                             vec![args[i]],
                             None,
@@ -492,7 +492,7 @@ impl MoveLoopInvariantsProcessor {
 
                 builder.emit(Bytecode::Call(
                     call_attr_id,
-                    [temp].to_vec(),
+                    vec![temp],
                     Operation::apply_fun_qid(qid, vec![]),
                     args,
                     None,
@@ -502,7 +502,7 @@ impl MoveLoopInvariantsProcessor {
                     ensures_attr_id,
                     vec![],
                     Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
-                    [temp].to_vec(),
+                    vec![temp],
                     None,
                 ));
 
