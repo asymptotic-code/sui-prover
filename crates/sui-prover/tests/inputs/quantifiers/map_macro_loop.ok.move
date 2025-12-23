@@ -31,7 +31,6 @@ fun map_flip_invariant(v: &vector<u64>, v__3: &vector<u64>, i: u64, stop: u64, r
 fun more_loop_inv(j: u64, v: &vector<u64>, w: &vector<u64>): bool {
     j >= v.length()
     || j >= w.length()
-    || v.length() >  std::u64::max_value!() // should not be needed?
     || v[v.length() - (j+1)] == w[j]
 }
 
