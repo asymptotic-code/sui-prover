@@ -1,9 +1,9 @@
 // ensure that code using vector::map can be proved.
 
 // map is a bit tricky because it consumes the input vector; luckily we can refer to
-// the original value inthe invariant.  It is also tricky because it reverses that vector,
-// then pops values intil it has emptied the vector.  The invariant needs to mention the
-// relationship between the partly-popped vector (v__3 in the invarant) and the original value
+// the original value in the invariant.  It is also tricky because it reverses that vector,
+// then pops values until it has emptied the vector.  The invariant needs to mention the
+// relationship between the partly-popped vector (v__3 in the invariant) and the original value
 // (v in the invariant).
 
 module 0x42::map_macro_loop_ok;
