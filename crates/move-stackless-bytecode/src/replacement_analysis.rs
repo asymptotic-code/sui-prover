@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use move_model::model::{FunId, FunctionEnv, QualifiedId};
 
 use crate::{
+    exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
@@ -76,12 +77,22 @@ impl ReplacementAnalysisProcessor {
             } else if offset > 0 && patterns.contains_key(&(offset - 1)) {
                 // NOTE: we replace call only with an Assign because it automatically dereferences var
                 let (dest, srcs) = patterns.get(&(offset - 1)).unwrap();
-                builder.emit(Bytecode::Assign(
-                    bc.get_attr_id(),
-                    dest[0],
-                    srcs[0],
-                    AssignKind::Copy,
-                ));
+                if builder.get_local_type(srcs[0]).is_mutable_reference() {
+                    builder.emit(Bytecode::Call(
+                        bc.get_attr_id(),
+                        [dest[0]].to_vec(),
+                        Operation::ReadRef,
+                        vec![srcs[0]],
+                        None,
+                    ));
+                } else {
+                    builder.emit(Bytecode::Assign(
+                        bc.get_attr_id(),
+                        dest[0],
+                        srcs[0],
+                        AssignKind::Copy,
+                    ));
+                }
             } else {
                 builder.emit(bc);
             }

@@ -236,8 +236,8 @@ impl MoveLoopInvariantsProcessor {
             .collect::<Vec<(String, usize)>>()
     }
 
-    fn match_invariant_arguments(
-        builder: &FunctionDataBuilder,
+    fn make_invariant_arguments(
+        builder: &mut FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
         offset: usize,
     ) -> Vec<usize> {
@@ -246,6 +246,62 @@ impl MoveLoopInvariantsProcessor {
 
         for param in loop_inv_env.get_parameters() {
             let param_name_str = builder.fun_env.symbol_pool().string(param.0);
+
+            if param_name_str.starts_with("old__") {
+                if let Some((idx, param)) =
+                    loop_inv_env
+                        .get_parameters()
+                        .iter()
+                        .enumerate()
+                        .find(|(_, p)| {
+                            loop_inv_env.symbol_pool().string(p.0).to_string()
+                                == &param_name_str["old__".len()..]
+                        })
+                {
+                    let attr_ref = builder.new_attr();
+                    let attr_val = builder.new_attr();
+
+                    let res_temp = builder.new_temp(param.1.skip_reference().clone());
+                    let temp = builder.new_temp(param.1.skip_reference().clone());
+
+                    builder.emit(Bytecode::Call(
+                        attr_val,
+                        [temp].to_vec(),
+                        Operation::Function(
+                            builder.global_env().prover_val_qid().module_id,
+                            builder.global_env().prover_val_qid().id,
+                            vec![],
+                        ),
+                        [idx].to_vec(),
+                        None,
+                    ));
+                    builder.emit(Bytecode::Call(
+                        attr_ref,
+                        [res_temp].to_vec(),
+                        Operation::Function(
+                            builder.global_env().prover_ref_qid().module_id,
+                            builder.global_env().prover_ref_qid().id,
+                            vec![],
+                        ),
+                        [temp].to_vec(),
+                        None,
+                    ));
+                    args.push(res_temp);
+                } else {
+                    builder.global_env().diag(
+                        Severity::Error,
+                        &builder.fun_env.get_loc(),
+                        &format!(
+                            "Loop invariant function {} expects 'old' parameter '{}' which is not found in function {}",
+                            loop_inv_env.get_full_name_str(),
+                            param_name_str,
+                            builder.fun_env.get_full_name_str()
+                        ),
+                    );
+                }
+
+                continue;
+            }
 
             let found_idx = if let Some(&local_idx) = builder.data.name_to_index.get(&param.0) {
                 Some(local_idx)
@@ -258,7 +314,7 @@ impl MoveLoopInvariantsProcessor {
 
             if let Some(idx) = found_idx {
                 if param.1.skip_reference() != builder.get_local_type(idx).skip_reference() {
-                    builder.fun_env.module_env.env.diag(
+                    builder.global_env().diag(
                         Severity::Error,
                         &builder.fun_env.get_loc(),
                         &format!(
@@ -272,7 +328,7 @@ impl MoveLoopInvariantsProcessor {
 
                 args.push(idx);
             } else {
-                builder.fun_env.module_env.env.diag(
+                builder.global_env().diag(
                     Severity::Error,
                     &builder.fun_env.get_loc(),
                     &format!(
@@ -392,14 +448,16 @@ impl MoveLoopInvariantsProcessor {
         let mut attrs: BTreeSet<Vec<AttrId>> = BTreeSet::new();
 
         for (offset, bc) in code.into_iter().enumerate() {
-            builder.emit(bc);
-
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
-                let mut args = Self::match_invariant_arguments(
-                    &builder,
+                let mut args = Self::make_invariant_arguments(
+                    &mut builder,
                     &func_env.module_env.env.get_function(*qid),
                     offset,
                 );
+
+                // NOTE: Emit clone! calls before label
+                builder.emit(bc);
+
                 let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
                 let mut first_attr_id = None;
@@ -449,6 +507,8 @@ impl MoveLoopInvariantsProcessor {
                 ));
 
                 attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
+            } else {
+                builder.emit(bc);
             }
         }
 
