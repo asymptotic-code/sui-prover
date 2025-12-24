@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/sum_slice_range/range.fail.move:12:5
+   │
+12 │     ensures(range(0, 1) == vector[0, 1]); // should 1 element
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/sum_slice_range/range.fail.move:12: test_0_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/sum_slice_range/range.fail.move:17:5
+   │
+17 │     ensures(range(709, 713) == vector[705, 710, 721, 712]); // wrong elements
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/sum_slice_range/range.fail.move:17: test_1_spec

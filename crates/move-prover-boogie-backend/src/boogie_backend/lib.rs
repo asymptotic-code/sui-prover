@@ -22,6 +22,7 @@ use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo, PureQuantifierHelperInfo},
+    stackless_bytecode::QuantifierHelperType,
     verification_analysis,
 };
 
@@ -500,10 +501,14 @@ impl QuantifierHelperInfo {
         let params_types = func_env.get_parameter_types();
         let dst_elem_boogie_type = &func_env.get_return_type(0);
 
-        let mut quantifier_params = format!(
-            "v: Vec ({}), start: int, end: int",
-            boogie_type(env, params_types[info.li].skip_reference())
-        );
+        let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+            "start: int, end: int".to_string()
+        } else {
+            format!(
+                "v: Vec ({}), start: int, end: int",
+                boogie_type(env, params_types[info.li].skip_reference())
+            )
+        };
 
         let dst_elem_boogie_type =
             if matches!(dst_elem_boogie_type, Type::Primitive(PrimitiveType::Bool)) {
@@ -535,11 +540,17 @@ impl QuantifierHelperInfo {
             .map(|i| format!(", $t{}", i.to_string()))
             .join("");
 
+        let base_quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+            "start, end"
+        } else {
+            "v, start, end"
+        };
+
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
-            quantifier_args: format!("v, start, end{}", extra_args_after),
+            quantifier_args: format!("{}{}", base_quantifier_args, extra_args_after),
             result_type: boogie_type(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))

@@ -137,11 +137,13 @@ pub enum QuantifierType {
     AllRange,
     SumMap,
     SumMapRange,
+    RangeMap,
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum QuantifierHelperType {
     Map,
+    RangeMap,
     FindIndex,
     FindIndices,
     Filter,
@@ -151,6 +153,7 @@ impl QuantifierHelperType {
     pub fn str(&self) -> &str {
         match self {
             QuantifierHelperType::Map => "map",
+            QuantifierHelperType::RangeMap => "range_map",
             QuantifierHelperType::FindIndex => "find_index",
             QuantifierHelperType::FindIndices => "find_indices",
             QuantifierHelperType::Filter => "filter",
@@ -181,6 +184,7 @@ impl QuantifierType {
             QuantifierType::AllRange => "all_range",
             QuantifierType::SumMap => "sum_map",
             QuantifierType::SumMapRange => "sum_map_range",
+            QuantifierType::RangeMap => "range_map",
         }
     }
 
@@ -189,7 +193,9 @@ impl QuantifierType {
     }
 
     pub fn vector_based(&self) -> bool {
-        *self != QuantifierType::Forall && *self != QuantifierType::Exists
+        *self != QuantifierType::Forall
+            && *self != QuantifierType::Exists
+            && *self != QuantifierType::RangeMap
     }
 
     pub fn range_based(&self) -> bool {
@@ -204,6 +210,7 @@ impl QuantifierType {
                 | QuantifierType::AnyRange
                 | QuantifierType::AllRange
                 | QuantifierType::SumMapRange
+                | QuantifierType::RangeMap
         )
     }
 
@@ -248,6 +255,7 @@ impl QuantifierType {
             QuantifierType::Filter | QuantifierType::FilterRange => {
                 Some(QuantifierHelperType::Filter)
             }
+            QuantifierType::RangeMap => Some(QuantifierHelperType::RangeMap),
             _ => None,
         }
     }
