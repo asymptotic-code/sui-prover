@@ -7,14 +7,8 @@ use prover::prover::ensures;
 #[spec_only]
 use prover::vector_iter::map;
 
-#[ext(no_abort)]
-fun x_plus_10(x: &u64): u64 {
-    if (*x < 100000) {
-        *x + 10
-    } else {
-        100000
-    }
-}
+#[spec_only]
+native fun x_plus_10(x: &u64): u64;
 
 #[spec(prove)]
 fun test_spec() {
