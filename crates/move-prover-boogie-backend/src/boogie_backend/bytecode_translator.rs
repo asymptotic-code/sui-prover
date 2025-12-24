@@ -5115,23 +5115,37 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0]
                                 );
                             }
-                            QuantifierType::MapRange | QuantifierType::RangeMap => {
-                                // RangeMap is not vector-based, so we need to skip 1
-                                let start = if qt.vector_based() { srcs[1] } else { srcs[0] };
-                                let end = if qt.vector_based() { srcs[2] } else { srcs[1] };
-
-                                // NOTE: RangeMap is almost same of MapRange, but cr_args is not vector-based and we will have "i" instead of "ReadVec($t, i)"
+                            QuantifierType::MapRange => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
                                 emitln!(
                                     self.writer(),
                                     "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});",
-                                    start,
-                                    end,
+                                    srcs[1],
+                                    srcs[2],
                                     dests[0],
-                                    end,
-                                    start
+                                    srcs[2],
+                                    srcs[1]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", start, end, dests[0], start, fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
+                            }
+                            QuantifierType::RangeMap => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($t{}) == (if $t{} <= $t{} then $t{} - $t{} else 0);",
+                                    dests[0],
+                                    srcs[0],
+                                    srcs[1],
+                                    srcs[1],
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i: int :: InRangeVec($t{}, i) ==> ReadVec($t{}, i) == {}({}));", dests[0], dests[0], fun_name, cr_args(&format!("i + $t{}", srcs[0])));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",

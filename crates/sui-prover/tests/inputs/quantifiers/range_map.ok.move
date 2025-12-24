@@ -31,9 +31,13 @@ fun x_plus_10_plus_n(x: u64, n: u64): u64 {
 
 
 #[spec(prove)]
+fun test_spec_r() {
+    ensures(range_map!<u64>(1, 2, |x| x_plus_10_plus_n(x, 3)) == vector[14]);
+}
+
+#[spec(prove)]
 fun test_spec() {
     ensures(range_map!<u64>(0, 0, |x| x_plus_10(x)) == vector[]);
-    ensures(range_map!<u64>(1, 2, |x| x_plus_10_plus_n(x, 3)) == vector[14]);
     ensures(range_map!<u64>(4, 7, |x| x_plus_10(x)) == vector[14, 15, 16]);
 }
 
