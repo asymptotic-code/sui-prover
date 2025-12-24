@@ -31,7 +31,7 @@ impl QuantifierPattern {
         }
     }
 
-    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 20] {
+    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 21] {
         [
             QuantifierPattern::new(
                 env.prover_begin_forall_lambda_qid(),
@@ -132,6 +132,11 @@ impl QuantifierPattern {
                 env.prover_begin_all_range_lambda_qid(),
                 env.prover_end_all_lambda_qid(),
                 QuantifierType::AllRange,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_range_map_lambda_qid(),
+                env.prover_end_range_map_lambda_qid(),
+                QuantifierType::RangeMap,
             ),
         ]
     }
@@ -420,26 +425,18 @@ impl QuantifierIteratorAnalysisProcessor {
     fn scan_for_broken_patterns(
         &self,
         patterns: &Vec<QuantifierPattern>,
-        env: &GlobalEnv,
+        func_env: &FunctionEnv,
         bc: &Vec<Bytecode>,
     ) {
         for pattern in patterns {
             for i in 0..bc.len() {
-                if self.is_searched_fn(&bc[i], pattern.start_qid) {
-                    let callee_env = env.get_function(pattern.start_qid);
-                    env.diag(
+                if self.is_searched_fn(&bc[i], pattern.start_qid)
+                    || self.is_searched_fn(&bc[i], pattern.end_qid)
+                {
+                    func_env.module_env.env.diag(
                         Severity::Error,
-                        &callee_env.get_loc(),
-                        "Invalid quantifier macro pattern: Invalid standalone usage of start function",
-                    );
-                    return;
-                } else if self.is_searched_fn(&bc[i], pattern.end_qid) {
-                    let callee_env = env.get_function(pattern.end_qid);
-
-                    env.diag(
-                        Severity::Error,
-                        &callee_env.get_loc(),
-                        "Invalid quantifier macro pattern: Invalid standalone usage of end function",
+                        &func_env.get_loc(),
+                        "Invalid quantifier macro pattern: expected a lambda function, but found an inlined expression",
                     );
                     return;
                 }
@@ -476,7 +473,7 @@ impl FunctionTargetProcessor for QuantifierIteratorAnalysisProcessor {
             }
         }
 
-        self.scan_for_broken_patterns(&patterns.to_vec(), env, &bc);
+        self.scan_for_broken_patterns(&patterns.to_vec(), func_env, &bc);
 
         data.code = bc;
         data

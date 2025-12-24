@@ -1,12 +1,13 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
 expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:47:5
    │
-47 │     ensures(vector::contains(&indices, &1)); // EXPECTED FAILURE
+47 │     ensures(vector::contains(&indices, &1)); // EXPECTED FAILURE 3
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:43: test_wrong_contains
@@ -14,7 +15,7 @@ error: prover::ensures does not hold
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:27:5
    │
-27 │     ensures(vector::length(&indices) == 3); // EXPECTED FAILURE
+27 │     ensures(vector::length(&indices) == 3); // EXPECTED FAILURE 1
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:23: test_wrong_count
@@ -22,7 +23,7 @@ error: prover::ensures does not hold
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:37:5
    │
-37 │     ensures(*vector::borrow(&indices, 0) == 1); // EXPECTED FAILURE
+37 │     ensures(*vector::borrow(&indices, 0) == 1); // EXPECTED FAILURE 2
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:33: test_wrong_index
@@ -30,7 +31,7 @@ error: prover::ensures does not hold
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:57:5
    │
-57 │     ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE (should be 2)
+57 │     ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE 4
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:53: test_wrong_order
@@ -38,7 +39,7 @@ error: prover::ensures does not hold
 error: prover::ensures does not hold
    ┌─ tests/inputs/quantifiers/find_indices.fail.move:67:5
    │
-67 │     ensures(vector::length(&indices) == 2); // EXPECTED FAILURE
+67 │     ensures(vector::length(&indices) == 2); // EXPECTED FAILURE 5
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/quantifiers/find_indices.fail.move:63: test_wrong_predicate

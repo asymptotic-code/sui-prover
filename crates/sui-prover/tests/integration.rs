@@ -96,6 +96,7 @@ integration-test = "0x9"
                 options.backend.vc_timeout = DEFAULT_EXECUTION_TIMEOUT_SECONDS;
                 options.backend.prelude_extra = Some(extra_bpl_path);
                 options.backend.debug_trace = false;
+                options.prover.debug_trace = false;
                 options.backend.keep_artifacts = true;
                 options.output_path = Path::new(&options.output_path)
                     .join(relative_path.with_extension(""))

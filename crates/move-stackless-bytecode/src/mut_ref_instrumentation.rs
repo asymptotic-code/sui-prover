@@ -25,7 +25,7 @@ impl MutRefInstrumenter {
 impl FunctionTargetProcessor for MutRefInstrumenter {
     fn process(
         &self,
-        _targets: &mut FunctionTargetsHolder,
+        targets: &mut FunctionTargetsHolder,
         fun_env: &FunctionEnv,
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
@@ -57,12 +57,14 @@ impl FunctionTargetProcessor for MutRefInstrumenter {
                     builder.emit(Assign(attr_id, dest, src, AssignKind::Copy))
                 }
                 Ret(attr_id, rets) => {
-                    // Emit traces for &mut params at exit.
                     builder.set_loc_from_attr(attr_id);
-                    for added in &mut_ref_params {
-                        builder.emit_with(|id| {
-                            Call(id, vec![], TraceLocal(*added), vec![*added], None)
-                        });
+                    if targets.prover_options().debug_trace {
+                        // Emit traces for &mut params at exit.
+                        for added in &mut_ref_params {
+                            builder.emit_with(|id| {
+                                Call(id, vec![], TraceLocal(*added), vec![*added], None)
+                            });
+                        }
                     }
                     builder.emit(Ret(attr_id, rets));
                 }
