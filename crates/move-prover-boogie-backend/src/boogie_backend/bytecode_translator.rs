@@ -140,13 +140,19 @@ impl<'env> BoogieTranslator<'env> {
         function_name: &str,
     ) -> String {
         match qt {
-            QuantifierHelperType::Map => format!("$MapQuantifierHelper_{}", function_name,),
-            QuantifierHelperType::FindIndex => {
-                format!("$FindIndexQuantifierHelper_{}", function_name,)
+            QuantifierHelperType::Map => format!("$MapQuantifierHelper_{}", function_name),
+            QuantifierHelperType::RangeMap => {
+                format!("$RangeMapQuantifierHelper_{}", function_name)
             }
+
+            QuantifierHelperType::FindIndex => {
+                format!("$FindIndexQuantifierHelper_{}", function_name)
+            }
+
             QuantifierHelperType::FindIndices => {
                 format!("$FindIndicesQuantifierHelper_{}", function_name)
             }
+
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
         }
     }
@@ -3073,6 +3079,18 @@ impl<'env> FunctionTranslator<'env> {
                     extra_args,
                 )
             }
+            QuantifierType::RangeMap => {
+                let map_quant_name = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::RangeMap, fun_name);
+                format!(
+                    "{}({}, {}{})",
+                    map_quant_name,
+                    fmt_temp(srcs[0]),
+                    fmt_temp(srcs[1]),
+                    extra_args,
+                )
+            }
             QuantifierType::Count => {
                 let find_indices_quant_name = self
                     .parent
@@ -5015,18 +5033,20 @@ impl<'env> FunctionTranslator<'env> {
                         let fun_name =
                             boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
 
-                        let loc_type = if qt.vector_based() {
-                            self.get_local_type(dests[0]).instantiate(inst)
-                        } else {
-                            fun_env.get_parameter_types()[0]
-                                .skip_reference()
-                                .instantiate(inst)
-                        };
+                        let loc_type =
+                            if qt.vector_based() || matches!(qt, QuantifierType::RangeMap) {
+                                self.get_local_type(dests[0]).instantiate(inst)
+                            } else {
+                                fun_env.get_parameter_types()[0]
+                                    .skip_reference()
+                                    .instantiate(inst)
+                            };
                         let suffix = boogie_type_suffix(env, &loc_type);
 
                         let cr_args = |local_name: &str| {
                             if !qt.vector_based() {
                                 srcs.iter()
+                                    .skip(if qt.range_based() { 2 } else { 0 })
                                     .enumerate()
                                     .map(|(index, vidx)| {
                                         if index == *li {
@@ -5107,6 +5127,25 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[1]
                                 );
                                 emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'{}'($t{});",
+                                    suffix,
+                                    dests[0]
+                                );
+                            }
+                            QuantifierType::RangeMap => {
+                                emitln!(self.writer(), "havoc $t{};", dests[0]);
+                                emitln!(
+                                    self.writer(),
+                                    "assume LenVec($t{}) == (if $t{} <= $t{} then $t{} - $t{} else 0);",
+                                    dests[0],
+                                    srcs[0],
+                                    srcs[1],
+                                    srcs[1],
+                                    srcs[0]
+                                );
+                                emitln!(self.writer(), "assume (forall i: int :: InRangeVec($t{}, i) ==> ReadVec($t{}, i) == {}({}));", dests[0], dests[0], fun_name, cr_args(&format!("i + $t{}", srcs[0])));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
