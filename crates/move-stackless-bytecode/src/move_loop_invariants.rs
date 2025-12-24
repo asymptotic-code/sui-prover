@@ -236,8 +236,8 @@ impl MoveLoopInvariantsProcessor {
             .collect::<Vec<(String, usize)>>()
     }
 
-    fn match_invariant_arguments(
-        builder: &FunctionDataBuilder,
+    fn build_invariant_arguments(
+        builder: &mut FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
         offset: usize,
     ) -> Vec<usize> {
@@ -246,6 +246,65 @@ impl MoveLoopInvariantsProcessor {
 
         for param in loop_inv_env.get_parameters() {
             let param_name_str = builder.fun_env.symbol_pool().string(param.0);
+
+            if param_name_str.starts_with("__old_") {
+                if let Some((idx, param)) =
+                    loop_inv_env
+                        .get_parameters()
+                        .iter()
+                        .enumerate()
+                        .find(|(_, p)| {
+                            loop_inv_env.symbol_pool().string(p.0).to_string()
+                                == &param_name_str["__old_".len()..]
+                        })
+                {
+                    let attr_ref = builder.new_attr();
+                    let attr_val = builder.new_attr();
+
+                    let res_temp = builder.new_temp(param.1.skip_reference().clone());
+                    let temp = builder.new_temp(param.1.skip_reference().clone());
+
+                    // NOTE: we use old ref/var pattern here instead of assignment due to elimination
+                    // Replacement analysis runs much later and after loops analysis
+                    // which duplicate invariant calls it and make assignment reasonable
+                    builder.emit(Bytecode::Call(
+                        attr_val,
+                        vec![temp],
+                        Operation::Function(
+                            builder.global_env().prover_val_qid().module_id,
+                            builder.global_env().prover_val_qid().id,
+                            vec![],
+                        ),
+                        vec![idx],
+                        None,
+                    ));
+                    builder.emit(Bytecode::Call(
+                        attr_ref,
+                        vec![res_temp],
+                        Operation::Function(
+                            builder.global_env().prover_ref_qid().module_id,
+                            builder.global_env().prover_ref_qid().id,
+                            vec![],
+                        ),
+                        vec![temp],
+                        None,
+                    ));
+                    args.push(res_temp);
+                } else {
+                    builder.global_env().diag(
+                        Severity::Error,
+                        &builder.fun_env.get_loc(),
+                        &format!(
+                            "Loop invariant function {} expects 'old' parameter '{}' which is not found in function {}",
+                            loop_inv_env.get_full_name_str(),
+                            &param_name_str["__old_".len()..],
+                            builder.fun_env.get_full_name_str()
+                        ),
+                    );
+                }
+
+                continue;
+            }
 
             let found_idx = if let Some(&local_idx) = builder.data.name_to_index.get(&param.0) {
                 Some(local_idx)
@@ -258,7 +317,7 @@ impl MoveLoopInvariantsProcessor {
 
             if let Some(idx) = found_idx {
                 if param.1.skip_reference() != builder.get_local_type(idx).skip_reference() {
-                    builder.fun_env.module_env.env.diag(
+                    builder.global_env().diag(
                         Severity::Error,
                         &builder.fun_env.get_loc(),
                         &format!(
@@ -272,7 +331,7 @@ impl MoveLoopInvariantsProcessor {
 
                 args.push(idx);
             } else {
-                builder.fun_env.module_env.env.diag(
+                builder.global_env().diag(
                     Severity::Error,
                     &builder.fun_env.get_loc(),
                     &format!(
@@ -392,14 +451,16 @@ impl MoveLoopInvariantsProcessor {
         let mut attrs: BTreeSet<Vec<AttrId>> = BTreeSet::new();
 
         for (offset, bc) in code.into_iter().enumerate() {
-            builder.emit(bc);
-
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
-                let mut args = Self::match_invariant_arguments(
-                    &builder,
+                let mut args = Self::build_invariant_arguments(
+                    &mut builder,
                     &func_env.module_env.env.get_function(*qid),
                     offset,
                 );
+
+                // NOTE: Emit clone! calls before label
+                builder.emit(bc);
+
                 let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
                 let mut first_attr_id = None;
@@ -416,7 +477,7 @@ impl MoveLoopInvariantsProcessor {
                             .new_temp(builder.get_local_type(args[i]).skip_reference().clone());
                         builder.emit(Bytecode::Call(
                             attr,
-                            [ty].to_vec(),
+                            vec![ty],
                             Operation::ReadRef,
                             vec![args[i]],
                             None,
@@ -434,7 +495,7 @@ impl MoveLoopInvariantsProcessor {
 
                 builder.emit(Bytecode::Call(
                     call_attr_id,
-                    [temp].to_vec(),
+                    vec![temp],
                     Operation::apply_fun_qid(qid, vec![]),
                     args,
                     None,
@@ -444,11 +505,13 @@ impl MoveLoopInvariantsProcessor {
                     ensures_attr_id,
                     vec![],
                     Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
-                    [temp].to_vec(),
+                    vec![temp],
                     None,
                 ));
 
                 attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
+            } else {
+                builder.emit(bc);
             }
         }
 

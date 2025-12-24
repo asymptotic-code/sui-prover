@@ -1373,7 +1373,7 @@ impl fmt::Display for OperationDisplay<'_> {
                 write!(
                     f,
                     "trace_local[{}]",
-                    name.display(self.func_target.symbol_pool())
+                    name.display(self.func_target.symbol_pool()),
                 )?
             }
             TraceAbort => write!(f, "trace_abort")?,
