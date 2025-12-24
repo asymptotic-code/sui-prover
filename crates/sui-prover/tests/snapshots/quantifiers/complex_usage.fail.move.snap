@@ -1,11 +1,16 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 260
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Invalid quantifier macro pattern: Invalid standalone usage of start function
-   ┌─ tests/../../../packages/prover/sources/prover.move:78:1
-   │
-78 │ public native fun begin_exists_lambda<T>(): &T;
-   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: Invalid quantifier macro pattern: expected a lambda function, but found an inlined expression
+   ┌─ tests/inputs/quantifiers/complex_usage.fail.move:8:1
+   │  
+ 8 │ ╭ fun vec_leq(u: vector<u8>, v: vector<u8>): bool {
+ 9 │ │     if (u.length() > v.length()) {
+10 │ │         return false;
+11 │ │     };
+   · │
+20 │ │     true
+21 │ │ }
+   │ ╰─^
