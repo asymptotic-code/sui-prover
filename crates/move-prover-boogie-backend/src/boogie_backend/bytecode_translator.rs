@@ -3684,7 +3684,10 @@ impl<'env> FunctionTranslator<'env> {
                                     "{} := $IsParentMutationHyper({}, {}, {});",
                                     str_local(dests[0]),
                                     str_local(*parent),
-                                    boogie_make_vec_from_strings(&edge_pattern),
+                                    boogie_make_vec_from_strings(
+                                        self.parent.options.vector_theory,
+                                        &edge_pattern
+                                    ),
                                     src_str
                                 );
                             }

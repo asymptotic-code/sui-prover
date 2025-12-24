@@ -25,7 +25,7 @@ use move_stackless_bytecode::{
     stackless_bytecode::Constant,
 };
 
-use crate::boogie_backend::options::BoogieOptions;
+use crate::boogie_backend::options::{BoogieOptions, VectorTheory};
 
 pub const MAX_MAKE_VEC_ARGS: usize = 4;
 
@@ -318,10 +318,24 @@ fn boogie_memory_label(memory_label: &Option<MemoryLabel>) -> String {
 }
 
 /// Creates a vector from the given list of arguments.
-pub fn boogie_make_vec_from_strings(args: &[String]) -> String {
+pub fn boogie_make_vec_from_strings(theory: VectorTheory, args: &[String]) -> String {
     if args.is_empty() {
         "EmptyVec()".to_string()
     } else {
+        if !matches!(theory, VectorTheory::SmtSeq) {
+            let base = format!(
+                "Vec(DefaultVecMap(){}, {})",
+                (0..args.len())
+                    .map(|i| format!("[{} := {}]", i, args[i]))
+                    .join(""),
+                args.len()
+            );
+            if matches!(theory, VectorTheory::BoogieArrayIntern) {
+                return format!("VecIntern({})", base);
+            }
+            return base;
+        }
+
         let mut make = "".to_owned();
         let mut at = 0;
         loop {
@@ -612,7 +626,7 @@ pub fn boogie_declare_global(env: &GlobalEnv, name: &str, ty: &Type) -> String {
     )
 }
 
-pub fn boogie_byte_blob(_options: &BoogieOptions, val: &[u8], bv_flag: bool) -> String {
+pub fn boogie_byte_blob(options: &BoogieOptions, val: &[u8], bv_flag: bool) -> String {
     let val_suffix = if bv_flag { "bv8" } else { "" };
     let suffix = if bv_flag { "bv8" } else { "u8" };
     let args = val
@@ -622,34 +636,34 @@ pub fn boogie_byte_blob(_options: &BoogieOptions, val: &[u8], bv_flag: bool) -> 
     if args.is_empty() {
         format!("$EmptyVec'{}'()", suffix)
     } else {
-        boogie_make_vec_from_strings(&args)
+        boogie_make_vec_from_strings(options.vector_theory, &args)
     }
 }
 
-pub fn boogie_address_blob(_options: &BoogieOptions, val: &[BigUint]) -> String {
+pub fn boogie_address_blob(options: &BoogieOptions, val: &[BigUint]) -> String {
     let args = val.iter().map(|v| format!("{}", *v)).collect_vec();
     if args.is_empty() {
         "$EmptyVec'address'()".to_string()
     } else {
-        boogie_make_vec_from_strings(&args)
+        boogie_make_vec_from_strings(options.vector_theory, &args)
     }
 }
 
 /// Generate vectors for constant values
 /// TODO(tengzhang): add support for bv types
-pub fn boogie_constant_blob(_options: &BoogieOptions, val: &[Constant]) -> String {
+pub fn boogie_constant_blob(options: &BoogieOptions, val: &[Constant]) -> String {
     let args = val
         .iter()
-        .map(|v| boogie_constant(_options, v))
+        .map(|v| boogie_constant(options, v))
         .collect_vec();
     if args.is_empty() {
         "EmptyVec()".to_string()
     } else {
-        boogie_make_vec_from_strings(&args)
+        boogie_make_vec_from_strings(options.vector_theory, &args)
     }
 }
 
-pub fn boogie_constant(_options: &BoogieOptions, val: &Constant) -> String {
+pub fn boogie_constant(options: &BoogieOptions, val: &Constant) -> String {
     match val {
         Constant::Bool(true) => "true".to_string(),
         Constant::Bool(false) => "false".to_string(),
@@ -658,11 +672,12 @@ pub fn boogie_constant(_options: &BoogieOptions, val: &Constant) -> String {
         Constant::U128(num) => num.to_string(),
         Constant::U256(num) => num.to_string(),
         Constant::Address(v) => v.to_string(),
-        Constant::ByteArray(v) => boogie_byte_blob(_options, v, false),
-        Constant::AddressArray(v) => boogie_address_blob(_options, v),
+        Constant::ByteArray(v) => boogie_byte_blob(options, v, false),
+        Constant::AddressArray(v) => boogie_address_blob(options, v),
         Constant::Vector(vec) => boogie_make_vec_from_strings(
+            options.vector_theory,
             &vec.iter()
-                .map(|v| boogie_constant(_options, v))
+                .map(|v| boogie_constant(options, v))
                 .collect_vec(),
         ),
         Constant::U16(num) => num.to_string(),
@@ -670,25 +685,26 @@ pub fn boogie_constant(_options: &BoogieOptions, val: &Constant) -> String {
     }
 }
 
-pub fn boogie_value_blob(_options: &BoogieOptions, val: &[Value]) -> String {
-    let args = val.iter().map(|v| boogie_value(_options, v)).collect_vec();
+pub fn boogie_value_blob(options: &BoogieOptions, val: &[Value]) -> String {
+    let args = val.iter().map(|v| boogie_value(options, v)).collect_vec();
     if args.is_empty() {
         "EmptyVec()".to_string()
     } else {
-        boogie_make_vec_from_strings(&args)
+        boogie_make_vec_from_strings(options.vector_theory, &args)
     }
 }
 
-pub fn boogie_value(_options: &BoogieOptions, val: &Value) -> String {
+pub fn boogie_value(options: &BoogieOptions, val: &Value) -> String {
     match val {
         Value::Bool(true) => "true".to_string(),
         Value::Bool(false) => "false".to_string(),
         Value::Number(num) => num.to_string(),
         Value::Address(v) => v.to_string(),
-        Value::ByteArray(v) => boogie_byte_blob(_options, v, false),
-        Value::AddressArray(v) => boogie_address_blob(_options, v),
+        Value::ByteArray(v) => boogie_byte_blob(options, v, false),
+        Value::AddressArray(v) => boogie_address_blob(options, v),
         Value::Vector(vec) => boogie_make_vec_from_strings(
-            &vec.iter().map(|v| boogie_value(_options, v)).collect_vec(),
+            options.vector_theory,
+            &vec.iter().map(|v| boogie_value(options, v)).collect_vec(),
         ),
     }
 }
