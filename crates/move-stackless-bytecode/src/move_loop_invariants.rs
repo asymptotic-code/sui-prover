@@ -247,7 +247,7 @@ impl MoveLoopInvariantsProcessor {
         for param in loop_inv_env.get_parameters() {
             let param_name_str = builder.fun_env.symbol_pool().string(param.0);
 
-            if param_name_str.starts_with("old__") {
+            if param_name_str.starts_with("__old_") {
                 if let Some((idx, param)) =
                     loop_inv_env
                         .get_parameters()
@@ -255,7 +255,7 @@ impl MoveLoopInvariantsProcessor {
                         .enumerate()
                         .find(|(_, p)| {
                             loop_inv_env.symbol_pool().string(p.0).to_string()
-                                == &param_name_str["old__".len()..]
+                                == &param_name_str["__old_".len()..]
                         })
                 {
                     let attr_ref = builder.new_attr();
@@ -264,6 +264,9 @@ impl MoveLoopInvariantsProcessor {
                     let res_temp = builder.new_temp(param.1.skip_reference().clone());
                     let temp = builder.new_temp(param.1.skip_reference().clone());
 
+                    // NOTE: we use old ref/var pattern here instead of assignment due to elimination
+                    // Replacement analysis runs much later and after loops analysis
+                    // which duplicate invariant calls it and make assignment reasonable
                     builder.emit(Bytecode::Call(
                         attr_val,
                         vec![temp],
@@ -294,7 +297,7 @@ impl MoveLoopInvariantsProcessor {
                         &format!(
                             "Loop invariant function {} expects 'old' parameter '{}' which is not found in function {}",
                             loop_inv_env.get_full_name_str(),
-                            param_name_str,
+                            &param_name_str["__old_".len()..],
                             builder.fun_env.get_full_name_str()
                         ),
                     );

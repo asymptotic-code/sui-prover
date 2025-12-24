@@ -4,7 +4,7 @@ use prover::prover::{ensures, clone};
 
 #[spec_only(loop_inv(target = test_spec))]
 #[ext(pure)]
-fun loop_inv(n: u64, __old_n: u64, s: u128): bool {
+fun loop_inv(n: u64, __old_n: u64, __old_p: u64, s: u128): bool { // Wrong naming for old variable
     n <= __old_n && (s == ((__old_n as u128) - (n as u128)) * ((__old_n as u128) + (n as u128) + 1) / 2)
 }
 
