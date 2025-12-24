@@ -270,25 +270,6 @@ impl QuantifierIteratorAnalysisProcessor {
         }
     }
 
-    fn trace_assignment_chain(
-        bc: &[&Bytecode],
-        start_var: usize,
-        start_idx: usize,
-        end_idx: usize,
-    ) -> Vec<usize> {
-        let mut traced_vars = vec![start_var];
-
-        for i in (start_idx + 1)..end_idx {
-            if let Bytecode::Assign(_, dst, src, _) = bc[i] {
-                if traced_vars.contains(src) {
-                    traced_vars.push(*dst);
-                }
-            }
-        }
-
-        traced_vars
-    }
-
     fn get_start_func_pos_before(
         &self,
         bc: &Vec<&Bytecode>,
@@ -309,15 +290,16 @@ impl QuantifierIteratorAnalysisProcessor {
     }
 
     fn find_lambda_variable_uses(
+        &self,
         bc: &Vec<&Bytecode>,
+        temp_var: usize,
         start_idx: usize,
         end_idx: usize,
-        traced_vars: &Vec<usize>,
     ) -> Vec<AttrId> {
         let mut findings = vec![];
         for i in start_idx..end_idx {
             if let Bytecode::Call(attr_id, _, _, srcs, _) = bc[i] {
-                if srcs.iter().any(|src| traced_vars.contains(src)) {
+                if srcs.contains(&temp_var) {
                     findings.push(attr_id.clone());
                 }
             }
@@ -364,9 +346,7 @@ impl QuantifierIteratorAnalysisProcessor {
 
                 // NOTE: dests[0] -> is produced "X" lambda variable
 
-                let traced_vars = Self::trace_assignment_chain(&bc, dests[0], start_idx, i);
-                let restricted_usages =
-                    Self::find_lambda_variable_uses(&bc, start_idx, i, &traced_vars);
+                let restricted_usages = self.find_lambda_variable_uses(&bc, dests[0], start_idx, i);
                 for attr in &restricted_usages {
                     env.diag(
                         Severity::Error,
@@ -379,8 +359,7 @@ impl QuantifierIteratorAnalysisProcessor {
                     return (all_bc.clone(), true);
                 }
 
-                let lambda_index = match srcs_funcs.iter().position(|src| traced_vars.contains(src))
-                {
+                let lambda_index = match srcs_funcs.iter().position(|src| *src == dests[0]) {
                     Some(idx) => idx,
                     None => {
                         let callee_env = env.get_function(callee_id);

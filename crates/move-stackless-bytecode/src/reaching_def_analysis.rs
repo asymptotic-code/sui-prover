@@ -24,20 +24,12 @@ use crate::{
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
 
-/// The reaching definitions we are capturing. Currently we only capture
-/// aliases (assignment).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Def {
-    Alias(TempIndex),
-}
-
-type DefMap = BTreeMap<TempIndex, BTreeSet<Def>>;
-type HavocSet = BTreeSet<TempIndex>;
+// The map stores transitive alias chains: x -> {y, z} means x = y and y = z
+type DefMap = BTreeMap<TempIndex, BTreeSet<TempIndex>>;
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Default)]
 pub struct ReachingDefState {
     pub map: DefMap,
-    pub havoced: HavocSet,
 }
 
 /// The annotation for reaching definitions. For each code position, we have a map of local
@@ -52,44 +44,21 @@ impl ReachingDefProcessor {
         Box::new(ReachingDefProcessor {})
     }
 
-    /// Returns Some(temp, def) if temp has a unique reaching definition and None otherwise.
-    fn get_unique_def(
-        temp: TempIndex,
-        defs: &BTreeSet<Def>,
-        havoc_vars: &HavocSet,
-    ) -> Option<(TempIndex, TempIndex)> {
-        if defs.len() != 1 {
-            return None;
-        }
-        let Def::Alias(def) = defs.iter().next().unwrap();
-        if havoc_vars.contains(def) {
-            return None;
-        }
-        Some((temp, *def))
-    }
-
     /// Gets the propagated local resolving aliases using the reaching definitions.
+    /// For x -> {y, z, ...}, pick one that maps to empty set (is a root).
+    /// If multiple roots, pick the one with lowest temp index.
     fn get_propagated_local(temp: TempIndex, state: &ReachingDefState) -> TempIndex {
-        // For being robust, we protect this function against cycles in alias definitions. If
-        // a cycle is detected, alias resolution stops.
-        fn get(
-            temp: TempIndex,
-            state: &ReachingDefState,
-            visited: &mut BTreeSet<TempIndex>,
-        ) -> TempIndex {
-            if let Some(defs) = state.map.get(&temp) {
-                if let Some((_, def_temp)) =
-                    ReachingDefProcessor::get_unique_def(temp, defs, &state.havoced)
-                {
-                    if visited.insert(def_temp) {
-                        return get(def_temp, state, visited);
-                    }
-                }
-            }
-            temp
-        }
-        let mut visited = BTreeSet::new();
-        get(temp, state, &mut visited)
+        state
+            .map
+            .get(&temp)
+            .and_then(|aliases| {
+                aliases
+                    .iter()
+                    .filter(|a| !state.map.contains_key(a))
+                    .min()
+                    .copied()
+            })
+            .unwrap_or(temp)
     }
 
     /// Perform copy propagation based on reaching definitions analysis results.
@@ -138,7 +107,6 @@ impl ReachingDefProcessor {
         let block_state_map = analyzer.analyze_function(
             ReachingDefState {
                 map: BTreeMap::new(),
-                havoced: BTreeSet::new(),
             },
             &data.code,
             &cfg,
@@ -149,29 +117,7 @@ impl ReachingDefProcessor {
     }
 
     pub fn all_aliases(state: &ReachingDefState, temp_idx: &TempIndex) -> BTreeSet<TempIndex> {
-        let mut visited = BTreeSet::new();
-        let mut to_visit = state
-            .map
-            .get(temp_idx)
-            .unwrap_or(&BTreeSet::new())
-            .iter()
-            .map(|Def::Alias(alias)| *alias)
-            .collect_vec();
-
-        while let Some(current_idx) = to_visit.pop() {
-            if visited.insert(current_idx) {
-                to_visit.extend(
-                    state
-                        .map
-                        .get(&current_idx)
-                        .unwrap_or(&BTreeSet::new())
-                        .iter()
-                        .map(|Def::Alias(alias)| *alias),
-                );
-            }
-        }
-
-        visited
+        state.map.get(temp_idx).cloned().unwrap_or_default()
     }
 }
 
@@ -218,34 +164,20 @@ impl TransferFunctions for ReachingDefAnalysis<'_> {
     const BACKWARD: bool = false;
 
     fn execute(&self, state: &mut ReachingDefState, instr: &Bytecode, _offset: CodeOffset) {
-        use BorrowNode::*;
         use Bytecode::*;
-        use Operation::*;
+
+        for dest in instr.dests() {
+            state.kill(dest);
+        }
+
         match instr {
             Assign(_, dest, src, _) => {
-                state.kill(*dest);
                 if !self.borrowed_locals.contains(dest) && !self.borrowed_locals.contains(src) {
                     state.def_alias(*dest, *src);
                 }
             }
-            Load(_, dest, ..) => {
-                state.kill(*dest);
-            }
-            Call(_, dests, oper, _, on_abort) => {
-                // generic kills
-                for dest in dests {
-                    state.kill(*dest);
-                }
-                // op-specific actions
-                match oper {
-                    WriteBack(LocalRoot(local_root), ..) => {
-                        state.kill(*local_root);
-                    }
-                    Havoc(_) => {
-                        state.havoc(dests[0]);
-                    }
-                    _ => (),
-                }
+            Call(_, _, Operation::WriteBack(BorrowNode::LocalRoot(local), ..), _, _) => {
+                state.kill(*local);
             }
             _ => {}
         }
@@ -257,48 +189,48 @@ impl DataflowAnalysis for ReachingDefAnalysis<'_> {}
 impl AbstractDomain for ReachingDefState {
     fn join(&mut self, other: &Self) -> JoinResult {
         let mut result = JoinResult::Unchanged;
+        // intersection: only keep keys that exist in both, with intersected values
         for idx in self.map.keys().cloned().collect_vec() {
-            if let Some(other_defs) = other.map.get(&idx) {
-                // Union of definitions
-                let defs = self.map.get_mut(&idx).unwrap();
-                for d in other_defs {
-                    if defs.insert(d.clone()) {
-                        result = JoinResult::Changed;
+            if let Some(other_aliases) = other.map.get(&idx) {
+                let self_aliases = self.map.get_mut(&idx).unwrap();
+                let intersection: BTreeSet<TempIndex> =
+                    self_aliases.intersection(other_aliases).copied().collect();
+                if intersection != *self_aliases {
+                    if intersection.is_empty() {
+                        self.map.remove(&idx);
+                    } else {
+                        *self_aliases = intersection;
                     }
+                    result = JoinResult::Changed;
                 }
             } else {
-                // Kill this definition as it is not contained in both incoming states.
                 self.map.remove(&idx);
                 result = JoinResult::Changed;
             }
         }
+
         result
     }
 }
 
 impl ReachingDefState {
+    // def_alias(dest, src): insert dest -> {src} union map[src]
     fn def_alias(&mut self, dest: TempIndex, src: TempIndex) {
-        // ensure that the previous def is killed
-        assert!(!self.map.contains_key(&dest));
-
-        // cascade the definition
-        for defs in self.map.values_mut() {
-            if defs.contains(&Def::Alias(dest)) {
-                defs.insert(Def::Alias(src));
-            }
+        let mut aliases = BTreeSet::new();
+        aliases.insert(src);
+        if let Some(src_aliases) = self.map.get(&src) {
+            aliases.extend(src_aliases.iter().copied());
         }
-
-        // update the new alias
-        self.map.entry(dest).or_default().insert(Def::Alias(src));
+        self.map.insert(dest, aliases);
     }
 
+    // kill(dest): remove entry for dest and remove dest from all entries
     fn kill(&mut self, dest: TempIndex) {
         self.map.remove(&dest);
-        self.havoced.remove(&dest);
-    }
-
-    fn havoc(&mut self, dest: TempIndex) {
-        self.havoced.insert(dest);
+        self.map.retain(|_, aliases| {
+            aliases.remove(&dest);
+            !aliases.is_empty()
+        });
     }
 }
 
@@ -317,26 +249,18 @@ pub fn format_reaching_def_annotation(
             let mut res = map_at
                 .map
                 .iter()
-                .map(|(idx, defs)| {
+                .map(|(idx, aliases)| {
                     let name = target.get_local_name(*idx);
                     format!(
                         "{} -> {{{}}}",
                         name.display(target.symbol_pool()),
-                        defs.iter()
-                            .map(|def| {
-                                match def {
-                                    Def::Alias(a) => {
-                                        let local_name = format!(
-                                            "{}",
-                                            target.get_local_name(*a).display(target.symbol_pool())
-                                        );
-                                        if map_at.havoced.contains(a) {
-                                            format!("{}, {}*", local_name, local_name)
-                                        } else {
-                                            local_name
-                                        }
-                                    }
-                                }
+                        aliases
+                            .iter()
+                            .map(|a| {
+                                format!(
+                                    "{}",
+                                    target.get_local_name(*a).display(target.symbol_pool())
+                                )
                             })
                             .join(", ")
                     )

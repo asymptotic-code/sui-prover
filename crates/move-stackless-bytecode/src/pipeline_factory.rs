@@ -51,22 +51,14 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         MutRefInstrumenter::new(),
         NoAbortAnalysisProcessor::new(),
         DeterministicAnalysisProcessor::new(),
-        QuantifierIteratorAnalysisProcessor::new(),
         DynamicFieldAnalysisProcessor::new(),
         MoveLoopInvariantsProcessor::new(),
-    ];
-
-    if !options.skip_loop_analysis {
-        processors.push(LoopAnalysisProcessor::new());
-    }
-
-    processors.append(&mut vec![
         TypeInvariantAnalysisProcessor::new(),
         ReachingDefProcessor::new(),
         LiveVarAnalysisProcessor::new(),
         BorrowAnalysisProcessor::new_borrow_natives(options.borrow_natives.clone()),
         MemoryInstrumentationProcessor::new(),
-    ]);
+    ];
 
     // Rerun liveness analysis and its dependencies after MemoryInstrumentation
     // to ensure fresh liveness annotations for ConditionalMergeInsertion
@@ -78,10 +70,15 @@ pub fn default_pipeline_with_options(options: &ProverOptions) -> FunctionTargetP
         CleanAndOptimizeProcessor::new(),
         UsageProcessor::new(),
         SpecWellFormedAnalysisProcessor::new(),
+        QuantifierIteratorAnalysisProcessor::new(),
         ReplacementAnalysisProcessor::new(),
         PureFunctionAnalysisProcessor::new(),
         AxiomFunctionAnalysisProcessor::new(),
     ]);
+
+    if !options.skip_loop_analysis {
+        processors.push(LoopAnalysisProcessor::new());
+    }
 
     processors.append(&mut vec![
         // spec instrumentation
