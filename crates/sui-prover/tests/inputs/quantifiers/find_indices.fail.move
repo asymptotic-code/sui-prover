@@ -24,7 +24,7 @@ fun test_wrong_count() {
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
     
     // This assertion is incorrect - should be 2, not 3
-    ensures(vector::length(&indices) == 3); // EXPECTED FAILURE
+    ensures(vector::length(&indices) == 3); // EXPECTED FAILURE 1
 }
 
 // This should fail - wrong index value
@@ -34,7 +34,7 @@ fun test_wrong_index() {
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
     
     // First occurrence is at index 0, not 1
-    ensures(*vector::borrow(&indices, 0) == 1); // EXPECTED FAILURE
+    ensures(*vector::borrow(&indices, 0) == 1); // EXPECTED FAILURE 2
 }
 
 // This should fail - claiming a non-existent index
@@ -44,7 +44,7 @@ fun test_wrong_contains() {
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
     
     // Index 1 has value 20, not 10, so 1 shouldn't be in indices
-    ensures(vector::contains(&indices, &1)); // EXPECTED FAILURE
+    ensures(vector::contains(&indices, &1)); // EXPECTED FAILURE 3
 }
 
 // This should fail - assuming wrong order
@@ -54,7 +54,7 @@ fun test_wrong_order() {
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
     
     // Indices should be 0, 2, 4 - not 0, 4, 2
-    ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE (should be 2)
+    ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE 4
 }
 
 // This should fail - wrong predicate count assumption
@@ -64,7 +64,5 @@ fun test_wrong_predicate() {
     let indices = find_indices!<u64>(&v, |x| x_is_even(x));
     
     // All elements are even, so length should be 4, not 2
-    ensures(vector::length(&indices) == 2); // EXPECTED FAILURE
+    ensures(vector::length(&indices) == 2); // EXPECTED FAILURE 5
 }
-
-
