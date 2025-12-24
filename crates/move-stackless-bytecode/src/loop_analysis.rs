@@ -216,19 +216,20 @@ impl LoopAnalysisProcessor {
                                 joined_variables_names_str
                             ));
                         }
-
-                        // track the new values of havocked user declared locals
-                        for idx_ in &affected_non_temporary_variables {
-                            let idx = *idx_;
-                            builder.emit_with(|id| {
-                                Bytecode::Call(
-                                    id,
-                                    vec![],
-                                    Operation::TraceLocal(*idx),
-                                    vec![*idx],
-                                    None,
-                                )
-                            });
+                        if targets.prover_options().debug_trace {
+                            // track the new values of havocked user declared locals
+                            for idx_ in &affected_non_temporary_variables {
+                                let idx = *idx_;
+                                builder.emit_with(|id| {
+                                    Bytecode::Call(
+                                        id,
+                                        vec![],
+                                        Operation::TraceLocal(*idx),
+                                        vec![*idx],
+                                        None,
+                                    )
+                                });
+                            }
                         }
 
                         let dup_code = builder
