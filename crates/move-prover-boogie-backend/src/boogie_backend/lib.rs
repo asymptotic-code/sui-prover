@@ -510,6 +510,12 @@ impl QuantifierHelperInfo {
             )
         };
 
+        let mut quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+            "start, end".to_string()
+        } else {
+            "v, start, end".to_string()
+        };
+
         let dst_elem_boogie_type =
             if matches!(dst_elem_boogie_type, Type::Primitive(PrimitiveType::Bool)) {
                 // Note: Bool means that we are looking for index or indices
@@ -529,33 +535,33 @@ impl QuantifierHelperInfo {
                         format!(
                             "$t{}: {}",
                             val.to_string(),
-                            boogie_type(env, &params_types[val])
+                            boogie_type(env, &params_types[val].skip_reference())
                         )
                     })
                     .join(", ")
             );
+            quantifier_args = format!(
+                "{}, {}",
+                quantifier_args,
+                (0..func_env.get_parameter_count())
+                    .filter(|idx| *idx != info.li)
+                    .map(|val| format!("$t{}", val.to_string()))
+                    .join(", ")
+            );
         }
-
-        let extra_args_after = (info.li + 1..func_env.get_parameter_count())
-            .map(|i| format!(", $t{}", i.to_string()))
-            .join("");
-
-        let base_quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
-            "start, end"
-        } else {
-            "v, start, end"
-        };
 
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
-            quantifier_args: format!("{}{}", base_quantifier_args, extra_args_after),
+            quantifier_args,
             result_type: boogie_type(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
                 .join(""),
-            extra_args_after,
+            extra_args_after: (info.li + 1..func_env.get_parameter_count())
+                .map(|i| format!(", $t{}", i.to_string()))
+                .join(""),
         }
     }
 }
