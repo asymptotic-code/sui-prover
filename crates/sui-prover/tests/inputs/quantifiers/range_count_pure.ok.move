@@ -17,7 +17,7 @@ fun is_even(x: u64): bool {
 
 #[ext(pure)]
 fun count_evens_in_range(start: u64, end: u64): Integer {
-    range_count!<u64>(start, end, |x| is_even(x))
+    range_count!(start, end, |x| is_even(x))
 }
 
 #[spec(prove)]

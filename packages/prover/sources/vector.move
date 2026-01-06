@@ -234,7 +234,7 @@ public macro fun range_map<$T>($start: u64, $end: u64, $f: |u64| -> $T): &vector
 }
 
 #[spec_only]
-public macro fun range_count<$T>($start: u64, $end: u64, $f: |u64| -> bool): Integer {
+public macro fun range_count($start: u64, $end: u64, $f: |u64| -> bool): Integer {
     let x: u64 = begin_range_count_lambda($start, $end);
     let _ = $f(x);
     end_range_count_lambda()
