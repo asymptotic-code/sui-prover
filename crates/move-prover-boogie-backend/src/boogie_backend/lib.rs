@@ -22,7 +22,6 @@ use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo, PureQuantifierHelperInfo},
-    stackless_bytecode::QuantifierHelperType,
     verification_analysis,
 };
 
@@ -501,7 +500,7 @@ impl QuantifierHelperInfo {
         let params_types = func_env.get_parameter_types();
         let dst_elem_boogie_type = &func_env.get_return_type(0);
 
-        let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_params = if info.qht.range_based() {
             "start: int, end: int".to_string()
         } else {
             format!(
@@ -510,7 +509,7 @@ impl QuantifierHelperInfo {
             )
         };
 
-        let mut quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_args = if info.qht.range_based() {
             "start, end".to_string()
         } else {
             "v, start, end".to_string()

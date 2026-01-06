@@ -63,6 +63,10 @@ public native fun end_sum_map_lambda<T>(): Integer;
 public native fun begin_range_map_lambda(start: u64, end: u64): u64;
 #[spec_only]
 public native fun end_range_map_lambda<T>(): &vector<T>;
+#[spec_only]
+public native fun begin_range_count_lambda(start: u64, end: u64): u64;
+#[spec_only]
+public native fun end_range_count_lambda(): Integer;
 
 #[spec_only]
 public native fun range(start: u64, end: u64): &vector<u64>;
@@ -227,4 +231,11 @@ public macro fun range_map<$T>($start: u64, $end: u64, $f: |u64| -> $T): &vector
     let x: u64 = begin_range_map_lambda($start, $end);
     let _ = $f(x);
     end_range_map_lambda<$T>()
+}
+
+#[spec_only]
+public macro fun range_count<$T>($start: u64, $end: u64, $f: |u64| -> bool): Integer {
+    let x: u64 = begin_range_count_lambda($start, $end);
+    let _ = $f(x);
+    end_range_count_lambda()
 }

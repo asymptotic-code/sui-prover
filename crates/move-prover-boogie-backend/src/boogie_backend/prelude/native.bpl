@@ -994,6 +994,17 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 );
 {%- endif %}
 
+{%- if instance.qht == "range_count" %}
+function $RangeCountQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}}:: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+(
+    var res := $RangeCountQuantifierHelper_{{FN}}({{QA}});
+        LenVec(res) == (if start <= end then end - start else 0) &&
+        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == (if {{FN}}({{EAB}}(i + start){{EAA}}) then 1 else 0))
+    )
+);
+{%- endif %}
+
 {% endmacro quantifier_helpers_module %}
 
 {% macro dynamic_field_key_module(impl, instance) %}
