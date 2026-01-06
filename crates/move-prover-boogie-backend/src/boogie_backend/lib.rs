@@ -499,7 +499,6 @@ impl QuantifierHelperInfo {
     fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
         let func_env = env.get_function(info.function);
         let params_types = func_env.get_parameter_types();
-        let dst_elem_boogie_type = &func_env.get_return_type(0);
 
         let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
             "start: int, end: int".to_string()
@@ -516,13 +515,13 @@ impl QuantifierHelperInfo {
             "v, start, end".to_string()
         };
 
-        let dst_elem_boogie_type =
-            if matches!(dst_elem_boogie_type, Type::Primitive(PrimitiveType::Bool)) {
-                // Note: Bool means that we are looking for index or indices
-                &Type::Primitive(PrimitiveType::U64)
-            } else {
-                dst_elem_boogie_type
-            };
+        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
+            &Type::Primitive(PrimitiveType::U64)
+        } else if matches!(info.qht, QuantifierHelperType::Filter) {
+            &params_types[info.li].skip_reference()
+        } else {
+            &func_env.get_return_type(0)
+        };
 
         if func_env.get_parameter_count() > 1 {
             quantifier_params = format!(
