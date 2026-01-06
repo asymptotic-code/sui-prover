@@ -515,6 +515,14 @@ impl QuantifierHelperInfo {
             "v, start, end".to_string()
         };
 
+        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
+            &Type::Primitive(PrimitiveType::U64)
+        } else if matches!(info.qht, QuantifierHelperType::Filter) {
+            &params_types[info.li].skip_reference()
+        } else {
+            &func_env.get_return_type(0)
+        };
+
         if func_env.get_parameter_count() > 1 {
             quantifier_params = format!(
                 "{}, {}",
@@ -546,7 +554,7 @@ impl QuantifierHelperInfo {
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
-            result_type: boogie_type(env, &params_types[info.li].skip_reference()),
+            result_type: boogie_type(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
                 .join(""),
