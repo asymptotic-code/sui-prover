@@ -36,7 +36,9 @@ impl FunctionTargetProcessor for DeterministicAnalysisProcessor {
         let variant = FunctionVariant::Baseline;
 
         if fun_env.is_native() {
-            info.is_deterministic = env.is_deterministic(qualified_id).unwrap();
+            // NOTE: if native function is marked as pure assume it deterministic
+            info.is_deterministic =
+                targets.is_pure_fun(&qualified_id) || env.is_deterministic(qualified_id).unwrap();
             return data;
         }
 
