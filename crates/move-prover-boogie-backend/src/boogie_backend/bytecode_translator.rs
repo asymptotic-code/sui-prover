@@ -2975,7 +2975,15 @@ impl<'env> FunctionTranslator<'env> {
             format!(
                 ", {}",
                 srcs.iter()
-                    .skip(if qt.range_based() { 3 } else { 1 })
+                    .skip(if qt.range_based() {
+                        if qt.vector_based() {
+                            3
+                        } else {
+                            2
+                        }
+                    } else {
+                        1
+                    })
                     .enumerate()
                     .filter(|(i, _)| *i != li)
                     .map(|(_, val)| fmt_temp(*val))
@@ -3684,7 +3692,10 @@ impl<'env> FunctionTranslator<'env> {
                                     "{} := $IsParentMutationHyper({}, {}, {});",
                                     str_local(dests[0]),
                                     str_local(*parent),
-                                    boogie_make_vec_from_strings(&edge_pattern),
+                                    boogie_make_vec_from_strings(
+                                        self.parent.options.vector_theory,
+                                        &edge_pattern
+                                    ),
                                     src_str
                                 );
                             }

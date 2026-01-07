@@ -230,6 +230,12 @@ impl QuantifierIteratorAnalysisProcessor {
         qid: QualifiedId<FunId>,
     ) -> bool {
         let func_env = env.get_function(qid);
+
+        // Allow native functions (they are assumed to be pure)
+        if func_env.is_native() {
+            return false;
+        }
+
         let data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
         // NOTE: workaround for issue #329: nested quantifiers are not supported yet, so we allow extra bpl with no_abort attribute

@@ -147,17 +147,31 @@ impl<'env> BoogieWrapper<'env> {
         remote_opt: &RemoteOptions,
         individual_timeout: Option<u64>,
         individual_options: Option<String>,
-    ) -> anyhow::Result<RemoteProverResponse> {
-        let file_text = fs::read_to_string(boogie_file).map_err(|e| {
-            anyhow!(format!(
-                "Failed to read boogie file '{}': {}",
-                boogie_file, e
-            ))
-        })?;
+    ) -> RemoteProverResponse {
+        let err = |msg: String, status: i32| RemoteProverResponse {
+            out: String::new(),
+            err: msg,
+            status,
+            cached: false,
+        };
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(individual_timeout.unwrap_or(600))) // 10 minutes timeout
-            .build()?;
+        let file_text = match fs::read_to_string(boogie_file) {
+            Ok(text) => text,
+            Err(e) => {
+                return err(
+                    format!("Failed to read boogie file '{}': {}", boogie_file, e),
+                    1,
+                )
+            }
+        };
+
+        let client = match reqwest::Client::builder()
+            .timeout(Duration::from_secs(individual_timeout.unwrap_or(600)))
+            .build()
+        {
+            Ok(client) => client,
+            Err(e) => return err(format!("Failed to build HTTP client: {}", e), 1),
+        };
 
         let is_remote = remote_opt.url.as_str().contains("https://");
 
@@ -184,44 +198,52 @@ impl<'env> BoogieWrapper<'env> {
             })
         };
 
-        let response = client
+        let response = match client
             .post(remote_opt.url.as_str())
             .header("Authorization", remote_opt.api_key.as_str())
             .json(&request)
             .send()
             .await
-            .map_err(|e| {
-                anyhow!(format!(
-                    "Failed to send HTTP request to '{}': {}",
-                    remote_opt.url, e
-                ))
-            })?;
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                return err(
+                    format!("HTTP request timed out. Status '{}': {}", remote_opt.url, e),
+                    1,
+                )
+            }
+        };
 
         if !response.status().is_success() {
+            let status_code = response.status().as_u16() as i32;
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unable to read response body".to_string());
-            return Err(anyhow!(format!("HTTP request failed: {}", error_text)));
+            return err(
+                format!("HTTP request timed out. {}: {}", status_code, error_text),
+                status_code,
+            );
         }
 
-        let response_body = response.text().await?;
-
-        let result = if is_remote {
-            let response: RemoteProverResponse = serde_json::from_str(&response_body)
-                .map_err(|e| anyhow!(format!("Failed to parse response body JSON: {}", e)))?;
-            response
-        } else {
-            let response_json: RemoteProverResponseWrapper =
-                serde_json::from_str(&response_body)
-                    .map_err(|e| anyhow!(format!("Failed to read response body: {}", e)))?;
-
-            let response: RemoteProverResponse = serde_json::from_str(&response_json.body)
-                .map_err(|e| anyhow!(format!("Failed to parse response body JSON: {}", e)))?;
-            response
+        let response_body = match response.text().await {
+            Ok(body) => body,
+            Err(e) => return err(format!("Failed to read response body: {}", e), 1),
         };
 
-        Ok(result)
+        if is_remote {
+            serde_json::from_str(&response_body)
+                .unwrap_or_else(|e| err(format!("Failed to parse response body JSON: {}", e), 1))
+        } else {
+            let response_json: RemoteProverResponseWrapper =
+                match serde_json::from_str(&response_body) {
+                    Ok(resp) => resp,
+                    Err(e) => return err(format!("Failed to read response body: {}", e), 1),
+                };
+
+            serde_json::from_str(&response_json.body)
+                .unwrap_or_else(|e| err(format!("Failed to parse response body JSON: {}", e), 1))
+        }
     }
 
     pub async fn call_remote_boogie(
@@ -249,7 +271,7 @@ impl<'env> BoogieWrapper<'env> {
                 individual_timeout,
                 individual_options,
             )
-            .await?;
+            .await;
         self.analyze_output(&res.out, &res.err, res.status)
     }
 
@@ -346,13 +368,27 @@ impl<'env> BoogieWrapper<'env> {
             ));
         }
         if status != 0 {
-            // Exit here with raw output.
-            return Err(anyhow!(
-                "Boogie error ({}): {}\n\nstderr:\n{}",
-                status,
-                out,
-                err
-            ));
+            let errors = if out.to_lowercase().contains("http request timed out") {
+                vec![BoogieError {
+                    kind: BoogieErrorKind::Internal,
+                    loc: Loc::default(),
+                    message: format!("Boogie error ({}): {}\n\nstderr:\n{}", status, out, err),
+                    execution_trace: vec![],
+                    model: None,
+                }]
+            } else {
+                vec![BoogieError {
+                    kind: BoogieErrorKind::Inconclusive,
+                    loc: Loc::default(),
+                    message: format!("cloud verification out of resources/timeout"),
+                    execution_trace: vec![],
+                    model: None,
+                }]
+            };
+            return Ok(BoogieOutput {
+                errors,
+                all_output: out.to_owned(),
+            });
         }
         if out.trim().starts_with("Unable to monomorphize") {
             return Err(anyhow!("Boogie error: {}\n\nstderr:\n{}", out, err));
