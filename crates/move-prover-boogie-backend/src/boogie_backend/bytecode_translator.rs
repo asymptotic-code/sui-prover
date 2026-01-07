@@ -5371,6 +5371,10 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[0]
                                 );
                                 emitln!(self.writer(), "assume (forall i:int :: InRangeVec($quantifier_temp_vec, i) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args(&format!("i + $t{}", srcs[0])));
+                                emitln!(
+                                    self.writer(),
+                                    "assume $IsValid'vec'u64''($quantifier_temp_vec);"
+                                );
                                 emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::SumMap => {

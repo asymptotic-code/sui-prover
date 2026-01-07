@@ -999,8 +999,9 @@ function $RangeCountQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}}:: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeCountQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) == (if start <= end then end - start else 0) &&
-        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == (if {{FN}}({{EAB}}(i + start){{EAA}}) then 1 else 0))
+        (LenVec(res) == (if start <= end then end - start else 0)) &&
+        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == (if {{FN}}({{EAB}}(i + start){{EAA}}) then 1 else 0)) &&
+        $IsValid'vec'u64''(res)
     )
 );
 {%- endif %}

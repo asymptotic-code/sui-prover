@@ -22,6 +22,7 @@ use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo, PureQuantifierHelperInfo},
+    stackless_bytecode::QuantifierHelperType,
     verification_analysis,
 };
 
@@ -514,7 +515,12 @@ impl QuantifierHelperInfo {
             "v, start, end".to_string()
         };
 
-        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
+        let dst_elem_boogie_type = if matches!(
+            info.qht,
+            QuantifierHelperType::FindIndex
+                | QuantifierHelperType::FindIndices
+                | QuantifierHelperType::RangeCount
+        ) {
             &Type::Primitive(PrimitiveType::U64)
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()
