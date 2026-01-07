@@ -1,6 +1,6 @@
 use codespan_reporting::diagnostic::Severity;
 use move_model::model::{FunId, FunctionEnv, GlobalEnv, ModuleId, QualifiedId};
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use crate::{
     deterministic_analysis,
@@ -16,10 +16,14 @@ impl PureFunctionAnalysisProcessor {
         Box::new(Self())
     }
 
-    pub fn special_pure_functions_map(env: &GlobalEnv) -> BTreeMap<QualifiedId<FunId>, String> {
-        let mut special_funcs = BTreeMap::new();
-        special_funcs.insert(env.std_vector_borrow_qid().unwrap(), "ReadVec".to_string());
-        special_funcs
+    pub fn native_pure_variants(env: &GlobalEnv) -> BTreeSet<QualifiedId<FunId>> {
+        BTreeSet::from([
+            env.std_vector_borrow_qid().unwrap(),
+            env.table_borrow_qid().unwrap(),
+            env.object_table_borrow_qid().unwrap(),
+            env.dynamic_field_borrow_qid().unwrap(),
+            env.dynamic_object_field_borrow_qid().unwrap(),
+        ])
     }
 
     fn check_function(
@@ -32,7 +36,7 @@ impl PureFunctionAnalysisProcessor {
         let func_env = env.get_function(qid);
         if targets.is_pure_fun(&func_env.get_qualified_id())
             || env.should_be_used_as_func(&qid)
-            || Self::special_pure_functions_map(env).contains_key(&qid)
+            || Self::native_pure_variants(env).contains(&qid)
         {
             return None;
         } else {

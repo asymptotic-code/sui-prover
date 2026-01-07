@@ -2750,7 +2750,13 @@ impl<'env> FunctionTranslator<'env> {
                             let native_fn =
                                 self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
                             // Handle function calls for functions that can be emitted as Boogie functions
-                            if self.can_callee_be_function(mid, fid) || native_fn {
+                            if self.can_callee_be_function(mid, fid)
+                                || PureFunctionAnalysisProcessor::native_pure_variants(
+                                    self.parent.env,
+                                )
+                                .contains(&mid.qualified(*fid))
+                                || native_fn
+                            {
                                 let inst = &self.inst_slice(inst);
                                 let fun_name = boogie_function_name(
                                     &callee_env,
@@ -2761,14 +2767,6 @@ impl<'env> FunctionTranslator<'env> {
                                         FunctionTranslationStyle::Pure
                                     },
                                 );
-                                let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
-                                format!("{}({})", fun_name, args)
-                            } else if let Some(fun_name) =
-                                PureFunctionAnalysisProcessor::special_pure_functions_map(
-                                    self.parent.env,
-                                )
-                                .get(&mid.qualified(*fid))
-                            {
                                 let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
                                 format!("{}({})", fun_name, args)
                             } else {
