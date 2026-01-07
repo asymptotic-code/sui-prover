@@ -28,7 +28,7 @@ setup: clone-sui create-symlinks
 	@echo "To use the local framework packages, run:"
 	@echo ""
 	@echo "  cd specs/move-stdlib"
-	@echo "  SUI_PROVER_FRAMEWORK_PATH=/Users/rvt/asymptotic/sui-prover-2026/prover-core-libs/packages sui-prover --timeout 60 --force-timeout --skip-spec-no-abort"
+	@echo "  SUI_PROVER_FRAMEWORK_PATH=$(PWD)/packages sui-prover --timeout 60 --force-timeout --skip-spec-no-abort"
 	@echo ""
 
 clone-sui:
