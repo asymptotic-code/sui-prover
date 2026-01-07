@@ -259,6 +259,13 @@ pub fn add_prelude(
     }
 
     context.insert("include_vec_sum", &should_include_vec_sum(env, targets));
+    context.insert(
+        "include_vector_iter_range",
+        &targets.has_target(
+            &env.get_function(env.prover_range_qid()),
+            &FunctionVariant::Baseline,
+        ),
+    );
 
     // let mut table_instances = mono_info
     //     .table_inst
