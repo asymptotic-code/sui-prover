@@ -325,6 +325,10 @@ function {:inline} $1_vector_contains{{S}}(v: Vec ({{T}}), e: {{T}}): bool {
     $ContainsVec{{S}}(v, e)
 }
 
+function {:inline} $1_vector_singleton{{S}}(e: {{T}}): Vec ({{T}}) {
+    MakeVec1(e)
+}
+
 procedure {:inline 1}
 $1_vector_index_of{{S}}(v: Vec ({{T}}), e: {{T}}) returns (res1: bool, res2: int) {
     res2 := $IndexOfVec{{S}}(v, e);

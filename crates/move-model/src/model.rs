@@ -1621,6 +1621,7 @@ impl GlobalEnv {
     const VECTOR_STACK_POPPER_FUNCTION_NAME: &'static str = "pop_back";
     const VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME: &'static str = "destroy_empty";
     const VECTOR_SWITCHEROO_FUNCTION_NAME: &'static str = "swap";
+    const VECTOR_SINGLETON_FUNCTION_NAME: &'static str = "singleton";
 
     // vec_set struct name
     const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
@@ -2341,6 +2342,13 @@ impl GlobalEnv {
 
     pub fn vector_skip_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SKIP_FUNCTION_NAME)
+    }
+
+    pub fn vector_singleton_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_SINGLETON_FUNCTION_NAME,
+        )
     }
 
     // vec_set struct name
@@ -3520,6 +3528,7 @@ impl GlobalEnv {
                 self.std_vector_pop_back_qid(),
                 self.std_vector_destroy_empty_qid(),
                 self.std_vector_swap_qid(),
+                self.vector_singleton_qid(),
                 // std::hash native functions
                 self.std_hash_sha2_256_qid(),
                 self.std_hash_sha3_256_qid(),
@@ -3745,6 +3754,7 @@ impl GlobalEnv {
                 self.vector_is_empty_qid(),
                 self.vector_contains_qid(),
                 self.vector_index_of_qid(),
+                self.vector_singleton_qid(),
                 // std::hash native functions
                 self.std_hash_sha2_256_qid(),
                 self.std_hash_sha3_256_qid(),
@@ -3886,6 +3896,7 @@ impl GlobalEnv {
             self.vector_swap_remove_qid(),
             self.vector_take_qid(),
             self.vector_skip_qid(),
+            self.vector_singleton_qid(),
             self.vec_set_get_idx_opt_qid(),
             self.vec_set_from_keys_qid(),
             self.vec_set_contains_qid(),
@@ -4004,6 +4015,7 @@ impl GlobalEnv {
             self.std_vector_push_back_qid(),
             self.vector_append_qid(),
             self.vector_reverse_qid(),
+            self.vector_singleton_qid(),
             // vec_set and vec_map native functions
             self.vec_set_contains_qid(),
             self.vec_map_contains_qid(),
