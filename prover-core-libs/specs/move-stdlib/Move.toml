@@ -1,0 +1,8 @@
+[package]
+name = "movestdlib_specs"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+std = "0x1"
