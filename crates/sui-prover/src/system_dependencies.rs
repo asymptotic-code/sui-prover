@@ -121,10 +121,7 @@ fn system_deps() -> Dependencies {
                     dep_override: true,
                 });
 
-                Some((
-                    package.package_name.clone().into(),
-                    dep,
-                ))
+                Some((package.package_name.clone().into(), dep))
             })
             .collect();
 
@@ -147,10 +144,7 @@ fn system_deps() -> Dependencies {
                 dep_override: true,
             });
 
-            (
-                package.package_name.clone().into(),
-                dep,
-            )
+            (package.package_name.clone().into(), dep)
         })
         .collect();
 
