@@ -254,7 +254,7 @@ procedure {:inline 1} $1_vector_borrow{{S}}(v: Vec ({{T}}), i: int) returns (dst
     dst := ReadVec(v, i);
 }
 
-function {:inline} $1_vector_$borrow{{S}}(v: Vec ({{T}}), i: int): {{T}} {
+function {:inline} $1_vector_borrow{{S}}$pure(v: Vec ({{T}}), i: int): {{T}} {
     ReadVec(v, i)
 }
 
@@ -269,10 +269,6 @@ returns (dst: $Mutation ({{T}}), m': $Mutation (Vec ({{T}})))
     }
     dst := $Mutation(m->l, ExtendVec(m->p, index), ReadVec(v, index));
     m' := m;
-}
-
-function {:inline} $1_vector_$borrow_mut{{S}}(v: Vec ({{T}}), i: int): {{T}} {
-    ReadVec(v, i)
 }
 
 procedure {:inline 1} $1_vector_destroy_empty{{S}}(v: Vec ({{T}})) {
@@ -774,6 +770,9 @@ procedure {:inline 2} {{impl.fun_borrow}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) retur
         v := GetTable(t->$contents, {{ENC}}(k));
     }
 }
+function {:inline} {{impl.fun_borrow}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
+    GetTable(t->$contents, {{ENC}}(k))
+}
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
@@ -879,6 +878,9 @@ procedure {:inline 2} {{impl.fun_borrow}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns
     } else {
         v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
     }
+}
+function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}} {
+    GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
 }
 {%- endif %}
 
