@@ -1,0 +1,36 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_count.fail.move:50:5
+   │
+50 │     ensures(range_count!(5, 5, |x| is_even(x)) == 1u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_count.fail.move:50: test_range_count_empty_not_zero
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_count.fail.move:36:5
+   │
+36 │     ensures(range_count!(0, 10, |x| is_greater_than_5(x)) == 5u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_count.fail.move:36: test_range_count_off_by_one
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_count.fail.move:29:5
+   │
+29 │     ensures(range_count!(0, 4, |x| is_even(x)) == 3u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_count.fail.move:29: test_range_count_wrong_count
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_count.fail.move:43:5
+   │
+43 │     ensures(range_count!(0, 15, |x| is_10(x)) == 2u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_count.fail.move:43: test_range_count_wrong_value_check
