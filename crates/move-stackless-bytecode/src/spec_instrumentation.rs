@@ -904,6 +904,15 @@ fn check_caller_callee_modifies_relation(
             continue;
         }
 
+        if !targets.has_target(&callee_fun_env, &FunctionVariant::Baseline)
+            && targets.data_bypass_allowed(
+                &callee_fun_env.get_qualified_id(),
+                &fun_env.get_qualified_id(),
+            )
+        {
+            continue;
+        }
+
         let callee_func_target = targets
             .get_target_opt(&callee_fun_env, &FunctionVariant::Baseline)
             .expect(&format!(

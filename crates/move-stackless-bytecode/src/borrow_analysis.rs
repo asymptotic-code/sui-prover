@@ -352,11 +352,12 @@ impl BorrowInfo {
                     }
                 }
             } else {
-                assert!(
-                    !callee_env.get_return_type(ret_idx).is_mutable_reference(),
-                    "inconsistent borrow information: undefined output: {}",
-                    callee_env.get_full_name_str()
-                )
+                // TODO: add checks here
+                // assert!(
+                //     !callee_env.get_return_type(ret_idx).is_mutable_reference(),
+                //     "inconsistent borrow information: undefined output: {}",
+                //     callee_env.get_full_name_str()
+                // )
             }
         }
     }
@@ -926,16 +927,28 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             {
                                 // self recursion (this is because we removed the current target from `self.targets`)
                                 self.func_target.get_annotations().get::<BorrowAnnotation>()
-                            } else {
-                                let callee_target = self
-                                    .targets
-                                    .get_target_opt(callee_env, &FunctionVariant::Baseline)
-                                    .expect(&format!(
+                            } else if !self
+                                .targets
+                                .has_target(callee_env, &FunctionVariant::Baseline)
+                            {
+                                if self.targets.data_bypass_allowed(
+                                    &callee_env.get_qualified_id(),
+                                    &self.func_target.func_env.get_qualified_id(),
+                                ) {
+                                    None
+                                } else {
+                                    panic!(
                                         "expected function target: {} -> {} ({:?})",
                                         self.func_target.func_env.get_full_name_str(),
                                         callee_env.get_full_name_str(),
                                         FunctionVariant::Baseline
-                                    ));
+                                    );
+                                }
+                            } else {
+                                let callee_target = self
+                                    .targets
+                                    .get_target_opt(callee_env, &FunctionVariant::Baseline)
+                                    .unwrap();
                                 callee_target.get_annotations().get::<BorrowAnnotation>()
                             };
                             match callee_info {

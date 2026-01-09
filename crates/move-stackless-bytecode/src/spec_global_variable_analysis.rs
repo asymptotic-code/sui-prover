@@ -231,6 +231,19 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
+            if !targets.has_target(
+                &fun_target
+                    .func_env
+                    .module_env
+                    .env
+                    .get_function(*fun_id_with_info),
+                &FunctionVariant::Baseline,
+            ) && targets
+                .data_bypass_allowed(fun_id_with_info, &fun_target.func_env.get_qualified_id())
+            {
+                return None;
+            }
+
             let data = targets
                 .get_data(fun_id_with_info, &FunctionVariant::Baseline)
                 .expect(&format!(

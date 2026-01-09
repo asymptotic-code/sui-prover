@@ -280,6 +280,12 @@ impl FunctionTargetsHolder {
                 .does_not_abort
     }
 
+    pub fn should_generate_abort_check_2(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets
+            .target_no_abort_check_functions()
+            .contains(id)
+    }
+
     pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.pure_functions().contains(id)
     }
@@ -539,6 +545,22 @@ impl FunctionTargetsHolder {
                     .collect_vec()
             })
             .unwrap_or_default()
+    }
+
+    pub fn data_bypass_allowed(
+        &self,
+        callee_qid: &QualifiedId<FunId>,
+        caller_qid: &QualifiedId<FunId>,
+    ) -> bool {
+        if let Some(spec_qid) = self.get_spec_by_fun(callee_qid) {
+            if spec_qid == caller_qid {
+                !self.is_verified_spec(spec_qid)
+            } else {
+                !self.omits_opaque(spec_qid)
+            }
+        } else {
+            false
+        }
     }
 
     /// Gets function data for a variant.

@@ -89,10 +89,12 @@ impl MonoInfo {
         self.funs
             .keys()
             .filter(|(fun_qid, _)| {
-                verification_analysis::get_info(
-                    &targets.get_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline),
-                )
-                .inlined
+                targets.has_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline)
+                    && verification_analysis::get_info(
+                        &targets
+                            .get_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline),
+                    )
+                    .inlined
             })
             .map(|(fun_qid, _)| fun_qid.module_id)
             .contains(&dt_qid.module_id)
@@ -552,6 +554,16 @@ impl Analyzer<'_> {
                                 .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
                                 .or_default()
                                 .insert(actuals.clone());
+                        }
+                        if !self
+                            .targets
+                            .has_target(&callee_env, &FunctionVariant::Baseline)
+                            && self.targets.data_bypass_allowed(
+                                &callee_env.get_qualified_id(),
+                                &target.func_env.get_qualified_id(),
+                            )
+                        {
+                            return;
                         }
                         self.analyze_fun_types(
                             &self
