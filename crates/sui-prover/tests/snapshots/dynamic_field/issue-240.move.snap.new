@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 268
+expression: output
+---
+exiting with verification errors
+error: code should not abort
+   ┌─ /Users/mandriiss/.move/https___github_com_asymptotic-code_sui_git_next/crates/sui-framework/packages/move-stdlib/sources/string.move:25:5
+   │
+25 │     assert!(internal_check_utf8(&bytes), EInvalidUTF8);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/dynamic_field/issue-240.move:21: foo_spec

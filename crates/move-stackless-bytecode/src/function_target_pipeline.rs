@@ -550,10 +550,10 @@ impl FunctionTargetsHolder {
     pub fn data_bypass_allowed(
         &self,
         callee_qid: &QualifiedId<FunId>,
-        caller_qid: &QualifiedId<FunId>,
+        caller_qid: &Option<QualifiedId<FunId>>,
     ) -> bool {
         if let Some(spec_qid) = self.get_spec_by_fun(callee_qid) {
-            if spec_qid == caller_qid {
+            if caller_qid.is_some() && caller_qid.unwrap() == *spec_qid {
                 !self.is_verified_spec(spec_qid)
             } else {
                 !self.omits_opaque(spec_qid)

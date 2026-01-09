@@ -55,15 +55,13 @@ pub fn does_not_abort(
         return true;
     }
 
-    if let Some(caller_env) = caller_env {
-        if !targets.has_target(callee_env, &FunctionVariant::Baseline)
-            && targets.data_bypass_allowed(
-                &callee_env.get_qualified_id(),
-                &caller_env.get_qualified_id(),
-            )
-        {
-            return true; // TODO: ?? true of false (in general opaque is not failing), maybe check spec?
-        }
+    if !targets.has_target(callee_env, &FunctionVariant::Baseline)
+        && targets.data_bypass_allowed(
+            &callee_env.get_qualified_id(),
+            &caller_env.map(|fun_env| fun_env.get_qualified_id()),
+        )
+    {
+        return true; // TODO: ?? true of false (in general opaque is not failing), maybe check spec?
     }
 
     let no_abort_info = targets

@@ -933,7 +933,7 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             {
                                 if self.targets.data_bypass_allowed(
                                     &callee_env.get_qualified_id(),
-                                    &self.func_target.func_env.get_qualified_id(),
+                                    &Some(self.func_target.func_env.get_qualified_id()),
                                 ) {
                                     None
                                 } else {

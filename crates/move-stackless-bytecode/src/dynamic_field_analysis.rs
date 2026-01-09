@@ -364,7 +364,7 @@ fn collect_dynamic_field_info(
                     || (!targets.has_target(&func_env, &FunctionVariant::Baseline)
                         && targets.data_bypass_allowed(
                             fun_id_with_info,
-                            &builder.fun_env.get_qualified_id(),
+                            &Some(builder.fun_env.get_qualified_id()),
                         ))
                 {
                     return None;
@@ -470,7 +470,7 @@ fn compute_uid_info(
                     &fun_target.func_env.module_env.env.get_function(callee_id),
                     &FunctionVariant::Baseline,
                 ) && targets
-                    .data_bypass_allowed(&callee_id, &fun_target.func_env.get_qualified_id())
+                    .data_bypass_allowed(&callee_id, &Some(fun_target.func_env.get_qualified_id()))
                 {
                     return None;
                 }

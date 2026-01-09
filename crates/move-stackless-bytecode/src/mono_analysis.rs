@@ -560,7 +560,7 @@ impl Analyzer<'_> {
                             .has_target(&callee_env, &FunctionVariant::Baseline)
                             && self.targets.data_bypass_allowed(
                                 &callee_env.get_qualified_id(),
-                                &target.func_env.get_qualified_id(),
+                                &Some(target.func_env.get_qualified_id()),
                             )
                         {
                             return;

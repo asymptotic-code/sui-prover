@@ -238,9 +238,10 @@ pub fn collect_spec_global_variable_info(
                     .env
                     .get_function(*fun_id_with_info),
                 &FunctionVariant::Baseline,
-            ) && targets
-                .data_bypass_allowed(fun_id_with_info, &fun_target.func_env.get_qualified_id())
-            {
+            ) && targets.data_bypass_allowed(
+                fun_id_with_info,
+                &Some(fun_target.func_env.get_qualified_id()),
+            ) {
                 return None;
             }
 

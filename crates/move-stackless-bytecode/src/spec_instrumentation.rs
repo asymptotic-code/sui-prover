@@ -907,7 +907,7 @@ fn check_caller_callee_modifies_relation(
         if !targets.has_target(&callee_fun_env, &FunctionVariant::Baseline)
             && targets.data_bypass_allowed(
                 &callee_fun_env.get_qualified_id(),
-                &fun_env.get_qualified_id(),
+                &Some(fun_env.get_qualified_id()),
             )
         {
             continue;
