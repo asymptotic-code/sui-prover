@@ -881,23 +881,31 @@ procedure {:inline 2} {{impl.fun_borrow}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
         v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+        assume $IsValid{{SV}}(v);
     }
 }
 function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}} {
     GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
 }
+
+// This axiom will be a problem if ever some IsValid predicate is unsatisfiable.
+// axiom (forall t: {{Type}}, k: {{K}} :: $IsValid{{SV}}(GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))));
+
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
 procedure {:inline 2} {{impl.fun_borrow_mut}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
+    var v: {{V}};
     enc_k := {{ENC}}(k);
     t := $Dereference(m);
     if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
-        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), GetTable(t->$dynamic_fields{{S}}, enc_k));
+        v := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        assume $IsValid{{SV}}(v);
+        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), v);
         m' := m;
     }
 }
