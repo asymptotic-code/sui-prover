@@ -505,7 +505,7 @@ pub fn add_prelude(
 impl QuantifierHelperInfo {
     fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
         let func_env = env.get_function(info.function);
-        let params_types = func_env.get_parameter_types();
+        let params_types = Type::instantiate_vec(func_env.get_parameter_types(), &info.inst);
 
         let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
             "start: int, end: int".to_string()
@@ -527,7 +527,7 @@ impl QuantifierHelperInfo {
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()
         } else {
-            &func_env.get_return_type(0)
+            &Type::instantiate(&func_env.get_return_type(0), &info.inst)
         };
 
         if func_env.get_parameter_count() > 1 {
