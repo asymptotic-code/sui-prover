@@ -17,6 +17,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -70,7 +75,6 @@ jobs:
 
           # Copy boogie executable and all its dependencies
           cp -r $HOME/.local/temp/sui-prover/* ~/artifact-bundle/boogie/
-          ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
           # Copy Z3 (just the bin directory is needed)
           cp -r "$(brew --prefix z3)/bin" ~/artifact-bundle/z3/
@@ -87,10 +91,9 @@ jobs:
       - name: Verify installation
         run: |
           chmod +x ~/artifact-bundle/bin/sui-prover
-          chmod +x ~/artifact-bundle/bin/boogie
 
           ~/artifact-bundle/bin/sui-prover --version
-          ~/artifact-bundle/bin/boogie /version
+          dotnet ~/artifact-bundle/boogie/BoogieDriver.dll /version
 
   kit-specs:
     needs: build-prover
@@ -167,12 +170,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -183,6 +196,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Run
         run: |
@@ -316,12 +332,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -332,6 +358,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Clone scallop repo
         uses: actions/checkout@v4
@@ -361,12 +390,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -377,6 +416,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Clone cetus repo
         uses: actions/checkout@v4
@@ -406,12 +448,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -422,6 +474,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Clone ika repo
         uses: actions/checkout@v4
