@@ -267,9 +267,10 @@ fn build_implementation_tree(
 
 /// Displays a spec-only call tree to the terminal during verification.
 ///
-/// Shows the specification hierarchy for a single spec, displaying only functions
-/// that have associated specs in the current verification context. This is called
-/// during verification when verbosity level is Debug or higher.
+/// Shows the specification hierarchy for a single spec, displaying:
+/// - First: specs called directly from the spec function itself
+/// - Then: the target function marked with 🎯
+/// - Under the target function: its dependencies
 ///
 /// # Limitations
 /// Unlike `display_spec_hierarchy`, this function only sees specs in the current
@@ -296,21 +297,43 @@ pub fn display_spec_tree_terminal(
 ) {
     let excluded_addresses = get_excluded_addresses();
 
-    let func_env = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
-        env.get_function(*fun_id)
+    // Get the underlying function being verified
+    let fun_id = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
+        *fun_id
     } else {
         return;
     };
+    let func_env = env.get_function(fun_id);
+    let spec_env = env.get_function(*spec_id);
 
+    // Display spec function's dependencies (skipping the target function itself)
     let mut displayed = BTreeSet::new();
     build_spec_only_tree(
         env,
         targets,
-        &func_env,
+        &spec_env,
         "",
         &excluded_addresses,
         &mut displayed,
         spec_id,
+        Some(&fun_id),
+    );
+
+    // Display the target function with 🎯
+    let (branch, next_prefix) = get_tree_branch(true, "");
+    println!("{} 🎯{}", branch, func_env.get_full_name_str());
+
+    // Display the target function's dependencies
+    displayed.clear();
+    build_spec_only_tree(
+        env,
+        targets,
+        &func_env,
+        &next_prefix,
+        &excluded_addresses,
+        &mut displayed,
+        spec_id,
+        None,
     );
 }
 
@@ -325,6 +348,7 @@ pub fn display_spec_tree_terminal(
 /// # Arguments
 /// * `root_spec_id` - The spec being displayed; excluded from the tree
 /// * `displayed` - Set tracking already displayed functions to prevent cycles
+/// * `spec_target_fun_id` - Optional function to skip (used to exclude target function when traversing spec)
 fn build_spec_only_tree(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
@@ -333,11 +357,15 @@ fn build_spec_only_tree(
     excluded_addresses: &[BigUint],
     displayed: &mut BTreeSet<QualifiedId<FunId>>,
     root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
 ) {
     let filtered_calls: Vec<_> = func_env
         .get_called_functions()
         .into_iter()
         .filter(|called_id| {
+            if spec_target_fun_id == Some(called_id) {
+                return false;
+            }
             let called_env = env.get_function(*called_id);
             !is_system_function(&called_env, excluded_addresses)
         })
@@ -387,6 +415,7 @@ fn build_spec_only_tree(
                     excluded_addresses,
                     displayed,
                     root_spec_id,
+                    spec_target_fun_id,
                 );
             }
         } else {
@@ -402,6 +431,7 @@ fn build_spec_only_tree(
                     excluded_addresses,
                     displayed,
                     root_spec_id,
+                    spec_target_fun_id,
                 );
             }
         }
