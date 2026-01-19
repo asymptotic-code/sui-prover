@@ -280,7 +280,7 @@ impl FunctionTargetsHolder {
                 .does_not_abort
     }
 
-    pub fn should_generate_abort_check_2(&self, id: &QualifiedId<FunId>) -> bool {
+    pub fn target_no_abort_check_functions(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets
             .target_no_abort_check_functions()
             .contains(id)

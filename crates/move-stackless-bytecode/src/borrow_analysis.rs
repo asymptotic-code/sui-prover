@@ -928,28 +928,16 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             {
                                 // self recursion (this is because we removed the current target from `self.targets`)
                                 self.func_target.get_annotations().get::<BorrowAnnotation>()
-                            } else if !self
-                                .targets
-                                .has_target(callee_env, &FunctionVariant::Baseline)
-                            {
-                                if self.targets.data_bypass_allowed(
-                                    &callee_env.get_qualified_id(),
-                                    &Some(self.func_target.func_env.get_qualified_id()),
-                                ) {
-                                    None
-                                } else {
-                                    panic!(
-                                        "expected function target: {} -> {} ({:?})",
-                                        self.func_target.func_env.get_full_name_str(),
-                                        callee_env.get_full_name_str(),
-                                        FunctionVariant::Baseline
-                                    );
-                                }
                             } else {
                                 let callee_target = self
                                     .targets
                                     .get_target_opt(callee_env, &FunctionVariant::Baseline)
-                                    .unwrap();
+                                    .expect(&format!(
+                                        "expected function target: {} -> {} ({:?})",
+                                        self.func_target.func_env.get_full_name_str(),
+                                        callee_env.get_full_name_str(),
+                                        FunctionVariant::Baseline
+                                    ));
                                 callee_target.get_annotations().get::<BorrowAnnotation>()
                             };
                             match callee_info {

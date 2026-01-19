@@ -92,7 +92,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         }
 
         if targets.func_abort_check_mode()
-            && targets.should_generate_abort_check_2(&fun_env.get_qualified_id())
+            && targets.target_no_abort_check_functions(&fun_env.get_qualified_id())
         {
             let info = data
                 .annotations
