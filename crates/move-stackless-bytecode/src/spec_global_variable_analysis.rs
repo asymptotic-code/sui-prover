@@ -13,6 +13,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     stackless_bytecode::{Bytecode, Operation},
+    verification_analysis,
 };
 
 /// The environment extension computed by this analysis.
@@ -242,6 +243,10 @@ pub fn collect_spec_global_variable_info(
                 fun_id_with_info,
                 &Some(fun_target.func_env.get_qualified_id()),
             ) {
+                return None;
+            }
+
+            if verification_analysis::get_info(fun_target).shadowed {
                 return None;
             }
 

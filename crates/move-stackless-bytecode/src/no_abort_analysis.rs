@@ -5,6 +5,7 @@ use crate::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     stackless_bytecode::{Bytecode, Operation, PropKind},
+    verification_analysis::VerificationInfo,
 };
 
 #[derive(Clone, Default, Debug)]
@@ -61,7 +62,7 @@ pub fn does_not_abort(
             &caller_env.map(|fun_env| fun_env.get_qualified_id()),
         )
     {
-        return true; // TODO: ?? true of false (in general opaque is not failing), maybe check spec?
+        return true;
     }
 
     let no_abort_info = targets
@@ -92,6 +93,12 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
+        let verification_shadowed = data
+            .annotations
+            .get::<VerificationInfo>()
+            .map(|info| info.shadowed)
+            .unwrap_or(false);
+
         let info = data.annotations.get_or_default_mut::<NoAbortInfo>(true);
 
         let env = fun_env.module_env.env;
@@ -102,7 +109,9 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
             return data;
         }
 
-        if fun_env.is_intrinsic() && env.func_not_aborts(qualified_id).unwrap() {
+        if verification_shadowed
+            || (fun_env.is_intrinsic() && env.func_not_aborts(qualified_id).unwrap())
+        {
             info.does_not_abort = true;
             return data;
         }

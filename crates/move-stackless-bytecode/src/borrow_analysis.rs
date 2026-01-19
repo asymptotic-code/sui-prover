@@ -352,12 +352,11 @@ impl BorrowInfo {
                     }
                 }
             } else {
-                // TODO: add checks here
-                // assert!(
-                //     !callee_env.get_return_type(ret_idx).is_mutable_reference(),
-                //     "inconsistent borrow information: undefined output: {}",
-                //     callee_env.get_full_name_str()
-                // )
+                assert!(
+                    !callee_env.get_return_type(ret_idx).is_mutable_reference(),
+                    "inconsistent borrow information: undefined output: {}",
+                    callee_env.get_full_name_str()
+                )
             }
         }
     }
@@ -467,14 +466,16 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
             }
         }
 
-        // collect all writeback datatypes from all verified or inlined functions
+        // collect all writeback datatypes from all verified, inlined or shadowed functions
         let writeback_datatype_info = WriteBackDatatypeInfo {
             datatypes: targets
                 .get_funs_and_variants()
                 .flat_map(|(fun_id, variant)| targets.get_data(&fun_id, &variant))
                 .filter(|data| {
                     let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
-                    verification_info.verified || verification_info.inlined
+                    verification_info.verified
+                        || verification_info.inlined
+                        || verification_info.shadowed
                 })
                 .flat_map(|data| {
                     data.annotations

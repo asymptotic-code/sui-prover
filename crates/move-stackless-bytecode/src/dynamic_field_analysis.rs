@@ -359,8 +359,9 @@ fn collect_dynamic_field_info(
                     .env
                     .get_function(*fun_id_with_info);
 
-                // native or intrinsic functions do not access dynamic fields
+                // native, shadowed or intrinsic functions do not access dynamic fields
                 if func_env.is_native()
+                    || get_info(&builder.get_target()).shadowed
                     || (!targets.has_target(&func_env, &FunctionVariant::Baseline)
                         && targets.data_bypass_allowed(
                             fun_id_with_info,
@@ -466,11 +467,14 @@ fn compute_uid_info(
                     return None;
                 }
 
-                if !targets.has_target(
-                    &fun_target.func_env.module_env.env.get_function(callee_id),
-                    &FunctionVariant::Baseline,
-                ) && targets
-                    .data_bypass_allowed(&callee_id, &Some(fun_target.func_env.get_qualified_id()))
+                if get_info(fun_target).shadowed
+                    || (!targets.has_target(
+                        &fun_target.func_env.module_env.env.get_function(callee_id),
+                        &FunctionVariant::Baseline,
+                    ) && targets.data_bypass_allowed(
+                        &callee_id,
+                        &Some(fun_target.func_env.get_qualified_id()),
+                    ))
                 {
                     return None;
                 }
@@ -599,7 +603,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
-        if !info.verified && !info.inlined {
+        if !info.verified && !info.inlined && !info.shadowed {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
