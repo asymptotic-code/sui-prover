@@ -11,7 +11,7 @@ fun struct_value(self: &Str1): u64 {
     self.value
 }
 
-#[spec(prove, no_opaque)]
+#[spec(prove)]
 fun struct_value_spec(self: &Str1): u64 {
     let r = struct_value(self);
     r
