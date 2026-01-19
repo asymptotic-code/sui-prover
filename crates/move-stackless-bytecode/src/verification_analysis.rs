@@ -544,13 +544,13 @@ impl VerificationAnalysisProcessor {
     fn mark_callees_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
         let env = fun_env.module_env.env;
 
-        let mut calles = targets
+        let mut callees = targets
             .get_loop_invariants(&fun_env.get_qualified_id())
             .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
             .unwrap_or_default();
-        calles.extend(fun_env.get_called_functions());
+        callees.extend(fun_env.get_called_functions());
 
-        for callee in calles {
+        for callee in callees {
             let callee_env = env.get_function(callee);
             if let Some(spec_id) = targets.get_spec_by_fun(&callee) {
                 let is_verified = targets.is_verified_spec(spec_id);

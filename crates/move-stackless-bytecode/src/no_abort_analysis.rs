@@ -129,7 +129,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
 
         for bytecode in data.code.iter() {
             let aborts = match bytecode {
-                // calles covered upper
+                // callees covered upper
                 Bytecode::Call(_, _, op, _, _) => {
                     op.can_abort() && !matches!(op, Operation::Function { .. })
                 }

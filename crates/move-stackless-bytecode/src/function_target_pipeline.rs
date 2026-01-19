@@ -553,7 +553,7 @@ impl FunctionTargetsHolder {
         caller_qid: &Option<QualifiedId<FunId>>,
     ) -> bool {
         if let Some(spec_qid) = self.get_spec_by_fun(callee_qid) {
-            if caller_qid.is_some() && caller_qid.unwrap() == *spec_qid {
+            if caller_qid.is_some_and(|caller| caller == *spec_qid) {
                 !self.is_verified_spec(spec_qid)
             } else {
                 !self.omits_opaque(spec_qid)
