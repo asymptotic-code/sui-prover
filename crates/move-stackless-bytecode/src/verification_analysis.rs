@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Formatter};
 
 /// The annotation for information about verification.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct VerificationInfo {
     /// Whether the function is target of verification.
     pub verified: bool,
@@ -100,6 +100,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             if !info.inlined {
                 info.verified = true;
                 info.inlined = true;
+                info.shadowed = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -111,6 +112,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.shadowed = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -126,6 +128,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.shadowed = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -448,12 +451,12 @@ impl VerificationAnalysisProcessor {
         let name = fun_env.get_full_name_str();
 
         // Handle ghost functions first (since they're also native)
-        if name.contains("ghost::") {
+        if name.starts_with("ghost::") {
             return true;
         }
 
         // All prover functions are essential
-        if name.contains("prover::") {
+        if name.starts_with("prover::") {
             return true;
         }
 
@@ -488,6 +491,7 @@ impl VerificationAnalysisProcessor {
         if !info.verified {
             info.verified = true;
             info.inlined = true;
+            info.shadowed = false;
             Self::mark_callees_inlined(fun_env, targets);
         }
     }
@@ -499,10 +503,17 @@ impl VerificationAnalysisProcessor {
             let info = data
                 .annotations
                 .get_or_default_mut::<VerificationInfo>(true);
-            if !info.inlined && !info.shadowed {
+            if !info.inlined && !info.shadowed && !info.verified {
                 info.shadowed = true;
             }
-            for calle in fun_env.get_called_functions() {
+
+            let mut callees = targets
+                .get_loop_invariants(&fun_env.get_qualified_id())
+                .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
+                .unwrap_or_default();
+            callees.extend(fun_env.get_called_functions());
+
+            for calle in callees {
                 let callee_env = fun_env.module_env.env.get_function(calle);
                 Self::mark_shadowed(&callee_env, targets);
             }
@@ -523,6 +534,7 @@ impl VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.shadowed = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
         } else {
