@@ -29,8 +29,8 @@ pub struct VerificationInfo {
     /// needed for compilation) even if not verified or inlined.
     pub essential: bool,
 
-    /// Whether the function is shadowed (i.e., a spec underlying function whose body is not used for verification)
-    pub shadowed: bool,
+    /// Whether the function is shadowed but reachable (i.e., a spec underlying function whose body is not used for verification)
+    pub reachable: bool,
 }
 
 /// Get verification information for this function.
@@ -100,7 +100,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             if !info.inlined {
                 info.verified = true;
                 info.inlined = true;
-                info.shadowed = false;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -112,7 +112,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
-                info.shadowed = false;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -128,7 +128,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
-                info.shadowed = false;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -212,7 +212,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             for variant in targets.get_target_variants(&fun_env) {
                 let data = targets.get_data(&fun_id, &variant).unwrap();
                 let info = get_info(&FunctionTarget::new(&fun_env, data));
-                if info.verified || info.inlined || info.essential || info.shadowed {
+                if info.verified || info.inlined || info.essential || info.reachable {
                     functions_to_keep.insert(fun_id);
                     break;
                 }
@@ -491,20 +491,20 @@ impl VerificationAnalysisProcessor {
         if !info.verified {
             info.verified = true;
             info.inlined = true;
-            info.shadowed = false;
+            info.reachable = false;
             Self::mark_callees_inlined(fun_env, targets);
         }
     }
 
-    fn mark_shadowed(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
-        // Marking spec underlying function as shadowed. Logically they are not used, but we need them for borrow analysis.
+    fn mark_reachable(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
+        // Marking spec underlying function as reachable. Logically they are not used, but we need them for borrow analysis.
         let variant = FunctionVariant::Baseline;
         if let Some(data) = targets.get_data_mut(&fun_env.get_qualified_id(), &variant) {
             let info = data
                 .annotations
                 .get_or_default_mut::<VerificationInfo>(true);
-            if !info.inlined && !info.shadowed && !info.verified {
-                info.shadowed = true;
+            if !info.inlined && !info.reachable && !info.verified {
+                info.reachable = true;
             }
 
             let mut callees = targets
@@ -515,7 +515,7 @@ impl VerificationAnalysisProcessor {
 
             for calle in callees {
                 let callee_env = fun_env.module_env.env.get_function(calle);
-                Self::mark_shadowed(&callee_env, targets);
+                Self::mark_reachable(&callee_env, targets);
             }
         }
     }
@@ -534,7 +534,7 @@ impl VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
-                info.shadowed = false;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
         } else {
@@ -569,7 +569,7 @@ impl VerificationAnalysisProcessor {
                 let no_opaque = targets.omits_opaque(spec_id);
                 Self::mark_inlined(&env.get_function(*spec_id), targets);
                 if !is_verified && !no_opaque {
-                    Self::mark_shadowed(&callee_env, targets);
+                    Self::mark_reachable(&callee_env, targets);
                     continue;
                 }
             }

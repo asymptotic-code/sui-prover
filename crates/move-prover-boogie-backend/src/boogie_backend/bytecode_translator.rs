@@ -309,12 +309,12 @@ impl<'env> BoogieTranslator<'env> {
                 let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
                 emitln!(
                     writer,
-                    "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+                    "function {{:inline}} {}(obj: {}): $2_object_UID {{",
                     param_object_borrow_uid_fun_name,
                     param_type
                 );
                 writer.indent();
-                emitln!(writer, "res := obj->$id;");
+                emitln!(writer, "obj->$id");
                 writer.unindent();
                 emitln!(writer, "}");
             } else {
@@ -1504,12 +1504,12 @@ impl<'env> StructTranslator<'env> {
         );
         emitln!(
             self.parent.writer,
-            "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
+            "function {{:inline}} {}(obj: {}): $2_object_UID {{",
             object_borrow_uid_fun_name,
             boogie_struct_name(self.struct_env, self.type_inst),
         );
         self.parent.writer.indent();
-        emitln!(self.parent.writer, "res := obj->$id;");
+        emitln!(self.parent.writer, "obj->$id");
         self.parent.writer.unindent();
         emitln!(self.parent.writer, "}");
     }
@@ -2716,8 +2716,8 @@ impl<'env> FunctionTranslator<'env> {
                 And => Some(("&&", 2)),
                 Or => Some(("||", 2)),
                 Not => Some(("!", 1)),
-                BitAnd => Some(("$And", 2)),
-                BitOr => Some(("$Or", 2)),
+                BitAnd => Some(("$andInt", 2)),
+                BitOr => Some(("$orInt", 2)),
                 Shl => Some(("$shl", 2)),
                 Shr => Some(("$shr", 2)),
                 _ => None,
@@ -2834,22 +2834,11 @@ impl<'env> FunctionTranslator<'env> {
                                         | Operation::Shr
                                 );
                                 if is_func_op {
-                                    let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
-                                    // For bitwise operations, we need to add type suffix
-                                    if matches!(op, Operation::BitAnd | Operation::BitOr) {
-                                        let type_suffix = match &fun_target.get_local_type(*dest) {
-                                            Type::Primitive(PrimitiveType::U8) => "'Bv8'",
-                                            Type::Primitive(PrimitiveType::U16) => "'Bv16'",
-                                            Type::Primitive(PrimitiveType::U32) => "'Bv32'",
-                                            Type::Primitive(PrimitiveType::U64) => "'Bv64'",
-                                            Type::Primitive(PrimitiveType::U128) => "'Bv128'",
-                                            Type::Primitive(PrimitiveType::U256) => "'Bv256'",
-                                            _ => "",
-                                        };
-                                        format!("{}{}({})", sym, type_suffix, args)
-                                    } else {
-                                        format!("{}({})", sym, args)
-                                    }
+                                    format!(
+                                        "{}({})",
+                                        sym,
+                                        srcs.iter().map(|s| fmt_temp(*s)).join(", ")
+                                    )
                                 } else if arity == 1 {
                                     format!("({}{})", sym, fmt_temp(srcs[0]))
                                 } else {

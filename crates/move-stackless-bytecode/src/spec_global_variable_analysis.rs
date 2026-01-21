@@ -232,21 +232,7 @@ pub fn collect_spec_global_variable_info(
                 return None;
             }
 
-            if !targets.has_target(
-                &fun_target
-                    .func_env
-                    .module_env
-                    .env
-                    .get_function(*fun_id_with_info),
-                &FunctionVariant::Baseline,
-            ) && targets.data_bypass_allowed(
-                fun_id_with_info,
-                &Some(fun_target.func_env.get_qualified_id()),
-            ) {
-                return None;
-            }
-
-            if verification_analysis::get_info(fun_target).shadowed {
+            if verification_analysis::get_info(fun_target).reachable {
                 return None;
             }
 

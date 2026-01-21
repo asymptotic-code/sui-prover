@@ -466,7 +466,7 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
             }
         }
 
-        // collect all writeback datatypes from all verified, inlined or shadowed functions
+        // collect all writeback datatypes from all verified, inlined or reachable functions
         let writeback_datatype_info = WriteBackDatatypeInfo {
             datatypes: targets
                 .get_funs_and_variants()
@@ -475,7 +475,7 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
                     let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
                     verification_info.verified
                         || verification_info.inlined
-                        || verification_info.shadowed
+                        || verification_info.reachable
                 })
                 .flat_map(|data| {
                     data.annotations

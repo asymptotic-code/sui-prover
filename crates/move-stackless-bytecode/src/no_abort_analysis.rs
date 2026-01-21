@@ -56,15 +56,6 @@ pub fn does_not_abort(
         return true;
     }
 
-    if !targets.has_target(callee_env, &FunctionVariant::Baseline)
-        && targets.data_bypass_allowed(
-            &callee_env.get_qualified_id(),
-            &caller_env.map(|fun_env| fun_env.get_qualified_id()),
-        )
-    {
-        return true;
-    }
-
     let no_abort_info = targets
         .get_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline);
     let use_no_abort_spec = targets.get_spec_by_fun(&callee_env.get_qualified_id())
@@ -96,7 +87,7 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         let verification_shadowed = data
             .annotations
             .get::<VerificationInfo>()
-            .map(|info| info.shadowed)
+            .map(|info| info.reachable)
             .unwrap_or(false);
 
         let info = data.annotations.get_or_default_mut::<NoAbortInfo>(true);
