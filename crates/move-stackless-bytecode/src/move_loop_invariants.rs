@@ -122,7 +122,7 @@ impl MoveLoopInvariantsProcessor {
             let inv_env = env.get_function(*qid);
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-            if !no_abort_analysis::get_info(inv_data).does_not_abort
+            if !no_abort_analysis::does_not_abort(targets, &inv_env, Some(func_env))
                 && !targets.is_function_with_abort_check(&qid)
             {
                 env.diag(

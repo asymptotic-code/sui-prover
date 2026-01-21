@@ -456,11 +456,9 @@ fn compute_uid_info(
                 if !dests.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
-                if callee_id == fun_target.global_env().type_inv_qid() {
-                    return None;
-                }
-
-                if get_info(fun_target).reachable {
+                if get_info(fun_target).reachable
+                    || callee_id == fun_target.global_env().type_inv_qid()
+                {
                     return None;
                 }
 

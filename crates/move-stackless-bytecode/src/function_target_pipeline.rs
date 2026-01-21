@@ -610,6 +610,18 @@ impl FunctionTargetsHolder {
             ))
     }
 
+    pub fn has_annotation<T: Any>(
+        &self,
+        id: &QualifiedId<FunId>,
+        variant: &FunctionVariant,
+    ) -> bool {
+        self.get_data(id, variant)
+            .expect("function data not found")
+            .annotations
+            .get::<T>()
+            .is_some()
+    }
+
     /// Processes the function target data for given function.
     fn process(
         &mut self,
