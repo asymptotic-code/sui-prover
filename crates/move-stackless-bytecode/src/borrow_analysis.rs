@@ -473,9 +473,7 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
                 .flat_map(|(fun_id, variant)| targets.get_data(&fun_id, &variant))
                 .filter(|data| {
                     let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
-                    verification_info.verified
-                        || verification_info.inlined
-                        || verification_info.reachable
+                    verification_info.accessible()
                 })
                 .flat_map(|data| {
                     data.annotations

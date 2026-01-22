@@ -107,7 +107,7 @@ impl MonoInfo {
                 if mids.contains(&fun_qid.module_id) {
                     if let Some(target) = targets.get_target_opt(&fun, &FunctionVariant::Baseline) {
                         let info = verification_analysis::get_info(&target);
-                        if info.inlined || info.reachable {
+                        if info.accessible() {
                             return true;
                         }
                     }
@@ -130,7 +130,7 @@ impl MonoInfo {
                     targets.get_target_opt(&env.get_function(*fun_qid), &FunctionVariant::Baseline)
                 {
                     let info = verification_analysis::get_info(&target);
-                    info.inlined || info.reachable
+                    info.accessible()
                 } else {
                     false
                 }

@@ -208,6 +208,20 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
+    // Generate object::borrow_uid function
+    fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
+        emitln!(
+            self.writer,
+            "function {{:inline}} $2_object_borrow_uid'{}'(obj: {}): $2_object_UID {{",
+            suffix,
+            obj_name,
+        );
+        self.writer.indent();
+        emitln!(self.writer, "obj->$id");
+        self.writer.unindent();
+        emitln!(self.writer, "}");
+    }
+
     pub fn translate(&mut self) {
         let writer = self.writer;
         let env = self.env;
@@ -305,18 +319,7 @@ impl<'env> BoogieTranslator<'env> {
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
 
-                // Generate object::borrow_uid function for type parameter with uid field
-                let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
-                emitln!(
-                    writer,
-                    "function {{:inline}} {}(obj: {}): $2_object_UID {{",
-                    param_object_borrow_uid_fun_name,
-                    param_type
-                );
-                writer.indent();
-                emitln!(writer, "obj->$id");
-                writer.unindent();
-                emitln!(writer, "}");
+                self.translate_object_borrow_uid(&suffix, &param_type);
             } else {
                 emitln!(writer, "type {};", param_type);
             }
@@ -1491,27 +1494,17 @@ impl<'env> StructTranslator<'env> {
             return;
         }
 
-        let object_borrow_uid_fun_name = format!(
-            "$2_object_borrow_uid'{}'",
-            boogie_type_suffix(
+        self.parent.translate_object_borrow_uid(
+            &boogie_type_suffix(
                 self.parent.env,
                 &Type::Datatype(
                     self.struct_env.module_env.get_id(),
                     self.struct_env.get_id(),
-                    self.type_inst.to_vec()
-                )
-            )
+                    self.type_inst.to_vec(),
+                ),
+            ),
+            &boogie_struct_name(self.struct_env, self.type_inst),
         );
-        emitln!(
-            self.parent.writer,
-            "function {{:inline}} {}(obj: {}): $2_object_UID {{",
-            object_borrow_uid_fun_name,
-            boogie_struct_name(self.struct_env, self.type_inst),
-        );
-        self.parent.writer.indent();
-        emitln!(self.parent.writer, "obj->$id");
-        self.parent.writer.unindent();
-        emitln!(self.parent.writer, "}");
     }
 
     fn translate_opaque(&self) {

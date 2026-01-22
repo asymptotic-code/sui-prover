@@ -5,7 +5,7 @@ use crate::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     stackless_bytecode::{Bytecode, Operation, PropKind},
-    verification_analysis::VerificationInfo,
+    verification_analysis::{self, VerificationInfo},
 };
 
 #[derive(Clone, Default, Debug)]
@@ -39,6 +39,15 @@ pub fn does_not_abort(
     callee_env: &FunctionEnv,
     caller_env: Option<&FunctionEnv>,
 ) -> bool {
+    if targets
+        .get_target_opt(&callee_env, &FunctionVariant::Baseline)
+        .map_or(false, |target| {
+            verification_analysis::get_info(&target).reachable
+        })
+    {
+        return true; // not effect result
+    }
+
     if callee_env.is_native() {
         return callee_env
             .module_env
@@ -56,18 +65,9 @@ pub fn does_not_abort(
         return true;
     }
 
-    let does_not_abort = if targets
-        .has_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline)
-    {
-        targets
-            .get_annotation::<NoAbortInfo>(
-                &callee_env.get_qualified_id(),
-                &FunctionVariant::Baseline,
-            )
-            .does_not_abort
-    } else {
-        true
-    };
+    let does_not_abort = targets
+        .get_annotation::<NoAbortInfo>(&callee_env.get_qualified_id(), &FunctionVariant::Baseline)
+        .does_not_abort;
     let use_no_abort_spec = targets.get_spec_by_fun(&callee_env.get_qualified_id())
         != caller_env
             .map(|fun_env| fun_env.get_qualified_id())
@@ -116,6 +116,12 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
         }
 
         for callee in fun_env.get_called_functions() {
+            if let Some(spec_id) = targets.get_spec_by_fun(&callee) {
+                if !targets.is_verified_spec(spec_id) && !targets.omits_opaque(spec_id) {
+                    continue;
+                }
+            }
+
             if !does_not_abort(
                 targets,
                 &fun_env.module_env.env.get_function(callee),

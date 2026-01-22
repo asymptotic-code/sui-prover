@@ -33,6 +33,12 @@ pub struct VerificationInfo {
     pub reachable: bool,
 }
 
+impl VerificationInfo {
+    pub fn accessible(&self) -> bool {
+        self.verified || self.inlined || self.reachable
+    }
+}
+
 /// Get verification information for this function.
 pub fn get_info(target: &FunctionTarget<'_>) -> VerificationInfo {
     target

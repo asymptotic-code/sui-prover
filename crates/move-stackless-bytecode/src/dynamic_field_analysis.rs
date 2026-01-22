@@ -586,7 +586,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
-        if !info.verified && !info.inlined && !info.reachable {
+        if !info.accessible() {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }
