@@ -280,6 +280,12 @@ impl FunctionTargetsHolder {
                 .does_not_abort
     }
 
+    pub fn target_no_abort_check_functions(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets
+            .target_no_abort_check_functions()
+            .contains(id)
+    }
+
     pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.pure_functions().contains(id)
     }

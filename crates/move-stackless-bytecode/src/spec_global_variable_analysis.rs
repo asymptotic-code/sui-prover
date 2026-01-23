@@ -13,6 +13,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     stackless_bytecode::{Bytecode, Operation},
+    verification_analysis,
 };
 
 /// The environment extension computed by this analysis.
@@ -191,12 +192,22 @@ pub fn collect_spec_global_variable_info(
     fun_target: &FunctionTarget,
     code: &[Bytecode],
 ) -> SpecGlobalVariableInfo {
+    if verification_analysis::get_info(fun_target).reachable {
+        return SpecGlobalVariableInfo {
+            imm_vars: BTreeSet::new(),
+            mut_vars: BTreeSet::new(),
+            imm_vars_locs: BTreeMap::new(),
+            mut_vars_locs: BTreeMap::new(),
+        };
+    }
     let infos_iter = code.iter().filter_map(|bc| match bc {
         Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), _, _) => {
             let callee_id = module_id.qualified(*fun_id);
             let loc = fun_target.get_bytecode_loc(bc.get_attr_id());
 
-            if callee_id == fun_target.func_env.get_qualified_id() {
+            if callee_id == fun_target.func_env.get_qualified_id()
+                || verification_analysis::get_info(fun_target).reachable
+            {
                 return None;
             }
 

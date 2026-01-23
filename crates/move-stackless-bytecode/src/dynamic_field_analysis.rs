@@ -353,14 +353,14 @@ fn collect_dynamic_field_info(
                     .get_callee_spec_qid(&builder.fun_env.get_qualified_id(), &callee_id)
                     .unwrap_or(&callee_id);
 
-                // native or intrinsic functions do not access dynamic fields
-                if builder
+                let func_env = builder
                     .fun_env
                     .module_env
                     .env
-                    .get_function(*fun_id_with_info)
-                    .is_native()
-                {
+                    .get_function(*fun_id_with_info);
+
+                // native, reachable or intrinsic functions do not access dynamic fields
+                if func_env.is_native() || get_info(&builder.get_target()).reachable {
                     return None;
                 }
 
@@ -369,12 +369,7 @@ fn collect_dynamic_field_info(
                     .map(|data| get_fun_info(data))
                     .expect(&format!(
                         "callee `{}` of `{}` was filtered out",
-                        builder
-                            .fun_env
-                            .module_env
-                            .env
-                            .get_function(*fun_id_with_info)
-                            .get_full_name_str(),
+                        func_env.get_full_name_str(),
                         builder.fun_env.get_full_name_str()
                     ));
                 Some(info.instantiate(type_inst))
@@ -461,7 +456,9 @@ fn compute_uid_info(
                 if !dests.is_empty() =>
             {
                 let callee_id = mid.qualified(*fid);
-                if callee_id == fun_target.global_env().type_inv_qid() {
+                if get_info(fun_target).reachable
+                    || callee_id == fun_target.global_env().type_inv_qid()
+                {
                     return None;
                 }
 
@@ -589,7 +586,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         }
 
         let info = get_info(&FunctionTarget::new(&fun_env, &data));
-        if !info.verified && !info.inlined && !info.reachable {
+        if !info.accessible() {
             data.annotations.set(DynamicFieldInfo::new(), true);
             return data;
         }

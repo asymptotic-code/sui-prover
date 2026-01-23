@@ -19,6 +19,7 @@ use crate::{
     move_loop_invariants, spec_global_variable_analysis,
     stackless_bytecode::{Bytecode, HavocKind, Label, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
+    verification_analysis::VerificationInfo,
 };
 
 /// A fat-loop captures the information of one or more natural loops that share the same loop
@@ -76,7 +77,13 @@ impl FunctionTargetProcessor for LoopAnalysisProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if func_env.is_native() {
+        if func_env.is_native()
+            || data
+                .annotations
+                .get::<VerificationInfo>()
+                .map(|info| info.reachable)
+                .unwrap_or(false)
+        {
             return data;
         }
         let loop_annotation = Self::build_loop_annotation(targets, func_env, &data);
