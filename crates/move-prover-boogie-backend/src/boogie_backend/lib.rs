@@ -170,6 +170,7 @@ pub fn add_prelude(
     targets: &FunctionTargetsHolder,
     options: &BoogieOptions,
     writer: &CodeWriter,
+    extra_bpl_contents: &[&str],
 ) -> anyhow::Result<()> {
     emit!(writer, "\n// ** Expanded prelude\n\n");
     let templ = |name: &'static str, cont: &[u8]| (name, String::from_utf8_lossy(cont).to_string());
@@ -495,8 +496,17 @@ pub fn add_prelude(
 
     if let Some(path) = &options.prelude_extra {
         if let Ok(content) = fs::read_to_string(path) {
+            emitln!(writer, "\n// ** Extra BPL from prelude_extra option\n");
             emitln!(writer, &content);
         }
+    }
+
+    for content in extra_bpl_contents {
+        emitln!(
+            writer,
+            "\n// ** Extra BPL from #[spec] or #[spec_only] attribute\n"
+        );
+        emitln!(writer, content);
     }
 
     Ok(())

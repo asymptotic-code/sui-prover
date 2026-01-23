@@ -13,7 +13,11 @@ use move_model::{
     ast::ModuleName,
     model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
@@ -40,6 +44,8 @@ pub struct PackageTargets {
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
     function_external_attributes:
         BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
+    module_extra_bpl: BTreeMap<ModuleId, String>,
+    function_extra_bpl: BTreeMap<QualifiedId<FunId>, String>,
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
@@ -66,6 +72,8 @@ impl PackageTargets {
             loop_invariants: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
             function_external_attributes: BTreeMap::new(),
+            module_extra_bpl: BTreeMap::new(),
+            function_extra_bpl: BTreeMap::new(),
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
@@ -304,6 +312,7 @@ impl PackageTargets {
             explicit_spec_modules: _,
             explicit_specs: _,
             axiom,
+            extra_bpl,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -317,6 +326,16 @@ impl PackageTargets {
 
             if *axiom {
                 self.axiom_functions.insert(func_env.get_qualified_id());
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                env,
+                &func_env.get_loc(),
+                func_env.module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.function_extra_bpl
+                    .insert(func_env.get_qualified_id(), content);
             }
 
             if let Some(loop_inv) = loop_inv {
@@ -380,6 +399,7 @@ impl PackageTargets {
             timeout,
             explicit_spec_modules,
             explicit_specs,
+            extra_bpl,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -406,6 +426,16 @@ impl PackageTargets {
             if let Some(timeout) = timeout {
                 self.spec_timeouts
                     .insert(func_env.get_qualified_id(), *timeout);
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                env,
+                &func_env.get_loc(),
+                func_env.module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.function_extra_bpl
+                    .insert(func_env.get_qualified_id(), content);
             }
 
             if *no_opaque {
@@ -659,6 +689,66 @@ impl PackageTargets {
         Some(result)
     }
 
+    fn validate_and_read_extra_bpl(
+        env: &GlobalEnv,
+        loc: &move_model::model::Loc,
+        source_path: &std::ffi::OsStr,
+        extra_bpl: &Option<String>,
+    ) -> Option<String> {
+        if let Some(path_str) = extra_bpl {
+            let extra_path = Path::new(path_str);
+
+            if extra_path.extension().map_or(true, |ext| ext != "bpl") {
+                env.diag(
+                    Severity::Error,
+                    loc,
+                    &format!("extra_bpl path must have .bpl extension: '{}'", path_str),
+                );
+                return None;
+            }
+
+            let resolved_path = if extra_path.is_absolute() {
+                extra_path.to_path_buf()
+            } else {
+                Path::new(source_path)
+                    .parent()
+                    .map(|p| p.join(extra_path))
+                    .unwrap_or_else(|| extra_path.to_path_buf())
+            };
+
+            if !resolved_path.exists() {
+                env.diag(
+                    Severity::Error,
+                    loc,
+                    &format!(
+                        "extra_bpl path does not exist: '{}' (resolved to '{}')",
+                        path_str,
+                        resolved_path.display()
+                    ),
+                );
+                return None;
+            }
+
+            match fs::read_to_string(&resolved_path) {
+                Ok(content) => Some(content),
+                Err(err) => {
+                    env.diag(
+                        Severity::Error,
+                        loc,
+                        &format!(
+                            "failed to read extra_bpl file '{}': {}",
+                            resolved_path.display(),
+                            err
+                        ),
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
@@ -666,6 +756,7 @@ impl PackageTargets {
             axiom: _,
             explicit_spec_modules,
             explicit_specs,
+            extra_bpl,
         })) = module_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -678,6 +769,15 @@ impl PackageTargets {
             ) {
                 self.module_external_attributes
                     .insert(module_env.get_id(), attrs);
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                module_env.env,
+                &module_env.get_loc(),
+                module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.module_extra_bpl.insert(module_env.get_id(), content);
             }
         }
     }
@@ -795,5 +895,13 @@ impl PackageTargets {
         &self,
     ) -> &BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>> {
         &self.loop_invariants
+    }
+
+    pub fn get_module_extra_bpl(&self, module_id: &ModuleId) -> Option<&String> {
+        self.module_extra_bpl.get(module_id)
+    }
+
+    pub fn get_function_extra_bpl(&self, func_id: &QualifiedId<FunId>) -> Option<&String> {
+        self.function_extra_bpl.get(func_id)
     }
 }
