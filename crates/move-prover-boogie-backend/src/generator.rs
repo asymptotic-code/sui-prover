@@ -224,7 +224,30 @@ async fn run_prover_abort_check<W: WriteColor>(
     let file_name = "funs_abort_check";
     println!("🔄 {file_name}");
 
-    let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check, &[])?;
+    let mut extra_bpl_contents: Vec<&str> = Vec::new();
+    let mut seen_modules = std::collections::BTreeSet::new();
+    for qid in package_targets
+        .abort_check_functions()
+        .iter()
+        .chain(package_targets.pure_functions().iter())
+    {
+        if let Some(content) = package_targets.get_function_extra_bpl(qid) {
+            extra_bpl_contents.push(content.as_str());
+        }
+        if seen_modules.insert(qid.module_id) {
+            if let Some(content) = package_targets.get_module_extra_bpl(&qid.module_id) {
+                extra_bpl_contents.push(content.as_str());
+            }
+        }
+    }
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &targets,
+        AssertsMode::Check,
+        &extra_bpl_contents,
+    )?;
     check_errors(
         env,
         &options,
