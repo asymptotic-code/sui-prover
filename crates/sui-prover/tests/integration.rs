@@ -73,6 +73,24 @@ integration-test = "0x9"
     // Copy the file
     copy(file_path, &new_file_path).unwrap();
 
+    // Copy any .bpl files in the same directory (for extra_bpl attribute tests)
+    // The extra_bpl path is resolved relative to the source file's directory
+    if let Some(parent) = file_path.parent() {
+        let full_parent = Path::new(env!("CARGO_MANIFEST_DIR")).join(parent);
+        if let Ok(entries) = std::fs::read_dir(&full_parent) {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                if entry_path.extension().map_or(false, |ext| ext == "bpl") {
+                    let bpl_dest = new_file_path
+                        .parent()
+                        .unwrap()
+                        .join(entry_path.file_name().unwrap());
+                    copy(&entry_path, &bpl_dest).ok();
+                }
+            }
+        }
+    }
+
     // Check if this is a conditionals test
     let is_conditionals_test = file_path
         .components()

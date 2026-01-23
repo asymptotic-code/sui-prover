@@ -224,7 +224,7 @@ async fn run_prover_abort_check<W: WriteColor>(
     let file_name = "funs_abort_check";
     println!("🔄 {file_name}");
 
-    let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check)?;
+    let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check, &[])?;
     check_errors(
         env,
         &options,
@@ -287,7 +287,21 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
+    let mut extra_bpl_contents: Vec<&str> = Vec::new();
+    if let Some(content) = package_targets.get_function_extra_bpl(qid) {
+        extra_bpl_contents.push(content.as_str());
+    }
+    if let Some(content) = package_targets.get_module_extra_bpl(&qid.module_id) {
+        extra_bpl_contents.push(content.as_str());
+    }
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &mut targets,
+        asserts_mode,
+        &extra_bpl_contents,
+    )?;
 
     check_errors(
         env,
@@ -333,7 +347,19 @@ fn generate_module_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
+    let extra_bpl_contents: Vec<&str> = package_targets
+        .get_module_extra_bpl(mid)
+        .into_iter()
+        .map(|s| s.as_str())
+        .collect();
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &mut targets,
+        asserts_mode,
+        &extra_bpl_contents,
+    )?;
 
     check_errors(
         env,
@@ -577,10 +603,11 @@ pub fn generate_boogie(
     options: &Options,
     targets: &FunctionTargetsHolder,
     asserts_mode: AssertsMode,
+    extra_bpl_contents: &[&str],
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
-    add_prelude(env, targets, &options.backend, &writer)?;
+    add_prelude(env, targets, &options.backend, &writer, extra_bpl_contents)?;
     let mut translator = BoogieTranslator::new(
         env,
         &options.backend,
