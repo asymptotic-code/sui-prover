@@ -205,9 +205,7 @@ pub fn collect_spec_global_variable_info(
             let callee_id = module_id.qualified(*fun_id);
             let loc = fun_target.get_bytecode_loc(bc.get_attr_id());
 
-            if callee_id == fun_target.func_env.get_qualified_id()
-                || verification_analysis::get_info(fun_target).reachable
-            {
+            if callee_id == fun_target.func_env.get_qualified_id() {
                 return None;
             }
 
