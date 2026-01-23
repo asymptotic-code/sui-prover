@@ -442,7 +442,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             qid,
-                            AssertsMode::Assume,
+                            AssertsMode::Check,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -458,7 +458,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             qid,
-                            AssertsMode::Check,
+                            AssertsMode::Assume,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -479,7 +479,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             mid,
-                            AssertsMode::Assume,
+                            AssertsMode::Check,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -495,7 +495,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             mid,
-                            AssertsMode::Check,
+                            AssertsMode::Assume,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
