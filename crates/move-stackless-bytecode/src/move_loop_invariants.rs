@@ -19,7 +19,7 @@ use crate::{
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
     helpers::loop_helpers::find_loops_headers,
     no_abort_analysis,
-    stackless_bytecode::{AttrId, Bytecode, Label, Operation},
+    stackless_bytecode::{AttrId, Bytecode, Label, Operation}, verification_analysis::VerificationInfo,
 };
 
 pub struct MoveLoopInvariantsProcessor {}
@@ -45,7 +45,12 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if func_env.is_native() {
+        if func_env.is_native() || data
+            .annotations
+            .get::<VerificationInfo>()
+            .map(|info| info.reachable)
+            .unwrap_or(false)
+        {
             return data;
         }
 
@@ -122,7 +127,7 @@ impl MoveLoopInvariantsProcessor {
             let inv_env = env.get_function(*qid);
             let inv_data = targets.get_data(&qid, &FunctionVariant::Baseline).unwrap();
 
-            if !no_abort_analysis::does_not_abort(targets, &inv_env, Some(func_env))
+            if !no_abort_analysis::get_info(inv_data).does_not_abort
                 && !targets.is_function_with_abort_check(&qid)
             {
                 env.diag(

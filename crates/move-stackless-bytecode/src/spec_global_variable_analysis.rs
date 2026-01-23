@@ -192,6 +192,14 @@ pub fn collect_spec_global_variable_info(
     fun_target: &FunctionTarget,
     code: &[Bytecode],
 ) -> SpecGlobalVariableInfo {
+    if verification_analysis::get_info(fun_target).reachable {
+        return SpecGlobalVariableInfo {
+            imm_vars: BTreeSet::new(),
+            mut_vars: BTreeSet::new(),
+            imm_vars_locs: BTreeMap::new(),
+            mut_vars_locs: BTreeMap::new(),
+        };
+    }
     let infos_iter = code.iter().filter_map(|bc| match bc {
         Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), _, _) => {
             let callee_id = module_id.qualified(*fun_id);
