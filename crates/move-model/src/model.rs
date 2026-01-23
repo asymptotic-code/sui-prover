@@ -1634,6 +1634,7 @@ impl GlobalEnv {
 
     // vec_map struct name
     const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
+    const VEC_MAP_ENTRY_STRUCT_NAME: &'static str = "Entry";
 
     // table_vec struct name
     const TABLE_VEC_STRUCT_NAME: &'static str = "TableVec";
@@ -2390,6 +2391,10 @@ impl GlobalEnv {
         self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_STRUCT_NAME)
     }
 
+    pub fn vec_map_entry_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_ENTRY_STRUCT_NAME)
+    }
+
     // vec_map intrinsic functions
     pub fn vec_map_get_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_GET_FUNCTION_NAME)
@@ -3067,13 +3072,6 @@ impl GlobalEnv {
         )
     }
 
-    // sui::object native function QIDs
-    pub fn sui_object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::OBJECT_MODULE_NAME,
-            Self::OBJECT_BORROW_UID_FUNCTION_NAME,
-        )
-    }
     pub fn sui_object_delete_impl_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_FUNCTION_NAME)
     }
@@ -3597,7 +3595,7 @@ impl GlobalEnv {
                 // sui::types native functions
                 self.sui_types_is_one_time_witness_qid(),
                 // sui::object native functions
-                self.sui_object_borrow_uid_qid(),
+                self.object_borrow_uid_qid(),
                 self.sui_object_delete_impl_qid(),
                 self.sui_object_record_new_uid_qid(),
                 // sui::dynamic_field native functions
@@ -3851,7 +3849,7 @@ impl GlobalEnv {
                 // sui::types native functions
                 self.sui_types_is_one_time_witness_qid(),
                 // sui::object native functions
-                self.sui_object_borrow_uid_qid(),
+                self.object_borrow_uid_qid(),
                 self.sui_object_delete_impl_qid(),
                 self.sui_object_record_new_uid_qid(),
                 // sui::crypto::hash native functions
@@ -4032,6 +4030,7 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_length_qid(),
             self.object_table_contains_qid(),
+            self.object_borrow_uid_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)

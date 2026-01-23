@@ -167,9 +167,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.15.3"
+version = "1.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e84ce723ab67259cfeb9877c6a639ee9eb7a27b28123abd71db7f0d5d0cc9d86"
+checksum = "7b7b6141e96a8c160799cc2d5adecd5cbbe5054cb8c7c4af53da0f83bb7ad256"
 dependencies = [
  "aws-lc-sys",
  "zeroize",
@@ -177,9 +177,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.36.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a442ece363113bd4bd4c8b18977a7798dd4d3c3383f34fb61936960e8f4ad8"
+checksum = "5c34dda4df7017c8db52132f0f8a2e0f8161649d15723ed63fc00c82d0f2081a"
 dependencies = [
  "cc",
  "cmake",
@@ -842,7 +842,7 @@ dependencies = [
 [[package]]
 name = "enum-compat-util"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "serde_yaml",
 ]
@@ -1395,7 +1395,7 @@ dependencies = [
  "hyper 1.8.1",
  "libc",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tokio",
  "tower-service",
  "tracing",
@@ -1965,17 +1965,17 @@ dependencies = [
 [[package]]
 name = "move-abstract-interpreter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 
 [[package]]
 name = "move-abstract-stack"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 
 [[package]]
 name = "move-binary-format"
 version = "0.0.3"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "enum-compat-util",
@@ -1991,12 +1991,12 @@ dependencies = [
 [[package]]
 name = "move-borrow-graph"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 
 [[package]]
 name = "move-bytecode-source-map"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2012,7 +2012,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-utils"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "indexmap 2.13.0",
@@ -2025,7 +2025,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "move-abstract-interpreter",
  "move-abstract-stack",
@@ -2041,7 +2041,7 @@ dependencies = [
 [[package]]
 name = "move-bytecode-verifier-meter"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -2051,7 +2051,7 @@ dependencies = [
 [[package]]
 name = "move-command-line-common"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2072,7 +2072,7 @@ dependencies = [
 [[package]]
 name = "move-compiler"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2108,7 +2108,7 @@ dependencies = [
 [[package]]
 name = "move-core-types"
 version = "0.0.4"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2133,7 +2133,7 @@ dependencies = [
 [[package]]
 name = "move-coverage"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2158,7 +2158,7 @@ dependencies = [
 [[package]]
 name = "move-disassembler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2179,7 +2179,7 @@ dependencies = [
 [[package]]
 name = "move-docgen"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "clap",
@@ -2202,7 +2202,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "codespan-reporting",
@@ -2220,7 +2220,7 @@ dependencies = [
 [[package]]
 name = "move-ir-to-bytecode-syntax"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "hex",
@@ -2233,7 +2233,7 @@ dependencies = [
 [[package]]
 name = "move-ir-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "hex",
  "move-command-line-common",
@@ -2271,7 +2271,7 @@ dependencies = [
 [[package]]
 name = "move-model"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "codespan",
@@ -2296,7 +2296,7 @@ dependencies = [
 [[package]]
 name = "move-model-2"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "bcs",
@@ -2320,7 +2320,7 @@ dependencies = [
 [[package]]
 name = "move-package"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "clap",
@@ -2357,7 +2357,7 @@ dependencies = [
 [[package]]
 name = "move-proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "enum-compat-util",
  "quote",
@@ -2416,7 +2416,7 @@ dependencies = [
 [[package]]
 name = "move-regex-borrow-graph"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "itertools 0.10.5",
  "move-binary-format",
@@ -2459,7 +2459,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "anyhow",
  "hex",
@@ -2478,7 +2478,7 @@ dependencies = [
 [[package]]
 name = "move-stdlib-natives"
 version = "0.1.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "hex",
  "move-binary-format",
@@ -2493,7 +2493,7 @@ dependencies = [
 [[package]]
 name = "move-symbol-pool"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "once_cell",
  "phf",
@@ -2503,7 +2503,7 @@ dependencies = [
 [[package]]
 name = "move-trace-format"
 version = "0.0.1"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "move-binary-format",
  "move-core-types",
@@ -2515,7 +2515,7 @@ dependencies = [
 [[package]]
 name = "move-vm-config"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "move-binary-format",
  "once_cell",
@@ -2524,7 +2524,7 @@ dependencies = [
 [[package]]
 name = "move-vm-profiler"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "move-trace-format",
  "move-vm-config",
@@ -2537,7 +2537,7 @@ dependencies = [
 [[package]]
 name = "move-vm-runtime"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "better_any",
  "fail",
@@ -2556,7 +2556,7 @@ dependencies = [
 [[package]]
 name = "move-vm-types"
 version = "0.1.0"
-source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#9203eae45f97e093fbd2f67f657bc62aeed9d8b3"
+source = "git+https://github.com/asymptotic-code/sui?branch=extra-bpl-param#e27a3a564f5a8653d1fc9c442833e1d489e9156d"
 dependencies = [
  "bcs",
  "move-binary-format",
@@ -3517,7 +3517,7 @@ dependencies = [
  "rustls-native-certs",
  "ryu",
  "sha1_smol",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tokio",
  "tokio-rustls",
  "tokio-util",
@@ -4164,9 +4164,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
+checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
@@ -4525,7 +4525,7 @@ dependencies = [
  "parking_lot 0.12.5",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tokio-macros",
  "windows-sys 0.61.2",
 ]

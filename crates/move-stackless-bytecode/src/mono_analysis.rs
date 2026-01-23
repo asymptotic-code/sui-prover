@@ -74,10 +74,47 @@ impl MonoInfo {
         if dt_qid == &env.option_qid().unwrap() {
             return self.is_used_datatype_helper(env, targets, dt_qid)
                 || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
-                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap());
+                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
+                || self.is_generated_module(
+                    env,
+                    targets,
+                    &vec![env.vec_set_module_id(), env.vec_map_module_id()],
+                );
+        } else if dt_qid == &env.vec_map_entry_qid().unwrap()
+            || dt_qid == &env.vec_map_qid().unwrap()
+        {
+            self.is_used_datatype_helper(env, targets, &env.vec_map_entry_qid().unwrap())
+                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
+                || self.is_generated_module(env, targets, &vec![env.vec_map_module_id()])
+        } else if dt_qid == &env.vec_set_qid().unwrap() {
+            self.is_used_datatype_helper(env, targets, dt_qid)
+                || self.is_generated_module(env, targets, &vec![env.vec_set_module_id()])
         } else {
-            return self.is_used_datatype_helper(env, targets, dt_qid);
+            self.is_used_datatype_helper(env, targets, dt_qid)
         }
+    }
+
+    // NOTE: module is generated fully if any function inside is generated, in that case we need to generate proper datatype
+    fn is_generated_module(
+        &self,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+        mids: &Vec<ModuleId>,
+    ) -> bool {
+        for module in env.get_modules() {
+            for fun in module.get_functions() {
+                let fun_qid = fun.get_qualified_id();
+                if mids.contains(&fun_qid.module_id) {
+                    if let Some(target) = targets.get_target_opt(&fun, &FunctionVariant::Baseline) {
+                        let info = verification_analysis::get_info(&target);
+                        if info.accessible() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     fn is_used_datatype_helper(
@@ -89,10 +126,14 @@ impl MonoInfo {
         self.funs
             .keys()
             .filter(|(fun_qid, _)| {
-                verification_analysis::get_info(
-                    &targets.get_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline),
-                )
-                .inlined
+                if let Some(target) =
+                    targets.get_target_opt(&env.get_function(*fun_qid), &FunctionVariant::Baseline)
+                {
+                    let info = verification_analysis::get_info(&target);
+                    info.accessible()
+                } else {
+                    false
+                }
             })
             .map(|(fun_qid, _)| fun_qid.module_id)
             .contains(&dt_qid.module_id)
@@ -553,6 +594,7 @@ impl Analyzer<'_> {
                                 .or_default()
                                 .insert(actuals.clone());
                         }
+
                         self.analyze_fun_types(
                             &self
                                 .targets

@@ -7,19 +7,18 @@
 //! each function as well as collect information on how these invariants should be handled (i.e.,
 //! checked after bytecode, checked at function exit, or deferred to caller).
 
-use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
-use std::collections::BTreeSet;
-use std::fmt::{self, Formatter};
-
 use crate::quantifier_iterator_analysis::QuantifierPattern;
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
 };
 use move_model::model::{FunId, QualifiedId};
+use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
+use std::collections::BTreeSet;
+use std::fmt::{self, Formatter};
 
 /// The annotation for information about verification.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct VerificationInfo {
     /// Whether the function is target of verification.
     pub verified: bool,
@@ -29,9 +28,15 @@ pub struct VerificationInfo {
     /// Whether the function is essential for the verification pipeline (e.g., native functions
     /// needed for compilation) even if not verified or inlined.
     pub essential: bool,
-    /// Whether the function is reachable from specs but not necessarily inlined.
-    /// These functions are needed by borrow analysis but can be skipped in other analyses.
+
+    /// Whether the function is shadowed but reachable (i.e., a spec underlying function whose body is not used for verification)
     pub reachable: bool,
+}
+
+impl VerificationInfo {
+    pub fn accessible(&self) -> bool {
+        self.verified || self.inlined || self.reachable
+    }
 }
 
 /// Get verification information for this function.
@@ -92,13 +97,16 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             info.essential = true;
         }
 
-        if targets.is_function_with_abort_check(&fun_env.get_qualified_id()) {
+        if targets.func_abort_check_mode()
+            && targets.target_no_abort_check_functions(&fun_env.get_qualified_id())
+        {
             let info = data
                 .annotations
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.verified = true;
                 info.inlined = true;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -110,6 +118,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -125,6 +134,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
             return data;
@@ -190,7 +200,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Remove functions that aren't used for verification
-        // Keep: verified functions, inlined functions, essential functions, reachable functions,
+        // Keep: verified functions, inlined functions, essential functions
         // datatype invariant functions, loop invariant functions
 
         let mut functions_to_keep = BTreeSet::new();
@@ -208,33 +218,12 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             for variant in targets.get_target_variants(&fun_env) {
                 let data = targets.get_data(&fun_id, &variant).unwrap();
                 let info = get_info(&FunctionTarget::new(&fun_env, data));
-                if info.verified || info.inlined || info.essential {
+                if info.verified || info.inlined || info.essential || info.reachable {
                     functions_to_keep.insert(fun_id);
                     break;
                 }
             }
         }
-
-        // Mark loop invariant functions as inlined
-        targets
-            .get_loop_inv_with_targets()
-            .iter()
-            .for_each(|(target_qid, invs)| {
-                let target_data = targets.get_data(&target_qid, &FunctionVariant::Baseline);
-
-                if let Some(target_data) = target_data {
-                    let target_info = target_data.annotations.get::<VerificationInfo>();
-                    if let Some(target_info) = target_info {
-                        if target_info.inlined {
-                            functions_to_keep.extend(invs);
-                        }
-                    }
-                }
-            });
-
-        // Mark functions reachable from verified/inlined/essential functions and collect them
-        let reachable_functions = Self::mark_reachable(env, targets, &functions_to_keep);
-        functions_to_keep.extend(reachable_functions);
 
         // Remove functions that are not in the keep set
         let functions_to_remove: Vec<QualifiedId<FunId>> = targets
@@ -463,21 +452,17 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
 
 /// This impl block contains functions on marking a function as verified or inlined
 impl VerificationAnalysisProcessor {
-    pub fn native_check_list(env: &GlobalEnv) -> Vec<QualifiedId<FunId>> {
-        [env.prover_vec_sum_qid(), env.prover_vec_sum_range_qid()].to_vec()
-    }
-
     /// Check if a function is essential for the verification pipeline
     pub fn is_essential_function(fun_env: &FunctionEnv) -> bool {
         let name = fun_env.get_full_name_str();
 
         // Handle ghost functions first (since they're also native)
-        if name.contains("ghost::") {
+        if name.starts_with("ghost::") {
             return true;
         }
 
         // All prover functions are essential
-        if name.contains("prover::") {
+        if name.starts_with("prover::") {
             return true;
         }
 
@@ -512,7 +497,32 @@ impl VerificationAnalysisProcessor {
         if !info.verified {
             info.verified = true;
             info.inlined = true;
+            info.reachable = false;
             Self::mark_callees_inlined(fun_env, targets);
+        }
+    }
+
+    fn mark_reachable(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
+        // Marking spec underlying function as reachable. Logically they are not used, but we need them for borrow analysis.
+        let variant = FunctionVariant::Baseline;
+        if let Some(data) = targets.get_data_mut(&fun_env.get_qualified_id(), &variant) {
+            let info = data
+                .annotations
+                .get_or_default_mut::<VerificationInfo>(true);
+            if !info.inlined && !info.reachable && !info.verified {
+                info.reachable = true;
+            }
+
+            let mut callees = targets
+                .get_loop_invariants(&fun_env.get_qualified_id())
+                .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
+                .unwrap_or_default();
+            callees.extend(fun_env.get_called_functions());
+
+            for calle in callees {
+                let callee_env = fun_env.module_env.env.get_function(calle);
+                Self::mark_reachable(&callee_env, targets);
+            }
         }
     }
 
@@ -521,13 +531,6 @@ impl VerificationAnalysisProcessor {
     ///
     /// NOTE: This does not apply to opaque, native, or intrinsic functions.
     fn mark_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
-        if fun_env.is_native()
-            && !Self::native_check_list(fun_env.module_env.env)
-                .contains(&fun_env.get_qualified_id())
-        {
-            return;
-        }
-
         // at this time, we only have the `baseline` variant in the targets
         let variant = FunctionVariant::Baseline;
         if let Some(data) = targets.get_data_mut(&fun_env.get_qualified_id(), &variant) {
@@ -537,6 +540,7 @@ impl VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined {
                 info.inlined = true;
+                info.reachable = false;
                 Self::mark_callees_inlined(fun_env, targets);
             }
         } else {
@@ -557,13 +561,21 @@ impl VerificationAnalysisProcessor {
     /// `mark_inlined` function above.
     fn mark_callees_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
         let env = fun_env.module_env.env;
-        for callee in fun_env.get_called_functions() {
+
+        let mut callees = targets
+            .get_loop_invariants(&fun_env.get_qualified_id())
+            .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
+            .unwrap_or_default();
+        callees.extend(fun_env.get_called_functions());
+
+        for callee in callees {
             let callee_env = env.get_function(callee);
             if let Some(spec_id) = targets.get_spec_by_fun(&callee) {
                 let is_verified = targets.is_verified_spec(spec_id);
                 let no_opaque = targets.omits_opaque(spec_id);
                 Self::mark_inlined(&env.get_function(*spec_id), targets);
                 if !is_verified && !no_opaque {
+                    Self::mark_reachable(&callee_env, targets);
                     continue;
                 }
             }
@@ -575,84 +587,6 @@ impl VerificationAnalysisProcessor {
                 }
             }
         }
-    }
-
-    /// Marks functions as reachable from verified, inlined, or essential functions.
-    /// This includes all transitively called functions that are needed by borrow analysis
-    /// but are not necessarily inlined.
-    fn mark_reachable(
-        env: &GlobalEnv,
-        targets: &mut FunctionTargetsHolder,
-        initial_functions: &BTreeSet<QualifiedId<FunId>>,
-    ) -> BTreeSet<QualifiedId<FunId>> {
-        let mut work_queue: Vec<QualifiedId<FunId>> = initial_functions.iter().cloned().collect();
-        let mut processed = BTreeSet::new();
-        let mut reachable_functions = BTreeSet::new();
-
-        while let Some(fun_id) = work_queue.pop() {
-            if processed.contains(&fun_id) {
-                continue;
-            }
-            processed.insert(fun_id);
-
-            let fun_env = env.get_function(fun_id);
-
-            // Mark spec of func as reachable
-            if let Some(spec) = targets.get_spec_by_fun(&fun_id).cloned() {
-                if let Some(data) = targets.get_data_mut(&spec, &FunctionVariant::Baseline) {
-                    let info = data
-                        .annotations
-                        .get_or_default_mut::<VerificationInfo>(true);
-                    // Skip if already processed (verified, inlined, essential, or reachable)
-                    if !info.verified && !info.inlined && !info.essential && !info.reachable {
-                        info.reachable = true;
-                        work_queue.push(spec);
-                        reachable_functions.insert(spec);
-                    }
-                }
-            }
-
-            // Mark all callees as reachable
-            for callee in fun_env.get_called_functions() {
-                if processed.contains(&callee) {
-                    continue;
-                }
-
-                let callee_env = env.get_function(callee);
-                let mut should_mark_reachable = false;
-
-                // Check if this function needs to be marked as reachable
-                for variant in targets.get_target_variants(&callee_env) {
-                    if let Some(data) = targets.get_data(&callee, &variant) {
-                        let info = get_info(&FunctionTarget::new(&callee_env, data));
-
-                        // Skip if already processed (verified, inlined, essential, or reachable)
-                        if info.verified || info.inlined || info.essential || info.reachable {
-                            break;
-                        }
-
-                        should_mark_reachable = true;
-                        break;
-                    }
-                }
-
-                if should_mark_reachable {
-                    // Mark as reachable across all variants
-                    for variant in targets.get_target_variants(&callee_env) {
-                        if let Some(data) = targets.get_data_mut(&callee, &variant) {
-                            let info = data
-                                .annotations
-                                .get_or_default_mut::<VerificationInfo>(true);
-                            info.reachable = true;
-                        }
-                    }
-                    work_queue.push(callee);
-                    reachable_functions.insert(callee);
-                }
-            }
-        }
-
-        reachable_functions
     }
 
     // pub fn find_dynamics_in_function(

@@ -103,6 +103,7 @@ integration-test = "0x9"
         config.default_flavor = Some(Flavor::Sui);
         config.silence_warnings = false; // Disable warning suppression
         config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
+        config.skip_fetch_latest_git_deps = true;
 
         // Try to build the model
         let result = match move_model_for_package_legacy(config, tmp_dir) {

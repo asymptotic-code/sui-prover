@@ -20,6 +20,7 @@ use crate::{
     helpers::loop_helpers::find_loops_headers,
     no_abort_analysis,
     stackless_bytecode::{AttrId, Bytecode, Label, Operation},
+    verification_analysis::VerificationInfo,
 };
 
 pub struct MoveLoopInvariantsProcessor {}
@@ -45,7 +46,13 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
         mut data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if func_env.is_native() {
+        if func_env.is_native()
+            || data
+                .annotations
+                .get::<VerificationInfo>()
+                .map(|info| info.reachable)
+                .unwrap_or(false)
+        {
             return data;
         }
 
