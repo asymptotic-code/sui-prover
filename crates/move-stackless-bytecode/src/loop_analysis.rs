@@ -77,11 +77,13 @@ impl FunctionTargetProcessor for LoopAnalysisProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if func_env.is_native() || data
-            .annotations
-            .get::<VerificationInfo>()
-            .map(|info| info.reachable)
-            .unwrap_or(false) {
+        if func_env.is_native()
+            || data
+                .annotations
+                .get::<VerificationInfo>()
+                .map(|info| info.reachable)
+                .unwrap_or(false)
+        {
             return data;
         }
         let loop_annotation = Self::build_loop_annotation(targets, func_env, &data);
