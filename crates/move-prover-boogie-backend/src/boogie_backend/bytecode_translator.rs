@@ -2116,7 +2116,14 @@ impl<'env> FunctionTranslator<'env> {
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
-                if emit_pure_in_place {
+                if emit_pure_in_place
+            && self
+                .parent
+                .targets
+                .is_uninterpreted(&self.fun_target.func_env.get_qualified_id()) {
+                    // Uninterpreted functions have no body, so no inline attribute
+                    "".to_string()
+                } else if emit_pure_in_place {
                     "{:inline} ".to_string()
                 } else {
                     "{:inline 1} ".to_string()
@@ -2328,6 +2335,18 @@ impl<'env> FunctionTranslator<'env> {
 
         // Be sure to set back location to the whole function definition as a default.
         writer.set_location(&fun_target.get_loc().at_start());
+
+        // For pure functions marked as uninterpreted, emit uninterpreted (no body)
+        if emit_pure_in_place {
+            if self
+                .parent
+                .targets
+                .is_uninterpreted(&self.fun_target.func_env.get_qualified_id())
+            {
+                emitln!(writer, ";");
+                return;
+            }
+        }
 
         emitln!(writer, "{");
         writer.indent();

@@ -357,6 +357,41 @@ impl FunctionTargetsHolder {
         self.package_targets.loop_invariants().get(id)
     }
 
+    pub fn get_uninterpreted_functions(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+    ) -> Option<&BTreeSet<QualifiedId<FunId>>> {
+        self.package_targets.get_uninterpreted_functions(spec_id)
+    }
+
+    pub fn is_uninterpreted_for_spec(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+        callee_id: &QualifiedId<FunId>,
+    ) -> bool {
+        self.package_targets
+            .is_uninterpreted_for_spec(spec_id, callee_id)
+    }
+
+    // Checks if a function is marked as uninterpreted by all verified specs.
+    pub fn is_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        let verified_specs: Vec<_> = self
+            .specs()
+            .filter(|spec_id| self.is_verified_spec(spec_id))
+            .collect();
+
+        // If no verified specs, function is not uninterpreted
+        if verified_specs.is_empty() {
+            return false;
+        }
+
+        // Check if ALL verified specs mark this function as uninterpreted
+        verified_specs.iter().all(|spec_id| {
+            self.package_targets
+                .is_uninterpreted_for_spec(spec_id, func_id)
+        })
+    }
+
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
