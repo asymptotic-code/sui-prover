@@ -272,7 +272,7 @@ impl<'env> BoogieWrapper<'env> {
                 individual_options,
             )
             .await;
-        self.analyze_output(&res.out, &res.err, res.status)
+        self.analyze_output(&res.out, &res.err, res.status, true)
     }
 
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
@@ -345,10 +345,16 @@ impl<'env> BoogieWrapper<'env> {
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
 
-        self.analyze_output(&out, &err, output.status.code().unwrap_or(-1))
+        self.analyze_output(&out, &err, output.status.code().unwrap_or(-1), false)
     }
 
-    fn analyze_output(&self, out: &str, err: &str, status: i32) -> anyhow::Result<BoogieOutput> {
+    fn analyze_output(
+        &self,
+        out: &str,
+        err: &str,
+        status: i32,
+        is_remote: bool,
+    ) -> anyhow::Result<BoogieOutput> {
         if out
             .trim()
             .starts_with("Fatal Error: ProverException: Cannot find specified prover")
@@ -368,7 +374,7 @@ impl<'env> BoogieWrapper<'env> {
             ));
         }
         if status != 0 {
-            let errors = if out.to_lowercase().contains("http request timed out") {
+            let errors = if !is_remote || out.to_lowercase().contains("http request timed out") {
                 vec![BoogieError {
                     kind: BoogieErrorKind::Internal,
                     loc: Loc::default(),
