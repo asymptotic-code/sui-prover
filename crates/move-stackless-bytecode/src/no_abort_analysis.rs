@@ -178,12 +178,15 @@ impl FunctionTargetProcessor for NoAbortAnalysisProcessor {
             let fenv = env.get_function(fun_id);
             for fun_variant in targets.get_target_variants(&fenv) {
                 let target = targets.get_target(&fenv, &fun_variant);
-                let result = target.get_annotations().get::<NoAbortInfo>().unwrap();
-                write!(f, "  {}: ", fenv.get_full_name_str())?;
-                if result.does_not_abort {
-                    writeln!(f, "does not abort")?;
+                if let Some(result) = target.get_annotations().get::<NoAbortInfo>() {
+                    write!(f, "  {}: ", fenv.get_full_name_str())?;
+                    if result.does_not_abort {
+                        writeln!(f, "does not abort")?;
+                    } else {
+                        writeln!(f, "can abort")?;
+                    }
                 } else {
-                    writeln!(f, "can abort")?;
+                    writeln!(f, "  {}: no info", fenv.get_full_name_str())?;
                 }
             }
         }
