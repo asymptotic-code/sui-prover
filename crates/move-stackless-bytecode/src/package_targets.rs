@@ -5,8 +5,7 @@ use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
     expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
     shared::known_attributes::{
-        AttributeKind_, ExternalAttribute,
-        KnownAttribute, VerificationAttribute,
+        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
     },
 };
 use move_ir_types::location::Spanned;
@@ -602,13 +601,13 @@ impl PackageTargets {
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
-        { 
+        {
             for module_access in uninterpreted {
                 match Self::parse_module_access(module_access, &func_env.module_env) {
                     Some((module_name, fun_name)) => {
                         if let Some(target_module_env) = env.find_module(&module_name) {
-                            if let Some(target_func_env) = target_module_env
-                                .find_function(env.symbol_pool().make(&fun_name))
+                            if let Some(target_func_env) =
+                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
                             {
                                 // Validate that the target is a pure function
                                 if !self

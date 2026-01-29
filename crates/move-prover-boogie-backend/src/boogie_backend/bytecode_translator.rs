@@ -2117,10 +2117,11 @@ impl<'env> FunctionTranslator<'env> {
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
                 if emit_pure_in_place
-            && self
-                .parent
-                .targets
-                .is_uninterpreted(&self.fun_target.func_env.get_qualified_id()) {
+                    && self
+                        .parent
+                        .targets
+                        .is_uninterpreted(&self.fun_target.func_env.get_qualified_id())
+                {
                     // Uninterpreted functions have no body, so no inline attribute
                     "".to_string()
                 } else if emit_pure_in_place {
