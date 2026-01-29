@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2024.beta"
 
 [dependencies]
-Sui = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "uninterpreted-param", override = true }
+Sui = { git = "https://github.com/asymptotic-code/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "next", override = true }
 Prover = { local = "../prover", override = true }
 
 [addresses]

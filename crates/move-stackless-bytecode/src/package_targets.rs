@@ -619,7 +619,7 @@ impl PackageTargets {
                                         Severity::Error,
                                         &func_env.get_loc(),
                                         &format!(
-                                            "uninterpreted target '{}' must be marked with #[spec(uninterpreted = )]",
+                                            "uninterpreted target '{}' must be marked with #[ext(pure)]",
                                             target_func_env.get_full_name_str(),
                                         ),
                                     );
