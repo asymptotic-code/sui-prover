@@ -501,12 +501,15 @@ pub fn add_prelude(
         }
     }
 
+    let mut seen_bpl = BTreeSet::new();
     for content in extra_bpl_contents {
-        emitln!(
-            writer,
-            "\n// ** Extra BPL from #[spec] or #[spec_only] attribute\n"
-        );
-        emitln!(writer, content);
+        if seen_bpl.insert(*content) {
+            emitln!(
+                writer,
+                "\n// ** Extra BPL from #[spec] or #[spec_only] attribute\n"
+            );
+            emitln!(writer, content);
+        }
     }
 
     Ok(())
