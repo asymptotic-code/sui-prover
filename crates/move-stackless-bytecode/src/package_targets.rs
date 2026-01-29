@@ -5,7 +5,7 @@ use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
     expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
     shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, ExternalAttributeEntry_, ExternalAttributeValue_,
+        AttributeKind_, ExternalAttribute,
         KnownAttribute, VerificationAttribute,
     },
 };
@@ -414,6 +414,7 @@ impl PackageTargets {
             explicit_spec_modules,
             explicit_specs,
             extra_bpl,
+            uninterpreted: _,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -583,79 +584,80 @@ impl PackageTargets {
     /// Process uninterpreted attributes with validation.
     /// This runs after check_abort_check_scope, so pure_functions is complete and we can validate.
     fn check_uninterpreted_scope(&mut self, func_env: &FunctionEnv) {
-        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
+        let env = func_env.module_env.env;
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
+            focus: _,
+            prove: _,
+            skip: _,
+            target: _,
+            no_opaque: _,
+            ignore_abort: _,
+            boogie_opt: _,
+            timeout: _,
+            explicit_spec_modules: _,
+            explicit_specs: _,
+            extra_bpl: _,
+            uninterpreted,
+        })) = func_env
             .get_toplevel_attributes()
-            .get_(&AttributeKind_::External)
+            .get_(&AttributeKind_::Spec)
             .map(|attr| &attr.value)
-        {
-            for (_, _, entry) in attrs.iter() {
-                if let ExternalAttributeEntry_::Assigned(name, value) = &entry.value {
-                    if name.value.as_str() == "uninterpreted" {
-                        let env = func_env.module_env.env;
-                        if let ExternalAttributeValue_::ModuleAccess(module_access) = &value.value {
-                            match Self::parse_module_access(module_access, &func_env.module_env) {
-                                Some((module_name, fun_name)) => {
-                                    if let Some(target_module_env) = env.find_module(&module_name) {
-                                        if let Some(target_func_env) = target_module_env
-                                            .find_function(env.symbol_pool().make(&fun_name))
-                                        {
-                                            // Validate that the target is a pure function
-                                            if !self
-                                                .pure_functions
-                                                .contains(&target_func_env.get_qualified_id())
-                                            {
-                                                env.diag(
-                                                    Severity::Error,
-                                                    &func_env.get_loc(),
-                                                    &format!(
-                                                        "uninterpreted target '{}' must be marked with #[ext(pure)]",
-                                                        target_func_env.get_full_name_str(),
-                                                    ),
-                                                );
-                                                continue;
-                                            }
-
-                                            self.spec_uninterpreted_functions
-                                                .entry(func_env.get_qualified_id())
-                                                .or_insert_with(BTreeSet::new)
-                                                .insert(target_func_env.get_qualified_id());
-                                        } else {
-                                            env.diag(
-                                                Severity::Error,
-                                                &func_env.get_loc(),
-                                                &format!(
-                                                    "uninterpreted target function '{}' not found in module '{}'",
-                                                    fun_name,
-                                                    target_module_env.get_full_name_str(),
-                                                ),
-                                            );
-                                        }
-                                    } else {
-                                        env.diag(
-                                            Severity::Error,
-                                            &func_env.get_loc(),
-                                            &format!(
-                                                "uninterpreted target module not found for path '{}'",
-                                                module_name.display(env.symbol_pool())
-                                            ),
-                                        );
-                                    }
-                                }
-                                None => {
+        { 
+            for module_access in uninterpreted {
+                match Self::parse_module_access(module_access, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        if let Some(target_module_env) = env.find_module(&module_name) {
+                            if let Some(target_func_env) = target_module_env
+                                .find_function(env.symbol_pool().make(&fun_name))
+                            {
+                                // Validate that the target is a pure function
+                                if !self
+                                    .pure_functions
+                                    .contains(&target_func_env.get_qualified_id())
+                                {
                                     env.diag(
                                         Severity::Error,
                                         &func_env.get_loc(),
-                                        "Error parsing uninterpreted target path",
+                                        &format!(
+                                            "uninterpreted target '{}' must be marked with #[spec(uninterpreted = )]",
+                                            target_func_env.get_full_name_str(),
+                                        ),
                                     );
+                                    continue;
                                 }
+
+                                self.spec_uninterpreted_functions
+                                    .entry(func_env.get_qualified_id())
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert(target_func_env.get_qualified_id());
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!(
+                                        "uninterpreted target function '{}' not found in module '{}'",
+                                        fun_name,
+                                        target_module_env.get_full_name_str(),
+                                    ),
+                                );
                             }
                         } else {
                             env.diag(
                                 Severity::Error,
                                 &func_env.get_loc(),
-                                "uninterpreted attribute value must be a module access path (e.g., package::module::function)",
+                                &format!(
+                                    "uninterpreted target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
                             );
                         }
+                    }
+                    None => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Error parsing uninterpreted target path",
+                        );
                     }
                 }
             }
