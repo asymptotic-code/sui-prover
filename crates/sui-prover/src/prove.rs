@@ -300,12 +300,13 @@ async fn execute_backend_lean(
         FunctionHolderTarget::All,
     );
 
-    // Determine output directory (use current working directory + output)
-    let output_dir = std::env::current_dir()?.join("output");
+    // Determine directories
+    let package_dir = std::env::current_dir()?;
+    let output_dir = package_dir.join("output");
 
     // Run Lean backend
     println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(&model, &targets, &output_dir).await?;
+    move_prover_lean_backend::run_backend(&model, &targets, &output_dir, &package_dir).await?;
 
     println!(
         "✓ Lean code generated successfully in {}",

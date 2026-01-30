@@ -139,84 +139,34 @@ fn get_generic_mapping(ty: &Type) -> Option<(String, TypeClass)> {
     }
 }
 
-/// Infer additional typeclass constraints by analyzing operations in the function body
+/// Infer additional typeclass constraints by analyzing operations in the function body.
+/// Uses iter() to traverse all nodes and find bitwise operations that require BitwiseNumeric.
 fn infer_constraints_from_body(
     node: &IRNode,
     type_params: &HashMap<String, Type>,
     constraints: &mut HashMap<String, HashSet<TypeClass>>,
 ) {
-    match node {
-        IRNode::Block { children } => {
-            for child in children {
-                infer_constraints_from_body(child, type_params, constraints);
+    use crate::BinOp;
+
+    // Check if any node in the tree contains bitwise operations
+    let has_bitwise_ops = node.iter().any(|n| {
+        matches!(
+            n,
+            IRNode::BinOp {
+                op: BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr,
+                ..
             }
+        )
+    });
+
+    // If bitwise operations are present, all type params need BitwiseNumeric
+    if has_bitwise_ops {
+        for type_param in type_params.keys() {
+            constraints
+                .entry(type_param.clone())
+                .or_default()
+                .insert(TypeClass::BitwiseNumeric);
         }
-        IRNode::Call { args, .. } => {
-            // Recursively check arguments
-            for arg in args {
-                infer_constraints_from_body(arg, type_params, constraints);
-            }
-        }
-        IRNode::If {
-            cond,
-            then_branch,
-            else_branch,
-        } => {
-            infer_constraints_from_body(cond, type_params, constraints);
-            infer_constraints_from_body(then_branch, type_params, constraints);
-            infer_constraints_from_body(else_branch, type_params, constraints);
-        }
-        IRNode::Let { value, .. } => {
-            infer_constraints_from_body(value, type_params, constraints);
-        }
-        IRNode::Return(vals) => {
-            for val in vals {
-                infer_constraints_from_body(val, type_params, constraints);
-            }
-        }
-        IRNode::Requires(cond) | IRNode::Ensures(cond) => {
-            infer_constraints_from_body(cond, type_params, constraints);
-        }
-        IRNode::BinOp { op, lhs, rhs } => {
-            // Check for bitwise operations
-            use crate::BinOp;
-            match op {
-                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => {
-                    // Both integer and numeric types might need BitwiseNumeric
-                    for type_param in type_params.keys() {
-                        constraints
-                            .entry(type_param.clone())
-                            .or_default()
-                            .insert(TypeClass::BitwiseNumeric);
-                    }
-                }
-                _ => {}
-            }
-            infer_constraints_from_body(lhs, type_params, constraints);
-            infer_constraints_from_body(rhs, type_params, constraints);
-        }
-        IRNode::UnOp { operand, .. } => {
-            infer_constraints_from_body(operand, type_params, constraints);
-        }
-        IRNode::Tuple(elements) => {
-            for elem in elements {
-                infer_constraints_from_body(elem, type_params, constraints);
-            }
-        }
-        IRNode::Field { base, .. } => {
-            infer_constraints_from_body(base, type_params, constraints);
-        }
-        IRNode::ErrorBound(bound) => {
-            infer_constraints_from_body(bound, type_params, constraints);
-        }
-        IRNode::ErrorBoundRelative {
-            numerator,
-            denominator,
-        } => {
-            infer_constraints_from_body(numerator, type_params, constraints);
-            infer_constraints_from_body(denominator, type_params, constraints);
-        }
-        _ => {}
     }
 }
 

@@ -13,35 +13,12 @@ use crate::data::functions::FunctionVariant;
 use crate::data::Program;
 use crate::{Const, IRNode, Type};
 
-/// Recursively count occurrences of a specific IRNode type in the tree
-fn count_nodes_recursive<F>(nodes: &[IRNode], pred: F) -> usize
+/// Count occurrences of nodes matching a predicate using the iter() API
+fn count_nodes<F>(node: &IRNode, pred: F) -> usize
 where
-    F: Fn(&IRNode) -> bool + Copy,
+    F: Fn(&IRNode) -> bool,
 {
-    let mut count = 0;
-    for node in nodes {
-        if pred(node) {
-            count += 1;
-        }
-        match node {
-            IRNode::Block { children } => {
-                count += count_nodes_recursive(children, pred);
-            }
-            IRNode::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                count += count_nodes_recursive(std::slice::from_ref(then_branch.as_ref()), pred);
-                count += count_nodes_recursive(std::slice::from_ref(else_branch.as_ref()), pred);
-            }
-            IRNode::Let { value, .. } => {
-                count += count_nodes_recursive(std::slice::from_ref(value.as_ref()), pred);
-            }
-            _ => {}
-        }
-    }
-    count
+    node.iter().filter(|n| pred(n)).count()
 }
 
 /// Generate requires/ensures/error_bound functions for all spec functions
@@ -58,12 +35,11 @@ pub fn generate_spec_functions(program: &mut Program) {
         // Collect counts upfront to avoid borrow issues with program
         let (requires_count, ensures_count, error_bound_count, error_bound_relative_count) = {
             let func = program.functions.get(&func_id);
-            let body_slice = std::slice::from_ref(&func.body);
             (
-                count_nodes_recursive(body_slice, |n| matches!(n, IRNode::Requires(_))),
-                count_nodes_recursive(body_slice, |n| matches!(n, IRNode::Ensures(_))),
-                count_nodes_recursive(body_slice, |n| matches!(n, IRNode::ErrorBound(_))),
-                count_nodes_recursive(body_slice, |n| {
+                count_nodes(&func.body, |n| matches!(n, IRNode::Requires(_))),
+                count_nodes(&func.body, |n| matches!(n, IRNode::Ensures(_))),
+                count_nodes(&func.body, |n| matches!(n, IRNode::ErrorBound(_))),
+                count_nodes(&func.body, |n| {
                     matches!(n, IRNode::ErrorBoundRelative { .. })
                 }),
             )
@@ -147,10 +123,7 @@ fn extract_requires(node: &IRNode) -> IRNode {
             match last_requires_idx {
                 Some(idx) => {
                     // Keep everything up to and including the requires
-                    let kept: Vec<IRNode> = children[..=idx]
-                        .iter()
-                        .map(extract_requires)
-                        .collect();
+                    let kept: Vec<IRNode> = children[..=idx].iter().map(extract_requires).collect();
 
                     // Filter out empty units
                     let kept: Vec<IRNode> = kept
@@ -201,17 +174,7 @@ fn extract_requires(node: &IRNode) -> IRNode {
 
 /// Check if a node contains any Requires node (directly or in children)
 fn contains_requires(node: &IRNode) -> bool {
-    match node {
-        IRNode::Requires(_) => true,
-        IRNode::Block { children } => children.iter().any(contains_requires),
-        IRNode::If {
-            then_branch,
-            else_branch,
-            ..
-        } => contains_requires(then_branch) || contains_requires(else_branch),
-        IRNode::Let { value, .. } => contains_requires(value),
-        _ => false,
-    }
+    node.iter().any(|n| matches!(n, IRNode::Requires(_)))
 }
 
 /// Extract the specified ensures condition from a spec body.
@@ -249,10 +212,7 @@ fn extract_ensures_with_context(
                 // First, check if this child is a Let binding that we might need to keep
                 if let IRNode::Let { pattern, value } = child {
                     // Check if the target ensures is inside this Let's value
-                    let ensures_in_value =
-                        count_nodes_recursive(std::slice::from_ref(value.as_ref()), |n| {
-                            matches!(n, IRNode::Ensures(_))
-                        });
+                    let ensures_in_value = count_nodes(value, |n| matches!(n, IRNode::Ensures(_)));
 
                     if ensures_in_value > 0 {
                         // The ensures is inside this Let - recurse into value
@@ -325,57 +285,39 @@ fn extract_ensures_with_context(
         }
         IRNode::Let { value, .. } => {
             // Recurse into Let values to find ensures inside
-            // (matches count_nodes_recursive behavior)
+            // (matches count_nodes behavior)
             extract_ensures_with_context(value, target_idx, counter, lets_before)
         }
         _ => IRNode::unit(),
     }
 }
 
+/// Collect all Let bindings from a node using iter()
+fn collect_lets(node: &IRNode) -> Vec<(Vec<String>, Box<IRNode>)> {
+    node.iter()
+        .filter_map(|n| match n {
+            IRNode::Let { pattern, value } => Some((pattern.clone(), value.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Extract the error bound value from a spec body.
 /// Returns a Block containing necessary Let bindings and the error bound value.
 fn extract_error_bound(node: &IRNode) -> IRNode {
-    // First, collect all Let bindings and find the ErrorBound value
-    fn find_error_bound_value(node: &IRNode) -> Option<IRNode> {
-        match node {
-            IRNode::Block { children } => {
-                for child in children {
-                    if let Some(val) = find_error_bound_value(child) {
-                        return Some(val);
-                    }
-                }
-                None
-            }
-            IRNode::ErrorBound(bound) => Some(*bound.clone()),
-            IRNode::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                find_error_bound_value(then_branch).or_else(|| find_error_bound_value(else_branch))
-            }
-            IRNode::Let { value, .. } => find_error_bound_value(value),
+    // Find the ErrorBound value using iter()
+    let error_value = node
+        .iter()
+        .find_map(|n| match n {
+            IRNode::ErrorBound(bound) => Some((**bound).clone()),
             _ => None,
-        }
-    }
-
-    fn collect_lets(node: &IRNode) -> Vec<(Vec<String>, Box<IRNode>)> {
-        match node {
-            IRNode::Block { children } => children.iter().flat_map(collect_lets).collect(),
-            IRNode::Let { pattern, value } => {
-                vec![(pattern.clone(), value.clone())]
-            }
-            _ => vec![],
-        }
-    }
-
-    // Get the error bound value expression
-    let error_value = find_error_bound_value(node).unwrap_or_else(|| {
-        IRNode::Const(Const::UInt {
-            bits: 64,
-            value: 0u64.into(),
         })
-    });
+        .unwrap_or_else(|| {
+            IRNode::Const(Const::UInt {
+                bits: 64,
+                value: 0u64.into(),
+            })
+        });
 
     // Collect all Let bindings from the body
     let lets = collect_lets(node);
@@ -396,60 +338,33 @@ fn extract_error_bound(node: &IRNode) -> IRNode {
 /// Extract the relative error bound values from a spec body.
 /// Returns a Tuple containing (numerator, denominator) for the relative error fraction.
 fn extract_error_bound_relative(node: &IRNode) -> IRNode {
-    // Find ErrorBoundRelative node and extract numerator and denominator
-    fn find_error_bound_relative_values(node: &IRNode) -> Option<(IRNode, IRNode)> {
-        match node {
-            IRNode::Block { children } => {
-                for child in children {
-                    if let Some(val) = find_error_bound_relative_values(child) {
-                        return Some(val);
-                    }
-                }
-                None
-            }
+    // Find ErrorBoundRelative node and extract numerator and denominator using iter()
+    let (numerator, denominator) = node
+        .iter()
+        .find_map(|n| match n {
             IRNode::ErrorBoundRelative {
                 numerator,
                 denominator,
-            } => Some((*numerator.clone(), *denominator.clone())),
-            IRNode::If {
-                then_branch,
-                else_branch,
-                ..
-            } => find_error_bound_relative_values(then_branch)
-                .or_else(|| find_error_bound_relative_values(else_branch)),
-            IRNode::Let { value, .. } => find_error_bound_relative_values(value),
+            } => Some(((**numerator).clone(), (**denominator).clone())),
             _ => None,
-        }
-    }
-
-    fn collect_lets(node: &IRNode) -> Vec<(Vec<String>, Box<IRNode>)> {
-        match node {
-            IRNode::Block { children } => children.iter().flat_map(collect_lets).collect(),
-            IRNode::Let { pattern, value } => {
-                vec![(pattern.clone(), value.clone())]
-            }
-            _ => vec![],
-        }
-    }
-
-    // Get the relative error bound values
-    let (numerator, denominator) = find_error_bound_relative_values(node).unwrap_or_else(|| {
-        (
-            IRNode::Const(Const::UInt {
-                bits: 64,
-                value: 0u64.into(),
-            }),
-            IRNode::Const(Const::UInt {
-                bits: 64,
-                value: 1u64.into(),
-            }),
-        )
-    });
+        })
+        .unwrap_or_else(|| {
+            (
+                IRNode::Const(Const::UInt {
+                    bits: 64,
+                    value: 0u64.into(),
+                }),
+                IRNode::Const(Const::UInt {
+                    bits: 64,
+                    value: 1u64.into(),
+                }),
+            )
+        });
 
     // Build the tuple result
     let result = IRNode::Tuple(vec![numerator, denominator]);
 
-    // Collect all Let bindings from the body
+    // Collect all Let bindings from the body (reuse collect_lets defined above)
     let lets = collect_lets(node);
 
     // Build the result: all Let bindings followed by the tuple

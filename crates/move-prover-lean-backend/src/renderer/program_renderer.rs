@@ -105,18 +105,22 @@ fn extract_native_struct_names(native_file_path: &Path) -> HashSet<String> {
 }
 
 /// Render program to directory structure (organized by module hierarchy).
-/// output_dir should be the Impls/ directory (e.g., output/Impls)
+/// - `output_dir`: The Impls/ directory (e.g., output/Impls)
+/// - `prelude_imports`: List of prelude imports to include
+/// - `project_dir`: The output root directory (e.g., output/)
+/// - `user_proofs_dir`: Directory containing user-written proofs (e.g., sources/lean/)
+///
 /// Specs will be written to the sibling Specs/ directory (e.g., output/Specs)
-/// project_dir is the project root directory where Proofs/ may exist
 pub fn render_to_directory(
     program: &Program,
     output_dir: &Path,
     prelude_imports: &[String],
     project_dir: &Path,
+    user_proofs_dir: &Path,
 ) -> anyhow::Result<()> {
     fs::create_dir_all(output_dir)?;
 
-    let proofs_dir = project_dir.join("Proofs");
+    let proofs_dir = user_proofs_dir;
 
     copy_native_packages(program, output_dir)?;
 
@@ -319,13 +323,25 @@ pub fn render_to_directory(
     }
 
     // Render spec functions (.requires, .ensures) to SpecDefs/ folder
-    render_spec_files(program, output_dir, prelude_imports, project_dir)?;
+    render_spec_files(
+        program,
+        output_dir,
+        prelude_imports,
+        project_dir,
+        proofs_dir,
+    )?;
 
     // Render spec function bodies (from spec-target functions) to Specs/ folder
     render_spec_function_bodies(program, output_dir, prelude_imports)?;
 
     // Generate proof obligations for calls to spec-target functions with .requires
-    render_requires_proof_obligations(program, output_dir, prelude_imports, project_dir)?;
+    render_requires_proof_obligations(
+        program,
+        output_dir,
+        prelude_imports,
+        project_dir,
+        proofs_dir,
+    )?;
 
     Ok(())
 }
@@ -419,7 +435,7 @@ fn render_spec_function_bodies(
 ///
 /// Structure to avoid circular dependencies:
 /// - SpecDefs/<package>/<func_name>.lean: Contains .requires and .ensures definitions
-/// - Proofs/<package>/<namespace>/<func_name>_proof.lean: Imports SpecDefs, provides proof
+/// - User proofs in sources/lean/<package>/<namespace>/<func_name>_proof.lean
 /// - Specs/<package>/<func_name>.lean: Imports SpecDefs and Proofs, has the verified theorem
 ///
 /// Dependency chain: SpecDefs <- Proofs <- Specs
@@ -428,12 +444,13 @@ fn render_spec_files(
     impls_dir: &Path,
     prelude_imports: &[String],
     project_dir: &Path,
+    user_proofs_dir: &Path,
 ) -> anyhow::Result<()> {
     // Directories are siblings to Impls
     let parent_dir = impls_dir.parent().unwrap();
     let spec_defs_dir = parent_dir.join("SpecDefs");
     let specs_dir = parent_dir.join("Specs");
-    let proofs_dir = project_dir.join("Proofs");
+    let proofs_dir = user_proofs_dir;
     fs::create_dir_all(&spec_defs_dir)?;
     fs::create_dir_all(&specs_dir)?;
 
@@ -1048,14 +1065,16 @@ fn generate_spec_equivalence_theorem(
 
 /// Render spec equivalence theorems for functions that have spec targets.
 /// Creates files in Specs/<package>/<function_name>_spec.lean
+#[allow(dead_code)]
 fn render_spec_equivalence_theorems(
     program: &Program,
     impls_dir: &Path,
     prelude_imports: &[String],
-    project_dir: &Path,
+    _project_dir: &Path,
+    user_proofs_dir: &Path,
 ) -> anyhow::Result<()> {
     let specs_dir = impls_dir.parent().unwrap().join("Specs");
-    let proofs_dir = project_dir.join("Proofs");
+    let proofs_dir = user_proofs_dir;
     fs::create_dir_all(&specs_dir)?;
 
     // Iterate over all spec functions that have a target
@@ -1343,10 +1362,11 @@ fn render_requires_proof_obligations(
     program: &Program,
     impls_dir: &Path,
     prelude_imports: &[String],
-    project_dir: &Path,
+    _project_dir: &Path,
+    user_proofs_dir: &Path,
 ) -> anyhow::Result<()> {
     let specs_dir = impls_dir.parent().unwrap().join("Specs");
-    let proofs_dir = project_dir.join("Proofs");
+    let proofs_dir = user_proofs_dir;
     fs::create_dir_all(&specs_dir)?;
 
     // Find spec-target functions that have .requires predicates

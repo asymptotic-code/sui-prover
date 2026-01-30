@@ -49,15 +49,17 @@ pub fn insert_bool_coercions(program: &mut Program) {
     for func_id in function_ids {
         let func = program.functions.get_mut(func_id);
 
-        // Transform the function body
+        // Transform the function body using map()
         let body = std::mem::replace(&mut func.body, IRNode::unit());
         func.body = insert_coercions_in_node(body);
     }
 }
 
 /// Recursively insert ToBool coercions in If/While conditions.
+/// Uses the functional map() API for recursive transformation.
 fn insert_coercions_in_node(node: IRNode) -> IRNode {
-    match node {
+    // Use map() for bottom-up transformation, then handle If/While conditions
+    node.map(&mut |n| match n {
         IRNode::If {
             cond,
             then_branch,
@@ -65,9 +67,6 @@ fn insert_coercions_in_node(node: IRNode) -> IRNode {
         } => {
             // Ensure condition is Bool - wrap with ToBool if it's a Prop-returning expression
             let cond = ensure_bool_condition(*cond);
-            let then_branch = Box::new(insert_coercions_in_node(*then_branch));
-            let else_branch = Box::new(insert_coercions_in_node(*else_branch));
-
             IRNode::If {
                 cond: Box::new(cond),
                 then_branch,
@@ -83,12 +82,6 @@ fn insert_coercions_in_node(node: IRNode) -> IRNode {
         } => {
             // Ensure condition is Bool - wrap with ToBool if it's a Prop-returning expression
             let cond = ensure_bool_condition(*cond);
-            let body = Box::new(insert_coercions_in_node(*body));
-            let invariants = invariants
-                .into_iter()
-                .map(insert_coercions_in_node)
-                .collect();
-
             IRNode::While {
                 cond: Box::new(cond),
                 body,
@@ -97,106 +90,9 @@ fn insert_coercions_in_node(node: IRNode) -> IRNode {
             }
         }
 
-        IRNode::Block { children } => IRNode::Block {
-            children: children.into_iter().map(insert_coercions_in_node).collect(),
-        },
-
-        IRNode::Let { pattern, value } => IRNode::Let {
-            pattern,
-            value: Box::new(insert_coercions_in_node(*value)),
-        },
-
-        IRNode::BinOp { op, lhs, rhs } => IRNode::BinOp {
-            op,
-            lhs: Box::new(insert_coercions_in_node(*lhs)),
-            rhs: Box::new(insert_coercions_in_node(*rhs)),
-        },
-
-        IRNode::UnOp { op, operand } => IRNode::UnOp {
-            op,
-            operand: Box::new(insert_coercions_in_node(*operand)),
-        },
-
-        IRNode::Call {
-            function,
-            args,
-            type_args,
-        } => IRNode::Call {
-            function,
-            args: args.into_iter().map(insert_coercions_in_node).collect(),
-            type_args,
-        },
-
-        IRNode::Tuple(elems) => {
-            IRNode::Tuple(elems.into_iter().map(insert_coercions_in_node).collect())
-        }
-
-        IRNode::Pack {
-            struct_id,
-            type_args,
-            fields,
-        } => IRNode::Pack {
-            struct_id,
-            type_args,
-            fields: fields.into_iter().map(insert_coercions_in_node).collect(),
-        },
-
-        IRNode::Field {
-            base,
-            struct_id,
-            field_index,
-        } => IRNode::Field {
-            base: Box::new(insert_coercions_in_node(*base)),
-            struct_id,
-            field_index,
-        },
-
-        IRNode::UpdateField {
-            base,
-            struct_id,
-            field_index,
-            value,
-        } => IRNode::UpdateField {
-            base: Box::new(insert_coercions_in_node(*base)),
-            struct_id,
-            field_index,
-            value: Box::new(insert_coercions_in_node(*value)),
-        },
-
-        IRNode::UpdateVec { base, index, value } => IRNode::UpdateVec {
-            base: Box::new(insert_coercions_in_node(*base)),
-            index: Box::new(insert_coercions_in_node(*index)),
-            value: Box::new(insert_coercions_in_node(*value)),
-        },
-
-        IRNode::Return(values) => {
-            IRNode::Return(values.into_iter().map(insert_coercions_in_node).collect())
-        }
-
-        IRNode::Abort(code) => IRNode::Abort(Box::new(insert_coercions_in_node(*code))),
-
-        IRNode::Pure(inner) => IRNode::Pure(Box::new(insert_coercions_in_node(*inner))),
-
-        IRNode::ToProp(inner) => IRNode::ToProp(Box::new(insert_coercions_in_node(*inner))),
-
-        IRNode::ToBool(inner) => IRNode::ToBool(Box::new(insert_coercions_in_node(*inner))),
-
-        IRNode::Unpack { struct_id, value } => IRNode::Unpack {
-            struct_id,
-            value: Box::new(insert_coercions_in_node(*value)),
-        },
-
-        // Leaf nodes - no transformation needed
-        IRNode::Var(_)
-        | IRNode::Const(_)
-        | IRNode::WhileAborts { .. }
-        | IRNode::Requires(_)
-        | IRNode::Ensures(_)
-        | IRNode::ErrorBound(_)
-        | IRNode::ErrorBoundRelative { .. }
-        | IRNode::ErrorBoundGoal { .. }
-        | IRNode::BitOp(_) => node,
-    }
+        // All other nodes pass through unchanged (children already transformed by map())
+        other => other,
+    })
 }
 
 /// Ensure a condition expression produces Bool.
