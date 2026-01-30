@@ -761,15 +761,19 @@ impl FunctionTargetPipeline {
             let src_idx = nodes.get(&fun_id).unwrap();
             let fun_env = env.get_function(fun_id);
             for callee in fun_env.get_called_functions() {
-                let dst_qid = targets
-                    .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
-                    .unwrap_or(&callee);
-
-                // Check if the callee exists in targets before trying to access it
-                if let Some(dst_idx) = nodes.get(dst_qid) {
+                // add edge to original callee if it exists in targets
+                if let Some(dst_idx) = nodes.get(&callee) {
                     graph.add_edge(*src_idx, *dst_idx, ());
                 }
-                // If the callee doesn't exist in targets (was removed), skip this edge
+
+                // add edge to spec callee if it's different and exists in targets
+                if let Some(spec_qid) =
+                    targets.get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
+                {
+                    if let Some(dst_idx) = nodes.get(spec_qid) {
+                        graph.add_edge(*src_idx, *dst_idx, ());
+                    }
+                }
             }
         }
         graph

@@ -321,8 +321,10 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                     }
                 } else if result.inlined {
                     writeln!(f, "inlined")?;
+                } else if result.reachable {
+                    writeln!(f, "reachable")?;
                 } else {
-                    writeln!(f, "not verified and not inlined")?;
+                    writeln!(f, "not verified and not inlined and not reachable")?;
                 }
             }
         }
