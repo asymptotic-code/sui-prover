@@ -9,6 +9,7 @@
 use crate::prelude::PreludeManager;
 use crate::renderer::render_to_directory;
 use crate::runtime::run_lake_build;
+use intermediate_theorem_format::insert_bool_coercions;
 use move_model::model::GlobalEnv;
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
 use stackless_to_intermediate::ProgramBuilder;
@@ -22,7 +23,11 @@ pub async fn run_backend(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     // Run translation pipeline
-    let program = ProgramBuilder::new(env).build(targets);
+    let mut program = ProgramBuilder::new(env).build(targets);
+
+    // Insert ToBool coercions for If/While conditions in runtime functions
+    // This is needed because comparisons return Prop in Lean, but `if` requires Bool
+    insert_bool_coercions(&mut program);
 
     // Clear output directory if it exists
     if output_dir.exists() {
@@ -44,7 +49,7 @@ pub async fn run_backend(
 
     // Render to Lean in Impls/ directory with module organization
     let impls_dir = output_dir.join("Impls");
-    render_to_directory(&program, &impls_dir, &prelude_imports)?;
+    render_to_directory(&program, &impls_dir, &prelude_imports, output_dir)?;
 
     // Generate lakefile and manifest
     crate::write_lakefile(output_dir, "sui_prover_output")?;

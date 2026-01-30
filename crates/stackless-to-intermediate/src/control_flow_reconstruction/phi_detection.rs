@@ -41,6 +41,7 @@ fn transform_node(ir: IRNode, vars_in_scope: &BTreeSet<String>) -> IRNode {
             cond,
             body,
             vars: _,
+            ..
         } => {
             // Apply while transformation even when While appears outside of transform_block
             let cond = transform_node(*cond, vars_in_scope);
@@ -197,6 +198,7 @@ fn transform_while_in_block(
             cond: Box::new(cond),
             body: Box::new(body),
             vars: vec![],
+            invariants: vec![],
         };
     }
 
@@ -207,6 +209,7 @@ fn transform_while_in_block(
             cond: Box::new(cond),
             body: Box::new(body),
             vars: loop_vars,
+            invariants: vec![],
         }),
     }
 }

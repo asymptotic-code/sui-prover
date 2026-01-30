@@ -4,8 +4,6 @@
 
 import Prelude.Helpers
 import Prelude.TypeConversion
-import Prelude.UInt128
-import Prelude.UInt256
 
 namespace MoveVector
 

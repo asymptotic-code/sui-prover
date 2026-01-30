@@ -19,3 +19,4 @@ intermediate-theorem-format.workspace = true
 tokio.workspace = true
 log.workspace = true
 anyhow.workspace = true
+ethnum.workspace = true

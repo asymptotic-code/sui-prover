@@ -43,7 +43,7 @@ impl<'env> ProgramBuilder<'env> {
     }
 
     pub fn function_id(&mut self, id: QualifiedId<FunId>) -> FunctionID {
-        self.program.functions.id_for_key(id)
+        FunctionID::new(self.program.functions.id_for_key(id))
     }
 
     pub fn build(mut self, targets: &'env FunctionTargetsHolder) -> Program {

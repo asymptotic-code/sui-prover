@@ -4,7 +4,7 @@
 //! Import collection pass
 
 use crate::data::{Dependable, ModuleID, Program};
-use crate::Function;
+use crate::{Function, FunctionID};
 use std::collections::HashSet;
 
 pub fn collect_imports(program: &mut Program) {
@@ -20,6 +20,8 @@ pub fn collect_imports(program: &mut Program) {
 }
 
 fn collect_module_imports(program: &Program, module_id: ModuleID) -> Vec<ModuleID> {
+    let module = program.modules.get(module_id);
+
     let struct_deps = collect_struct_imports(program, module_id);
     let function_deps = collect_function_imports(program, module_id);
 
@@ -29,7 +31,9 @@ fn collect_module_imports(program: &Program, module_id: ModuleID) -> Vec<ModuleI
         .filter(|m| *m != module_id)
         .collect();
 
-    combined.into_iter().collect()
+    let result: Vec<ModuleID> = combined.into_iter().collect();
+
+    result
 }
 
 fn collect_struct_imports(program: &Program, module_id: ModuleID) -> HashSet<ModuleID> {
@@ -43,9 +47,13 @@ fn collect_struct_imports(program: &Program, module_id: ModuleID) -> HashSet<Mod
 }
 
 fn collect_function_imports(program: &Program, module_id: ModuleID) -> HashSet<ModuleID> {
+    // Only collect imports from base (Runtime) functions, not spec variants.
+    // Spec variants (.requires, .ensures, etc.) are rendered in SpecDefs/Specs directories,
+    // not in Impls. Including them here creates circular dependencies because spec functions
+    // call back to the implementation they're specifying.
     program
         .functions
-        .values()
+        .base_values()
         .filter(|f| f.module_id == module_id)
         .flat_map(|f| collect_from_function(program, f))
         .collect()
@@ -64,16 +72,19 @@ fn collect_from_function<'a>(
         .flat_map(|t| t.struct_ids())
         .map(|sid| program.structs.get(sid).module_id);
 
-    let body_deps = function
-        .dependencies()
-        .map(|fid| program.functions.get(fid).module_id)
-        .chain(
-            function
-                .body
-                .iter_struct_references()
-                .chain(function.body.iter_type_struct_ids())
-                .map(|sid| program.structs.get(sid).module_id),
-        );
+    // Get base IDs from function calls and look up their module
+    // IMPORTANT: We use fid (the actual FunctionID being called) instead of just fid.base
+    // to properly handle calls to spec-target functions with _impl variants
+    let call_deps = function.body.calls().into_iter().map(move |fid| {
+        let called_func = program.functions.get(&fid);
+        called_func.module_id
+    });
 
-    sig_deps.chain(body_deps)
+    let struct_deps = function
+        .body
+        .iter_struct_references()
+        .chain(function.body.iter_type_struct_ids())
+        .map(|sid| program.structs.get(sid).module_id);
+
+    sig_deps.chain(call_deps).chain(struct_deps)
 }

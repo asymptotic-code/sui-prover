@@ -213,12 +213,12 @@ fn translate_call(
                 srcs.len()
             );
             let op = match operation {
-                Operation::CastU8 => UnOp::CastU8,
-                Operation::CastU16 => UnOp::CastU16,
-                Operation::CastU32 => UnOp::CastU32,
-                Operation::CastU64 => UnOp::CastU64,
-                Operation::CastU128 => UnOp::CastU128,
-                Operation::CastU256 => UnOp::CastU256,
+                Operation::CastU8 => UnOp::Cast(8),
+                Operation::CastU16 => UnOp::Cast(16),
+                Operation::CastU32 => UnOp::Cast(32),
+                Operation::CastU64 => UnOp::Cast(64),
+                Operation::CastU128 => UnOp::Cast(128),
+                Operation::CastU256 => UnOp::Cast(256),
                 _ => unreachable!(),
             };
             Some(make_let_from_expr(IRNode::UnOp {

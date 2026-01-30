@@ -7,33 +7,49 @@
 //! The renderer is intentionally "dumb" - it pattern matches IR nodes
 //! and emits corresponding Lean text without complex analysis.
 
-mod expression_renderer;
-mod function_renderer;
+mod context;
+pub mod function_renderer;
+mod helpers;
 mod lean_writer;
 mod program_renderer;
-mod statement_renderer;
+pub mod render;
 mod struct_renderer;
-mod type_renderer;
+pub mod type_renderer;
 
 pub use lean_writer::LeanWriter;
 pub use program_renderer::render_to_directory;
 
-/// Renders a tuple-like structure: empty→`empty`, single→element, multiple→`(a, b, c)`
-///
-/// - `items`: the elements to render
-/// - `empty`: what to emit for empty list (e.g., "()" or "_")
-/// - `sep`: separator between elements (e.g., ", " or " × ")
-/// - `render`: function to render each element to a string
-pub fn render_tuple_like<T, F>(items: &[T], empty: &str, sep: &str, render: F) -> String
-where
-    F: Fn(&T) -> String,
-{
-    match items {
-        [] => empty.to_string(),
-        [single] => render(single),
-        multiple => {
-            let rendered: Vec<_> = multiple.iter().map(render).collect();
-            format!("({})", rendered.join(sep))
-        }
-    }
+use intermediate_theorem_format::{Function, IRNode, Program};
+
+/// Render an IR expression to a Lean string.
+/// Used by layers.rs to render Goal bodies from the IR.
+/// Goal bodies are rendered in a different namespace than the functions they call,
+/// so we pass None for current_module_namespace to force full qualification.
+pub fn render_expression_to_string(ir: &IRNode, func: &Function, program: &Program) -> String {
+    let writer = LeanWriter::new(String::new());
+    let mut ctx = context::RenderCtx::new(
+        program,
+        &func.variables,
+        func.module_id,
+        None, // Force full qualification since goals are in a different namespace
+        writer,
+    );
+    render::render(ir, &mut ctx);
+    ctx.into_writer().into_inner()
+}
+
+/// Render an IR expression as a Prop (use `=` instead of `==` for equality).
+/// Used for Goal definitions which are Props.
+pub fn render_prop_to_string(ir: &IRNode, func: &Function, program: &Program) -> String {
+    let writer = LeanWriter::new(String::new());
+    let mut ctx = context::RenderCtx::new(
+        program,
+        &func.variables,
+        func.module_id,
+        None, // Force full qualification since goals are in a different namespace
+        writer,
+    );
+    ctx.with_prop_context();
+    render::render(ir, &mut ctx);
+    ctx.into_writer().into_inner()
 }

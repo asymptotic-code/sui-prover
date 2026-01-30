@@ -1,61 +1,51 @@
-import Prelude.UInt256
-import Prelude.UInt128
+import Prelude.BoundedNat
 
 -- Type conversion helpers for unsigned integer types
--- Lean's standard library defines most conversions between UInt8/16/32/64
--- We only need to add conversions to/from our custom UInt128 and UInt256
+-- For BoundedNat types, we use the generic convert function
 
--- Bool conversions to our custom UInt types
--- (Lean 4 already defines Bool.toUInt8/16/32/64)
+-- Bool conversions
 namespace Bool
-def toUInt128 (b : Bool) : UInt128 := if b then 1 else 0
-def toUInt256 (b : Bool) : UInt256 := if b then 1 else 0
+def toBoundedNat (bound : Nat) (b : Bool) : BoundedNat bound :=
+  if h : bound > 1 then
+    if b then ⟨1, by omega⟩ else ⟨0, by omega⟩
+  else if h0 : bound > 0 then
+    ⟨0, h0⟩
+  else
+    ⟨0, BoundedNat_bound_zero_absurd (by omega)⟩
 end Bool
 
 -- UInt8 conversions (including identity for uniformity)
 namespace UInt8
-def toUInt8 (a : UInt8) : UInt8 := a
-def toUInt128 (a : UInt8) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt8) : UInt256 := UInt256.ofNat a.toNat
+def toUInt8' (a : UInt8) : UInt8 := a
+def toBoundedNat (bound : Nat) (a : UInt8) : BoundedNat bound :=
+  BoundedNat.convert ⟨a.toNat, UInt8.toNat_lt a⟩
 end UInt8
 
 -- UInt16 conversions (including identity for uniformity)
 namespace UInt16
-def toUInt16 (a : UInt16) : UInt16 := a
-def toUInt128 (a : UInt16) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt16) : UInt256 := UInt256.ofNat a.toNat
+def toUInt16' (a : UInt16) : UInt16 := a
+def toBoundedNat (bound : Nat) (a : UInt16) : BoundedNat bound :=
+  BoundedNat.convert ⟨a.toNat, UInt16.toNat_lt a⟩
 end UInt16
 
 -- UInt32 conversions (including identity for uniformity)
 namespace UInt32
-def toUInt32 (a : UInt32) : UInt32 := a
-def toUInt128 (a : UInt32) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt32) : UInt256 := UInt256.ofNat a.toNat
+def toUInt32' (a : UInt32) : UInt32 := a
+def toBoundedNat (bound : Nat) (a : UInt32) : BoundedNat bound :=
+  BoundedNat.convert ⟨a.toNat, UInt32.toNat_lt a⟩
 end UInt32
 
 -- UInt64 conversions (including identity for uniformity)
 namespace UInt64
-def toUInt64 (a : UInt64) : UInt64 := a
-def toUInt128 (a : UInt64) : UInt128 := UInt128.ofNat a.toNat
-def toUInt256 (a : UInt64) : UInt256 := UInt256.ofNat a.toNat
+def toUInt64' (a : UInt64) : UInt64 := a
+def toBoundedNat (bound : Nat) (a : UInt64) : BoundedNat bound :=
+  BoundedNat.convert ⟨a.toNat, UInt64.toNat_lt a⟩
 end UInt64
 
--- UInt128 conversions to standard types (including identity)
-namespace UInt128
-def toUInt8 (a : UInt128) : UInt8 := UInt8.ofNat a.toNat
-def toUInt16 (a : UInt128) : UInt16 := UInt16.ofNat a.toNat
-def toUInt32 (a : UInt128) : UInt32 := UInt32.ofNat a.toNat
-def toUInt64 (a : UInt128) : UInt64 := UInt64.ofNat a.toNat
-def toUInt128 (a : UInt128) : UInt128 := a
--- toUInt256 already defined in UInt128.lean
-end UInt128
-
--- UInt256 conversions to standard types (including identity)
-namespace UInt256
-def toUInt8 (a : UInt256) : UInt8 := UInt8.ofNat a.toNat
-def toUInt16 (a : UInt256) : UInt16 := UInt16.ofNat a.toNat
-def toUInt32 (a : UInt256) : UInt32 := UInt32.ofNat a.toNat
-def toUInt64 (a : UInt256) : UInt64 := UInt64.ofNat a.toNat
-def toUInt256 (a : UInt256) : UInt256 := a
--- toUInt128 already defined in UInt128.lean
-end UInt256
+-- BoundedNat conversions to standard UInt types
+namespace BoundedNat
+def toUInt8' {bound : Nat} (a : BoundedNat bound) : UInt8 := UInt8.ofNat a.val
+def toUInt16' {bound : Nat} (a : BoundedNat bound) : UInt16 := UInt16.ofNat a.val
+def toUInt32' {bound : Nat} (a : BoundedNat bound) : UInt32 := UInt32.ofNat a.val
+def toUInt64' {bound : Nat} (a : BoundedNat bound) : UInt64 := UInt64.ofNat a.val
+end BoundedNat

@@ -67,6 +67,7 @@ fn discover_region(ctx: &mut DiscoveryContext, start: BlockId, stop: BlockId) ->
                         children: body_nodes,
                     }),
                     vars: vec![], // Phi detection will populate this later
+                    invariants: vec![],
                 });
 
                 cursor = exit_block;

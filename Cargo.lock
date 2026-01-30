@@ -2405,6 +2405,7 @@ name = "move-prover-lean-backend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ethnum",
  "intermediate-theorem-format",
  "log",
  "move-model 0.1.0",

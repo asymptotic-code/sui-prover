@@ -17,7 +17,8 @@ pub fn render_struct<W: Write>(
     w: &mut LeanWriter<W>,
 ) {
     // Comment header
-    w.line(&format!("-- Struct: {}", struct_def.qualified_name));
+    w.write("-- Struct: ");
+    w.line(&struct_def.qualified_name);
 
     // Structure declaration
     let struct_name = escape::escape_struct_name(&struct_def.name);
@@ -27,37 +28,32 @@ pub fn render_struct<W: Write>(
     // Universe variables for type parameters
     if !struct_def.type_params.is_empty() {
         w.write(".{");
-        for (i, _) in struct_def.type_params.iter().enumerate() {
-            if i > 0 {
-                w.write(", ");
-            }
-            w.write(&format!("u{}", i));
-        }
+        w.sep(
+            ", ",
+            (0..struct_def.type_params.len()).map(|i| format!("u{}", i)),
+        );
         w.write("}");
     }
 
     // Type parameters
-    if !struct_def.type_params.is_empty() {
-        w.write(" ");
-        for (i, type_param) in struct_def.type_params.iter().enumerate() {
-            if i > 0 {
-                w.write(" ");
-            }
-            w.write(&format!("({} : Type u{})", type_param, i));
-        }
+    for (i, type_param) in struct_def.type_params.iter().enumerate() {
+        w.write(" (");
+        w.write(type_param);
+        w.write(" : Type u");
+        w.write(&i.to_string());
+        w.write(")");
     }
 
     w.line(" where");
 
     // Fields
+    w.indent(false);
     for field in &struct_def.fields {
         let type_str = type_to_string(&field.field_type, program, Some(current_module));
-        w.write(&format!(
-            "  {} : {}\n",
-            escape::escape_identifier(&field.name),
-            type_str
-        ));
+        w.write(&escape::escape_identifier(&field.name));
+        w.write(" : ");
+        w.line(&type_str);
     }
-
-    w.write("\n");
+    w.dedent(false);
+    w.newline();
 }

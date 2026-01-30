@@ -9,10 +9,13 @@ use crate::StructID;
 pub type TempId = String;
 
 /// Theorem IR type with enriched metadata for code generation
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
-    /// Boolean
+    /// Boolean - computational boolean type (rendered as Bool in Lean)
     Bool,
+    /// Proposition - logical type for specifications (rendered as Prop in Lean)
+    /// Used in .aborts, .requires, .ensures functions
+    Prop,
     /// Unsigned integer with bit width
     UInt(u32),
     /// Signed integer with bit width
@@ -62,6 +65,11 @@ impl Type {
         }
     }
 
+    /// Unwraps if the type is a monad, or else returns the type
+    pub fn base_type(&self) -> Type {
+        self.unwrap_monad().cloned().unwrap_or_else(|| self.clone())
+    }
+
     /// Collect all struct IDs referenced in this type
     pub fn struct_ids(&self) -> Vec<StructID> {
         let mut ids = Vec::new();
@@ -87,8 +95,39 @@ impl Type {
             Type::Tuple(tys) => {
                 tys.iter().for_each(|t| t.collect_struct_ids(ids));
             }
-            Type::Bool | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
+            Type::Bool
+            | Type::Prop
+            | Type::UInt(_)
+            | Type::SInt(_)
+            | Type::Address
+            | Type::TypeParameter(_) => {}
+        }
+    }
+
+    /// Check if this type contains Bool anywhere (including in tuples)
+    /// Bool becomes Prop in Lean, which affects Decidable instance derivation
+    pub fn contains_bool(&self) -> bool {
+        match self {
+            Type::Bool => true,
+            Type::Tuple(tys) => tys.iter().any(|t| t.contains_bool()),
+            Type::Vector(inner)
+            | Type::Reference(inner)
+            | Type::MutableReference(inner)
+            | Type::Except(inner) => inner.contains_bool(),
+            Type::Struct { type_args, .. } => type_args.iter().any(|t| t.contains_bool()),
+            Type::Prop | Type::UInt(_) | Type::SInt(_) | Type::Address | Type::TypeParameter(_) => {
+                false
             }
         }
+    }
+
+    /// Check if this is a Bool type
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Type::Bool)
+    }
+
+    /// Check if this is a Prop type
+    pub fn is_prop(&self) -> bool {
+        matches!(self, Type::Prop)
     }
 }

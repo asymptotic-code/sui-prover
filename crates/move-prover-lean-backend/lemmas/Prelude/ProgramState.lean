@@ -1,5 +1,4 @@
-import Prelude.UInt256
-import Prelude.UInt128
+import Prelude.BoundedNat
 
 -- Abort code type alias for clarity
 abbrev AbortCode := Nat

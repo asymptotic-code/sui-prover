@@ -8,7 +8,7 @@ use crate::control_flow_reconstruction::structure_discovery::reconstruct_functio
 use crate::control_flow_reconstruction::DiscoveryContext;
 use crate::program_builder::ProgramBuilder;
 use intermediate_theorem_format::{
-    Function, FunctionSignature, IRNode, Parameter, Type, VariableRegistry,
+    Function, FunctionFlags, FunctionSignature, IRNode, Parameter, Type, VariableRegistry,
 };
 use move_model::model::FunctionEnv;
 use move_stackless_bytecode::function_target::FunctionTarget;
@@ -22,7 +22,7 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
             .local_types
             .iter()
             .enumerate()
-            .map(|(index, move_type)| (index, builder.convert_type(move_type)))
+            .map(|(index, move_type)| (format!("$t{}", index), builder.convert_type(move_type)))
             .collect(),
     );
 
@@ -34,6 +34,11 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
     let name = ProgramBuilder::sanitize_name(&builder.symbol_str(func_env.get_name()));
     let signature = build_signature(builder, func_env);
     let is_native = func_env.is_native();
+    let flags = if is_native {
+        FunctionFlags::new().with_native()
+    } else {
+        FunctionFlags::new()
+    };
 
     if target.get_bytecode().is_empty() || is_native {
         return Function {
@@ -43,7 +48,8 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
             body: IRNode::default(),
             variables,
             mutual_group_id: None,
-            is_native,
+            flags,
+            spec_target: None,
         };
     }
 
@@ -65,7 +71,8 @@ pub fn translate_function(builder: &mut ProgramBuilder, target: FunctionTarget) 
         body,
         variables,
         mutual_group_id: None,
-        is_native,
+        flags,
+        spec_target: None,
     }
 }
 
