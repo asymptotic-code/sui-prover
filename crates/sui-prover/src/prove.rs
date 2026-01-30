@@ -1,7 +1,7 @@
 use crate::build_model::build_model;
 use crate::llm_explain::explain_err;
 use crate::remote_config::RemoteConfig;
-use clap::{Args, ValueEnum};
+use clap::Args;
 use codespan_reporting::term::termcolor::Buffer;
 use log::LevelFilter;
 use move_compiler::editions::{Edition, Flavor};
@@ -10,15 +10,12 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::create_and_process_bytecode;
-use move_prover_boogie_backend::generator::run_boogie_gen;
-use move_prover_boogie_backend::generator_options::Options;
+use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
 use move_stackless_bytecode::function_stats;
 use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::spec_hierarchy;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use std::fmt::{Display, Formatter};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -99,10 +96,6 @@ pub struct GeneralConfig {
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
 
-    /// Lean running mode
-    #[clap(name = "backend", long, global = true, default_value_t = BackendOptions::Boogie)]
-    pub backend: BackendOptions,
-
     /// Dump bytecode to file
     #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
     pub dump_bytecode: bool,
@@ -161,22 +154,6 @@ pub struct BuildConfig {
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
 }
 
-#[derive(ValueEnum, Default, Clone)]
-pub enum BackendOptions {
-    #[default]
-    Boogie,
-    Lean,
-}
-
-impl Display for BackendOptions {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BackendOptions::Boogie => write!(f, "boogie"),
-            BackendOptions::Lean => write!(f, "lean"),
-        }
-    }
-}
-
 pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: usize = 45;
 
 pub async fn execute(
@@ -215,11 +192,7 @@ pub async fn execute(
         spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
     }
 
-    if matches!(general_config.backend, BackendOptions::Boogie) {
-        execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
-    } else {
-        execute_backend_lean(model, &general_config).await
-    }
+    execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
 }
 
 async fn execute_backend_boogie(
@@ -284,40 +257,5 @@ async fn execute_backend_boogie(
         println!("{}", result_str)
     }
 
-    Ok(())
-}
-
-async fn execute_backend_lean(
-    model: GlobalEnv,
-    _general_config: &GeneralConfig,
-) -> anyhow::Result<()> {
-    // Run bytecode transformation pipeline
-    let package_targets = PackageTargets::new(&model, Default::default(), true);
-    let (targets, _) = create_and_process_bytecode(
-        &Options::default(),
-        &model,
-        &package_targets,
-        FunctionHolderTarget::All,
-    );
-
-    // Determine directories
-    let package_dir = std::env::current_dir()?;
-    let output_dir = package_dir.join("output");
-
-    // Run Lean backend
-    println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(
-        &model,
-        &targets,
-        &output_dir,
-        &package_dir,
-        &package_targets,
-    )
-    .await?;
-
-    println!(
-        "✓ Lean code generated successfully in {}",
-        output_dir.display()
-    );
     Ok(())
 }
