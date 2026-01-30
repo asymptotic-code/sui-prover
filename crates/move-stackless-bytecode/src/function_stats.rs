@@ -43,7 +43,7 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 /// Determines if a function should be included in statistics.
 ///
 /// Filters out:
-/// - Non-public functions
+/// - Non-public and non-entry functions
 /// - Functions with `spec_only` attribute
 /// - Functions with `test_only` attribute
 /// - Spec functions themselves
@@ -55,7 +55,8 @@ fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> 
     {
         return false;
     }
-    if func_env.visibility() != Visibility::Public {
+    // Include public functions and entry functions (entry functions can have any visibility)
+    if func_env.visibility() != Visibility::Public && !func_env.is_entry() {
         return false;
     }
     if has_attribute(func_env, "spec_only") {
@@ -108,7 +109,7 @@ fn is_github_dependency(module_env: &move_model::model::ModuleEnv) -> bool {
         .unwrap_or(false)
 }
 
-/// Displays statistics for all public functions in the project.
+/// Displays statistics for all public and entry functions in the project.
 ///
 /// Shows:
 /// - Functions grouped by module
@@ -117,7 +118,7 @@ fn is_github_dependency(module_env: &move_model::model::ModuleEnv) -> bool {
 ///
 /// Excludes:
 /// - System/framework modules
-/// - Non-public functions
+/// - Non-public and non-entry functions
 /// - Test-only and spec-only functions
 pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
     println!("📊 Function Statistics\n");
@@ -129,7 +130,7 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
         0xdee9u16.into(), // DeepBook address
     ];
 
-    let mut total_public_functions = 0;
+    let mut total_functions = 0;
     let mut stats_by_status = BTreeMap::new();
     let mut functions_by_module: BTreeMap<String, Vec<_>> = BTreeMap::new();
 
@@ -169,7 +170,7 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
 
         for func_id in func_ids {
             let func_env = env.get_function(func_id);
-            total_public_functions += 1;
+            total_functions += 1;
 
             let specs = targets.get_specs(&func_env.get_qualified_id());
             if specs.is_none() {
@@ -190,7 +191,7 @@ pub fn display_function_stats(env: &GlobalEnv, targets: &PackageTargets) {
     }
 
     println!("📈 Summary:");
-    println!("Total public functions: {}", total_public_functions);
+    println!("Total public/entry functions: {}", total_functions);
     for (status, count) in stats_by_status {
         println!("  {}: {}", status, count);
     }
