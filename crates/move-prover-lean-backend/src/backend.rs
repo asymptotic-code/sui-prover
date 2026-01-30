@@ -12,6 +12,7 @@ use crate::runtime::run_lake_build;
 use intermediate_theorem_format::insert_bool_coercions;
 use move_model::model::GlobalEnv;
 use move_stackless_bytecode::function_target_pipeline::FunctionTargetsHolder;
+use move_stackless_bytecode::package_targets::PackageTargets;
 use stackless_to_intermediate::ProgramBuilder;
 use std::fs;
 use std::path::Path;
@@ -45,14 +46,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
 /// - `targets`: The function targets holder
 /// - `output_dir`: Where to write generated Lean files (e.g., `<package>/output`)
 /// - `package_dir`: The Move package root (e.g., `<package>/`), used to find user proofs in `sources/lean/`
+/// - `package_targets`: Package targets containing spec-to-target mappings
 pub async fn run_backend(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
     output_dir: &Path,
     package_dir: &Path,
+    package_targets: &PackageTargets,
 ) -> anyhow::Result<()> {
-    // Run translation pipeline
-    let mut program = ProgramBuilder::new(env).build(targets);
+    // Run translation pipeline with spec-to-target mappings
+    let mut program =
+        ProgramBuilder::new(env).build_with_package_targets(targets, Some(package_targets));
 
     // Insert ToBool coercions for If/While conditions in runtime functions
     // This is needed because comparisons return Prop in Lean, but `if` requires Bool

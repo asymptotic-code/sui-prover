@@ -227,6 +227,22 @@ fn translate_call(
             }))
         }
 
+        // Conditional expression (PHI-like node from conditional merge insertion)
+        // This is a pure conditional expression: if cond then v1 else v2
+        Operation::IfThenElse => {
+            assert_eq!(
+                srcs.len(),
+                3,
+                "BUG: IfThenElse expects 3 sources (cond, then, else), got {}",
+                srcs.len()
+            );
+            Some(make_let_from_expr(IRNode::If {
+                cond: Box::new(make_var(&ctx.target, srcs[0])),
+                then_branch: Box::new(make_var(&ctx.target, srcs[1])),
+                else_branch: Box::new(make_var(&ctx.target, srcs[2])),
+            }))
+        }
+
         // Skipped debug ops
         Operation::Destroy
         | Operation::TraceLocal(_)
@@ -243,7 +259,7 @@ fn translate_call(
             unreachable!("Global operations don't exist in modern Sui")
         }
 
-        _ => unreachable!(),
+        op => panic!("BUG: Unhandled operation {:?}", op),
     }
 }
 

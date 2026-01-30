@@ -110,9 +110,9 @@ pub fn render_type<W: Write>(ty: &Type, ctx: &mut RenderCtx<W>) {
         }
 
         Type::Except(inner) => {
-            ctx.write("(Except AbortCode ");
+            ctx.write("(Except AbortCode (");
             render_type(inner, ctx);
-            ctx.write(")");
+            ctx.write("))");
         }
     }
 }

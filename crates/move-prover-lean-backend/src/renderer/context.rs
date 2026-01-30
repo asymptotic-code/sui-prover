@@ -15,8 +15,6 @@ pub struct RenderCtx<'a, W: Write> {
     pub current_module_namespace: Option<&'a str>,
     pub type_params: Option<&'a [String]>,
     pub writer: LeanWriter<W>,
-    /// Generic spec metadata for transforming MoveReal calls
-    pub generic_spec: Option<&'a intermediate_theorem_format::analysis::GenericSpec>,
     /// Whether we're rendering a Prop (use `=` instead of `==` for equality)
     pub prop_context: bool,
     /// Whether Bool should render as Prop (true for .aborts functions)
@@ -38,7 +36,6 @@ impl<'a, W: Write> RenderCtx<'a, W> {
             current_module_namespace,
             type_params: None,
             writer,
-            generic_spec: None,
             prop_context: false,
             bool_as_prop: false,
         }
@@ -52,14 +49,6 @@ impl<'a, W: Write> RenderCtx<'a, W> {
     /// Set bool_as_prop (for .aborts functions where Bool should render as Prop)
     pub fn with_bool_as_prop(&mut self) {
         self.bool_as_prop = true;
-    }
-
-    /// Set generic spec metadata for transforming function bodies
-    pub fn with_generic_spec(
-        &mut self,
-        spec: &'a intermediate_theorem_format::analysis::GenericSpec,
-    ) {
-        self.generic_spec = Some(spec);
     }
 
     /// Set the current function's type parameters for rendering

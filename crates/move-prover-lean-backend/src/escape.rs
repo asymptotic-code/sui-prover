@@ -36,10 +36,11 @@ pub fn escape_struct_name(name: &str) -> String {
 
 /// Check if a type name is a Lean built-in that we intentionally use directly
 /// (without namespace qualification because we're using Lean's type, not Move's)
-pub fn is_lean_builtin(name: &str) -> bool {
-    // Integer is used for spec-level integers (Lean's Integer type)
-    // Note: Option is NOT here because we use Move's Option (MoveOption.MoveOption)
-    matches!(name, "Integer")
+pub fn is_lean_builtin(_name: &str) -> bool {
+    // All Move types are now qualified with their namespace.
+    // Integer is provided by IntegerNatives as Integer.Integer (alias for Int).
+    // Option is MoveOption.MoveOption.
+    false
 }
 
 /// Convert a Move module name to a Lean namespace name

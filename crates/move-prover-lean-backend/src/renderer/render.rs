@@ -91,132 +91,6 @@ fn try_transform_int_ops_call<W: Write>(
     false
 }
 
-fn try_transform_movereal_call<W: Write>(
-    func_name: &str,
-    args: &[IRNode],
-    ctx: &mut RenderCtx<W>,
-) -> bool {
-    // Check if we're in a generic spec context
-    let generic_spec = match ctx.generic_spec {
-        Some(spec) => spec,
-        None => return false,
-    };
-
-    // Transform MoveReal operations to Real operations and typeclass methods
-    match func_name {
-        // Conversion from unsigned integers - just cast to Real
-        "from_u128" | "from_u64" | "from_u32" | "from_u16" | "from_u8" => {
-            if let Some(arg) = args.first() {
-                ctx.write("(");
-                render(arg, ctx);
-                ctx.write(" : ℝ)");
-                return true;
-            }
-        }
-
-        // Conversion from signed integers - use IntegerType.toReal
-        "from_i128_bits" | "from_i64_bits" | "from_i32_bits" | "from_i16_bits" | "from_i8_bits" => {
-            if let Some(arg) = args.first() {
-                ctx.write("IntegerType.toReal ");
-                render_with_parens_if_needed(arg, ctx);
-                return true;
-            }
-        }
-
-        // Arithmetic - map to Real operators
-        "add" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" + ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        "sub" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" - ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        "mul" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" * ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        "div" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" / ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        "pow" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" ^ ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        // Floor - use NumericType.fromReal with Real.floor
-        "floor_u128" | "floor_u64" | "floor_u32" | "floor_u16" | "floor_u8" => {
-            if let Some(arg) = args.first() {
-                ctx.write("NumericType.fromReal (⌊");
-                render(arg, ctx);
-                ctx.write("⌋)");
-                return true;
-            }
-        }
-
-        // Ceiling - use NumericType.fromReal with Real.ceil
-        "ceil_u128" | "ceil_u64" | "ceil_u32" | "ceil_u16" | "ceil_u8" => {
-            if let Some(arg) = args.first() {
-                ctx.write("NumericType.fromReal (⌈");
-                render(arg, ctx);
-                ctx.write("⌉)");
-                return true;
-            }
-        }
-
-        // Fraction - just division
-        "from_fraction" => {
-            if args.len() == 2 {
-                ctx.write("(");
-                render(&args[0], ctx);
-                ctx.write(" / ");
-                render(&args[1], ctx);
-                ctx.write(")");
-                return true;
-            }
-        }
-
-        _ => {}
-    }
-
-    false
-}
-
 /// Render an IR node to Lean syntax
 pub fn render<W: Write>(ir: &IRNode, ctx: &mut RenderCtx<W>) {
     match ir {
@@ -290,11 +164,6 @@ pub fn render<W: Write>(ir: &IRNode, ctx: &mut RenderCtx<W>) {
 
             // Try to transform int_ops operations to built-in Int operations
             if try_transform_int_ops_call(&func.name, &module.name, function.variant, args, ctx) {
-                return;
-            }
-
-            // Try to transform MoveReal operations for generic specs
-            if try_transform_movereal_call(&func.name, args, ctx) {
                 return;
             }
 
@@ -969,9 +838,7 @@ fn body_returns_unit(ir: &IRNode) -> bool {
                 && matches!(**else_branch, IRNode::Let { .. })
         }
         // Block returns unit if its last child does
-        IRNode::Block { children } => children
-            .last()
-            .is_some_and(body_returns_unit),
+        IRNode::Block { children } => children.last().is_some_and(body_returns_unit),
         _ => false,
     }
 }
@@ -980,9 +847,7 @@ fn body_returns_unit(ir: &IRNode) -> bool {
 fn body_ends_with_let(ir: &IRNode) -> bool {
     match ir {
         IRNode::Let { .. } => true,
-        IRNode::Block { children } => children
-            .last()
-            .is_some_and(body_ends_with_let),
+        IRNode::Block { children } => children.last().is_some_and(body_ends_with_let),
         IRNode::If {
             then_branch,
             else_branch,

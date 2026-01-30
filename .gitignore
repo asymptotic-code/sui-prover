@@ -55,5 +55,3 @@ output/
 .sparse
 
 crates/sui-prover/tests/sources/*
-
-get_sqrt_price_at_positive_tick/

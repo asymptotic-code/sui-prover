@@ -306,7 +306,14 @@ async fn execute_backend_lean(
 
     // Run Lean backend
     println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(&model, &targets, &output_dir, &package_dir).await?;
+    move_prover_lean_backend::run_backend(
+        &model,
+        &targets,
+        &output_dir,
+        &package_dir,
+        &package_targets,
+    )
+    .await?;
 
     println!(
         "✓ Lean code generated successfully in {}",

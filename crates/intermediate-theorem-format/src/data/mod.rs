@@ -200,6 +200,11 @@ impl FunctionStore {
         self.base_functions.keys().copied()
     }
 
+    /// Iterate over Move qualified IDs and their corresponding base IDs
+    pub fn iter_move_keys(&self) -> impl Iterator<Item = (QualifiedId<FunId>, usize)> + '_ {
+        self.ids.iter().map(|(qid, &base_id)| (*qid, base_id))
+    }
+
     /// Iterate over all function IDs (base + variants)
     pub fn iter_ids(&self) -> impl Iterator<Item = FunctionID> + '_ {
         let base_ids = self
@@ -302,8 +307,6 @@ pub struct Program {
     pub modules: ItemStore<ModuleId, Module>,
     pub structs: ItemStore<QualifiedId<DatatypeId>, structure::Struct>,
     pub functions: FunctionStore,
-    /// Generic spec metadata computed by the spec_genericize analysis pass
-    pub generic_specs: std::collections::HashMap<FunctionID, crate::analysis::GenericSpec>,
     /// Conversion functions between spec and implementation types
     pub conversions: conversion::ConversionRegistry,
 }
@@ -326,9 +329,6 @@ impl Program {
         // Generate spec functions (.requires, .ensures)
         // Specs now stay separate - no call rewriting to Pure variants
         crate::analysis::generate_spec_functions(self);
-
-        // Analyze spec functions to infer generic typeclass constraints
-        crate::analysis::genericize_specs(self);
 
         // Generate spec type conversion functions (e.g., i32_to_int, int_to_i32)
         // This should run early so the functions are available for use

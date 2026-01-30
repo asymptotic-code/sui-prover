@@ -516,42 +516,6 @@ pub fn render_spec_with_target_name<W: Write>(
     )
 }
 
-/// Shared function body rendering logic used by both render_function and render_function_impl.
-fn render_function_body_with_generics<W: Write>(
-    func: &Function,
-    escaped_name: &str,
-    program: &Program,
-    current_module_namespace: &str,
-    func_id: FunctionID,
-    uses_rational: &std::collections::HashSet<FunctionID>,
-    generic_spec: Option<&intermediate_theorem_format::analysis::GenericSpec>,
-    w: LeanWriter<W>,
-) -> LeanWriter<W> {
-    // Use generic rendering if we have generic spec metadata
-    if let Some(spec) = generic_spec {
-        render_function_body_generic(
-            func,
-            escaped_name,
-            program,
-            current_module_namespace,
-            func_id,
-            uses_rational,
-            spec,
-            w,
-        )
-    } else {
-        render_function_body(
-            func,
-            escaped_name,
-            program,
-            current_module_namespace,
-            func_id,
-            uses_rational,
-            w,
-        )
-    }
-}
-
 fn render_function_body<W: Write>(
     func: &Function,
     escaped_name: &str,
@@ -733,150 +697,6 @@ fn render_type_params<W: Write>(type_params: &[String], w: &mut LeanWriter<W>) {
     }
 }
 
-/// Render type parameters with inferred typeclass constraints from GenericSpec
-fn render_generic_type_params<W: Write>(
-    generic_spec: &intermediate_theorem_format::analysis::GenericSpec,
-    w: &mut LeanWriter<W>,
-) {
-    // Render each type parameter with its constraints
-    for type_param in generic_spec.type_params.keys() {
-        w.write(" (");
-        w.write(type_param);
-        w.write(" : Type)");
-
-        // Add inferred typeclass constraints
-        if let Some(constraints) = generic_spec.constraints.get(type_param) {
-            for constraint in constraints {
-                w.write(" [");
-                w.write(constraint.lean_name());
-                w.write(" ");
-                w.write(type_param);
-                w.write("]");
-            }
-        }
-    }
-}
-
-/// Render a generic spec function with typeclass constraints
-fn render_function_body_generic<W: Write>(
-    func: &Function,
-    _escaped_name: &str,
-    program: &Program,
-    current_module_namespace: &str,
-    func_id: FunctionID,
-    _uses_rational: &std::collections::HashSet<FunctionID>,
-    generic_spec: &intermediate_theorem_format::analysis::GenericSpec,
-    mut w: LeanWriter<W>,
-) -> LeanWriter<W> {
-    // Type parameters with inferred typeclass constraints
-    render_generic_type_params(generic_spec, &mut w);
-
-    // Collect used variables in body to detect unused parameters
-    let used_vars: BTreeSet<String> = func.body.used_vars().cloned().collect();
-
-    // Parameters - collect Bool params for Decidable constraints
-    let mut bool_params = Vec::new();
-    for p in &func.signature.parameters {
-        let base_name = if p.name.is_empty() || p.name == "_" {
-            panic!("BUG: Parameter has empty or underscore name");
-        } else {
-            escape::escape_identifier(&p.name)
-        };
-        // Prefix with _ if parameter is not used in body
-        let param_name = if used_vars.contains(&p.name) {
-            base_name.clone()
-        } else {
-            format!("_{}", base_name)
-        };
-
-        // Use generic type parameter if this parameter was genericized
-        let type_str = if let Some(type_param) = generic_spec.type_substitutions.get(&p.name) {
-            type_param.clone()
-        } else {
-            type_to_string_with_params(
-                &p.param_type,
-                program,
-                Some(current_module_namespace),
-                Some(&func.signature.type_params),
-            )
-        };
-
-        w.write(" (");
-        w.write(&param_name);
-        w.write(" : ");
-        w.write(&type_str);
-        w.write(")");
-
-        // Track Bool params - they need Decidable constraints for if-then-else
-        if matches!(p.param_type, Type::Bool) {
-            bool_params.push(param_name.clone());
-        }
-    }
-
-    // Add Decidable constraints for Bool (Prop) parameters
-    for param in &bool_params {
-        w.write(" [Decidable ");
-        w.write(param);
-        w.write("]");
-    }
-
-    // Return type - check if it was genericized
-    w.write(" : ");
-    if func_id.variant.returns_bool() && matches!(func.signature.return_type, Type::Bool) {
-        w.write("Prop");
-    } else {
-        // Check if return type should be generic based on the type params we inferred
-        let return_type_str = if generic_spec.type_params.contains_key("U")
-            && matches!(func.signature.return_type, Type::UInt(_))
-        {
-            "U".to_string()
-        } else if generic_spec.type_params.contains_key("I")
-            && matches!(func.signature.return_type, Type::SInt(_))
-        {
-            "I".to_string()
-        } else {
-            type_to_string_with_params(
-                &func.signature.return_type,
-                program,
-                Some(current_module_namespace),
-                Some(&func.signature.type_params),
-            )
-        };
-        w.write(&return_type_str);
-    }
-
-    w.write(" :=");
-    w.newline();
-    w.indent(false);
-
-    // Render function body with generic spec context for MoveReal transformation
-    let mut ctx = RenderCtx::new(
-        program,
-        &func.variables,
-        func.module_id,
-        Some(current_module_namespace),
-        w,
-    );
-
-    // Set generic spec metadata so the renderer can transform MoveReal calls
-    ctx.with_generic_spec(generic_spec);
-
-    // Wrap non-Block bodies in a Block
-    let body_to_render = match &func.body {
-        IRNode::Block { .. } => func.body.clone(),
-        _ => IRNode::Block {
-            children: vec![func.body.clone()],
-        },
-    };
-
-    render::render(&body_to_render, &mut ctx);
-
-    let mut w = ctx.into_writer();
-    w.dedent(false);
-    w.newline();
-    w
-}
-
 /// Render a function with a specific body and name
 /// For _impl functions (name ends with "_impl"), uses stricter noncomputable check
 /// since the body is the original implementation (integer/bitwise only).
@@ -1035,11 +855,6 @@ pub fn render_spec_replaced_function<W: Write>(
 
     let func_id = FunctionID::new(base_id);
 
-    // IMPORTANT: Do NOT use generic_spec metadata here!
-    // This function renders the spec body for a spec-TARGET function.
-    // The target function has concrete types in its signature, and we want to preserve those.
-    // Generic metadata is for rendering standalone spec functions, not replacements.
-
     // While loops use fuel-based termination (whileLoopFuel), so no 'partial' needed
     // Only mark as noncomputable if the function uses Real types
     let needs_noncomputable = uses_rat_type(func, program, &uses_rational);
@@ -1050,15 +865,13 @@ pub fn render_spec_replaced_function<W: Write>(
     }
     w.write(&escaped_name);
 
-    // Use render_function_body WITHOUT generic metadata - use the concrete target signature
-    render_function_body_with_generics(
+    render_function_body(
         func,
         &escaped_name,
         program,
         current_module_namespace,
         func_id,
         &uses_rational,
-        None, // No generics - use concrete types from the target function
         w,
     )
 }

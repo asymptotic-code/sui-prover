@@ -14,6 +14,7 @@ use move_model::symbol::Symbol;
 use move_model::ty::Type as MoveType;
 use move_stackless_bytecode::function_target::FunctionTarget;
 use move_stackless_bytecode::function_target_pipeline::{FunctionTargetsHolder, FunctionVariant};
+use move_stackless_bytecode::package_targets::PackageTargets;
 use std::rc::Rc;
 
 pub struct ProgramBuilder<'env> {
@@ -46,7 +47,16 @@ impl<'env> ProgramBuilder<'env> {
         FunctionID::new(self.program.functions.id_for_key(id))
     }
 
-    pub fn build(mut self, targets: &'env FunctionTargetsHolder) -> Program {
+    pub fn build(self, targets: &'env FunctionTargetsHolder) -> Program {
+        self.build_with_package_targets(targets, None)
+    }
+
+    /// Build the program with spec-to-target mappings from PackageTargets.
+    pub fn build_with_package_targets(
+        mut self,
+        targets: &'env FunctionTargetsHolder,
+        package_targets: Option<&PackageTargets>,
+    ) -> Program {
         // Only create modules and functions - structs are created on-demand
         // when referenced by function signatures or bodies via struct_id()
         for module_env in self.env.get_modules() {
@@ -58,6 +68,22 @@ impl<'env> ProgramBuilder<'env> {
                     self.create_function(target);
                 }
             }
+        }
+
+        // Build spec-to-target mapping using find_target_spec
+        if let Some(pkg_targets) = package_targets {
+            let spec_targets: std::collections::HashMap<usize, usize> = self
+                .program
+                .functions
+                .iter_move_keys()
+                .filter_map(|(spec_qid, spec_base_id)| {
+                    let target_qid = pkg_targets.find_target_spec(&spec_qid)?;
+                    let target_base_id = self.program.functions.get_id_for_move_key(&target_qid)?;
+                    Some((spec_base_id, target_base_id))
+                })
+                .collect();
+
+            self.program.set_spec_targets(&spec_targets);
         }
 
         self.program.finalize();

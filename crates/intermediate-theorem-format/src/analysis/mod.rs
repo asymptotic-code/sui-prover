@@ -14,7 +14,6 @@ mod import_collection;
 mod logical_simplification;
 mod runtime_variants;
 mod spec_generation;
-mod spec_genericize;
 mod spec_type_conversion;
 mod temp_inlining;
 
@@ -27,7 +26,6 @@ pub use import_collection::collect_imports;
 pub use logical_simplification::simplify as logical_simplify;
 pub use runtime_variants::{convert_to_pure, generate_runtime_variants};
 pub use spec_generation::generate_spec_functions;
-pub use spec_genericize::{genericize_specs, GenericSpec, TypeClass};
 pub use spec_type_conversion::generate_spec_type_conversions;
 
 use crate::data::variables::TypeContext;
