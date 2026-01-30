@@ -3768,11 +3768,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        if callee_is_pure
-                            && !use_func
-                            && (self.style == FunctionTranslationStyle::Default
-                                || self.style == FunctionTranslationStyle::Pure)
-                        {
+                        if callee_is_pure {
                             use_func = true;
                         }
 
