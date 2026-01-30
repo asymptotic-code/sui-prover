@@ -45,12 +45,12 @@ impl ConversionRegistry {
     }
 
     /// Get the function that converts from impl to spec
-    pub fn to_spec_fn(&self, impl_type: &Type) -> Option<FunctionID> {
+    pub fn impl_to_spec_fn(&self, impl_type: &Type) -> Option<FunctionID> {
         self.specs.get(impl_type).map(|spec| spec.to_spec_fn)
     }
 
     /// Get the function that converts from spec to impl
-    pub fn from_spec_fn(&self, impl_type: &Type) -> Option<FunctionID> {
+    pub fn spec_to_impl_fn(&self, impl_type: &Type) -> Option<FunctionID> {
         self.specs.get(impl_type).map(|spec| spec.from_spec_fn)
     }
 

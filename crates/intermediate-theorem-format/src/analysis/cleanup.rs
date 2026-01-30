@@ -16,8 +16,8 @@ pub fn cleanup(node: IRNode, ctx: &TypeContext) -> IRNode {
     let node = remove_identity_lets(node);
     let node = simplify_boolean_ifs(node);
     let node = convert_boolean_ifs_to_and_or(node, ctx);
-    let node = collapse_branch_bindings(node);
-    node
+
+    collapse_branch_bindings(node)
 }
 
 /// Flatten single-child blocks and merge nested blocks
@@ -224,8 +224,7 @@ fn collapse_once(node: IRNode) -> IRNode {
                         if children.len() == 2 {
                             return val;
                         } else {
-                            let mut new_children: Vec<_> =
-                                children[..prev_idx].iter().cloned().collect();
+                            let mut new_children: Vec<_> = children[..prev_idx].to_vec();
                             new_children.push(val);
                             return IRNode::Block {
                                 children: new_children,
@@ -235,35 +234,33 @@ fn collapse_once(node: IRNode) -> IRNode {
                 }
 
                 // Pattern 2: [..., If { ... }, Var("x")] where branches bind x
-                if let (Some(IRNode::Var(var_name)), Some(if_node)) =
-                    (children.get(last_idx), children.get(prev_idx))
-                {
-                    if let IRNode::If {
+                if let (
+                    Some(IRNode::Var(var_name)),
+                    Some(IRNode::If {
                         cond,
                         then_branch,
                         else_branch,
-                    } = if_node
-                    {
-                        if let (Some(then_val), Some(else_val)) = (
-                            extract_single_let_value(then_branch, var_name),
-                            extract_single_let_value(else_branch, var_name),
-                        ) {
-                            let new_if = IRNode::If {
-                                cond: cond.clone(),
-                                then_branch: Box::new(then_val),
-                                else_branch: Box::new(else_val),
-                            };
+                    }),
+                ) = (children.get(last_idx), children.get(prev_idx))
+                {
+                    if let (Some(then_val), Some(else_val)) = (
+                        extract_single_let_value(then_branch, var_name),
+                        extract_single_let_value(else_branch, var_name),
+                    ) {
+                        let new_if = IRNode::If {
+                            cond: cond.clone(),
+                            then_branch: Box::new(then_val),
+                            else_branch: Box::new(else_val),
+                        };
 
-                            if children.len() == 2 {
-                                return new_if;
-                            } else {
-                                let mut new_children: Vec<_> =
-                                    children[..prev_idx].iter().cloned().collect();
-                                new_children.push(new_if);
-                                return IRNode::Block {
-                                    children: new_children,
-                                };
-                            }
+                        if children.len() == 2 {
+                            return new_if;
+                        } else {
+                            let mut new_children: Vec<_> = children[..prev_idx].to_vec();
+                            new_children.push(new_if);
+                            return IRNode::Block {
+                                children: new_children,
+                            };
                         }
                     }
                 }

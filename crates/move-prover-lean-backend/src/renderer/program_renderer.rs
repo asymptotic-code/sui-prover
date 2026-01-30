@@ -42,7 +42,7 @@ fn extract_native_function_names(native_file_path: &Path) -> HashSet<String> {
                 .or_else(|| line.strip_prefix("partial def "))
             {
                 // Extract the function name (up to first space or open paren)
-                if let Some(name_end) = rest.find(|c: char| c == ' ' || c == '(' || c == ':') {
+                if let Some(name_end) = rest.find([' ', '(', ':']) {
                     let name = &rest[..name_end];
                     // Also handle names with variants like "foo.pure" -> add "foo"
                     if let Some(base_name) = name.split('.').next() {
@@ -66,7 +66,7 @@ fn extract_native_struct_names(native_file_path: &Path) -> HashSet<String> {
             // Match patterns like "structure Foo" or "structure Foo.{u}"
             if let Some(rest) = line.strip_prefix("structure ") {
                 // Extract the struct name (up to first space, brace, or where keyword)
-                if let Some(name_end) = rest.find(|c: char| c == ' ' || c == '.' || c == '{') {
+                if let Some(name_end) = rest.find([' ', '.', '{']) {
                     let name = &rest[..name_end];
                     names.insert(name.to_string());
                 } else if !rest.is_empty() {
@@ -76,7 +76,7 @@ fn extract_native_struct_names(native_file_path: &Path) -> HashSet<String> {
             }
             // Match patterns like "abbrev Foo" (type aliases)
             if let Some(rest) = line.strip_prefix("abbrev ") {
-                if let Some(name_end) = rest.find(|c: char| c == ' ' || c == ':' || c == '{') {
+                if let Some(name_end) = rest.find([' ', ':', '{']) {
                     let name = &rest[..name_end];
                     names.insert(name.to_string());
                 } else if !rest.is_empty() {
@@ -92,11 +92,7 @@ fn extract_native_struct_names(native_file_path: &Path) -> HashSet<String> {
                         // First word after ( is often the struct type name
                         for export_name in exports.split_whitespace() {
                             // Struct names typically start with uppercase
-                            if export_name
-                                .chars()
-                                .next()
-                                .map_or(false, |c| c.is_uppercase())
-                            {
+                            if export_name.chars().next().is_some_and(|c| c.is_uppercase()) {
                                 names.insert(export_name.to_string());
                             }
                         }
@@ -223,7 +219,7 @@ pub fn render_to_directory(
             }
 
             // Check if this native function is a spec target (has specs targeting it)
-            let is_spec_target = program.get_specs_for(base_id).len() > 0;
+            let is_spec_target = !program.get_specs_for(base_id).is_empty();
 
             if base_func.is_native() && !is_spec_target {
                 // Skip regular native functions, but keep native spec targets
@@ -262,13 +258,13 @@ pub fn render_to_directory(
             }
 
             // Normal impl function - render it directly
-            // Use Pure variant if it exists (for monadic functions), otherwise Runtime
+            // Use Pure variant if it exists (for aborting functions), otherwise Runtime
             let pure_id = FunctionID::with_variant(base_id, FunctionVariant::Pure);
             let (func_id_to_render, func_to_render) =
                 if let Some(pure_func) = program.functions.try_get(&pure_id) {
                     (pure_id, pure_func)
                 } else {
-                    // No Pure variant (non-monadic function) - render Runtime variant
+                    // No Pure variant (non-aborting function) - render Runtime variant
                     let runtime_id = FunctionID::new(base_id);
                     (runtime_id, base_func)
                 };
@@ -804,19 +800,18 @@ fn generate_proof_template(
     // Header comment
     if is_spec_equivalence {
         content.push_str(&format!("-- Proof template for {}\n", func_name));
-        content.push_str(&format!("-- This file contains the formal proof that the implementation matches the specification\n"));
+        content.push_str("-- This file contains the formal proof that the implementation matches the specification\n");
     } else {
         content.push_str(&format!(
             "-- Proof template for {} verification\n",
             func_name
         ));
-        content.push_str(&format!(
-            "-- This file contains the formal proof for requires/ensures specifications\n"
-        ));
+        content.push_str(
+            "-- This file contains the formal proof for requires/ensures specifications\n",
+        );
     }
-    content.push_str(&format!(
-        "-- TODO: Complete this proof by replacing 'sorry' with actual proof steps\n\n"
-    ));
+    content
+        .push_str("-- TODO: Complete this proof by replacing 'sorry' with actual proof steps\n\n");
 
     // Imports
     for prelude_import in prelude_imports {
@@ -893,9 +888,7 @@ fn generate_proof_template(
 
     // Generate theorem based on type
     if is_spec_equivalence {
-        content.push_str(&format!(
-            "-- Proves that the implementation equals the specification\n"
-        ));
+        content.push_str("-- Proves that the implementation equals the specification\n");
         content.push_str(&format!("theorem proof{} :\n", param_list));
 
         if has_requires {
@@ -934,7 +927,7 @@ fn generate_proof_template(
             ensures_calls.join(" ∧\n    ")
         };
 
-        content.push_str(&format!("-- Proves the verification conditions\n"));
+        content.push_str("-- Proves the verification conditions\n");
         content.push_str(&format!("theorem proof{} :\n", param_list));
 
         if has_requires {

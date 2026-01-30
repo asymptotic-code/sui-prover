@@ -161,7 +161,7 @@ fn body_ends_with_non_bool(body: &IRNode) -> bool {
         IRNode::Call { function, .. } => !function.variant.returns_bool(),
 
         // For Blocks, check only the last child
-        IRNode::Block { children } => children.last().map_or(false, body_ends_with_non_bool),
+        IRNode::Block { children } => children.last().is_some_and(body_ends_with_non_bool),
 
         // For If, assume it's valid if either branch could be Bool
         // (this is permissive - better to render than to replace with False)
@@ -201,7 +201,7 @@ fn body_produces_except_value(body: &IRNode, program: &Program) -> bool {
         // Block: check the last child (the result)
         IRNode::Block { children } => children
             .last()
-            .map_or(false, |c| body_produces_except_value(c, program)),
+            .is_some_and(|c| body_produces_except_value(c, program)),
 
         // Call: check if the called function returns Except
         IRNode::Call { function, .. } => {
@@ -238,7 +238,7 @@ fn body_produces_except_value(body: &IRNode, program: &Program) -> bool {
         // Return: check the returned value(s)
         IRNode::Return(values) => values
             .first()
-            .map_or(false, |v| body_produces_except_value(v, program)),
+            .is_some_and(|v| body_produces_except_value(v, program)),
 
         // Other expressions (Var, Const, Pack, Field, etc.) don't produce Except
         _ => false,
@@ -325,10 +325,7 @@ fn detect_step_pattern(body: &IRNode) -> Option<Vec<(usize, usize, Option<IRNode
         }
     }
 
-    let (start_idx, var_name, initial_value) = match found_pattern_start {
-        Some(s) => s,
-        None => return None,
-    };
+    let (start_idx, var_name, initial_value) = found_pattern_start?;
 
     let mut steps = vec![(start_idx, None, initial_value)];
 
@@ -641,7 +638,7 @@ fn render_function_body<W: Write>(
     // This can happen when the aborts transformation produces incorrect IR
     let is_aborts_with_bad_body = func_id.variant == FunctionVariant::Aborts
         && matches!(func.signature.return_type, Type::Bool)
-        && body_ends_with_non_bool(&body);
+        && body_ends_with_non_bool(body);
 
     // Track if body is sorry (can't derive Decidable from sorry)
     let body_is_sorry = body_is_empty && !return_type_is_unit || is_aborts_with_bad_body;
@@ -660,14 +657,14 @@ fn render_function_body<W: Write>(
         // Empty body returning unit - render ()
         w.write("()");
     } else {
-        // Check if the return type is monadic but the body produces a pure value
+        // Check if the return type can abort but the body produces a pure value
         // In this case, we need to wrap the body with `pure`
-        let return_type_is_monadic = func.signature.return_type.is_monad();
+        let return_type_can_abort = func.signature.return_type.is_monad();
         // A body produces Except if it calls a function that returns Except
-        // Just checking is_monadic() isn't enough - we need to check if the called
+        // Just checking can_abort() isn't enough - we need to check if the called
         // functions actually return Except types
         let body_produces_except = body_produces_except_value(body, program);
-        let needs_pure_wrapper = return_type_is_monadic && !body_produces_except;
+        let needs_pure_wrapper = return_type_can_abort && !body_produces_except;
 
         // Note: Even spec functions use Bool operations in their body.
         // The Bool result is coerced to Prop by Lean's type system.
@@ -742,7 +739,7 @@ fn render_generic_type_params<W: Write>(
     w: &mut LeanWriter<W>,
 ) {
     // Render each type parameter with its constraints
-    for (type_param, _original_type) in &generic_spec.type_params {
+    for type_param in generic_spec.type_params.keys() {
         w.write(" (");
         w.write(type_param);
         w.write(" : Type)");

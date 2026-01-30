@@ -30,7 +30,7 @@ pub fn generate_goal_functions(program: &mut Program) {
 
     for target_id in targets_with_specs {
         let func_id = FunctionID::new(target_id);
-        let func = program.functions.get(&func_id);
+        let _func = program.functions.get(&func_id);
 
         // Note: We no longer skip native functions here because some functions
         // that are spec targets may be stubs (marked native) for functions
@@ -83,7 +83,9 @@ fn build_goal_body(program: &Program, target_id: usize, spec_id: usize) -> IRNod
             let arg = IRNode::Var(impl_param.name.clone());
             // If the types differ, insert a conversion call
             if impl_param.param_type != spec_param.param_type {
-                if let Some(to_spec_fn) = program.conversions.to_spec_fn(&impl_param.param_type) {
+                if let Some(to_spec_fn) =
+                    program.conversions.impl_to_spec_fn(&impl_param.param_type)
+                {
                     IRNode::Call {
                         function: to_spec_fn,
                         type_args: vec![],
@@ -193,7 +195,7 @@ fn build_goal_body(program: &Program, target_id: usize, spec_id: usize) -> IRNod
             });
         }
 
-        ensures_conjunction.unwrap_or_else(|| IRNode::Const(crate::Const::Bool(true)))
+        ensures_conjunction.unwrap_or(IRNode::Const(crate::Const::Bool(true)))
     } else {
         // Build: to_impl(impl(impl_args)) = spec(spec_args)
         // Or if types match: impl(impl_args) = spec(spec_args)
@@ -213,7 +215,7 @@ fn build_goal_body(program: &Program, target_id: usize, spec_id: usize) -> IRNod
                 target_func.name, impl_inner_type, spec_inner_type
             );
             // Look up conversion for the inner type (without Except wrapper)
-            if let Some(to_spec_fn) = program.conversions.to_spec_fn(&impl_inner_type) {
+            if let Some(to_spec_fn) = program.conversions.impl_to_spec_fn(&impl_inner_type) {
                 eprintln!("[GOAL_GEN] Found conversion function for impl return type");
                 IRNode::Call {
                     function: to_spec_fn,

@@ -29,7 +29,13 @@ pub fn simplify_tuple_patterns(ir: IRNode, used: &BTreeSet<String>) -> IRNode {
             // For multi-element patterns, replace unused vars with "_"
             let simplified_pattern: Vec<_> = pattern
                 .into_iter()
-                .map(|v| if used.contains(&v) { v } else { "_".to_string() })
+                .map(|v| {
+                    if used.contains(&v) {
+                        v
+                    } else {
+                        "_".to_string()
+                    }
+                })
                 .collect();
             IRNode::Let {
                 pattern: simplified_pattern,
@@ -69,7 +75,7 @@ fn is_pure(ir: &IRNode) -> bool {
 }
 
 /// Check if a function call is to a known-pure function (never aborts, no side effects)
-fn is_pure_function_call(function: &crate::data::functions::FunctionID) -> bool {
+fn is_pure_function_call(_function: &crate::data::functions::FunctionID) -> bool {
     // For now, we consider all function calls as potentially pure for DCE.
     // The key insight is that if a call's result is unused, we can remove it
     // even if it could abort - if it aborts, execution stops anyway.

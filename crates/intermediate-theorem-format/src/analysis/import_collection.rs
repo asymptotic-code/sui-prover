@@ -4,7 +4,7 @@
 //! Import collection pass
 
 use crate::data::{Dependable, ModuleID, Program};
-use crate::{Function, FunctionID};
+use crate::Function;
 use std::collections::HashSet;
 
 pub fn collect_imports(program: &mut Program) {
@@ -20,7 +20,7 @@ pub fn collect_imports(program: &mut Program) {
 }
 
 fn collect_module_imports(program: &Program, module_id: ModuleID) -> Vec<ModuleID> {
-    let module = program.modules.get(module_id);
+    let _module = program.modules.get(module_id);
 
     let struct_deps = collect_struct_imports(program, module_id);
     let function_deps = collect_function_imports(program, module_id);
@@ -75,7 +75,7 @@ fn collect_from_function<'a>(
     // Get base IDs from function calls and look up their module
     // IMPORTANT: We use fid (the actual FunctionID being called) instead of just fid.base
     // to properly handle calls to spec-target functions with _impl variants
-    let call_deps = function.body.calls().into_iter().map(move |fid| {
+    let call_deps = function.body.calls().map(move |fid| {
         let called_func = program.functions.get(&fid);
         called_func.module_id
     });

@@ -16,7 +16,7 @@ pub enum FunctionVariant {
     /// The original runtime function
     #[default]
     Runtime,
-    /// Pure version (non-monadic, assumes no abort)
+    /// Pure version (non-aborting, assumes no abort)
     Pure,
     /// Aborts predicate (returns Bool indicating if function aborts)
     Aborts,
@@ -198,8 +198,8 @@ pub struct FunctionSignature {
 }
 
 impl FunctionSignature {
-    /// Check if this function is monadic (returns Except)
-    pub fn is_monadic(&self) -> bool {
+    /// Check if this function can abort (returns Except)
+    pub fn can_abort(&self) -> bool {
         self.return_type.is_monad()
     }
 }
@@ -240,9 +240,9 @@ impl Function {
         &mut self.variables
     }
 
-    /// Check if this function is monadic (returns Except)
-    pub fn is_monadic(&self) -> bool {
-        self.signature.is_monadic()
+    /// Check if this function can abort (returns Except)
+    pub fn can_abort(&self) -> bool {
+        self.signature.can_abort()
     }
 
     /// Check if this is a native function
@@ -306,7 +306,7 @@ impl Dependable for Function {
     type MoveKey = QualifiedId<FunId>;
 
     fn dependencies(&self) -> impl Iterator<Item = Self::Id> {
-        self.body.calls().into_iter().map(|id| id.base)
+        self.body.calls().map(|id| id.base)
     }
 
     fn with_mutual_group_id(mut self, group_id: usize) -> Self {

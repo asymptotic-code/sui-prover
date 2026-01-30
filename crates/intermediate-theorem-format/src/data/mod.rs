@@ -7,8 +7,7 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
 use crate::analysis::{
-    analyze_monadicity, collect_imports, convert_to_pure, fold_constants, order_by_dependencies,
-    FunctionBodies,
+    analyze_abortability, collect_imports, fold_constants, order_by_dependencies, FunctionBodies,
 };
 use crate::data::functions::{FunctionFlags, FunctionVariant};
 use crate::data::variables::TypeContext;
@@ -318,10 +317,10 @@ impl Program {
         // Dependency ordering (needed for mutual recursion detection)
         order_by_dependencies(self);
 
-        // Analyze monadicity before generating variants
-        analyze_monadicity(self);
+        // Analyze abortability before generating variants
+        analyze_abortability(self);
 
-        // Generate runtime variants (.pure, .aborts) for monadic functions
+        // Generate runtime variants (.pure, .aborts) for aborting functions
         crate::analysis::generate_runtime_variants(self);
 
         // Generate spec functions (.requires, .ensures)

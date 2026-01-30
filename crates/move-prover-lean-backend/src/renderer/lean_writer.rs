@@ -49,7 +49,7 @@ impl<W: Write> LeanWriter<W> {
                     write!(self.out, "; ").unwrap();
                     self.at_line_start = false;
                 } else {
-                    write!(self.out, "\n").unwrap();
+                    writeln!(self.out).unwrap();
                     self.at_line_start = true;
                 }
             } else {

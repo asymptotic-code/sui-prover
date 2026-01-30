@@ -3,6 +3,7 @@
 
 //! Analysis and optimization passes for TheoremIR
 
+mod abortability;
 mod bool_coercion;
 mod cleanup;
 mod constant_folding;
@@ -11,20 +12,19 @@ mod dependency_order;
 mod goal_generation;
 mod import_collection;
 mod logical_simplification;
-mod monadicity;
 mod runtime_variants;
 mod spec_generation;
 mod spec_genericize;
 mod spec_type_conversion;
 mod temp_inlining;
 
+pub use abortability::analyze_abortability;
 pub use bool_coercion::insert_bool_coercions;
 pub use constant_folding::{fold_constants, FunctionBodies};
 pub use dependency_order::order_by_dependencies;
 pub use goal_generation::generate_goal_functions;
 pub use import_collection::collect_imports;
 pub use logical_simplification::simplify as logical_simplify;
-pub use monadicity::analyze_monadicity;
 pub use runtime_variants::{convert_to_pure, generate_runtime_variants};
 pub use spec_generation::generate_spec_functions;
 pub use spec_genericize::{genericize_specs, GenericSpec, TypeClass};

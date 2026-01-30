@@ -181,10 +181,14 @@ fn insert_coercions_in_node(node: IRNode) -> IRNode {
 
         IRNode::ToBool(inner) => IRNode::ToBool(Box::new(insert_coercions_in_node(*inner))),
 
+        IRNode::Unpack { struct_id, value } => IRNode::Unpack {
+            struct_id,
+            value: Box::new(insert_coercions_in_node(*value)),
+        },
+
         // Leaf nodes - no transformation needed
         IRNode::Var(_)
         | IRNode::Const(_)
-        | IRNode::Unpack { .. }
         | IRNode::WhileAborts { .. }
         | IRNode::Requires(_)
         | IRNode::Ensures(_)

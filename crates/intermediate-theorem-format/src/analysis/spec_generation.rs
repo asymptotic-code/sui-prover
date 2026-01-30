@@ -142,14 +142,14 @@ fn extract_requires(node: &IRNode) -> IRNode {
     match node {
         IRNode::Block { children } => {
             // Find the index of the last Requires (or If containing Requires)
-            let last_requires_idx = children.iter().rposition(|n| contains_requires(n));
+            let last_requires_idx = children.iter().rposition(contains_requires);
 
             match last_requires_idx {
                 Some(idx) => {
                     // Keep everything up to and including the requires
                     let kept: Vec<IRNode> = children[..=idx]
                         .iter()
-                        .map(|n| extract_requires(n))
+                        .map(extract_requires)
                         .collect();
 
                     // Filter out empty units
@@ -233,12 +233,6 @@ fn extract_ensures(node: &IRNode, target_idx: usize) -> IRNode {
         children.push(condition);
         IRNode::Block { children }
     }
-}
-
-/// Result of extraction: Found(condition) or NotFound
-enum ExtractResult {
-    Found(IRNode),
-    NotFound,
 }
 
 /// Extract ensures condition at target_idx, collecting let bindings that appear before it.

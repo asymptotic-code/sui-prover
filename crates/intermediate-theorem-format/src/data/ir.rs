@@ -358,7 +358,7 @@ pub enum IRNode {
         bound_expr: Box<IRNode>,
     },
 
-    /// Pure/return for monadic context: lifts a pure value into Except
+    /// Pure/return for aborting context: lifts a pure value into Except
     /// Rendered as: pure (expr)
     Pure(Box<IRNode>),
 
@@ -511,11 +511,11 @@ impl IRNode {
     }
 
     /// Fold over all IRNodes into a given structure
-    pub fn fold<T, F>(&self, init: T, mut f: F) -> T
+    pub fn fold<T, F>(&self, init: T, f: F) -> T
     where
         F: FnMut(T, &IRNode) -> T,
     {
-        self.iter().fold(init, |acc, node| f(acc, node))
+        self.iter().fold(init, f)
     }
 
     /// Transform all Block nodes recursively
@@ -685,7 +685,7 @@ impl IRNode {
     pub fn always_aborts(&self) -> bool {
         match self {
             IRNode::Abort(_) => true,
-            IRNode::Block { children } => children.last().map_or(false, |c| c.always_aborts()),
+            IRNode::Block { children } => children.last().is_some_and(|c| c.always_aborts()),
             IRNode::If {
                 then_branch,
                 else_branch,
@@ -706,12 +706,10 @@ impl IRNode {
         }
     }
 
-    /// Check if the expression is monadic
-    pub fn is_monadic(&self) -> bool {
-        self.iter().any(|n| match n {
-            IRNode::Call { function, .. } if function.is_runtime() => true,
-            _ => false,
-        })
+    /// Check if the expression can abort (contains calls to runtime functions that may abort)
+    pub fn can_abort(&self) -> bool {
+        self.iter()
+            .any(|n| matches!(n, IRNode::Call { function, .. } if function.is_runtime()))
     }
 
     /// Substitute variables according to a mapping
@@ -997,14 +995,14 @@ impl IRNode {
     }
 }
 
-impl Into<Vec<IRNode>> for IRNode {
-    fn into(self) -> Vec<IRNode> {
-        match self {
+impl From<IRNode> for Vec<IRNode> {
+    fn from(val: IRNode) -> Self {
+        match val {
             IRNode::Block { children } => children,
             IRNode::Tuple(vals) if vals.is_empty() => {
                 vec![]
             }
-            _ => vec![self],
+            _ => vec![val],
         }
     }
 }

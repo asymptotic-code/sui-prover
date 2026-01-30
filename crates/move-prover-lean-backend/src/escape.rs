@@ -65,8 +65,8 @@ pub fn capitalize_first(name: &str) -> String {
 pub fn escape_identifier(name: &str) -> String {
     // Handle $ prefix (temps like $t0, $t1 etc.) - $ is special in Lean
     // Also handle $ anywhere in the name (like tmp#$1 -> tmp_t_1)
-    let name = if name.starts_with('$') {
-        format!("t_{}", &name[1..])
+    let name = if let Some(rest) = name.strip_prefix('$') {
+        format!("t_{}", rest)
     } else {
         name.replace('$', "_t_")
     };

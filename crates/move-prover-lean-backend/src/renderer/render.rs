@@ -971,7 +971,7 @@ fn body_returns_unit(ir: &IRNode) -> bool {
         // Block returns unit if its last child does
         IRNode::Block { children } => children
             .last()
-            .map_or(false, |child| body_returns_unit(child)),
+            .is_some_and(body_returns_unit),
         _ => false,
     }
 }
@@ -982,7 +982,7 @@ fn body_ends_with_let(ir: &IRNode) -> bool {
         IRNode::Let { .. } => true,
         IRNode::Block { children } => children
             .last()
-            .map_or(false, |child| body_ends_with_let(child)),
+            .is_some_and(body_ends_with_let),
         IRNode::If {
             then_branch,
             else_branch,
