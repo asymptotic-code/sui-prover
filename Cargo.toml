@@ -5,10 +5,7 @@ members = [
   "crates/move-model",
   "crates/move-stackless-bytecode",
   "crates/move-prover-boogie-backend",
-  "crates/move-prover-lean-backend",
   "crates/lambda-boogie-handler",
-  "crates/intermediate-theorem-format",
-  "crates/stackless-to-intermediate",
 ]
 
 default-members = ["crates/sui-prover"]
@@ -38,9 +35,6 @@ mismatched_lifetime_syntaxes = "allow"
 move-model = { path = "crates/move-model" }
 move-stackless-bytecode = { path = "crates/move-stackless-bytecode" }
 move-prover-boogie-backend = { path = "crates/move-prover-boogie-backend" }
-move-prover-lean-backend = { path = "crates/move-prover-lean-backend" }
-intermediate-theorem-format = { path = "crates/intermediate-theorem-format" }
-stackless-to-intermediate = { path = "crates/stackless-to-intermediate" }
 
 anyhow = "1.0.71"
 clap = { version = "4.4", features = ["derive", "wrap_help", "env"] }
