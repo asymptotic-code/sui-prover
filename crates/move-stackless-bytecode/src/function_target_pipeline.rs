@@ -357,6 +357,41 @@ impl FunctionTargetsHolder {
         self.package_targets.loop_invariants().get(id)
     }
 
+    pub fn get_uninterpreted_functions(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+    ) -> Option<&BTreeSet<QualifiedId<FunId>>> {
+        self.package_targets.get_uninterpreted_functions(spec_id)
+    }
+
+    pub fn is_uninterpreted_for_spec(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+        callee_id: &QualifiedId<FunId>,
+    ) -> bool {
+        self.package_targets
+            .is_uninterpreted_for_spec(spec_id, callee_id)
+    }
+
+    // Checks if a function is marked as uninterpreted by all verified specs.
+    pub fn is_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        let verified_specs: Vec<_> = self
+            .specs()
+            .filter(|spec_id| self.is_verified_spec(spec_id))
+            .collect();
+
+        // If no verified specs, function is not uninterpreted
+        if verified_specs.is_empty() {
+            return false;
+        }
+
+        // Check if ALL verified specs mark this function as uninterpreted
+        verified_specs.iter().all(|spec_id| {
+            self.package_targets
+                .is_uninterpreted_for_spec(spec_id, func_id)
+        })
+    }
+
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
@@ -726,15 +761,19 @@ impl FunctionTargetPipeline {
             let src_idx = nodes.get(&fun_id).unwrap();
             let fun_env = env.get_function(fun_id);
             for callee in fun_env.get_called_functions() {
-                let dst_qid = targets
-                    .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
-                    .unwrap_or(&callee);
-
-                // Check if the callee exists in targets before trying to access it
-                if let Some(dst_idx) = nodes.get(dst_qid) {
+                // add edge to original callee if it exists in targets
+                if let Some(dst_idx) = nodes.get(&callee) {
                     graph.add_edge(*src_idx, *dst_idx, ());
                 }
-                // If the callee doesn't exist in targets (was removed), skip this edge
+
+                // add edge to spec callee if it's different and exists in targets
+                if let Some(spec_qid) =
+                    targets.get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
+                {
+                    if let Some(dst_idx) = nodes.get(spec_qid) {
+                        graph.add_edge(*src_idx, *dst_idx, ());
+                    }
+                }
             }
         }
         graph
