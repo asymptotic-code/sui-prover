@@ -1650,18 +1650,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
-name = "intermediate-theorem-format"
-version = "0.1.0"
-dependencies = [
- "ethnum",
- "indexmap 2.13.0",
- "log",
- "move-model 0.1.0",
- "num",
- "petgraph",
-]
-
-[[package]]
 name = "internment"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2398,19 +2386,6 @@ dependencies = [
  "tokio",
  "toml 0.7.8",
  "wait-timeout",
-]
-
-[[package]]
-name = "move-prover-lean-backend"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "intermediate-theorem-format",
- "log",
- "move-model 0.1.0",
- "move-stackless-bytecode",
- "stackless-to-intermediate",
- "tokio",
 ]
 
 [[package]]
@@ -4192,20 +4167,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stackless-to-intermediate"
-version = "0.1.0"
-dependencies = [
- "ethnum",
- "indexmap 2.13.0",
- "intermediate-theorem-format",
- "log",
- "move-binary-format",
- "move-model 0.1.0",
- "move-stackless-bytecode",
- "toml 0.7.8",
-]
-
-[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4241,7 +4202,6 @@ dependencies = [
  "move-model 0.1.0",
  "move-package",
  "move-prover-boogie-backend",
- "move-prover-lean-backend",
  "move-stackless-bytecode",
  "move-symbol-pool",
  "openai_api_rust",
