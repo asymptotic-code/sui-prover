@@ -3768,11 +3768,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        if callee_is_pure
-                            && !use_func
-                            && (self.style == FunctionTranslationStyle::Default
-                                || self.style == FunctionTranslationStyle::Pure)
-                        {
+                        if callee_is_pure {
                             use_func = true;
                         }
 
@@ -3904,13 +3900,10 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    let callee_has_pure =
-                                        self.parent.targets.is_pure_fun(&QualifiedId {
-                                            module_id: *mid,
-                                            id: *fid,
-                                        });
-
-                                    if callee_has_pure {
+                                    if self.parent.targets.is_pure_fun(&QualifiedId {
+                                        module_id: *mid,
+                                        id: *fid,
+                                    }) {
                                         fun_name = format!("{}{}", fun_name, "$pure");
                                     } else {
                                         // Fallback to $impl if no $pure available
@@ -3919,7 +3912,18 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
                                     fun_name = format!("{}{}", fun_name, "$opaque");
                                 } else if self.style == FunctionTranslationStyle::Opaque {
-                                    let suffix = if use_impl { "$impl" } else { "$opaque" };
+                                    let suffix = if use_impl {
+                                        if self.parent.targets.is_pure_fun(&QualifiedId {
+                                            module_id: *mid,
+                                            id: *fid,
+                                        }) {
+                                            "$pure"
+                                        } else {
+                                            "$impl"
+                                        }
+                                    } else {
+                                        "$opaque"
+                                    };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             } else if !is_spec_call && use_func && callee_is_pure {
