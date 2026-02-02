@@ -2724,8 +2724,7 @@ impl<'env> FunctionTranslator<'env> {
                 Le => Some(("<=", 2)),
                 Gt => Some((">", 2)),
                 Ge => Some((">=", 2)),
-                Eq => Some(("==", 2)),
-                Neq => Some(("!=", 2)),
+                // Eq and Neq are handled separately to use $IsEqual functions
                 And => Some(("&&", 2)),
                 Or => Some(("||", 2)),
                 Not => Some(("!", 1)),
@@ -2836,6 +2835,38 @@ impl<'env> FunctionTranslator<'env> {
                             let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
 
                             format!("{}({})", boogie_struct_name(&struct_env, inst), all_args)
+                        } else if matches!(op, Operation::Eq | Operation::Neq) {
+                            // Handle equality/inequality using $IsEqual functions to support
+                            // non-extensional types like vectors and tables
+                            if let [op1, op2] = srcs.as_slice() {
+                                let global_state = &self
+                                    .fun_target
+                                    .global_env()
+                                    .get_extension::<GlobalNumberOperationState>()
+                                    .expect("global number operation state");
+                                let num_oper = global_state.get_temp_index_oper(
+                                    fun_target.func_env.module_env.get_id(),
+                                    fun_target.func_env.get_id(),
+                                    *op1,
+                                    fun_target.data.variant == FunctionVariant::Baseline,
+                                );
+                                let bv_flag = self.bv_flag(num_oper);
+                                let ty = self.get_local_type(*op1);
+                                let eq_fun = boogie_equality_for_type(
+                                    fun_target.global_env(),
+                                    matches!(op, Operation::Eq),
+                                    &ty,
+                                    bv_flag,
+                                );
+                                format!("{}({}, {})", eq_fun, fmt_temp(*op1), fmt_temp(*op2))
+                            } else {
+                                unreachable!(
+                                    "unexpected {} sources for operation {:?} in function {}",
+                                    srcs.len(),
+                                    op,
+                                    fun_target.func_env.get_full_name_str()
+                                );
+                            }
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
                                 // Bitwise operations and shifts are functions, not operators
