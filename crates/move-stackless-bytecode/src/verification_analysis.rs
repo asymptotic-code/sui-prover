@@ -100,15 +100,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         if targets.func_abort_check_mode()
             && targets.target_no_abort_check_functions(&fun_env.get_qualified_id())
         {
-            let info = data
-                .annotations
-                .get_or_default_mut::<VerificationInfo>(true);
-            if !info.inlined {
-                info.verified = true;
-                info.inlined = true;
-                info.reachable = false;
-                Self::mark_callees_inlined(fun_env, targets);
-            }
+            Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
 
@@ -153,8 +145,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
-            if (targets.is_verified_spec(&fun_env.get_qualified_id())
-                || targets.is_spec(&fun_env.get_qualified_id()))
+            if targets.is_verified_spec(&fun_env.get_qualified_id())
                 && Self::is_within_verification_scope(fun_env, &targets)
             {
                 Self::mark_verified(fun_env, &mut data, targets);
