@@ -284,9 +284,9 @@ jobs:
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover --ci
+          sui-prover --ci --timeout 240
 
-          cd ../specs-bv
+          cd ../specs-bv --timeout 240
           sui-prover --no-bv-int-encoding --ci
 
   token-distribution-specs:
