@@ -173,7 +173,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
                 error_writer,
                 targets,
                 mid,
-                AssertsMode::Check,
+                AssertsMode::SpecNoAbortCheck,
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -512,6 +512,22 @@ pub async fn run_prover<W: WriteColor>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
+            result.extend(
+                targets
+                    .target_specs()
+                    .iter()
+                    .map(|qid| {
+                        generate_function_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            qid,
+                            AssertsMode::SpecNoAbortCheck,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
 
             result
         }
@@ -545,6 +561,22 @@ pub async fn run_prover<W: WriteColor>(
                             targets,
                             mid,
                             AssertsMode::Assume,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+            result.extend(
+                targets
+                    .target_modules()
+                    .iter()
+                    .map(|mid| {
+                        generate_module_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            mid,
+                            AssertsMode::SpecNoAbortCheck,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,

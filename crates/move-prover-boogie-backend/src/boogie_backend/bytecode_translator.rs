@@ -91,6 +91,7 @@ pub struct BoogieTranslator<'env> {
 pub enum AssertsMode {
     Check,
     Assume,
+    SpecNoAbortCheck,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -562,7 +563,7 @@ impl<'env> BoogieTranslator<'env> {
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
                 );
                 let do_verify = match self.asserts_mode {
-                    AssertsMode::Check => !self
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => !self
                         .targets
                         .ignore_aborts()
                         .contains(&fun_env.get_qualified_id()),
@@ -601,6 +602,9 @@ impl<'env> BoogieTranslator<'env> {
 
         match self.asserts_mode {
             AssertsMode::Check => {
+                if style == FunctionTranslationStyle::SpecNoAbortCheck {
+                    return;
+                }
                 if style.is_asserts_style() {
                     return;
                 }
@@ -637,6 +641,16 @@ impl<'env> BoogieTranslator<'env> {
                         .iter()
                         .any(|f| *f == self.env.asserts_qid())
                 {
+                    return;
+                }
+            }
+            AssertsMode::SpecNoAbortCheck => {
+                if FunctionTranslationStyle::Default == style
+                    && self.targets.is_verified_spec(&fun_env.get_qualified_id())
+                {
+                    return;
+                }
+                if style.is_asserts_style() {
                     return;
                 }
             }
@@ -944,11 +958,15 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         let mut data = builder.data;
-        let reach_def = ReachingDefProcessor::new();
-        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
         let mut dummy_targets = self.targets.new_dummy();
-        data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
-        data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
+        if data.code.len() > 0 {
+            let reach_def = ReachingDefProcessor::new();
+            data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
+        }
+        if data.code.len() > 0 {
+            let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
+            data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
+        }
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
@@ -2526,12 +2544,14 @@ impl<'env> FunctionTranslator<'env> {
         if emit_pure_in_place {
             self.generate_pure_expression(code);
         } else {
-            // Use CFG recovery to generate structured if-then-else statements
-            match control_flow_reconstruction::reconstruct_control_flow(code) {
-                Some(block) => self.translate_structured_block(&mut last_tracked_loc, &block),
-                None => {
-                    for bytecode in code {
-                        self.translate_bytecode(&mut last_tracked_loc, bytecode);
+            if code.len() > 0 {
+                // Use CFG recovery to generate structured if-then-else statements
+                match control_flow_reconstruction::reconstruct_control_flow(code) {
+                    Some(block) => self.translate_structured_block(&mut last_tracked_loc, &block),
+                    None => {
+                        for bytecode in code {
+                            self.translate_bytecode(&mut last_tracked_loc, bytecode);
+                        }
                     }
                 }
             }
@@ -3547,7 +3567,7 @@ impl<'env> FunctionTranslator<'env> {
             }
             Ret(_, rets) => {
                 match self.parent.asserts_mode {
-                    AssertsMode::Check => {
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                         if FunctionTranslationStyle::Opaque == self.style
                             && !self
                                 .parent
@@ -3801,11 +3821,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        if callee_is_pure
-                            && !use_func
-                            && (self.style == FunctionTranslationStyle::Default
-                                || self.style == FunctionTranslationStyle::Pure)
-                        {
+                        if callee_is_pure {
                             use_func = true;
                         }
 
@@ -3937,13 +3953,10 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    let callee_has_pure =
-                                        self.parent.targets.is_pure_fun(&QualifiedId {
-                                            module_id: *mid,
-                                            id: *fid,
-                                        });
-
-                                    if callee_has_pure {
+                                    if self.parent.targets.is_pure_fun(&QualifiedId {
+                                        module_id: *mid,
+                                        id: *fid,
+                                    }) {
                                         fun_name = format!("{}{}", fun_name, "$pure");
                                     } else {
                                         // Fallback to $impl if no $pure available
@@ -3952,7 +3965,18 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
                                     fun_name = format!("{}{}", fun_name, "$opaque");
                                 } else if self.style == FunctionTranslationStyle::Opaque {
-                                    let suffix = if use_impl { "$impl" } else { "$opaque" };
+                                    let suffix = if use_impl {
+                                        if self.parent.targets.is_pure_fun(&QualifiedId {
+                                            module_id: *mid,
+                                            id: *fid,
+                                        }) {
+                                            "$pure"
+                                        } else {
+                                            "$impl"
+                                        }
+                                    } else {
+                                        "$opaque"
+                                    };
                                     fun_name = format!("{}{}", fun_name, suffix);
                                 }
                             } else if !is_spec_call && use_func && callee_is_pure {
@@ -5496,7 +5520,7 @@ impl<'env> FunctionTranslator<'env> {
                 }
                 match aa {
                     Some(AbortAction::Check) => match self.parent.asserts_mode {
-                        AssertsMode::Check => {
+                        AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                             let message = if self.parent.options.func_abort_check_only {
                                 "function code should not abort"
                             } else {
@@ -5518,7 +5542,7 @@ impl<'env> FunctionTranslator<'env> {
             }
             Abort(_, src) => {
                 match self.parent.asserts_mode {
-                    AssertsMode::Check => {
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                         let message = if self.parent.options.func_abort_check_only {
                             "function code should not abort"
                         } else {
