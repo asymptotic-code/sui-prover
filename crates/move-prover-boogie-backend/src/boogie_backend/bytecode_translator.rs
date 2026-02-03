@@ -2844,12 +2844,14 @@ impl<'env> FunctionTranslator<'env> {
                                     .global_env()
                                     .get_extension::<GlobalNumberOperationState>()
                                     .expect("global number operation state");
-                                let num_oper = global_state.get_temp_index_oper(
-                                    fun_target.func_env.module_env.get_id(),
-                                    fun_target.func_env.get_id(),
-                                    *op1,
-                                    fun_target.data.variant == FunctionVariant::Baseline,
-                                ).unwrap();
+                                let num_oper = global_state
+                                    .get_temp_index_oper(
+                                        fun_target.func_env.module_env.get_id(),
+                                        fun_target.func_env.get_id(),
+                                        *op1,
+                                        fun_target.data.variant == FunctionVariant::Baseline,
+                                    )
+                                    .unwrap();
                                 let bv_flag = self.bv_flag(num_oper);
                                 let ty = self.get_local_type(*op1);
                                 let eq_fun = boogie_equality_for_type(
