@@ -2853,7 +2853,7 @@ impl<'env> FunctionTranslator<'env> {
                                     )
                                     .unwrap();
                                 let bv_flag = self.bv_flag(num_oper);
-                                let ty = self.get_local_type(*op1);
+                                let ty = self.get_local_type(*op1).skip_reference();
                                 let eq_fun = boogie_equality_for_type(
                                     fun_target.global_env(),
                                     matches!(op, Operation::Eq),
