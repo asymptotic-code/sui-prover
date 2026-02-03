@@ -145,9 +145,15 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
-            if targets.is_verified_spec(&fun_env.get_qualified_id())
-                && Self::is_within_verification_scope(fun_env, &targets)
-            {
+            let should_verify = if targets.spec_no_abort_check_mode() {
+                targets.is_function_spec(&fun_env.get_qualified_id())
+                    && targets
+                        .no_verify_specs()
+                        .any(|id| *id == fun_env.get_qualified_id())
+            } else {
+                targets.is_verified_spec(&fun_env.get_qualified_id())
+            };
+            if should_verify && Self::is_within_verification_scope(fun_env, &targets) {
                 Self::mark_verified(fun_env, &mut data, targets);
                 // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
                 // if dynamic_loc.is_some() {
