@@ -42,6 +42,7 @@ pub struct PackageTargets {
     spec_uninterpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
+    spec_run_on: BTreeMap<QualifiedId<FunId>, String>,
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
     function_external_attributes:
@@ -72,6 +73,7 @@ impl PackageTargets {
             spec_uninterpreted_functions: BTreeMap::new(),
             spec_boogie_options: BTreeMap::new(),
             spec_timeouts: BTreeMap::new(),
+            spec_run_on: BTreeMap::new(),
             loop_invariants: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
             function_external_attributes: BTreeMap::new(),
@@ -410,6 +412,7 @@ impl PackageTargets {
             ignore_abort,
             boogie_opt,
             timeout,
+            run_on,
             explicit_spec_modules,
             explicit_specs,
             extra_bpl,
@@ -440,6 +443,11 @@ impl PackageTargets {
             if let Some(timeout) = timeout {
                 self.spec_timeouts
                     .insert(func_env.get_qualified_id(), *timeout);
+            }
+
+            if let Some(run_on_value) = run_on {
+                self.spec_run_on
+                    .insert(func_env.get_qualified_id(), run_on_value.clone());
             }
 
             if let Some(content) = Self::validate_and_read_extra_bpl(
@@ -986,6 +994,10 @@ impl PackageTargets {
 
     pub fn spec_timeouts(&self) -> &BTreeMap<QualifiedId<FunId>, u64> {
         &self.spec_timeouts
+    }
+
+    pub fn spec_run_on(&self) -> &BTreeMap<QualifiedId<FunId>, String> {
+        &self.spec_run_on
     }
 
     pub fn loop_invariants(
