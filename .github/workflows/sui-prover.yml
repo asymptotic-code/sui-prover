@@ -271,10 +271,10 @@ jobs:
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover --ci --cloud
+          sui-prover --ci
 
           cd ../specs-bv
-          sui-prover --no-bv-int-encoding --ci --cloud
+          sui-prover --no-bv-int-encoding --ci
 
   token-distribution-specs:
     needs: build-prover
