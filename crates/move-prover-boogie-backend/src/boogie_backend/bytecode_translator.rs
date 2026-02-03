@@ -2873,11 +2873,12 @@ impl<'env> FunctionTranslator<'env> {
                                     )
                                     .unwrap();
                                 let bv_flag = self.bv_flag(num_oper);
-                                let ty = self.get_local_type(*op1).skip_reference();
+                                let local_ty = self.get_local_type(*op1);
+                                let ty = local_ty.skip_reference();
                                 let eq_fun = boogie_equality_for_type(
                                     fun_target.global_env(),
                                     matches!(op, Operation::Eq),
-                                    &ty,
+                                    ty,
                                     bv_flag,
                                 );
                                 format!("{}({}, {})", eq_fun, fmt_temp(*op1), fmt_temp(*op2))
