@@ -2849,7 +2849,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fun_target.func_env.get_id(),
                                     *op1,
                                     fun_target.data.variant == FunctionVariant::Baseline,
-                                );
+                                ).unwrap();
                                 let bv_flag = self.bv_flag(num_oper);
                                 let ty = self.get_local_type(*op1);
                                 let eq_fun = boogie_equality_for_type(
