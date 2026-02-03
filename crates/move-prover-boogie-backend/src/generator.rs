@@ -34,6 +34,9 @@ use move_stackless_bytecode::{
 };
 use std::{fs, path::Path, time::Instant};
 
+/// Constant for the "local" run location value
+const RUN_ON_LOCAL: &str = "local";
+
 pub struct FileOptions {
     pub file_name: String,
     pub code_writer: CodeWriter,
@@ -706,7 +709,7 @@ pub async fn verify_boogie(
             types: &types,
         };
         // Check if this spec should run locally even when remote is configured
-        let should_run_local = run_on.as_ref().map(|s| s.as_str() == "local").unwrap_or(false);
+        let should_run_local = run_on.as_ref().map(|s| s.as_str() == RUN_ON_LOCAL).unwrap_or(false);
 
         if options.remote.is_some() && !should_run_local {
             boogie
