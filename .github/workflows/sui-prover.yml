@@ -233,7 +233,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: runner-base-1
+    runs-on: self-hosted
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
