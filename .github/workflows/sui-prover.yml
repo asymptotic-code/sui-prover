@@ -4,7 +4,7 @@ on: [pull_request]
 
 jobs:
   build-prover:
-    runs-on: self-hosted
+    runs-on: macos-latest
 
     concurrency:
       group: build-prover-${{ github.head_ref || github.ref_name }}
@@ -319,7 +319,7 @@ jobs:
 
   scallop-bpl-generation:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: macos-latest
 
     concurrency:
       group: scallop-bpl-generation-${{ github.head_ref || github.ref_name }}
@@ -377,7 +377,7 @@ jobs:
 
   cetus-bpl-generation:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: macos-latest
 
     concurrency:
       group: cetus-bpl-generation-${{ github.head_ref || github.ref_name }}
@@ -435,7 +435,7 @@ jobs:
 
   ika-bpl-generation:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: macos-latest
 
     concurrency:
       group: ika-bpl-generation-${{ github.head_ref || github.ref_name }}
