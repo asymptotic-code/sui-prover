@@ -359,7 +359,11 @@ fn generate_module_bpl<W: WriteColor>(
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
     );
-    let target_type = FunctionHolderTarget::Module(*mid);
+    let target_type = if asserts_mode == AssertsMode::SpecNoAbortCheck {
+        FunctionHolderTarget::SpecNoAbortCheck(*mid)
+    } else {
+        FunctionHolderTarget::Module(*mid)
+    };
 
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 

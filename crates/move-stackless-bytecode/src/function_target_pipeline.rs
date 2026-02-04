@@ -31,6 +31,7 @@ use crate::{
 pub enum FunctionHolderTarget {
     All,
     FunctionsAbortCheck,
+    SpecNoAbortCheck(ModuleId),
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -207,6 +208,10 @@ impl FunctionTargetsHolder {
         matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
     }
 
+    pub fn spec_no_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::SpecNoAbortCheck(..))
+    }
+
     /// Get an iterator for all functions this holder.
     pub fn get_funs(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.targets.keys().cloned()
@@ -234,6 +239,9 @@ impl FunctionTargetsHolder {
             FunctionHolderTarget::All => true,
             FunctionHolderTarget::FunctionsAbortCheck => {
                 self.package_targets.abort_check_functions().contains(id)
+            }
+            FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                id.module_id == mid && self.package_targets.no_verify_specs().contains(id)
             }
             FunctionHolderTarget::Function(qid) => id == &qid,
             FunctionHolderTarget::Module(mid) => id.module_id == mid,
@@ -471,13 +479,15 @@ impl FunctionTargetsHolder {
                     ),
                     qid.module_id,
                 ),
-                FunctionHolderTarget::Module(mid) => (
-                    self.package_targets.is_belongs_to_module_explicit_specs(
-                        &env.get_module(mid),
-                        spec_env.get_qualified_id(),
-                    ),
-                    mid,
-                ),
+                FunctionHolderTarget::Module(mid) | FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                    (
+                        self.package_targets.is_belongs_to_module_explicit_specs(
+                            &env.get_module(mid),
+                            spec_env.get_qualified_id(),
+                        ),
+                        mid,
+                    )
+                }
                 FunctionHolderTarget::FunctionsAbortCheck | FunctionHolderTarget::All => {
                     unreachable!()
                 }

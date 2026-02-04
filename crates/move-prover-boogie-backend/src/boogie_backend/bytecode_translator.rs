@@ -2199,6 +2199,16 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "");
         }
 
+        // For SpecNoAbortCheck style in func_abort_check_only mode, we may need to declare the
+        // opaque return datatype if the function returns multiple values (or has mutable references).
+        if self.style == FunctionTranslationStyle::SpecNoAbortCheck
+            && self.should_use_temp_datatypes()
+            && options.func_abort_check_only
+        {
+            // Trigger datatype declaration by calling generate_function_args_and_returns with true
+            let _ = self.generate_function_args_and_returns(true);
+        }
+
         let prefix = if emit_pure_in_place {
             "function"
         } else {

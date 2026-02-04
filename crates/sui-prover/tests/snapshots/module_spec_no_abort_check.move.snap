@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: code should not abort
+   ┌─ tests/inputs/module_spec_no_abort_check.move:12:25
+   │
+12 │     ensures(result == x + 1);
+   │                         ^
+   │
+   =     at tests/inputs/module_spec_no_abort_check.move:10: foo_spec
