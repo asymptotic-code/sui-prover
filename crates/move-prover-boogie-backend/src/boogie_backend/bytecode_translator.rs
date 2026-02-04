@@ -414,11 +414,20 @@ impl<'env> BoogieTranslator<'env> {
             }
 
             for ref fun_env in module_env.get_functions() {
-                if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                let is_native_pure = PureFunctionAnalysisProcessor::native_pure_variants(self.env)
+                    .contains(&fun_env.get_qualified_id());
+
+                if (fun_env.is_native() && !is_native_pure) || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
                     continue;
                 }
 
+                // Generate Pure declarations for all non-native functions and native pure variants
                 self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+
+                // Native pure functions only need Pure declarations, skip other translation steps
+                if is_native_pure {
+                    continue;
+                }
 
                 if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
                     self.generate_axiom_function(fun_env);

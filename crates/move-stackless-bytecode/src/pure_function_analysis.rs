@@ -23,6 +23,17 @@ impl PureFunctionAnalysisProcessor {
             env.object_table_borrow_qid().unwrap(),
             env.dynamic_field_borrow_qid().unwrap(),
             env.dynamic_object_field_borrow_qid().unwrap(),
+            // sui::tx_context native functions that need $pure variants
+            env.sui_tx_context_sender_qid().unwrap(),
+            env.sui_tx_context_epoch_qid().unwrap(),
+            env.sui_tx_context_epoch_timestamp_ms_qid().unwrap(),
+            env.sui_tx_context_fresh_id_qid().unwrap(),
+            env.sui_tx_context_reference_gas_price_qid().unwrap(),
+            env.sui_tx_context_gas_price_qid().unwrap(),
+            env.sui_tx_context_ids_created_qid().unwrap(),
+            env.sui_tx_context_gas_budget_qid().unwrap(),
+            env.sui_tx_context_last_created_id_qid().unwrap(),
+            env.sui_tx_context_sponsor_qid().unwrap(),
         ])
     }
 
