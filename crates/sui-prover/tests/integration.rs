@@ -9,7 +9,7 @@ use move_prover_boogie_backend::{
 use regex::Regex;
 use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
-use sui_prover::build_model::move_model_for_package_legacy;
+use sui_prover::build_model::move_model_for_package_legacy_unlocked;
 use sui_prover::prove::DEFAULT_EXECUTION_TIMEOUT_SECONDS;
 
 /// Runs the prover on the given file path and returns the output as a string
@@ -105,8 +105,8 @@ integration-test = "0x9"
         config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
         config.skip_fetch_latest_git_deps = true;
 
-        // Try to build the model
-        let result = match move_model_for_package_legacy(config, tmp_dir) {
+        // Try to build the model (using unlocked version for parallel test execution)
+        let result = match move_model_for_package_legacy_unlocked(config, tmp_dir) {
             Ok(model) => {
                 // Create prover options
                 let mut options = Options::default();
