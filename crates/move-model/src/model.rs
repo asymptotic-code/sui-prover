@@ -3955,6 +3955,30 @@ impl GlobalEnv {
     }
 
     pub fn should_be_used_as_func(&self, qid: &QualifiedId<FunId>) -> bool {
+        // Exclude tx_context native functions from having $pure variants generated
+        let tx_context_functions = vec![
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_fresh_id_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
+            self.sui_tx_context_ids_created_qid(),
+            self.sui_tx_context_gas_budget_qid(),
+            self.sui_tx_context_last_created_id_qid(),
+            self.sui_tx_context_sponsor_qid(),
+            self.sui_tx_context_replace_qid(),
+            self.sui_tx_context_derive_id_qid(),
+        ];
+
+        for tx_fn in tx_context_functions {
+            if let Some(tx_qid) = tx_fn {
+                if qid == &tx_qid {
+                    return false;
+                }
+            }
+        }
+
         self.native_fn_ids().contains(qid)
     }
 
