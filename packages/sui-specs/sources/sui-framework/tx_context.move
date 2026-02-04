@@ -38,52 +38,52 @@ fun derive_id_spec(tx_hash: vector<u8>, ids_created: u64): address {
     derive_id(tx_hash, ids_created)
 }
 
-#[spec(target = sui::tx_context::native_sender)]
+#[spec(target = sui::tx_context::native_sender, extra_bpl = b"tx_context.bpl")]
 fun native_sender_spec(): address {
     native_sender()
 }
 
-#[spec(target = sui::tx_context::native_epoch)]
+#[spec(target = sui::tx_context::native_epoch, extra_bpl = b"tx_context.bpl")]
 fun native_epoch_spec(): u64 {
     native_epoch()
 }
 
-#[spec(target = sui::tx_context::native_epoch_timestamp_ms)]
+#[spec(target = sui::tx_context::native_epoch_timestamp_ms, extra_bpl = b"tx_context.bpl")]
 fun native_epoch_timestamp_ms_spec(): u64 {
     native_epoch_timestamp_ms()
 }
 
-#[spec(target = sui::tx_context::fresh_id)]
+#[spec(target = sui::tx_context::fresh_id, extra_bpl = b"tx_context.bpl")]
 fun fresh_id_spec(): address {
     fresh_id()
 }
 
-#[spec(target = sui::tx_context::native_rgp)]
+#[spec(target = sui::tx_context::native_rgp, extra_bpl = b"tx_context.bpl")]
 fun native_rgp_spec(): u64 {
     native_rgp()
 }
 
-#[spec(target = sui::tx_context::native_gas_price)]
+#[spec(target = sui::tx_context::native_gas_price, extra_bpl = b"tx_context.bpl")]
 fun native_gas_price_spec(): u64 {
     native_gas_price()
 }
 
-#[spec(target = sui::tx_context::native_ids_created)]
+#[spec(target = sui::tx_context::native_ids_created, extra_bpl = b"tx_context.bpl")]
 fun native_ids_created_spec(): u64 {
     native_ids_created()
 }
 
-#[spec(target = sui::tx_context::native_gas_budget)]
+#[spec(target = sui::tx_context::native_gas_budget, extra_bpl = b"tx_context.bpl")]
 fun native_gas_budget_spec(): u64 {
     native_gas_budget()
 }
 
-#[spec(target = sui::tx_context::last_created_id)]
+#[spec(target = sui::tx_context::last_created_id, extra_bpl = b"tx_context.bpl")]
 fun last_created_id_spec(): address {
     last_created_id()
 }
 
-#[spec(target = sui::tx_context::native_sponsor)]
+#[spec(target = sui::tx_context::native_sponsor, extra_bpl = b"tx_context.bpl")]
 fun native_sponsor_spec(): vector<address> {
     native_sponsor()
 }
