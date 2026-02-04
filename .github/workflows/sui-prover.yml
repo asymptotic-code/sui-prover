@@ -147,7 +147,7 @@ jobs:
   internal-tests-prover:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
@@ -233,7 +233,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
