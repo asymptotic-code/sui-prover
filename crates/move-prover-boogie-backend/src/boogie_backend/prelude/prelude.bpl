@@ -221,6 +221,19 @@ function {:inline} $1_integer_div_real(x: int, y: int): real {
     x / y
 }
 
+// sui::tx_context native functions (uninterpreted)
+function $2_tx_context_native_sender(): int;
+function $2_tx_context_native_epoch(): int;
+function $2_tx_context_native_epoch_timestamp_ms(): int;
+function $2_tx_context_native_rgp(): int;
+function $2_tx_context_native_gas_price(): int;
+
+axiom $IsValid'address'($2_tx_context_native_sender());
+axiom $IsValid'u64'($2_tx_context_native_epoch());
+axiom $IsValid'u64'($2_tx_context_native_epoch_timestamp_ms());
+axiom $IsValid'u64'($2_tx_context_native_rgp());
+axiom $IsValid'u64'($2_tx_context_native_gas_price());
+
 function $to_u8(x: int): int {
     x mod 256
 }

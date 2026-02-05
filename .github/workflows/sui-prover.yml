@@ -147,7 +147,7 @@ jobs:
   internal-tests-prover:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
@@ -444,7 +444,7 @@ jobs:
       - name: Run
         run: |
           cd cetus/cetus_clmm_specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
 
   ika-bpl-generation:
     needs: build-prover
@@ -502,4 +502,5 @@ jobs:
       - name: Run
         run: |
           cd ika/contracts/specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
+

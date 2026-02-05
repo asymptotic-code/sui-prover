@@ -414,6 +414,7 @@ impl PackageTargets {
             explicit_specs,
             extra_bpl,
             uninterpreted: _,
+            ..
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -597,6 +598,7 @@ impl PackageTargets {
             explicit_specs: _,
             extra_bpl: _,
             uninterpreted,
+            ..
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)

@@ -1,0 +1,10 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with model building errors
+error: unbound unscoped name
+   ┌─ tests/inputs/quantifiers/partial_pattern_map.fail.move:11:5
+   │
+11 │     ensures(*x > 0);
+   │     ^^^^^^^ Unbound function 'ensures' in current scope
