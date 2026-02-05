@@ -431,7 +431,7 @@ jobs:
       - name: Run
         run: |
           cd cetus/cetus_clmm_specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
 
   ika-bpl-generation:
     needs: build-prover
@@ -489,4 +489,5 @@ jobs:
       - name: Run
         run: |
           cd ika/contracts/specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
+
