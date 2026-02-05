@@ -4031,6 +4031,12 @@ impl GlobalEnv {
             self.object_table_length_qid(),
             self.object_table_contains_qid(),
             self.object_borrow_uid_qid(),
+            // sui::tx_context native functions
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
