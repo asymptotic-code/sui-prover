@@ -195,6 +195,10 @@ async fn run_prover_abort_check<W: WriteColor>(
     opt: &Options,
     package_targets: &PackageTargets,
 ) -> anyhow::Result<bool> {
+    if opt.prover.skip_fun_no_abort {
+        return Ok(false);
+    }
+
     let mut options = opt.clone();
     options.backend.func_abort_check_only = true;
 

@@ -108,6 +108,10 @@ pub struct GeneralConfig {
     #[clap(name = "skip-spec-no-abort", long, global = true)]
     pub skip_spec_no_abort: bool,
 
+    /// Skip checking external functions that do not abort
+    #[clap(name = "skip-fun-no-abort", long, global = true)]
+    pub skip_fun_no_abort: bool,
+
     /// Dump control-flow graphs to file
     #[clap(name = "stats", long, global = false)]
     pub stats: bool,
@@ -229,6 +233,7 @@ async fn execute_backend_boogie(
         general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.prover.skip_fun_no_abort = general_config.skip_fun_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
     options.backend.ci = general_config.ci;
     options.prover.ci = general_config.ci;
