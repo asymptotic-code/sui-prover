@@ -3956,6 +3956,11 @@ impl<'env> FunctionTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             );
 
+                            // Native functions from native_fn_ids() use their base Boogie function name
+                            // (no $pure/$impl suffix) as they have hardcoded definitions in prelude
+                            let is_native_fn =
+                                env.should_be_used_as_func(&callee_env.get_qualified_id());
+
                             if is_spec_call {
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
@@ -3964,7 +3969,9 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    if self.parent.targets.is_pure_fun(&QualifiedId {
+                                    if is_native_fn {
+                                        // Native functions use base name (no suffix)
+                                    } else if self.parent.targets.is_pure_fun(&QualifiedId {
                                         module_id: *mid,
                                         id: *fid,
                                     }) {
@@ -3976,23 +3983,26 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
                                     fun_name = format!("{}{}", fun_name, "$opaque");
                                 } else if self.style == FunctionTranslationStyle::Opaque {
-                                    let suffix = if use_impl {
-                                        if self.parent.targets.is_pure_fun(&QualifiedId {
-                                            module_id: *mid,
-                                            id: *fid,
-                                        }) {
-                                            "$pure"
+                                    if !is_native_fn {
+                                        let suffix = if use_impl {
+                                            if self.parent.targets.is_pure_fun(&QualifiedId {
+                                                module_id: *mid,
+                                                id: *fid,
+                                            }) {
+                                                "$pure"
+                                            } else {
+                                                "$impl"
+                                            }
                                         } else {
-                                            "$impl"
-                                        }
-                                    } else {
-                                        "$opaque"
-                                    };
-                                    fun_name = format!("{}{}", fun_name, suffix);
+                                            "$opaque"
+                                        };
+                                        fun_name = format!("{}{}", fun_name, suffix);
+                                    }
                                 }
-                            } else if !is_spec_call && use_func && callee_is_pure {
+                            } else if !is_spec_call && use_func && callee_is_pure && !is_native_fn {
                                 // For non-spec calls using function syntax to pure functions,
                                 // add $pure suffix (regardless of current style)
+                                // But not for native functions which use their base name
                                 fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
