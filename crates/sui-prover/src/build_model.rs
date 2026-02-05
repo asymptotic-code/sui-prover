@@ -45,6 +45,30 @@ pub fn move_model_for_package_legacy(
     ModelBuilderLegacy::create(resolved_graph).build_model(flags)
 }
 
+/// Test-only version of `move_model_for_package_legacy` that skips the global PackageLock.
+///
+/// This is safe for tests because each test runs in an isolated tempdir with its own
+/// Move.toml and dependencies, so there's no risk of filesystem conflicts that the
+/// lock normally protects against.
+///
+/// Using this unlocked version allows tests to build models in parallel, dramatically
+/// improving test performance (from ~30min to ~2-3min for the full suite).
+///
+/// # Safety
+/// Do NOT use this in production code - only for isolated test environments!
+#[doc(hidden)]
+pub fn move_model_for_package_legacy_unlocked(
+    config: MoveBuildConfig,
+    path: &Path,
+) -> Result<GlobalEnv, anyhow::Error> {
+    let flags = config.compiler_flags();
+    let resolved_graph =
+        config.resolution_graph_for_package(path, None, &mut Buffer::no_color())?;
+    // Skip PackageLock for isolated test environments
+
+    ModelBuilderLegacy::create(resolved_graph).build_model(flags)
+}
+
 fn resolve_lock_file_path(
     mut build_config: MoveBuildConfig,
     package_path: Option<&Path>,
