@@ -214,8 +214,8 @@ Marks a function as a specification.
 | `focus` | Mark as focused (verify only focused specs). Can be used on multiple specs simultaneously. |
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
-| `ignore_abort` | Don't check abort conditions |
-| `no_opaque` | Inline called functions instead of using their specs |
+| `ignore_abort` | Don't check abort conditions. Allows omitting `asserts` for aborts. |
+| `no_opaque` | Include actual implementations of called functions, not just their specs. By default the prover uses `foo_spec` as an opaque summary when proving code that calls `foo`; `no_opaque` overrides this. |
 | `uninterpreted = <NAME>` | Treat pure function as uninterpreted |
 | `extra_bpl = b"<file>"` | Load extra Boogie code |
 | `boogie_opt = b"<opt>"` | Pass custom Boogie options |

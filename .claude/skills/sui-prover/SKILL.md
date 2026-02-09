@@ -64,10 +64,72 @@ fun my_function_spec(args): ReturnType {
 
 ### How Specs Compose
 
-- **Naming convention**: A spec named `<function_name>_spec` is automatically used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose.
+- **Naming convention**: A spec named `<function_name>_spec` is automatically used as an opaque summary when the prover verifies other functions that call `<function_name>`. The prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
 - **`#[spec(prove)]`**: The spec is verified by the prover. Without `prove`, the spec is not checked itself, but is still used when proving other functions that depend on it.
-- **`#[spec(prove, focus)]`**: Only verify this spec (and other focused specs). Useful for debugging a single spec.
-- **Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — it's verified but not used as a summary for other proofs.
+- **`#[spec(prove, focus)]`**: Only verify this spec (and other focused specs). Useful for debugging. Do not commit `focus` — it skips all non-focused specs.
+- **`no_opaque`**: By default, when proving `bar_spec`, the prover uses `foo_spec` (if it exists) as an opaque summary for `foo`. Adding `#[spec(prove, no_opaque)]` forces the prover to also include the actual implementation of called functions, not just their specs.
+- **Scenario specs**: A spec without the `_spec` naming convention and without a `target` attribute is a standalone scenario — it's verified but not used as a summary for other proofs.
+
+### Cross-Module Specs
+
+Use `target` to spec a function in a different module:
+
+```move
+module 0x43::foo_spec {
+    #[spec(prove, target = foo::inc)]
+    public fun inc_spec(x: u64): u64 {
+        let res = foo::inc(x);
+        ensures(res == x + 1);
+        res
+    }
+}
+```
+
+To access private members/functions from a cross-module spec, add `#[spec_only]` getter functions to the target module. These are only visible to the prover, not included in regular compilation.
+
+### Specifying Abort Conditions
+
+Specs must comprehensively describe when a function aborts. Use `asserts` for this:
+
+```move
+fun foo(x: u64, y: u64): u64 {
+    assert!(x < y);
+    x
+}
+
+#[spec(prove)]
+fun foo_spec(x: u64, y: u64): u64 {
+    asserts(x < y);  // foo aborts unless x < y
+    let res = foo(x, y);
+    res
+}
+```
+
+For **overflow aborts**, cast to a wider type in the assertion:
+
+```move
+#[spec(prove)]
+fun add_spec(x: u64, y: u64): u64 {
+    asserts((x as u128) + (y as u128) <= u64::max_value!() as u128);
+    let res = add(x, y);
+    res
+}
+```
+
+To **skip abort checking** entirely, use `ignore_abort`:
+
+```move
+#[spec(prove, ignore_abort)]
+fun add_spec(x: u64, y: u64): u64 {
+    let res = add(x, y);
+    ensures(res == x + y);
+    res
+}
+```
+
+### Putting Specs in a Separate Package
+
+Currently, specs may cause compile errors when placed alongside regular Move code due to prover-specific changes in the compilation pipeline. If this happens, create a separate package for specs and use the `target` attribute to reference functions in the original package.
 
 ### Example: Verifying an LP Withdraw
 
@@ -346,8 +408,11 @@ sui-prover --timeout 120
 | Timeout on complex specs | Increase `--timeout`, use `--split-paths`, simplify spec |
 | "Function not found" | Check module path in `target = ...` attribute |
 | Counterexample unclear | Use `--verbose`, add intermediate `ensures()` |
-| Loop verification fails | Add/strengthen external loop invariant |
+| Loop verification fails | Add/strengthen loop invariant (`invariant!` or external) |
 | Pure function not usable in spec | Add `#[ext(pure)]` attribute |
+| Abort condition verification fails | Add `asserts()` for all abort paths, or use `ignore_abort` |
+| Spec uses wrong function body | Check `no_opaque` — by default specs are used as opaque summaries |
+| Compile errors adding specs | Put specs in a separate package, use `target` attribute |
 
 ## Prerequisites
 
