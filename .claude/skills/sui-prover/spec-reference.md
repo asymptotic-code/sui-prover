@@ -16,10 +16,10 @@ Import with `use prover::vector_iter::*`:
 | `find!<T>(&vec, \|x\| pred(x))` | Find first matching element |
 | `find_index!<T>(&vec, \|x\| pred(x))` | Find index of first match |
 | `find_indices!<T>(&vec, \|x\| pred(x))` | Find all matching indices |
-| `sum!<T>(&vec)` | Sum vector elements |
+| `sum<T>(&vec)` | Sum vector elements (returns `Integer`) |
 | `sum_map!<T, U>(&vec, \|x\| f(x))` | Sum mapped elements |
 
-All functions have `_range!` variants: `all_range!(&vec, start, end, |x| ...)`.
+All macros have `_range!` variants: `all_range!(&vec, start, end, |x| ...)`. The `sum` and `sum_range` functions are called without `!` (they are native functions, not macros).
 
 Example:
 ```move
@@ -28,7 +28,7 @@ fun vector_spec() {
     let v = vector[2, 4, 6, 8];
     ensures(all!<u64>(&v, |x| is_even(x)));
     ensures(count!<u64>(&v, |x| *x > 5) == 2);
-    ensures(sum!<u64>(&v) == 20u64.to_int());
+    ensures(sum(&v) == 20u64.to_int());
 }
 ```
 
@@ -362,6 +362,15 @@ public fun PositiveNumber_inv(self: &PositiveNumber): bool {
 ```
 
 The invariant is automatically checked on construction and modification.
+
+Alternatively, if the invariant is in the same module as the type, you can use just `#[spec_only]` with the naming convention `<Type>_inv`:
+
+```move
+#[spec_only]
+public fun PositiveNumber_inv(self: &PositiveNumber): bool {
+    self.value > 0
+}
+```
 
 ## Quantifiers
 

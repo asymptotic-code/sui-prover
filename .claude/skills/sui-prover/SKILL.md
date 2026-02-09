@@ -49,7 +49,7 @@ fun my_function_spec(args): ReturnType {
     requires(precondition);
 
     // 2. Capture old state if needed
-    let old_state = old!(mutable_ref);
+    let old_state = clone!(mutable_ref);
 
     // 3. Call the function under test
     let result = my_function(args);
@@ -168,13 +168,13 @@ A specification proving that the share price does not decrease on withdrawal:
 
 ```move
 #[spec_only]
-use prover::prover::{requires, ensures, old};
+use prover::prover::{requires, ensures};
 
 #[spec(prove)]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
     requires(shares_in.value() <= pool.shares.supply_value());
 
-    let old_pool = old!(pool);
+    let old_pool = clone!(pool);
 
     let result = withdraw(pool, shares_in);
 
@@ -192,7 +192,7 @@ fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> 
 
 Key points from this example:
 - `requires(...)` specifies preconditions assumed on arguments
-- `old!(pool)` captures the state of a mutable reference before the call
+- `clone!(pool)` captures the state of a mutable reference before the call
 - `.to_int()` converts to unbounded integers (spec-only) to avoid overflow in conditions
 - `.mul()`, `.lte()` are spec-only operators on unbounded integers
 - `ensures(...)` specifies postconditions that must hold after the call
@@ -206,14 +206,14 @@ Import with `use prover::prover::*`:
 | `requires(condition)` | Precondition assumed on arguments |
 | `ensures(condition)` | Postcondition that must hold after the call |
 | `asserts(condition)` | Assert condition is true, or function aborts |
-| `old!(mutable_ref)` | Capture mutable reference state before the call |
-| `clone!(&var)` | Capture variable's value at this point |
+| `clone!(ref)` | Capture a snapshot of a reference's value at this point |
+| `implies(p, q)` | Logical implication (`!p \|\| q`) |
 | `forall!<T>(\|x\| predicate(x))` | Universal quantification |
 | `exists!<T>(\|x\| predicate(x))` | Existential quantification |
 | `invariant!(\|\| { ... })` | Inline loop invariant (place before loop) |
 | `.to_int()` | Convert primitive to unbounded integer (spec-only) |
 | `.to_real()` | Convert primitive to arbitrary-precision real (spec-only) |
-| `fresh()` | Uninterpreted function placeholder |
+| `fresh<T>()` | Create an unconstrained value of type T |
 
 ### Common Patterns
 
@@ -281,7 +281,7 @@ fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> 
 
     declare_global<LargeWithdrawEvent, bool>();
 
-    let old_pool = old!(pool);
+    let old_pool = clone!(pool);
     let shares_in_value = shares_in.value();
 
     let result = withdraw(pool, shares_in);
