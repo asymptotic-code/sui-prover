@@ -34,15 +34,57 @@ fun vector_spec() {
 
 ## Ghost Variables
 
-Import with `use prover::ghost::*`:
+Ghost variables are spec-only globals for propagating information between specifications. Import with `use prover::ghost::*`.
+
+### Declaring and Reading
 
 ```move
+#[spec_only]
+use prover::ghost::{declare_global, global};
+
 #[spec(prove)]
 fun ghost_example_spec() {
-    ghost::declare_global_mut<MyKey, u64>();
-    let ghost_ref = ghost::borrow_mut<MyKey, u64>();
+    // Declare a ghost variable keyed by type pair
+    declare_global<MyKey, bool>();
+
+    // Read its value
+    ensures(*global<MyKey, bool>());
+}
+```
+
+### Mutable Ghost Variables
+
+```move
+#[spec_only]
+use prover::ghost::{declare_global_mut, borrow_mut, global};
+
+#[spec(prove)]
+fun ghost_mut_example_spec() {
+    declare_global_mut<MyKey, u64>();
+    let ghost_ref = borrow_mut<MyKey, u64>();
     *ghost_ref = 42;
-    ensures(ghost::global<MyKey, u64>() == 42);
+    ensures(*global<MyKey, u64>() == 42);
+}
+```
+
+### Verifying Event Emission
+
+A common pattern: use ghost variables to verify events are emitted. The function that emits the event `requires` the ghost variable; the spec declares it and checks it with `ensures`:
+
+```move
+fun emit_large_withdraw_event() {
+    event::emit(LargeWithdrawEvent { });
+    requires(*global<LargeWithdrawEvent, bool>());
+}
+
+#[spec(prove)]
+fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
+    declare_global<LargeWithdrawEvent, bool>();
+    // ...
+    if (shares_in_value >= LARGE_WITHDRAW_AMOUNT) {
+        ensures(*global<LargeWithdrawEvent, bool>());
+    };
+    result
 }
 ```
 
