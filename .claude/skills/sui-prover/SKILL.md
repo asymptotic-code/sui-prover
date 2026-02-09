@@ -62,6 +62,13 @@ fun my_function_spec(args): ReturnType {
 }
 ```
 
+### How Specs Compose
+
+- **Naming convention**: A spec named `<function_name>_spec` is automatically used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose.
+- **`#[spec(prove)]`**: The spec is verified by the prover. Without `prove`, the spec is not checked itself, but is still used when proving other functions that depend on it.
+- **`#[spec(prove, focus)]`**: Only verify this spec (and other focused specs). Useful for debugging a single spec.
+- **Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — it's verified but not used as a summary for other proofs.
+
 ### Example: Verifying an LP Withdraw
 
 Consider a `withdraw` function for a liquidity pool:
@@ -141,6 +148,9 @@ Import with `use prover::prover::*`:
 | `clone!(&var)` | Capture variable's value at this point |
 | `forall!<T>(\|x\| predicate(x))` | Universal quantification |
 | `exists!<T>(\|x\| predicate(x))` | Existential quantification |
+| `invariant!(\|\| { ... })` | Inline loop invariant (place before loop) |
+| `.to_int()` | Convert primitive to unbounded integer (spec-only) |
+| `.to_real()` | Convert primitive to arbitrary-precision real (spec-only) |
 | `fresh()` | Uninterpreted function placeholder |
 
 ### Common Patterns
@@ -151,7 +161,19 @@ Import with `use prover::prover::*`:
 fun max(a: u64, b: u64): u64 { if (a >= b) { a } else { b } }
 ```
 
-**Loop invariants** - Define as separate functions:
+**Inline loop invariants** - Use `invariant!` before the loop:
+```move
+invariant!(|| {
+    ensures(i <= n);
+    ensures(sum == (i as u128) * ((i as u128) + 1) / 2);
+});
+while (i < n) {
+    i = i + 1;
+    sum = sum + (i as u128);
+};
+```
+
+**External loop invariants** - Define as separate functions (alternative to inline):
 ```move
 #[spec_only(loop_inv(target = sum_to_n_spec))]
 #[ext(no_abort)]
@@ -214,6 +236,7 @@ fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> 
 
 Key points:
 - `declare_global<Key, Type>()` declares a ghost variable at the start of a spec
+- The `Key` type is usually a user struct or a spec-only struct (e.g., `public struct MyGhostKey {}`)
 - `global<Key, Type>()` reads the ghost variable's current value
 - Ghost variables can be `requires`'d inside the functions that set them
 - Use conditional `ensures` with regular `if` statements for conditional postconditions

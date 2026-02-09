@@ -36,6 +36,13 @@ fun vector_spec() {
 
 Ghost variables are spec-only globals for propagating information between specifications. Import with `use prover::ghost::*`.
 
+Ghost variables are declared with two type-level arguments: a key type and a value type. The key is usually a user struct or a spec-only struct:
+
+```move
+#[spec_only]
+public struct MyGhostKey {}
+```
+
 ### Declaring and Reading
 
 ```move
@@ -190,11 +197,21 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 
 ### `#[spec(...)]` - Specification Functions
 
+Marks a function as a specification.
+
+**Naming convention**: A spec named `<function_name>_spec` is used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose — the prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
+
+**Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
+
+**With `prove`**: The spec is verified by the prover.
+
+**Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — verified but not used as a summary for other proofs.
+
 | Parameter | Description |
 |-----------|-------------|
 | `prove` | Verify this specification |
 | `skip` | Skip verification |
-| `focus` | Mark as focused (verify only focused specs) |
+| `focus` | Mark as focused (verify only focused specs). Can be used on multiple specs simultaneously. |
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
 | `ignore_abort` | Don't check abort conditions |
@@ -206,6 +223,7 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 Examples:
 ```move
 #[spec(prove)]
+#[spec(prove, focus)]
 #[spec(prove, target = 0x42::foo::bar)]
 #[spec(prove, ignore_abort)]
 #[spec(prove, no_opaque)]
@@ -234,6 +252,8 @@ fun sqrt(x: u64): u64;  // No body, assumed correct
 
 ### `#[spec_only(...)]` - Specification-Only Items
 
+Similar to `test_only`, `spec_only` makes annotated code (modules, functions, structs, imports) only visible to the prover. The code will not appear under regular compilation or in test mode.
+
 | Parameter | Description |
 |-----------|-------------|
 | (none) | Basic spec-only item |
@@ -261,9 +281,37 @@ public fun MyStruct_inv(self: &MyStruct): bool {
 fun loop_inv_for_my_func() { }
 ```
 
-## Loop Invariants (External)
+## Loop Invariants
 
-Loop invariants are defined as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
+Loop invariants are required when a spec has conditions over variables modified inside a loop. There are two styles: inline and external.
+
+### Inline Loop Invariants
+
+Use the `invariant!` macro directly before a loop:
+
+```move
+#[spec(prove)]
+fun sum_to_n_spec(n: u64): u128 {
+    let mut sum: u128 = 0;
+    let mut i: u64 = 0;
+
+    invariant!(|| {
+        ensures(i <= n);
+        ensures(sum == (i as u128) * ((i as u128) + 1) / 2);
+    });
+    while (i < n) {
+        i = i + 1;
+        sum = sum + (i as u128);
+    };
+
+    ensures(sum == (n as u128) * ((n as u128) + 1) / 2);
+    sum
+}
+```
+
+### External Loop Invariants
+
+Alternatively, define loop invariants as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
 
 ```move
 #[spec_only(loop_inv(target = sum_to_n_spec))]
