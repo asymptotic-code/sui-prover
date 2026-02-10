@@ -367,7 +367,9 @@ fn build_spec_only_tree(
                 return false;
             }
             let called_env = env.get_function(*called_id);
+            // keep system functions that have a spec registered in the current targets
             !is_system_function(&called_env, excluded_addresses)
+                || targets.get_spec_by_fun(called_id).is_some()
         })
         .collect();
 
