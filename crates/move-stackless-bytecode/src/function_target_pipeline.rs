@@ -504,13 +504,13 @@ impl FunctionTargetsHolder {
         }
 
         if let Some(qid) = self.function_specs.get_by_right(&target_id) {
-            if self.package_targets.is_system_spec(qid) {
-            } else if self
-                .package_targets
-                .is_system_spec(&spec_env.get_qualified_id())
-            {
-                return;
-            } else {
+            if !self.package_targets.is_system_spec(qid) {
+                if self
+                    .package_targets
+                    .is_system_spec(&spec_env.get_qualified_id())
+                {
+                    return;
+                }
                 env.diag(
                     Severity::Error,
                     &spec_env.get_loc(),
