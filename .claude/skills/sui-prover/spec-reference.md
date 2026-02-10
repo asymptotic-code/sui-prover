@@ -16,10 +16,10 @@ Import with `use prover::vector_iter::*`:
 | `find!<T>(&vec, \|x\| pred(x))` | Find first matching element |
 | `find_index!<T>(&vec, \|x\| pred(x))` | Find index of first match |
 | `find_indices!<T>(&vec, \|x\| pred(x))` | Find all matching indices |
-| `sum!<T>(&vec)` | Sum vector elements |
+| `sum<T>(&vec)` | Sum vector elements (returns `Integer`) |
 | `sum_map!<T, U>(&vec, \|x\| f(x))` | Sum mapped elements |
 
-All functions have `_range!` variants: `all_range!(&vec, start, end, |x| ...)`.
+All macros have `_range!` variants: `all_range!(&vec, start, end, |x| ...)`. The `sum` and `sum_range` functions are called without `!` (they are native functions, not macros).
 
 Example:
 ```move
@@ -28,21 +28,70 @@ fun vector_spec() {
     let v = vector[2, 4, 6, 8];
     ensures(all!<u64>(&v, |x| is_even(x)));
     ensures(count!<u64>(&v, |x| *x > 5) == 2);
-    ensures(sum!<u64>(&v) == 20u64.to_int());
+    ensures(sum(&v) == 20u64.to_int());
 }
 ```
 
 ## Ghost Variables
 
-Import with `use prover::ghost::*`:
+Ghost variables are spec-only globals for propagating information between specifications. Import with `use prover::ghost::*`.
+
+Ghost variables are declared with two type-level arguments: a key type and a value type. The key is usually a user struct or a spec-only struct:
 
 ```move
+#[spec_only]
+public struct MyGhostKey {}
+```
+
+### Declaring and Reading
+
+```move
+#[spec_only]
+use prover::ghost::{declare_global, global};
+
 #[spec(prove)]
 fun ghost_example_spec() {
-    ghost::declare_global_mut<MyKey, u64>();
-    let ghost_ref = ghost::borrow_mut<MyKey, u64>();
+    // Declare a ghost variable keyed by type pair
+    declare_global<MyKey, bool>();
+
+    // Read its value
+    ensures(*global<MyKey, bool>());
+}
+```
+
+### Mutable Ghost Variables
+
+```move
+#[spec_only]
+use prover::ghost::{declare_global_mut, borrow_mut, global};
+
+#[spec(prove)]
+fun ghost_mut_example_spec() {
+    declare_global_mut<MyKey, u64>();
+    let ghost_ref = borrow_mut<MyKey, u64>();
     *ghost_ref = 42;
-    ensures(ghost::global<MyKey, u64>() == 42);
+    ensures(*global<MyKey, u64>() == 42);
+}
+```
+
+### Verifying Event Emission
+
+A common pattern: use ghost variables to verify events are emitted. The function that emits the event `requires` the ghost variable; the spec declares it and checks it with `ensures`:
+
+```move
+fun emit_large_withdraw_event() {
+    event::emit(LargeWithdrawEvent { });
+    requires(*global<LargeWithdrawEvent, bool>());
+}
+
+#[spec(prove)]
+fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
+    declare_global<LargeWithdrawEvent, bool>();
+    // ...
+    if (shares_in_value >= LARGE_WITHDRAW_AMOUNT) {
+        ensures(*global<LargeWithdrawEvent, bool>());
+    };
+    result
 }
 ```
 
@@ -148,15 +197,25 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 
 ### `#[spec(...)]` - Specification Functions
 
+Marks a function as a specification.
+
+**Naming convention**: A spec named `<function_name>_spec` is used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose — the prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
+
+**Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
+
+**With `prove`**: The spec is verified by the prover.
+
+**Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — verified but not used as a summary for other proofs.
+
 | Parameter | Description |
 |-----------|-------------|
 | `prove` | Verify this specification |
 | `skip` | Skip verification |
-| `focus` | Mark as focused (verify only focused specs) |
+| `focus` | Mark as focused (verify only focused specs). Can be used on multiple specs simultaneously. |
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
-| `ignore_abort` | Don't check abort conditions |
-| `no_opaque` | Inline called functions instead of using their specs |
+| `ignore_abort` | Don't check abort conditions. Allows omitting `asserts` for aborts. |
+| `no_opaque` | Include actual implementations of called functions, not just their specs. By default the prover uses `foo_spec` as an opaque summary when proving code that calls `foo`; `no_opaque` overrides this. |
 | `uninterpreted = <NAME>` | Treat pure function as uninterpreted |
 | `extra_bpl = b"<file>"` | Load extra Boogie code |
 | `boogie_opt = b"<opt>"` | Pass custom Boogie options |
@@ -164,6 +223,7 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 Examples:
 ```move
 #[spec(prove)]
+#[spec(prove, focus)]
 #[spec(prove, target = 0x42::foo::bar)]
 #[spec(prove, ignore_abort)]
 #[spec(prove, no_opaque)]
@@ -192,6 +252,8 @@ fun sqrt(x: u64): u64;  // No body, assumed correct
 
 ### `#[spec_only(...)]` - Specification-Only Items
 
+Similar to `test_only`, `spec_only` makes annotated code (modules, functions, structs, imports) only visible to the prover. The code will not appear under regular compilation or in test mode.
+
 | Parameter | Description |
 |-----------|-------------|
 | (none) | Basic spec-only item |
@@ -219,9 +281,37 @@ public fun MyStruct_inv(self: &MyStruct): bool {
 fun loop_inv_for_my_func() { }
 ```
 
-## Loop Invariants (External)
+## Loop Invariants
 
-Loop invariants are defined as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
+Loop invariants are required when a spec has conditions over variables modified inside a loop. There are two styles: inline and external.
+
+### Inline Loop Invariants
+
+Use the `invariant!` macro directly before a loop:
+
+```move
+#[spec(prove)]
+fun sum_to_n_spec(n: u64): u128 {
+    let mut sum: u128 = 0;
+    let mut i: u64 = 0;
+
+    invariant!(|| {
+        ensures(i <= n);
+        ensures(sum == (i as u128) * ((i as u128) + 1) / 2);
+    });
+    while (i < n) {
+        i = i + 1;
+        sum = sum + (i as u128);
+    };
+
+    ensures(sum == (n as u128) * ((n as u128) + 1) / 2);
+    sum
+}
+```
+
+### External Loop Invariants
+
+Alternatively, define loop invariants as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
 
 ```move
 #[spec_only(loop_inv(target = sum_to_n_spec))]
@@ -273,12 +363,118 @@ public fun PositiveNumber_inv(self: &PositiveNumber): bool {
 
 The invariant is automatically checked on construction and modification.
 
-## Quantifiers
+Alternatively, if the invariant is in the same module as the type, you can use just `#[spec_only]` with the naming convention `<Type>_inv`:
+
+```move
+#[spec_only]
+public fun PositiveNumber_inv(self: &PositiveNumber): bool {
+    self.value > 0
+}
+```
+
+## Quantifiers (`forall!` and `exists!`)
+
+The `forall!` and `exists!` macros express universal and existential quantification
+over all valid values of a type.
+
+```
+forall!<T>(|x| predicate(x))   // true if predicate holds for every value of T
+exists!<T>(|x| predicate(x))   // true if predicate holds for at least one value of T
+```
+
+**Lambda parameter is a reference.** Inside the lambda, `x` has type `&T`. Pass it
+directly to functions that take `&T`, or dereference with `*x` when a value is needed.
+
+**The lambda must call a named pure function.** Inline expressions like `|x| *x + 10`
+are not supported — the lambda body must be a call to a function annotated with
+`#[ext(pure)]`.
+
+### Pure predicate functions
+
+Functions used as quantifier predicates must be annotated `#[ext(pure)]`. A pure
+function:
+
+- Must not abort (no `assert!`, no arithmetic overflow, no out-of-bounds access)
+- Must be deterministic (no randomness or other non-deterministic operations)
+- Takes its quantified argument as `&T`
+
+```move
+#[ext(pure)]
+fun is_gte_0(x: &u64): bool {
+    *x >= 0
+}
+
+#[ext(pure)]
+fun is_10(x: &u64): bool {
+    x == 10    // comparing &u64 with u64 is supported
+}
+```
+
+### Basic usage
 
 ```move
 #[spec(prove)]
 fun quantifier_example_spec() {
-    ensures(forall!<u64>(|x| x >= 0));
-    ensures(exists!<u64>(|x| x == 42));
+    // All u64 values are >= 0 (trivially true)
+    ensures(forall!<u64>(|x| is_gte_0(x)));
+
+    // There exists a u64 equal to 10
+    ensures(exists!<u64>(|x| is_10(x)));
 }
 ```
+
+### Extra captured arguments
+
+Predicate functions can take additional parameters beyond the quantified variable.
+Values from the enclosing scope are passed as extra arguments in the lambda call:
+
+```move
+#[ext(pure)]
+fun is_greater_or_equal(a: u64, x: u64, b: u64): bool {
+    x >= a && x >= b
+}
+
+#[spec(prove)]
+fun extra_args_spec(a: u64, b: u64) {
+    // For some x: x >= a AND x >= b
+    ensures(exists!<u64>(|x| is_greater_or_equal(a, *x, b)));
+}
+```
+
+Note that `a` and `b` come from the spec function's scope, while `*x` is the
+quantified variable (dereferenced because `is_greater_or_equal` takes `u64`, not `&u64`).
+
+### Using quantifiers in invariants
+
+Quantifiers can appear in `requires`, `ensures`, and `invariant` expressions:
+
+```move
+#[ext(pure)]
+fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
+    j <= i && j < u.length() && i < v.length() && u[j] > v[i]
+}
+
+fun vec_leq(i: u64): bool {
+    let v: vector<u8> = vector[10, 20, 30, 40];
+    let u: vector<u8> = vector[15, 25, 35, 45];
+    // For any i, there exists j <= i such that u[j] > v[i]
+    exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
+}
+
+#[spec(prove)]
+fun vec_leq_spec(i: u64): bool {
+    requires(i < 4);
+    let res = vec_leq(i);
+    ensures(res);
+    res
+}
+```
+
+### Common mistakes
+
+| Mistake | Why it fails |
+|---------|-------------|
+| `\|x\| *x + 10` | Inline expression — must call a named pure function |
+| Predicate uses `assert!` | Pure functions must not abort |
+| Predicate calls non-deterministic code | Pure functions must be deterministic |
+| Forgetting `#[ext(pure)]` on predicate | Predicate will not be recognized as pure |
