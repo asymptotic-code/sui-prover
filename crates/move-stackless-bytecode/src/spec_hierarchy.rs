@@ -337,6 +337,60 @@ pub fn display_spec_tree_terminal(
     );
 }
 
+/// Counts specs that will be displayed at the current tree level.
+/// This includes both direct specs and specs found by recursing through
+/// transparent (no-spec) functions, since those render at the same indentation.
+fn count_displayable_specs(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    filtered_calls: &[QualifiedId<FunId>],
+    excluded_addresses: &[BigUint],
+    visited: &mut BTreeSet<QualifiedId<FunId>>,
+    root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
+) -> usize {
+    let mut count = 0;
+    for called_id in filtered_calls {
+        let spec_id = targets.get_spec_by_fun(called_id);
+        let will_display = if let Some(sid) = spec_id {
+            *sid != *root_spec_id && !targets.omits_opaque(sid)
+        } else {
+            false
+        };
+        if will_display {
+            count += 1;
+        } else {
+            let should_recurse = spec_id.map_or(true, |sid| *sid != *root_spec_id);
+            if should_recurse && !visited.contains(called_id) {
+                visited.insert(*called_id);
+                let called_env = env.get_function(*called_id);
+                let child_calls: Vec<_> = called_env
+                    .get_called_functions()
+                    .into_iter()
+                    .filter(|cid| {
+                        if spec_target_fun_id == Some(cid) {
+                            return false;
+                        }
+                        let ce = env.get_function(*cid);
+                        !is_system_function(&ce, excluded_addresses)
+                            || targets.get_spec_by_fun(cid).is_some()
+                    })
+                    .collect();
+                count += count_displayable_specs(
+                    env,
+                    targets,
+                    &child_calls,
+                    excluded_addresses,
+                    visited,
+                    root_spec_id,
+                    spec_target_fun_id,
+                );
+            }
+        }
+    }
+    count
+}
+
 /// Recursively builds a spec-only tree for terminal output.
 ///
 /// Similar to `build_implementation_tree` but:
@@ -367,23 +421,52 @@ fn build_spec_only_tree(
                 return false;
             }
             let called_env = env.get_function(*called_id);
+            // keep system functions that have a spec registered in the current targets
             !is_system_function(&called_env, excluded_addresses)
+                || targets.get_spec_by_fun(called_id).is_some()
         })
         .collect();
 
-    let specs_to_display: Vec<_> = filtered_calls
-        .iter()
-        .filter(|called_id| {
-            if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
-                *spec_id != *root_spec_id && !targets.omits_opaque(spec_id)
-            } else {
-                false
-            }
-        })
-        .collect();
+    let total_displayable = {
+        let mut visited = displayed.clone();
+        count_displayable_specs(
+            env,
+            targets,
+            &filtered_calls,
+            excluded_addresses,
+            &mut visited,
+            root_spec_id,
+            spec_target_fun_id,
+        )
+    };
 
     let mut spec_index = 0;
+    build_spec_only_tree_inner(
+        env,
+        targets,
+        &filtered_calls,
+        prefix,
+        excluded_addresses,
+        displayed,
+        root_spec_id,
+        spec_target_fun_id,
+        &mut spec_index,
+        total_displayable,
+    );
+}
 
+fn build_spec_only_tree_inner(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    filtered_calls: &[QualifiedId<FunId>],
+    prefix: &str,
+    excluded_addresses: &[BigUint],
+    displayed: &mut BTreeSet<QualifiedId<FunId>>,
+    root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
+    spec_index: &mut usize,
+    total_displayable: usize,
+) {
     for called_id in filtered_calls.iter() {
         let call_info = get_call_display_info(env, targets, called_id);
         let spec_id = targets.get_spec_by_fun(called_id);
@@ -395,13 +478,13 @@ fn build_spec_only_tree(
         };
 
         if will_display {
-            let is_last = spec_index == specs_to_display.len() - 1;
+            let is_last = *spec_index == total_displayable - 1;
             let (branch, next_prefix) = get_tree_branch(is_last, prefix);
 
             let props_str = format_spec_properties(targets, spec_id.unwrap());
             println!("{} {}{}", branch, call_info.display_name, props_str);
 
-            spec_index += 1;
+            *spec_index += 1;
 
             let should_recurse = targets.omits_opaque(spec_id.unwrap());
             if should_recurse && !displayed.contains(called_id) {
@@ -423,15 +506,29 @@ fn build_spec_only_tree(
             if should_recurse && !displayed.contains(called_id) {
                 displayed.insert(*called_id);
                 let called_env = env.get_function(*called_id);
-                build_spec_only_tree(
+                let child_calls: Vec<_> = called_env
+                    .get_called_functions()
+                    .into_iter()
+                    .filter(|cid| {
+                        if spec_target_fun_id == Some(cid) {
+                            return false;
+                        }
+                        let ce = env.get_function(*cid);
+                        !is_system_function(&ce, excluded_addresses)
+                            || targets.get_spec_by_fun(cid).is_some()
+                    })
+                    .collect();
+                build_spec_only_tree_inner(
                     env,
                     targets,
-                    &called_env,
+                    &child_calls,
                     prefix,
                     excluded_addresses,
                     displayed,
                     root_spec_id,
                     spec_target_fun_id,
+                    spec_index,
+                    total_displayable,
                 );
             }
         }
