@@ -273,109 +273,12 @@ public fun PositiveNumber_inv(self: &PositiveNumber): bool {
 
 The invariant is automatically checked on construction and modification.
 
-## Quantifiers (`forall!` and `exists!`)
-
-The `forall!` and `exists!` macros express universal and existential quantification
-over all valid values of a type.
-
-```
-forall!<T>(|x| predicate(x))   // true if predicate holds for every value of T
-exists!<T>(|x| predicate(x))   // true if predicate holds for at least one value of T
-```
-
-**Lambda parameter is a reference.** Inside the lambda, `x` has type `&T`. Pass it
-directly to functions that take `&T`, or dereference with `*x` when a value is needed.
-
-**The lambda must call a named pure function.** Inline expressions like `|x| *x + 10`
-are not supported — the lambda body must be a call to a function annotated with
-`#[ext(pure)]`.
-
-### Pure predicate functions
-
-Functions used as quantifier predicates must be annotated `#[ext(pure)]`. A pure
-function:
-
-- Must not abort (no `assert!`, no arithmetic overflow, no out-of-bounds access)
-- Must be deterministic (no randomness or other non-deterministic operations)
-- Takes its quantified argument as `&T`
-
-```move
-#[ext(pure)]
-fun is_gte_0(x: &u64): bool {
-    *x >= 0
-}
-
-#[ext(pure)]
-fun is_10(x: &u64): bool {
-    x == 10    // comparing &u64 with u64 is supported
-}
-```
-
-### Basic usage
+## Quantifiers
 
 ```move
 #[spec(prove)]
 fun quantifier_example_spec() {
-    // All u64 values are >= 0 (trivially true)
-    ensures(forall!<u64>(|x| is_gte_0(x)));
-
-    // There exists a u64 equal to 10
-    ensures(exists!<u64>(|x| is_10(x)));
+    ensures(forall!<u64>(|x| x >= 0));
+    ensures(exists!<u64>(|x| x == 42));
 }
 ```
-
-### Extra captured arguments
-
-Predicate functions can take additional parameters beyond the quantified variable.
-Values from the enclosing scope are passed as extra arguments in the lambda call:
-
-```move
-#[ext(pure)]
-fun is_greater_or_equal(a: u64, x: u64, b: u64): bool {
-    x >= a && x >= b
-}
-
-#[spec(prove)]
-fun extra_args_spec(a: u64, b: u64) {
-    // For some x: x >= a AND x >= b
-    ensures(exists!<u64>(|x| is_greater_or_equal(a, *x, b)));
-}
-```
-
-Note that `a` and `b` come from the spec function's scope, while `*x` is the
-quantified variable (dereferenced because `is_greater_or_equal` takes `u64`, not `&u64`).
-
-### Using quantifiers in invariants
-
-Quantifiers can appear in `requires`, `ensures`, and `invariant` expressions:
-
-```move
-#[ext(pure)]
-fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
-    j <= i && j < u.length() && i < v.length() && u[j] > v[i]
-}
-
-fun vec_leq(i: u64): bool {
-    let v: vector<u8> = vector[10, 20, 30, 40];
-    let u: vector<u8> = vector[15, 25, 35, 45];
-    // For any i, there exists j <= i such that u[j] > v[i]
-    exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
-}
-
-#[spec(prove)]
-fun vec_leq_spec(i: u64): bool {
-    requires(i < 4);
-    let res = vec_leq(i);
-    ensures(res);
-    res
-}
-```
-
-### Common mistakes
-
-| Mistake | Why it fails |
-|---------|-------------|
-| `\|x\| *x + 10` | Inline expression — must call a named pure function |
-| Predicate uses `assert!` | Pure functions must not abort |
-| Predicate calls non-deterministic code | Pure functions must be deterministic |
-| Forgetting `#[ext(pure)]` on predicate | Predicate will not be recognized as pure |
