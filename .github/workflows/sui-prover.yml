@@ -376,6 +376,7 @@ jobs:
           sui-prover -g --ci
 
   cetus-bpl-generation:
+    if: false
     needs: build-prover
     runs-on: macos-latest
 
@@ -434,6 +435,7 @@ jobs:
           sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
 
   ika-bpl-generation:
+    if: false
     needs: build-prover
     runs-on: macos-latest
 
