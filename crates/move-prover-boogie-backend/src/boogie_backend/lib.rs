@@ -520,7 +520,7 @@ impl QuantifierHelperInfo {
         let func_env = env.get_function(info.function);
         let params_types = Type::instantiate_vec(func_env.get_parameter_types(), &info.inst);
 
-        let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_params = if info.qht.range_based() {
             "start: int, end: int".to_string()
         } else {
             format!(
@@ -529,13 +529,18 @@ impl QuantifierHelperInfo {
             )
         };
 
-        let mut quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_args = if info.qht.range_based() {
             "start, end".to_string()
         } else {
             "v, start, end".to_string()
         };
 
-        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
+        let dst_elem_boogie_type = if matches!(
+            info.qht,
+            QuantifierHelperType::FindIndex
+                | QuantifierHelperType::FindIndices
+                | QuantifierHelperType::RangeCount
+        ) {
             &Type::Primitive(PrimitiveType::U64)
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()

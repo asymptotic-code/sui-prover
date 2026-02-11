@@ -651,6 +651,12 @@ impl Analyzer<'_> {
                     .or_default()
                     .insert(actuals.clone());
                 self.push_todo_fun(*callee_id, actuals.clone());
+                if qt.requires_sum() {
+                    self.push_todo_fun(
+                        self.env.prover_vec_sum_qid(),
+                        [Type::Primitive(move_model::ty::PrimitiveType::U64)].to_vec(),
+                    );
+                }
 
                 if self
                     .targets

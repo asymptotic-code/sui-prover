@@ -1596,6 +1596,8 @@ impl GlobalEnv {
     const PROVER_BEGIN_SUM_MAP_RANGE_LAMBDA: &'static str = "begin_sum_map_range_lambda";
     const PROVER_END_SUM_MAP_LAMBDA: &'static str = "end_sum_map_lambda";
     const PROVER_BEGIN_RANGE_MAP_LAMBDA: &'static str = "begin_range_map_lambda";
+    const PROVER_BEGIN_RANGE_COUNT_LAMBDA: &'static str = "begin_range_count_lambda";
+    const PROVER_END_RANGE_COUNT_LAMBDA: &'static str = "end_range_count_lambda";
     const PROVER_END_RANGE_MAP_LAMBDA: &'static str = "end_range_map_lambda";
     const PROVER_RANGE: &'static str = "range";
     const PROVER_VEC_SUM: &'static str = "sum";
@@ -2076,6 +2078,20 @@ impl GlobalEnv {
         self.get_fun_qid(
             Self::PROVER_VECTOR_MODULE_NAME,
             Self::PROVER_END_RANGE_MAP_LAMBDA,
+        )
+    }
+
+    pub fn prover_begin_range_count_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_BEGIN_RANGE_COUNT_LAMBDA,
+        )
+    }
+
+    pub fn prover_end_range_count_lambda_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_MODULE_NAME,
+            Self::PROVER_END_RANGE_COUNT_LAMBDA,
         )
     }
 
@@ -3491,6 +3507,8 @@ impl GlobalEnv {
             self.prover_end_sum_map_lambda_qid(),
             self.prover_begin_range_map_lambda_qid(),
             self.prover_end_range_map_lambda_qid(),
+            self.prover_begin_range_count_lambda_qid(),
+            self.prover_end_range_count_lambda_qid(),
             self.prover_range_qid(),
             self.prover_vec_sum_qid(),
             self.prover_vec_sum_range_qid(),
@@ -3730,6 +3748,8 @@ impl GlobalEnv {
             self.prover_end_sum_map_lambda_qid(),
             self.prover_begin_range_map_lambda_qid(),
             self.prover_end_range_map_lambda_qid(),
+            self.prover_begin_range_count_lambda_qid(),
+            self.prover_end_range_count_lambda_qid(),
             self.prover_range_qid(),
             self.prover_vec_sum_qid(),
             self.prover_vec_sum_range_qid(),
