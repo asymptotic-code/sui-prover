@@ -48,6 +48,8 @@ pub struct PackageTargets {
         BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
     module_extra_bpl: BTreeMap<ModuleId, String>,
     function_extra_bpl: BTreeMap<QualifiedId<FunId>, String>,
+    /// True when the default/prelude extra BPL file (e.g. prelude_extra option) exists.
+    prelude_extra_exists: bool,
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
@@ -56,7 +58,13 @@ pub struct PackageTargets {
 }
 
 impl PackageTargets {
-    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions, allow_focus_attr: bool) -> Self {
+    pub fn new(
+        env: &GlobalEnv,
+        filter: TargetFilterOptions,
+        allow_focus_attr: bool,
+        prelude_extra_path: Option<&Path>,
+    ) -> Self {
+        let prelude_extra_exists = prelude_extra_path.map(|p| p.exists()).unwrap_or(false);
         let mut s = Self {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
@@ -77,6 +85,7 @@ impl PackageTargets {
             function_external_attributes: BTreeMap::new(),
             module_extra_bpl: BTreeMap::new(),
             function_extra_bpl: BTreeMap::new(),
+            prelude_extra_exists,
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
@@ -1002,6 +1011,10 @@ impl PackageTargets {
 
     pub fn get_function_extra_bpl(&self, func_id: &QualifiedId<FunId>) -> Option<&String> {
         self.function_extra_bpl.get(func_id)
+    }
+
+    pub fn prelude_extra_exists(&self) -> bool {
+        self.prelude_extra_exists
     }
 
     pub fn get_uninterpreted_functions(
