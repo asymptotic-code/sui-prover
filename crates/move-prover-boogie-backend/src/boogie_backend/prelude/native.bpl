@@ -963,6 +963,7 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {% macro quantifier_helpers_module(instance) %}
 {%- set QP = instance.quantifier_params -%}
 {%- set QA = instance.quantifier_args -%}
+{%- set EQA = instance.extra_quantifier_args -%}
 {%- set FN = instance.name -%}
 {%- set RT = instance.result_type -%}
 {%- set EAB = instance.extra_args_before -%}
@@ -1027,6 +1028,29 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
 );
+{%- endif %}
+
+{%- if instance.qht == "sum_map" %}
+// Per-lambda sum_map: sums f(v[start]), ..., f(v[end-1]) over the original vector.
+// Avoids havoced temp vectors so both assumption and assertion sides reference
+// the same underlying vector, enabling inductive loop invariant proofs.
+function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
+
+// Base case: empty range sum is zero
+axiom (forall {{QP}} ::
+  { $SumMapQuantifierHelper_{{FN}}({{QA}}) }
+  start >= end ==>
+    $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0);
+
+// Inductive peeling: sum(start..end) == sum(start..end-1) + f(v[end-1])
+// Single trigger on sum_map; matching chain terminates when end reaches start.
+axiom (forall {{QP}} ::
+  { $SumMapQuantifierHelper_{{FN}}({{QA}}) }
+  start < end && end <= LenVec(v) ==>
+    $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
+    (var end_minus_1 := end - 1;
+     $SumMapQuantifierHelper_{{FN}}(v, start, end_minus_1{{EQA}}) +
+     {{FN}}({{EAB}}ReadVec(v, end_minus_1){{EAA}})));
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}

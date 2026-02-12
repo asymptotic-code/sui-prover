@@ -144,6 +144,7 @@ pub enum QuantifierType {
 pub enum QuantifierHelperType {
     Map,
     RangeMap,
+    SumMap,
     FindIndex,
     FindIndices,
     Filter,
@@ -154,6 +155,7 @@ impl QuantifierHelperType {
         match self {
             QuantifierHelperType::Map => "map",
             QuantifierHelperType::RangeMap => "range_map",
+            QuantifierHelperType::SumMap => "sum_map",
             QuantifierHelperType::FindIndex => "find_index",
             QuantifierHelperType::FindIndices => "find_indices",
             QuantifierHelperType::Filter => "filter",
@@ -241,9 +243,9 @@ impl QuantifierType {
     pub fn into_quantifier_helper_type(&self) -> Option<QuantifierHelperType> {
         match self {
             QuantifierType::Map
-            | QuantifierType::MapRange
-            | QuantifierType::SumMap
-            | QuantifierType::SumMapRange => Some(QuantifierHelperType::Map),
+            | QuantifierType::MapRange => Some(QuantifierHelperType::Map),
+            QuantifierType::SumMap
+            | QuantifierType::SumMapRange => Some(QuantifierHelperType::SumMap),
             QuantifierType::FindIndex
             | QuantifierType::FindIndexRange
             | QuantifierType::Find

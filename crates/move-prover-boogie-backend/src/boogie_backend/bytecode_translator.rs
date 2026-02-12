@@ -154,6 +154,9 @@ impl<'env> BoogieTranslator<'env> {
                 format!("$FindIndicesQuantifierHelper_{}", function_name)
             }
 
+            QuantifierHelperType::SumMap => {
+                format!("$SumMapQuantifierHelper_{}", function_name)
+            }
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
         }
     }
@@ -3416,22 +3419,23 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::SumMap => {
-                let map_quant_name = self
+                let sum_map_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
                 format!(
-                    "$0_vec_$sum'u64'({0}({1}, 0, LenVec({1}){2}), 0, LenVec({1}))",
-                    map_quant_name,
+                    "{0}({1}, 0, LenVec({1}){2})",
+                    sum_map_name,
                     fmt_temp(srcs[0]),
                     extra_args,
                 )
             }
             QuantifierType::SumMapRange => {
-                let map_quant_name = self
+                let sum_map_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
-                format!("(var $temp_map := {}({}, {}, {}{}); $0_vec_$sum'u64'($temp_map, 0, LenVec($temp_map)))",
-                    map_quant_name,
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
+                format!(
+                    "{}({}, {}, {}{})",
+                    sum_map_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
@@ -5766,20 +5770,40 @@ impl<'env> FunctionTranslator<'env> {
                                 );
                             }
                             QuantifierType::SumMap => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
+                                let sum_map_name = self
+                                    .parent
+                                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, &fun_name);
+                                let extra_args = srcs.iter()
+                                    .skip(1)
+                                    .enumerate()
+                                    .filter(|(index, _)| *index != *li)
+                                    .map(|(_, vidx)| format!("$t{}", vidx))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let args = if extra_args.is_empty() {
+                                    format!("$t{}, 0, LenVec($t{})", srcs[0], srcs[0])
+                                } else {
+                                    format!("$t{}, 0, LenVec($t{}), {}", srcs[0], srcs[0], extra_args)
+                                };
+                                emitln!(self.writer(), "$t{} := {}({});", dests[0], sum_map_name, args);
                             }
                             QuantifierType::SumMapRange => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
+                                let sum_map_name = self
+                                    .parent
+                                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, &fun_name);
+                                let extra_args = srcs.iter()
+                                    .skip(3)
+                                    .enumerate()
+                                    .filter(|(index, _)| *index != *li)
+                                    .map(|(_, vidx)| format!("$t{}", vidx))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let args = if extra_args.is_empty() {
+                                    format!("$t{}, $t{}, $t{}", srcs[0], srcs[1], srcs[2])
+                                } else {
+                                    format!("$t{}, $t{}, $t{}, {}", srcs[0], srcs[1], srcs[2], extra_args)
+                                };
+                                emitln!(self.writer(), "$t{} := {}({});", dests[0], sum_map_name, args);
                             }
                             QuantifierType::Filter => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);

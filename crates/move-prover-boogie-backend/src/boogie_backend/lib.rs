@@ -66,6 +66,9 @@ struct QuantifierHelperInfo {
     name: String,
     quantifier_params: String,
     quantifier_args: String,
+    /// Extra args beyond (v, start, end), with leading comma if non-empty.
+    /// Used by sum_map template for the recursive call.
+    extra_quantifier_args: String,
     result_type: String,
     extra_args_before: String,
     extra_args_after: String,
@@ -559,7 +562,12 @@ impl QuantifierHelperInfo {
             &Type::instantiate(&func_env.get_return_type(0), &info.inst)
         };
 
+        let mut extra_quantifier_args = String::new();
         if func_env.get_parameter_count() > 1 {
+            let extra_args_str = (0..func_env.get_parameter_count())
+                .filter(|idx| *idx != info.li)
+                .map(|val| format!("$t{}", val.to_string()))
+                .join(", ");
             quantifier_params = format!(
                 "{}, {}",
                 quantifier_params,
@@ -578,11 +586,9 @@ impl QuantifierHelperInfo {
             quantifier_args = format!(
                 "{}, {}",
                 quantifier_args,
-                (0..func_env.get_parameter_count())
-                    .filter(|idx| *idx != info.li)
-                    .map(|val| format!("$t{}", val.to_string()))
-                    .join(", ")
+                &extra_args_str
             );
+            extra_quantifier_args = format!(", {}", extra_args_str);
         }
 
         Self {
@@ -590,6 +596,7 @@ impl QuantifierHelperInfo {
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
+            extra_quantifier_args,
             result_type: boogie_type(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
