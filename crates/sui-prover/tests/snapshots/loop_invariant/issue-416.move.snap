@@ -12,9 +12,9 @@ error: prover::ensures does not hold
 15 │ │ }
    │ ╰─^
    │  
-   ┌─ /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_more/crates/sui-framework/packages/move-stdlib/sources/macros.move:86:12
+   ┌─ /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_NORMALIZED/crates/sui-framework/packages/move-stdlib/sources/macros.move:86:12
    │
 86 │     while (i < stop) {
-   │            - loop invariant for this loop
+   │            - loop invariant is not preserved by the loop body
    │
    =     at tests/inputs/loop_invariant/issue-416.move:22: bar_spec
