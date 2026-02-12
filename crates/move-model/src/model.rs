@@ -3817,6 +3817,12 @@ impl GlobalEnv {
                 self.object_table_is_empty_qid(),
                 self.object_table_length_qid(),
                 self.object_table_contains_qid(),
+                // sui::dynamic_field existence-check functions
+                self.dynamic_field_exists_qid(),
+                self.dynamic_field_exists_with_type_qid(),
+                // sui::dynamic_object_field existence-check functions
+                self.dynamic_object_field_exists_qid(),
+                self.dynamic_object_field_exists_with_type_qid(),
                 // sui::address native functions
                 self.sui_address_to_u256_qid(),
                 // sui::accumulator native functions
@@ -4030,6 +4036,11 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_length_qid(),
             self.object_table_contains_qid(),
+            // dynamic_field and dynamic_object_field existence-check functions
+            self.dynamic_field_exists_qid(),
+            self.dynamic_field_exists_with_type_qid(),
+            self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_exists_with_type_qid(),
             self.object_borrow_uid_qid(),
             // sui::tx_context native functions
             self.sui_tx_context_sender_qid(),
