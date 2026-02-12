@@ -169,7 +169,7 @@ pub async fn execute(
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
-    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci);
+    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci, None);
 
     general_config.skip_spec_no_abort = general_config.skip_spec_no_abort
         || package_targets.has_focus_specs()

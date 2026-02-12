@@ -4,7 +4,7 @@ expression: output
 ---
 exiting with verification errors
 error: code should not abort
-   ┌─ /Users/NORMALIZED/.move/https___github_com_asymptotic-code_sui_git_next/crates/sui-framework/packages/sui-framework/sources/versioned.move:52:5
+   ┌─ /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_NORMALIZED/crates/sui-framework/packages/sui-framework/sources/versioned.move:52:5
    │
 52 │     dynamic_field::borrow_mut(&mut self.id, self.version)
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

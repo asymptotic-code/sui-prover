@@ -465,12 +465,20 @@ impl MoveLoopInvariantsProcessor {
                     offset,
                 );
 
+                // Capture the loop header location before emitting (which consumes bc).
+                let loop_header_loc = builder.data.locations.get(&bc.get_attr_id()).cloned();
+
                 // NOTE: Emit clone! calls before label
                 builder.emit(bc);
 
                 let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
                 let mut first_attr_id = None;
+
+                // Set location to the invariant function so that verification
+                // errors point to the invariant definition, not the target function.
+                let inv_env = func_env.module_env.env.get_function(*qid);
+                builder.set_loc(inv_env.get_loc());
 
                 for i in 0..args.len() {
                     if builder.get_local_type(args[i]).is_mutable_reference() {
@@ -515,6 +523,15 @@ impl MoveLoopInvariantsProcessor {
                     vec![temp],
                     None,
                 ));
+
+                // Attach the loop header location as a secondary label so that
+                // verification errors show where the loop is.
+                if let Some(loc) = loop_header_loc {
+                    builder.data.secondary_labels.insert(
+                        ensures_attr_id,
+                        (loc, "loop invariant for this loop".to_string()),
+                    );
+                }
 
                 attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
             } else {
