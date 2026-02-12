@@ -3881,10 +3881,18 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
+                            let secondary = if let Some((sec_loc, sec_msg)) =
+                                fun_target.get_secondary_label(attr_id)
+                            {
+                                format!(" @{{{}:{}}}", self.loc_str(sec_loc), sec_msg)
+                            } else {
+                                String::new()
+                            };
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold\"}} {};",
+                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
+                                secondary,
                                 args_str,
                             );
                             processed = true;
