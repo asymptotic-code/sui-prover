@@ -183,9 +183,9 @@ fn post_process_output(output: String, sources_dir: PathBuf) -> String {
     let output = output.replace(&format!("{}", base_dir.display()), "tests/../../..");
 
     // Normalize .move cache directory paths to avoid CI runner differences
-    // Replace paths like /Users/runner/.move/... or /Users/admin/.move/... with a normalized path
-    let re_move_cache = Regex::new(r"/Users/[^/]+/\.move/").unwrap();
-    let output = re_move_cache.replace_all(&output, "/Users/NORMALIZED/.move/");
+    // Replace paths like /Users/runner/.move/... or /home/user/.move/... with a normalized path
+    let re_move_cache = Regex::new(r"(?:/Users/[^/]+|/home/[^/]+)/\.move/").unwrap();
+    let output = re_move_cache.replace_all(&output, "/NORMALIZED_HOME/.move/");
 
     // Use regex to replace numbers with more than one digit followed by u64 with ELIDEDu64
     let re = Regex::new(r"\d{2,}u64").unwrap();
