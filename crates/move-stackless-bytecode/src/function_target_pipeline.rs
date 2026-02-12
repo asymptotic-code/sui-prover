@@ -381,6 +381,40 @@ impl FunctionTargetsHolder {
             .is_uninterpreted_for_spec(spec_id, callee_id)
     }
 
+    fn has_extra_bpl(&self, env: &GlobalEnv, mid: &ModuleId) -> bool {
+        if self.package_targets.get_module_extra_bpl(mid).is_some() {
+            return true;
+        }
+        for fun in env.get_module(*mid).get_functions() {
+            if self
+                .package_targets
+                .get_function_extra_bpl(&fun.get_qualified_id())
+                .is_some()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn has_targeted_extra_bpl(&self, env: &GlobalEnv) -> bool {
+        match self.target {
+            FunctionHolderTarget::All => self.package_targets.prelude_extra_exists(),
+            FunctionHolderTarget::FunctionsAbortCheck => {
+                self.package_targets.prelude_extra_exists()
+            }
+            FunctionHolderTarget::SpecNoAbortCheck(mid) => self.has_extra_bpl(env, &mid),
+            FunctionHolderTarget::Function(qid) => {
+                self.package_targets.get_function_extra_bpl(&qid).is_some()
+                    || self
+                        .package_targets
+                        .get_module_extra_bpl(&qid.module_id)
+                        .is_some()
+            }
+            FunctionHolderTarget::Module(mid) => self.has_extra_bpl(env, &mid),
+        }
+    }
+
     // Checks if a function is marked as uninterpreted by all verified specs.
     pub fn is_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
         let verified_specs: Vec<_> = self
