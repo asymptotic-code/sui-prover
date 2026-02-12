@@ -72,7 +72,9 @@ impl MonoInfo {
         }
 
         if dt_qid == &env.option_qid().unwrap() {
-            return self.is_used_datatype_helper(env, targets, dt_qid)
+            // NOTE: We disable this optimization to make extra bpl more flexible.
+            return targets.has_targeted_extra_bpl(env)
+                || self.is_used_datatype_helper(env, targets, dt_qid)
                 || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
                 || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
                 || self.is_generated_module(
