@@ -504,6 +504,8 @@ jobs:
       - integer-mate-specs
       - token-distribution-specs
       - scallop-bpl-generation
+      - cetus-bpl-generation
+      - ika-bpl-generation
     runs-on: ubuntu-latest
     steps:
       - name: Notify Slack on failure
