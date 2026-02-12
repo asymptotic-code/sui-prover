@@ -400,11 +400,17 @@ impl FunctionTargetsHolder {
     pub fn has_targeted_extra_bpl(&self, env: &GlobalEnv) -> bool {
         match self.target {
             FunctionHolderTarget::All => self.package_targets.prelude_extra_exists(),
-            FunctionHolderTarget::FunctionsAbortCheck => self.package_targets.prelude_extra_exists(),
+            FunctionHolderTarget::FunctionsAbortCheck => {
+                self.package_targets.prelude_extra_exists()
+            }
             FunctionHolderTarget::SpecNoAbortCheck(mid) => self.has_extra_bpl(env, &mid),
-            FunctionHolderTarget::Function(qid) =>
-                self.package_targets.get_function_extra_bpl(&qid).is_some() ||
-                self.package_targets.get_module_extra_bpl(&qid.module_id).is_some(),
+            FunctionHolderTarget::Function(qid) => {
+                self.package_targets.get_function_extra_bpl(&qid).is_some()
+                    || self
+                        .package_targets
+                        .get_module_extra_bpl(&qid.module_id)
+                        .is_some()
+            }
             FunctionHolderTarget::Module(mid) => self.has_extra_bpl(env, &mid),
         }
     }
