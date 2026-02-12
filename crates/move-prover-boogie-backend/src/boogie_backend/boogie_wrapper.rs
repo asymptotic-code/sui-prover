@@ -98,6 +98,7 @@ pub struct BoogieError {
     pub message: String,
     pub execution_trace: Vec<TraceEntry>,
     pub model: Option<Model>,
+    pub secondary_labels: Vec<(Loc, String)>,
 }
 
 /// A trace entry.
@@ -124,6 +125,11 @@ static INCONCLUSIVE_DIAG_STARTS: Lazy<Regex> = Lazy::new(|| {
 
 static INCONSISTENCY_DIAG_STARTS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^inconsistency_detected\((?P<args>[^)]*)\)").unwrap());
+
+/// Matches secondary label annotations embedded in error messages: ` @{(file,start,end):message}`
+static SECONDARY_LABEL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r" @\{\((?P<file>\d+),(?P<start>\d+),(?P<end>\d+)\):(?P<msg>[^}]*)\}").unwrap()
+});
 
 #[derive(Deserialize, Debug)]
 pub struct RemoteProverResponse {
@@ -329,6 +335,7 @@ impl<'env> BoogieWrapper<'env> {
                         ),
                         execution_trace: vec![],
                         model: None,
+                        secondary_labels: vec![],
                     };
                     return Ok(BoogieOutput {
                         errors: vec![err],
@@ -381,6 +388,7 @@ impl<'env> BoogieWrapper<'env> {
                     message: format!("Boogie error ({}): {}\n\nstderr:\n{}", status, out, err),
                     execution_trace: vec![],
                     model: None,
+                    secondary_labels: vec![],
                 }]
             } else {
                 vec![BoogieError {
@@ -389,6 +397,7 @@ impl<'env> BoogieWrapper<'env> {
                     message: format!("cloud verification out of resources/timeout"),
                     execution_trace: vec![],
                     model: None,
+                    secondary_labels: vec![],
                 }]
             };
             return Ok(BoogieOutput {
@@ -477,9 +486,13 @@ impl<'env> BoogieWrapper<'env> {
     fn add_error(&self, error: &BoogieError) {
         // Create the error
         let label = Label::primary(error.loc.file_id(), error.loc.span());
+        let mut labels = vec![label];
+        for (loc, msg) in &error.secondary_labels {
+            labels.push(Label::secondary(loc.file_id(), loc.span()).with_message(msg));
+        }
         let mut diag = Diagnostic::error()
             .with_message(error.message.clone())
-            .with_labels(vec![label]);
+            .with_labels(labels);
 
         // Now add trace diagnostics.
         if error.kind.is_from_verification() && !error.execution_trace.is_empty() {
@@ -766,6 +779,7 @@ impl<'env> BoogieWrapper<'env> {
                     ),
                     execution_trace: vec![],
                     model: None,
+                    secondary_labels: vec![],
                 })
             }
 
@@ -785,13 +799,16 @@ impl<'env> BoogieWrapper<'env> {
             }
 
             if msg != "expected to fail" {
+                // Extract secondary labels embedded as @{(file,start,end):message}
+                let (clean_msg, secondary_labels) = self.extract_secondary_labels(msg);
                 // Only add this if it is not a negative test. We still needed to parse it.
                 errors.push(BoogieError {
                     kind: BoogieErrorKind::Assertion,
                     loc,
-                    message: msg.to_string(),
+                    message: clean_msg,
                     execution_trace,
                     model: if model.is_empty() { None } else { Some(model) },
+                    secondary_labels,
                 });
             }
         }
@@ -1012,6 +1029,28 @@ impl<'env> BoogieWrapper<'env> {
         }
     }
 
+    /// Extracts secondary labels from an error message and returns the cleaned message
+    /// and the list of secondary labels. Secondary labels are encoded as
+    /// ` @{(file,start,end):message}` suffixes in the error message.
+    fn extract_secondary_labels(&self, msg: &str) -> (String, Vec<(Loc, String)>) {
+        let mut labels = vec![];
+        let clean_msg = SECONDARY_LABEL
+            .replace_all(msg, |caps: &regex::Captures| {
+                if let (Ok(file_idx), Ok(start), Ok(end)) = (
+                    caps["file"].parse::<u16>(),
+                    caps["start"].parse::<u32>(),
+                    caps["end"].parse::<u32>(),
+                ) {
+                    let file_id = self.env.file_idx_to_id(file_idx);
+                    let loc = Loc::new(file_id, Span::new(start, end));
+                    labels.push((loc, caps["msg"].to_string()));
+                }
+                ""
+            })
+            .to_string();
+        (clean_msg, labels)
+    }
+
     fn extract_fun(&self, args: &str) -> Result<QualifiedId<FunId>, ModelParseError> {
         let elems = args.split(',').collect_vec();
         if elems.len() == 2 {
@@ -1087,6 +1126,7 @@ impl<'env> BoogieWrapper<'env> {
                         },
                         execution_trace: vec![],
                         model: None,
+                        secondary_labels: vec![],
                     })
                 }
             })
@@ -1106,6 +1146,7 @@ impl<'env> BoogieWrapper<'env> {
                     message: "there is an inconsistent assumption in the function, which may allow any post-condition (including false) to be proven".to_string(),
                     execution_trace: vec![],
                     model: None,
+                    secondary_labels: vec![],
                 }
             })
             .collect_vec()
