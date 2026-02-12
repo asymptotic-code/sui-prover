@@ -187,6 +187,11 @@ fn post_process_output(output: String, sources_dir: PathBuf) -> String {
     let re_move_cache = Regex::new(r"(?:/Users/[^/]+|/home/[^/]+)/\.move/").unwrap();
     let output = re_move_cache.replace_all(&output, "/NORMALIZED_HOME/.move/");
 
+    // Normalize git branch names in .move cache paths (e.g., _git_more, _git_next, _git_main)
+    // This handles paths like: /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_XXX/
+    let re_git_branch = Regex::new(r"(https___github_com_[^/]+_sui)_git_[^/]+/").unwrap();
+    let output = re_git_branch.replace_all(&output, "${1}_git_more/");
+
     // Use regex to replace numbers with more than one digit followed by u64 with ELIDEDu64
     let re = Regex::new(r"\d{2,}u64").unwrap();
     re.replace_all(&output, "ELIDEDu64").to_string()
