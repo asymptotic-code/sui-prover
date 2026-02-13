@@ -134,6 +134,15 @@ static INCONCLUSIVE_DIAG_STARTS: Lazy<Regex> = Lazy::new(|| {
 static INCONSISTENCY_DIAG_STARTS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^inconsistency_detected\((?P<args>[^)]*)\)").unwrap());
 
+/// Matches Boogie verbose/trace output lines produced by `-trace -traceverify` flags.
+/// These are informational progress indicators, not verification diagnostics.
+static BOOGIE_TRACE_NOISE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?m)^(Parsing |Coalescing blocks|Inlining|Verifying .+ \.\.\.|.*checking split |.*-->.*split|.*finished with |Boogie program verifier finished)",
+    )
+    .unwrap()
+});
+
 /// Matches secondary label annotations embedded in error messages: ` @{(file,start,end):message}`
 static SECONDARY_LABEL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r" @\{\((?P<file>\d+),(?P<start>\d+),(?P<end>\d+)\):(?P<msg>[^}]*)\}").unwrap()
@@ -1337,6 +1346,7 @@ impl<'env> BoogieWrapper<'env> {
             if !inbetween.is_empty()
                 && !INCONCLUSIVE_DIAG_STARTS.is_match(inbetween)
                 && !INCONSISTENCY_DIAG_STARTS.is_match(inbetween)
+                && !(self.options.trace && BOOGIE_TRACE_NOISE.is_match(inbetween))
             {
                 // This is unexpected text and we report it as an internal error
                 errors.push(BoogieError {
