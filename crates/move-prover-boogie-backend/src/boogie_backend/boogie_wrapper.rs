@@ -5,7 +5,7 @@
 //! Wrapper around the boogie program. Allows to call boogie and analyze the output.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     fs,
     num::ParseIntError,
     option::Option::None,
@@ -39,8 +39,6 @@ use move_stackless_bytecode::{
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
 };
 
-// DEBUG
-// use backtrace::Backtrace;
 use crate::boogie_backend::{
     boogie_helpers::{
         boogie_enum_name, boogie_enum_name_prefix, boogie_inst_suffix, boogie_struct_name,
@@ -141,6 +139,92 @@ static SECONDARY_LABEL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r" @\{\((?P<file>\d+),(?P<start>\d+),(?P<end>\d+)\):(?P<msg>[^}]*)\}").unwrap()
 });
 
+/// Matches procedure declarations in .bpl files, capturing the procedure name.
+static BPL_PROC_DECL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^procedure\s+(?:\{[^}]*\}\s+)*(\$\S+)\(").unwrap());
+
+/// Matches call statements in .bpl files, capturing the called procedure name.
+static BPL_CALL_STMT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"call\s+(?:.*:=\s+)?(\$[a-zA-Z0-9_'$#]+)\(").unwrap());
+
+/// Matches `$at(file_idx,start,end)` location annotations in .bpl files.
+static BPL_AT_LOC: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\$at\((\d+),(\d+),(\d+)\)"#).unwrap());
+
+/// Information about an assertion in a .bpl file, for trace output.
+struct AssertInfo {
+    /// Human-readable description, e.g., "ensures does not hold (at sources/module.move:42)"
+    description: String,
+    /// Index of the procedure containing this assertion in `BplAnalysis::procedures`.
+    containing_proc_idx: Option<usize>,
+}
+
+/// Parsed information about a Boogie procedure in a .bpl file.
+struct BplProcInfo {
+    name: String,
+    start_line: usize,
+    end_line: usize,
+    calls: Vec<(String, Option<(u16, u32, u32)>)>,
+    first_at: Option<(u16, u32, u32)>,
+    is_inline: bool,
+}
+
+/// Complete analysis of a .bpl file for trace output. Contains parsed procedure
+/// information and call graphs, allowing call traces to be computed on-the-fly
+/// when the verification entry point is known.
+struct BplAnalysis {
+    /// Map from BPL line number to assertion info.
+    assertions: HashMap<usize, AssertInfo>,
+    /// Parsed procedure information.
+    procedures: Vec<BplProcInfo>,
+    /// Map from Boogie procedure name to index in `procedures`.
+    proc_by_name: HashMap<String, usize>,
+    /// Reverse call graph: callee index -> Vec<(caller index, call-site $at)>.
+    reverse_calls: HashMap<usize, Vec<(usize, Option<(u16, u32, u32)>)>>,
+    /// Map from procedure index to Move function name.
+    proc_to_func_name: HashMap<usize, String>,
+    /// Pre-formatted location strings for $at annotations, so trace formatting
+    /// does not require access to GlobalEnv at callback time.
+    loc_strings: HashMap<(u16, u32, u32), String>,
+}
+
+impl BplAnalysis {
+    /// Computes and formats the call trace for an assertion, given the entry procedure
+    /// that is currently being verified.
+    fn format_call_trace(
+        &self,
+        containing_proc_idx: usize,
+        entry_proc_idx: Option<usize>,
+    ) -> Vec<String> {
+        let raw_trace = compute_call_trace(
+            containing_proc_idx,
+            entry_proc_idx,
+            &self.procedures,
+            &self.reverse_calls,
+            &self.proc_to_func_name,
+        );
+        raw_trace
+            .iter()
+            .map(|(idx, call_site_at)| {
+                let name = self
+                    .proc_to_func_name
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| "?".to_string());
+                if let Some(at) = call_site_at {
+                    let loc = self
+                        .loc_strings
+                        .get(at)
+                        .cloned()
+                        .unwrap_or_else(|| "?".to_string());
+                    format!("{} ({})", name, loc)
+                } else {
+                    name
+                }
+            })
+            .collect()
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct RemoteProverResponse {
     pub out: String,
@@ -154,6 +238,99 @@ pub struct RemoteProverResponseWrapper {
     pub body: String,
     #[serde(rename = "statusCode")]
     pub status_code: i32,
+}
+
+/// Computes the call trace for an assertion in an inline procedure by BFS
+/// backward through the reverse call graph to find the entry point, producing
+/// entry → ... → assertion_proc.
+///
+/// If `entry_proc_idx` is Some, targets that specific entry point.
+/// Otherwise falls back to the nearest non-inline caller.
+///
+/// For assertions in non-inline (entry) procedures, returns an empty trace
+/// since no meaningful call chain exists.
+///
+/// Returns (proc_index, call_site_at) pairs. The first entry has `None` for location.
+fn compute_call_trace(
+    assertion_proc_idx: usize,
+    entry_proc_idx: Option<usize>,
+    procedures: &[BplProcInfo],
+    reverse_calls: &HashMap<usize, Vec<(usize, Option<(u16, u32, u32)>)>>,
+    proc_to_func_name: &HashMap<usize, String>,
+) -> Vec<(usize, Option<(u16, u32, u32)>)> {
+    if !procedures[assertion_proc_idx].is_inline {
+        return vec![];
+    }
+
+    // BFS backward to find entry.
+    let mut found_entry: Option<usize> = None;
+    let mut visited: HashSet<usize> = HashSet::new();
+    // parent[node] = (discovered_from, call_site_at): node was discovered from
+    // discovered_from via a call edge where node calls discovered_from at call_site_at.
+    let mut parent: HashMap<usize, (usize, Option<(u16, u32, u32)>)> = HashMap::new();
+    let mut queue: VecDeque<usize> = VecDeque::new();
+
+    queue.push_back(assertion_proc_idx);
+    visited.insert(assertion_proc_idx);
+
+    while found_entry.is_none() {
+        let current = match queue.pop_front() {
+            Some(c) => c,
+            None => break,
+        };
+        if let Some(callers) = reverse_calls.get(&current) {
+            for &(caller_idx, call_site_at) in callers {
+                if !visited.contains(&caller_idx) {
+                    visited.insert(caller_idx);
+                    parent.insert(caller_idx, (current, call_site_at));
+                    if let Some(target) = entry_proc_idx {
+                        // Target a specific entry point.
+                        if caller_idx == target {
+                            found_entry = Some(caller_idx);
+                            break;
+                        }
+                    } else if !procedures[caller_idx].is_inline {
+                        // Fallback: stop at any non-inline procedure.
+                        found_entry = Some(caller_idx);
+                        break;
+                    }
+                    queue.push_back(caller_idx);
+                }
+            }
+        }
+    }
+
+    // Reconstruct path from entry to assertion procedure.
+    // parent[node] = (child, call_site_at) where child is closer to assertion_proc.
+    // Following parent from entry walks toward assertion_proc.
+    if let Some(entry) = found_entry {
+        let mut path: Vec<(usize, Option<(u16, u32, u32)>)> = vec![(entry, None)];
+        let mut current = entry;
+        while current != assertion_proc_idx {
+            if let Some(&(child, call_site_at)) = parent.get(&current) {
+                path.push((child, call_site_at));
+                current = child;
+            } else {
+                break;
+            }
+        }
+
+        // Deduplicate consecutive entries with the same Move function name
+        // (e.g., $foo$verify and $foo$asserts both map to "foo").
+        let mut deduped: Vec<(usize, Option<(u16, u32, u32)>)> = Vec::new();
+        let mut last_name: Option<String> = None;
+        for (proc_idx, call_site_at) in path {
+            if let Some(name) = proc_to_func_name.get(&proc_idx) {
+                if last_name.as_ref().map_or(true, |last| last != name) {
+                    last_name = Some(name.clone());
+                    deduped.push((proc_idx, call_site_at));
+                }
+            }
+        }
+        deduped
+    } else {
+        vec![]
+    }
 }
 
 impl<'env> BoogieWrapper<'env> {
@@ -291,25 +468,224 @@ impl<'env> BoogieWrapper<'env> {
         self.analyze_output(&res.out, &res.err, res.status, true)
     }
 
-    /// Builds a mapping from .bpl line numbers to human-readable descriptions of the
-    /// assert at that line, for use in trace output. Each entry maps a line number to
-    /// a string like "ensures does not hold (at sources/module.move:42)".
-    fn build_assert_line_map(&self, boogie_file: &str) -> HashMap<usize, String> {
-        let mut map = HashMap::new();
+    /// Parses a .bpl file and builds the analysis data needed for trace output.
+    /// Returns a `BplAnalysis` containing assertion descriptions, procedure info,
+    /// and call graphs. Call traces are computed on-the-fly via `format_call_trace`
+    /// when the verification entry point is known.
+    fn build_bpl_analysis(&self, boogie_file: &str) -> BplAnalysis {
+        let empty = BplAnalysis {
+            assertions: HashMap::new(),
+            procedures: Vec::new(),
+            proc_by_name: HashMap::new(),
+            reverse_calls: HashMap::new(),
+            proc_to_func_name: HashMap::new(),
+            loc_strings: HashMap::new(),
+        };
         let content = match fs::read_to_string(boogie_file) {
             Ok(c) => c,
-            Err(_) => return map,
+            Err(_) => return empty,
         };
-        for (line_idx, line) in content.lines().enumerate() {
+        let lines: Vec<&str> = content.lines().collect();
+
+        // Phase 1: Parse procedure boundaries, calls, first $at, and inline flag.
+        let procedures = Self::parse_bpl_procedures(&lines);
+
+        // Phase 2: Build call graphs.
+        let proc_by_name: HashMap<String, usize> = procedures
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.name.clone(), i))
+            .collect();
+        let mut reverse_calls: HashMap<usize, Vec<(usize, Option<(u16, u32, u32)>)>> =
+            HashMap::new();
+        for (i, proc) in procedures.iter().enumerate() {
+            for (callee_name, call_site_at) in &proc.calls {
+                if let Some(&callee_idx) = proc_by_name.get(callee_name) {
+                    reverse_calls
+                        .entry(callee_idx)
+                        .or_default()
+                        .push((i, *call_site_at));
+                }
+            }
+        }
+
+        // Phase 3: Map each procedure to its Move function name via $at location.
+        let proc_to_func_name: HashMap<usize, String> = procedures
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| {
+                let (file_idx, start, end) = p.first_at?;
+                let file_id = self.env.file_idx_to_id(file_idx);
+                let loc = Loc::new(file_id, Span::new(start, end));
+                let func_env = self.env.get_enclosing_function(&loc)?;
+                Some((i, func_env.get_simple_name_string().to_string()))
+            })
+            .collect();
+
+        // Phase 4: For each assertion, record its description and containing procedure.
+        let mut assertions = HashMap::new();
+        for (idx, line) in lines.iter().enumerate() {
             if let Some(cap) = BPL_ASSERT_MSG.captures(line) {
                 let msg = cap.name("msg").unwrap().as_str();
                 let args = cap.name("args").unwrap().as_str();
                 let loc_str = self.format_source_loc(args);
-                let line_num = line_idx + 1; // 1-based
-                map.insert(line_num, format!("{} ({})", msg, loc_str));
+                let line_num = idx + 1; // 1-based
+                let description = format!("{} ({})", msg, loc_str);
+
+                let containing_proc_idx = procedures
+                    .iter()
+                    .position(|p| line_num >= p.start_line && line_num <= p.end_line);
+
+                assertions.insert(
+                    line_num,
+                    AssertInfo {
+                        description,
+                        containing_proc_idx,
+                    },
+                );
             }
         }
-        map
+
+        // Pre-format all call-site locations so trace formatting doesn't need GlobalEnv.
+        let mut loc_strings: HashMap<(u16, u32, u32), String> = HashMap::new();
+        for proc in &procedures {
+            if let Some(at) = proc.first_at {
+                loc_strings
+                    .entry(at)
+                    .or_insert_with(|| self.format_at_loc(at.0, at.1, at.2));
+            }
+            for (_, call_site_at) in &proc.calls {
+                if let Some(at) = call_site_at {
+                    loc_strings
+                        .entry(*at)
+                        .or_insert_with(|| self.format_at_loc(at.0, at.1, at.2));
+                }
+            }
+        }
+
+        BplAnalysis {
+            assertions,
+            procedures,
+            proc_by_name,
+            reverse_calls,
+            proc_to_func_name,
+            loc_strings,
+        }
+    }
+
+    /// Parses procedure declarations from .bpl file lines, extracting boundaries,
+    /// call statements, first `$at` annotation, and whether the procedure is inlined.
+    fn parse_bpl_procedures(lines: &[&str]) -> Vec<BplProcInfo> {
+        let mut procedures: Vec<BplProcInfo> = Vec::new();
+        let mut current_name: Option<String> = None;
+        let mut current_start: usize = 0;
+        let mut current_calls: Vec<(String, Option<(u16, u32, u32)>)> = Vec::new();
+        let mut current_first_at: Option<(u16, u32, u32)> = None;
+        let mut current_is_inline = false;
+        let mut last_at: Option<(u16, u32, u32)> = None;
+        let mut brace_depth: i32 = 0;
+        let mut in_body = false;
+
+        for (idx, line) in lines.iter().enumerate() {
+            let line_num = idx + 1;
+
+            if let Some(cap) = BPL_PROC_DECL.captures(line) {
+                // Finalize previous procedure if it wasn't closed.
+                if let Some(name) = current_name.take() {
+                    procedures.push(BplProcInfo {
+                        name,
+                        start_line: current_start,
+                        end_line: line_num - 1,
+                        calls: std::mem::take(&mut current_calls),
+                        first_at: current_first_at.take(),
+                        is_inline: current_is_inline,
+                    });
+                }
+                current_name = Some(cap[1].to_string());
+                current_start = line_num;
+                current_calls = Vec::new();
+                current_first_at = None;
+                current_is_inline = line.contains("{:inline");
+                last_at = None;
+                brace_depth = 0;
+                in_body = false;
+            }
+
+            if current_name.is_some() {
+                // Count braces (attributes like {:inline 1} are balanced).
+                for ch in line.chars() {
+                    match ch {
+                        '{' => brace_depth += 1,
+                        '}' => brace_depth -= 1,
+                        _ => {}
+                    }
+                }
+
+                if !in_body && brace_depth > 0 {
+                    in_body = true;
+                }
+
+                if in_body {
+                    // Track $at annotations — used both for function name resolution
+                    // (first_at) and for call-site locations (last_at before each call).
+                    if let Some(cap) = BPL_AT_LOC.captures(line) {
+                        if let (Ok(f), Ok(s), Ok(e)) = (
+                            cap[1].parse::<u16>(),
+                            cap[2].parse::<u32>(),
+                            cap[3].parse::<u32>(),
+                        ) {
+                            last_at = Some((f, s, e));
+                            if current_first_at.is_none() {
+                                current_first_at = last_at;
+                            }
+                        }
+                    }
+
+                    // Collect call targets with their call-site $at location.
+                    if let Some(cap) = BPL_CALL_STMT.captures(line) {
+                        let callee = cap[1].to_string();
+                        if !current_calls.iter().any(|(name, _)| name == &callee) {
+                            current_calls.push((callee, last_at.take()));
+                        }
+                    }
+
+                    // Procedure body ended when brace depth returns to 0.
+                    if brace_depth == 0 {
+                        let name = current_name.take().unwrap();
+                        procedures.push(BplProcInfo {
+                            name,
+                            start_line: current_start,
+                            end_line: line_num,
+                            calls: std::mem::take(&mut current_calls),
+                            first_at: current_first_at.take(),
+                            is_inline: current_is_inline,
+                        });
+                        in_body = false;
+                    }
+                }
+            }
+        }
+
+        // Finalize last procedure if file ended without closing brace.
+        if let Some(name) = current_name.take() {
+            procedures.push(BplProcInfo {
+                name,
+                start_line: current_start,
+                end_line: lines.len(),
+                calls: std::mem::take(&mut current_calls),
+                first_at: current_first_at.take(),
+                is_inline: current_is_inline,
+            });
+        }
+
+        procedures
+    }
+
+    /// Formats a parsed `$at(file_idx, start, end)` location into a readable string.
+    fn format_at_loc(&self, file_idx: u16, start: u32, end: u32) -> String {
+        let file_id = self.env.file_idx_to_id(file_idx);
+        let loc = Loc::new(file_id, Span::new(start, end));
+        loc.display_line_only(self.env).to_string()
     }
 
     /// Formats a source location from "file_idx,start,end" args into a readable string.
@@ -366,27 +742,47 @@ impl<'env> BoogieWrapper<'env> {
             Duration::from_secs(individual_timeout.unwrap_or(self.options.vc_timeout as u64));
 
         let output_res = if self.options.trace {
-            let assert_map = self.build_assert_line_map(boogie_file);
-            // Reverse map: (file_idx,start,end) -> Vec<(split_n, split_total, bpl_line)>
-            let loc_to_splits: std::sync::Mutex<HashMap<String, Vec<(String, String)>>> =
-                std::sync::Mutex::new(HashMap::new());
+            let analysis = self.build_bpl_analysis(boogie_file);
+            // Reverse map: description -> Vec<(split_n, split_total, call_trace)>
+            let loc_to_splits: std::sync::Mutex<
+                HashMap<String, Vec<(String, String, Vec<String>)>>,
+            > = std::sync::Mutex::new(HashMap::new());
+            // Number of extra lines (beyond the main split line) printed for
+            // the current split.  Used to erase them before printing the next one.
+            let extra_lines = std::sync::atomic::AtomicUsize::new(0);
             let in_split = std::sync::atomic::AtomicBool::new(false);
+            // Tracks the Boogie procedure currently being verified, so we can
+            // compute call traces relative to the correct entry point.
+            let current_verify_proc = std::sync::Mutex::new(String::new());
+
+            // Erase the current split block (main line + any extra lines).
+            let erase_split = |extra: usize| {
+                // Move up and clear each extra line, then clear the main line.
+                for _ in 0..extra {
+                    print!("\x1B[A\x1B[2K");
+                }
+                print!("\r\x1B[2K");
+            };
+
             let on_line = |line: &str| {
                 let trimmed = line.trim();
                 if trimmed.starts_with("Verifying ") {
                     if in_split.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!();
+                        erase_split(extra_lines.load(std::sync::atomic::Ordering::Relaxed));
+                        extra_lines.store(0, std::sync::atomic::Ordering::Relaxed);
                         in_split.store(false, std::sync::atomic::Ordering::Relaxed);
                     }
-                    println!(
-                        "    ⊢  {}",
-                        trimmed
-                            .trim_start_matches("Verifying ")
-                            .trim_end_matches(" ...")
-                    );
+                    let proc_name = trimmed
+                        .trim_start_matches("Verifying ")
+                        .trim_end_matches(" ...");
+                    if let Ok(mut name) = current_verify_proc.lock() {
+                        *name = proc_name.to_string();
+                    }
+                    println!("    \u{22a2}  {}", proc_name);
                 } else if trimmed.contains("finished with") {
                     if in_split.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!();
+                        erase_split(extra_lines.load(std::sync::atomic::Ordering::Relaxed));
+                        extra_lines.store(0, std::sync::atomic::Ordering::Relaxed);
                         in_split.store(false, std::sync::atomic::Ordering::Relaxed);
                     }
                     // Skip "Boogie program verifier finished with N errors" summary
@@ -394,29 +790,58 @@ impl<'env> BoogieWrapper<'env> {
                         // "finished with N verified, M errors" -> "N verified" or show errors
                         if trimmed.contains("0 errors") {
                             let verified = trimmed.split_whitespace().nth(2).unwrap_or("?");
-                            println!("    ✅ {} verified", verified);
+                            println!("    \u{2705} {} verified", verified);
                         } else {
-                            println!("    ❌ {}", trimmed);
+                            println!("    \u{274c} {}", trimmed);
                         }
                     }
                 } else if let Some(cap) = CHECKING_SPLIT.captures(trimmed) {
+                    // Erase previous split block before printing the new one.
+                    if in_split.load(std::sync::atomic::Ordering::Relaxed) {
+                        erase_split(extra_lines.load(std::sync::atomic::Ordering::Relaxed));
+                    }
+                    extra_lines.store(0, std::sync::atomic::Ordering::Relaxed);
                     in_split.store(true, std::sync::atomic::Ordering::Relaxed);
                     let n = cap.name("n").unwrap().as_str();
                     let total = cap.name("total").unwrap().as_str();
                     let bpl_line: usize = cap.name("line").unwrap().as_str().parse().unwrap_or(0);
-                    if let Some(desc) = assert_map.get(&bpl_line) {
-                        print!("\r\x1B[2K    📌 split {}/{}: {}", n, total, desc);
-                    } else {
-                        print!("\r\x1B[2K    📌 split {}/{}", n, total);
-                    }
-                    // Record which splits check which source location
-                    if let Ok(mut map) = loc_to_splits.lock() {
-                        // Read the bpl line to get the assert_failed args
-                        if let Some(bpl_content) = assert_map.get(&bpl_line) {
-                            map.entry(bpl_content.clone())
-                                .or_default()
-                                .push((n.to_string(), total.to_string()));
+                    // Look up the current verification entry point for trace computation.
+                    let verify_name = current_verify_proc
+                        .lock()
+                        .ok()
+                        .map(|n| n.clone())
+                        .unwrap_or_default();
+                    let entry_idx = analysis.proc_by_name.get(verify_name.as_str()).copied();
+                    if let Some(info) = analysis.assertions.get(&bpl_line) {
+                        let call_trace = info
+                            .containing_proc_idx
+                            .map(|idx| analysis.format_call_trace(idx, entry_idx))
+                            .unwrap_or_default();
+                        print!(
+                            "\r\x1B[2K    \u{1f4cc} split {}/{}: {}",
+                            n, total, info.description
+                        );
+                        // Skip the entry point (first element) since it's shown
+                        // on the "Verifying" line; print each callee on its own line.
+                        let steps = if call_trace.len() > 1 {
+                            &call_trace[1..]
+                        } else {
+                            &[]
+                        };
+                        for step in steps {
+                            print!("\n\x1B[2K       \u{2192} {}", step);
                         }
+                        extra_lines.store(steps.len(), std::sync::atomic::Ordering::Relaxed);
+                        // Record which splits check which source location
+                        if let Ok(mut map) = loc_to_splits.lock() {
+                            map.entry(info.description.clone()).or_default().push((
+                                n.to_string(),
+                                total.to_string(),
+                                call_trace,
+                            ));
+                        }
+                    } else {
+                        print!("\r\x1B[2K    \u{1f4cc} split {}/{}", n, total);
                     }
                     use std::io::Write;
                     let _ = std::io::stdout().flush();
@@ -440,13 +865,19 @@ impl<'env> BoogieWrapper<'env> {
                     .collect();
                 if !failed_locs.is_empty() {
                     if let Ok(map) = loc_to_splits.lock() {
-                        let mut printed = std::collections::HashSet::new();
+                        let mut printed = HashSet::new();
                         for loc_desc in &failed_locs {
                             if let Some(splits) = map.get(loc_desc) {
-                                for (n, total) in splits {
+                                for (n, total, call_trace) in splits {
                                     let key = format!("{}/{}", n, total);
                                     if printed.insert(key) {
-                                        println!("    ❌ split {}/{}: {}", n, total, loc_desc);
+                                        println!(
+                                            "    \u{274c} split {}/{}: {}",
+                                            n, total, loc_desc
+                                        );
+                                        for step in call_trace.iter().skip(1) {
+                                            println!("       \u{2192} {}", step);
+                                        }
                                     }
                                 }
                             }
