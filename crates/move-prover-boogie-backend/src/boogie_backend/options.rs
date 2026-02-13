@@ -190,6 +190,8 @@ pub struct BoogieOptions {
     pub func_abort_check_only: bool,
     /// Do not verify, just validate Boogie files
     pub no_verify: bool,
+    /// Stream Boogie trace output in real time
+    pub trace: bool,
 }
 
 impl Default for BoogieOptions {
@@ -237,6 +239,7 @@ impl Default for BoogieOptions {
             func_abort_check_only: false,
             no_verify: false,
             ci: false,
+            trace: false,
         }
     }
 }
@@ -370,6 +373,10 @@ impl BoogieOptions {
                 "-vcsSplitOnEveryAssert",
                 "-vcsFinalAssertTimeout:600",
             ]);
+        }
+
+        if self.trace {
+            add(&["-trace", "-traceverify"]);
         }
 
         if self.no_verify {

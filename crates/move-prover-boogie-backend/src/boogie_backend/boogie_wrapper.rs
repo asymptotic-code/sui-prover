@@ -5,7 +5,7 @@
 //! Wrapper around the boogie program. Allows to call boogie and analyze the output.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     num::ParseIntError,
     option::Option::None,
@@ -117,6 +117,16 @@ pub enum TraceEntry {
 // Error message matching
 static VERIFICATION_DIAG_STARTS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^assert_failed\((?P<args>[^)]*)\): (?P<msg>.*)$").unwrap());
+
+/// Matches `assert {:msg "assert_failed(file_idx,start,end): message"}` in .bpl files.
+static BPL_ASSERT_MSG: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"assert \{:msg "assert_failed\((?P<args>[^)]*)\): (?P<msg>[^"]*)"\}"#).unwrap()
+});
+
+/// Matches `checking split N/M (line NNNN)` in Boogie trace output.
+static CHECKING_SPLIT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"checking split (?P<n>\d+)/(?P<total>\d+) \(line (?P<line>\d+)\)").unwrap()
+});
 
 static INCONCLUSIVE_DIAG_STARTS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^.*\((?P<line>\d+),(?P<col>\d+)\).*Verification(?P<str>.*)(inconclusive|out of resource|timed out).*$")
@@ -281,6 +291,44 @@ impl<'env> BoogieWrapper<'env> {
         self.analyze_output(&res.out, &res.err, res.status, true)
     }
 
+    /// Builds a mapping from .bpl line numbers to human-readable descriptions of the
+    /// assert at that line, for use in trace output. Each entry maps a line number to
+    /// a string like "ensures does not hold (at sources/module.move:42)".
+    fn build_assert_line_map(&self, boogie_file: &str) -> HashMap<usize, String> {
+        let mut map = HashMap::new();
+        let content = match fs::read_to_string(boogie_file) {
+            Ok(c) => c,
+            Err(_) => return map,
+        };
+        for (line_idx, line) in content.lines().enumerate() {
+            if let Some(cap) = BPL_ASSERT_MSG.captures(line) {
+                let msg = cap.name("msg").unwrap().as_str();
+                let args = cap.name("args").unwrap().as_str();
+                let loc_str = self.format_source_loc(args);
+                let line_num = line_idx + 1; // 1-based
+                map.insert(line_num, format!("{} ({})", msg, loc_str));
+            }
+        }
+        map
+    }
+
+    /// Formats a source location from "file_idx,start,end" args into a readable string.
+    fn format_source_loc(&self, args: &str) -> String {
+        let elems: Vec<&str> = args.split(',').collect();
+        if elems.len() == 3 {
+            if let (Ok(file_idx), Ok(start), Ok(end)) = (
+                elems[0].parse::<u16>(),
+                elems[1].parse::<u32>(),
+                elems[2].parse::<u32>(),
+            ) {
+                let file_id = self.env.file_idx_to_id(file_idx);
+                let loc = Loc::new(file_id, Span::new(start, end));
+                return loc.display_line_only(self.env).to_string();
+            }
+        }
+        "unknown location".to_string()
+    }
+
     /// Calls boogie on the given file. On success, returns a struct representing the analyzed
     /// output of boogie.
     fn call_boogie(
@@ -317,7 +365,99 @@ impl<'env> BoogieWrapper<'env> {
         let timeout =
             Duration::from_secs(individual_timeout.unwrap_or(self.options.vc_timeout as u64));
 
-        let output_res = if self.options.force_timeout {
+        let output_res = if self.options.trace {
+            let assert_map = self.build_assert_line_map(boogie_file);
+            // Reverse map: (file_idx,start,end) -> Vec<(split_n, split_total, bpl_line)>
+            let loc_to_splits: std::sync::Mutex<HashMap<String, Vec<(String, String)>>> =
+                std::sync::Mutex::new(HashMap::new());
+            let in_split = std::sync::atomic::AtomicBool::new(false);
+            let on_line = |line: &str| {
+                let trimmed = line.trim();
+                if trimmed.starts_with("Verifying ") {
+                    if in_split.load(std::sync::atomic::Ordering::Relaxed) {
+                        println!();
+                        in_split.store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    println!("    ⊢  {}", trimmed.trim_start_matches("Verifying ").trim_end_matches(" ..."));
+                } else if trimmed.contains("finished with") {
+                    if in_split.load(std::sync::atomic::Ordering::Relaxed) {
+                        println!();
+                        in_split.store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    // Skip "Boogie program verifier finished with N errors" summary
+                    if !trimmed.starts_with("Boogie program verifier") {
+                        // "finished with N verified, M errors" -> "N verified" or show errors
+                        if trimmed.contains("0 errors") {
+                            let verified = trimmed
+                                .split_whitespace()
+                                .nth(2)
+                                .unwrap_or("?");
+                            println!("    ✅ {} verified", verified);
+                        } else {
+                            println!("    ❌ {}", trimmed);
+                        }
+                    }
+                } else if let Some(cap) = CHECKING_SPLIT.captures(trimmed) {
+                    in_split.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let n = cap.name("n").unwrap().as_str();
+                    let total = cap.name("total").unwrap().as_str();
+                    let bpl_line: usize =
+                        cap.name("line").unwrap().as_str().parse().unwrap_or(0);
+                    if let Some(desc) = assert_map.get(&bpl_line) {
+                        print!("\r\x1B[2K    📌 split {}/{}: {}", n, total, desc);
+                    } else {
+                        print!("\r\x1B[2K    📌 split {}/{}", n, total);
+                    }
+                    // Record which splits check which source location
+                    if let Ok(mut map) = loc_to_splits.lock() {
+                        // Read the bpl line to get the assert_failed args
+                        if let Some(bpl_content) = assert_map.get(&bpl_line) {
+                            map.entry(bpl_content.clone())
+                                .or_default()
+                                .push((n.to_string(), total.to_string()));
+                        }
+                    }
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                }
+            };
+            let res = if self.options.force_timeout {
+                runner::run_with_timeout_and_line_callback(&args, timeout, on_line)
+            } else {
+                runner::run_with_line_callback(&args, on_line)
+            };
+            // After Boogie finishes, print which splits failed
+            if let Ok(ref output) = res {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let failed_locs: Vec<String> = VERIFICATION_DIAG_STARTS
+                    .captures_iter(&stdout)
+                    .map(|cap| {
+                        let args = cap.name("args").unwrap().as_str();
+                        let msg = cap.name("msg").unwrap().as_str();
+                        format!("{} ({})", msg, self.format_source_loc(args))
+                    })
+                    .collect();
+                if !failed_locs.is_empty() {
+                    if let Ok(map) = loc_to_splits.lock() {
+                        let mut printed = std::collections::HashSet::new();
+                        for loc_desc in &failed_locs {
+                            if let Some(splits) = map.get(loc_desc) {
+                                for (n, total) in splits {
+                                    let key = format!("{}/{}", n, total);
+                                    if printed.insert(key) {
+                                        println!(
+                                            "    ❌ split {}/{}: {}",
+                                            n, total, loc_desc
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            res
+        } else if self.options.force_timeout {
             runner::run_with_timeout(&args, timeout)
         } else {
             runner::run(&args)
