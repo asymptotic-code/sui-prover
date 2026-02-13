@@ -378,7 +378,12 @@ impl<'env> BoogieWrapper<'env> {
                         println!();
                         in_split.store(false, std::sync::atomic::Ordering::Relaxed);
                     }
-                    println!("    ⊢  {}", trimmed.trim_start_matches("Verifying ").trim_end_matches(" ..."));
+                    println!(
+                        "    ⊢  {}",
+                        trimmed
+                            .trim_start_matches("Verifying ")
+                            .trim_end_matches(" ...")
+                    );
                 } else if trimmed.contains("finished with") {
                     if in_split.load(std::sync::atomic::Ordering::Relaxed) {
                         println!();
@@ -388,10 +393,7 @@ impl<'env> BoogieWrapper<'env> {
                     if !trimmed.starts_with("Boogie program verifier") {
                         // "finished with N verified, M errors" -> "N verified" or show errors
                         if trimmed.contains("0 errors") {
-                            let verified = trimmed
-                                .split_whitespace()
-                                .nth(2)
-                                .unwrap_or("?");
+                            let verified = trimmed.split_whitespace().nth(2).unwrap_or("?");
                             println!("    ✅ {} verified", verified);
                         } else {
                             println!("    ❌ {}", trimmed);
@@ -401,8 +403,7 @@ impl<'env> BoogieWrapper<'env> {
                     in_split.store(true, std::sync::atomic::Ordering::Relaxed);
                     let n = cap.name("n").unwrap().as_str();
                     let total = cap.name("total").unwrap().as_str();
-                    let bpl_line: usize =
-                        cap.name("line").unwrap().as_str().parse().unwrap_or(0);
+                    let bpl_line: usize = cap.name("line").unwrap().as_str().parse().unwrap_or(0);
                     if let Some(desc) = assert_map.get(&bpl_line) {
                         print!("\r\x1B[2K    📌 split {}/{}: {}", n, total, desc);
                     } else {
@@ -445,10 +446,7 @@ impl<'env> BoogieWrapper<'env> {
                                 for (n, total) in splits {
                                     let key = format!("{}/{}", n, total);
                                     if printed.insert(key) {
-                                        println!(
-                                            "    ❌ split {}/{}: {}",
-                                            n, total, loc_desc
-                                        );
+                                        println!("    ❌ split {}/{}: {}", n, total, loc_desc);
                                     }
                                 }
                             }

@@ -111,6 +111,8 @@ cargo fmt --all -- --check
 cargo check --all-targets --all-features
 ```
 
+**Important:** Always run `cargo fmt --all` before committing code changes.
+
 ## Architecture
 
 ### Data Flow
