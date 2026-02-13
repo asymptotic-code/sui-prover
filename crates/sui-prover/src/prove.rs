@@ -119,6 +119,10 @@ pub struct GeneralConfig {
     /// Whether to enable CI mode for continuous integration environments
     #[clap(name = "ci", long, global = false)]
     pub ci: bool,
+
+    /// Stream Boogie trace output in real time (passes -trace -traceverify to Boogie)
+    #[clap(name = "trace", long, global = true)]
+    pub trace: bool,
 }
 
 #[derive(Args, Default)]
@@ -236,6 +240,7 @@ async fn execute_backend_boogie(
     options.backend.force_timeout = general_config.force_timeout;
     options.backend.ci = general_config.ci;
     options.prover.ci = general_config.ci;
+    options.backend.trace = general_config.trace;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

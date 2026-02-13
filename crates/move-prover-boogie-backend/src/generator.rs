@@ -284,7 +284,9 @@ async fn run_prover_abort_check<W: WriteColor>(
         return Ok(true);
     }
 
-    print!("\x1B[1A\x1B[2K");
+    if !options.backend.trace {
+        print!("\x1B[1A\x1B[2K");
+    }
     if elapsed.as_secs() > 1 {
         println!("✅ {} ({}s)", file_name, elapsed.as_secs());
     } else {
@@ -443,7 +445,7 @@ async fn verify_bpl<W: WriteColor>(
     if is_error {
         println!("❌ {} ({:.1}s)", file.file_name, elapsed.as_secs_f64());
     } else {
-        if options.remote.is_none() {
+        if options.remote.is_none() && !options.backend.trace {
             print!("\x1B[1A\x1B[2K");
         }
         if elapsed.as_secs() > 1 {
