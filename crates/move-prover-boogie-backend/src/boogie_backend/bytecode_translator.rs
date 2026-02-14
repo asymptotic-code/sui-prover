@@ -209,6 +209,41 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
+    /// Emit a bodyless `function $name$pure(params) returns (rets);` for a native
+    /// uninterpreted function that has no FunctionTarget data.
+    fn emit_uninterpreted_native_pure(&self, fun_env: &FunctionEnv) {
+        let func_name = boogie_function_name(fun_env, &[], FunctionTranslationStyle::Pure);
+
+        let params = fun_env
+            .get_parameter_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| format!("$t{}: {}", idx, boogie_type(self.env, ty.skip_reference())))
+            .join(", ");
+
+        let rets = fun_env
+            .get_return_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                format!(
+                    "$ret{}: {}",
+                    idx,
+                    boogie_type(self.env, ty.skip_reference())
+                )
+            })
+            .join(", ");
+
+        emitln!(
+            self.writer,
+            "function {}({}) returns ({});",
+            func_name,
+            params,
+            rets,
+        );
+        emitln!(self.writer);
+    }
+
     // Generate object::borrow_uid function
     fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
         emitln!(
@@ -415,6 +450,9 @@ impl<'env> BoogieTranslator<'env> {
 
             for ref fun_env in module_env.get_functions() {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    if self.targets.is_uninterpreted(&fun_env.get_qualified_id()) {
+                        self.emit_uninterpreted_native_pure(fun_env);
+                    }
                     continue;
                 }
 
@@ -2803,7 +2841,12 @@ impl<'env> FunctionTranslator<'env> {
                                 let fun_name = boogie_function_name(
                                     &callee_env,
                                     inst,
-                                    if native_fn {
+                                    if native_fn
+                                        && !self
+                                            .parent
+                                            .targets
+                                            .is_uninterpreted(&mid.qualified(*fid))
+                                    {
                                         FunctionTranslationStyle::Default
                                     } else {
                                         FunctionTranslationStyle::Pure
@@ -4011,6 +4054,14 @@ impl<'env> FunctionTranslator<'env> {
                                 // For non-spec calls using function syntax to pure functions,
                                 // add $pure suffix (regardless of current style)
                                 // But not for native functions which use their base name
+                                fun_name = format!("{}{}", fun_name, "$pure");
+                            } else if is_native_fn
+                                && self
+                                    .parent
+                                    .targets
+                                    .is_uninterpreted(&callee_env.get_qualified_id())
+                            {
+                                // Uninterpreted native functions use $pure suffix
                                 fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
