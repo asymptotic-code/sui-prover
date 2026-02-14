@@ -116,15 +116,6 @@ impl PureFunctionAnalysisProcessor {
             }
         }
 
-        if func_env.get_return_count() != 1 {
-            func_env.module_env.env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                "Pure functions must have exactly one return value",
-            );
-            return false;
-        }
-
         true
     }
 }
