@@ -34,12 +34,16 @@ use move_stackless_bytecode::{
 };
 use std::{fs, path::Path, time::Instant};
 
+/// Constant for the "local" run location value
+const RUN_ON_LOCAL: &str = "local";
+
 pub struct FileOptions {
     pub file_name: String,
     pub code_writer: CodeWriter,
     pub types: BiBTreeMap<Type, String>,
     pub boogie_options: Option<String>,
     pub timeout: Option<u64>,
+    pub run_on: Option<String>,
     pub targets: FunctionTargetsHolder,
     pub qid: Option<QualifiedId<FunId>>,
 }
@@ -273,6 +277,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         file_name.to_owned(),
         None,
         None,
+        None,
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -350,6 +355,7 @@ fn generate_function_bpl<W: WriteColor>(
         types,
         boogie_options: targets.get_spec_boogie_options(qid).cloned(),
         timeout: targets.get_spec_timeout(qid).cloned(),
+        run_on: targets.get_spec_run_on(qid).cloned(),
         targets,
         qid: Some(*qid),
     })
@@ -412,6 +418,7 @@ fn generate_module_bpl<W: WriteColor>(
         types,
         boogie_options: None,
         timeout: None,
+        run_on: None,
         targets,
         qid: None,
     })
@@ -435,6 +442,7 @@ async fn verify_bpl<W: WriteColor>(
         file.file_name.clone(),
         file.timeout,
         file.boogie_options,
+        file.run_on,
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -699,6 +707,7 @@ pub async fn verify_boogie(
     target_name: String,
     timeout: Option<u64>,
     boogie_options: Option<String>,
+    run_on: Option<String>,
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
 
@@ -714,7 +723,10 @@ pub async fn verify_boogie(
             options: &options.backend,
             types: &types,
         };
-        if options.remote.is_some() {
+        // Check if this spec should run locally even when remote is configured
+        let should_run_local = run_on.as_ref().map(|s| s.as_str() == RUN_ON_LOCAL).unwrap_or(false);
+
+        if options.remote.is_some() && !should_run_local {
             boogie
                 .call_remote_boogie_and_verify_output(
                     &file_name,

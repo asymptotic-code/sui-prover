@@ -358,6 +358,10 @@ impl FunctionTargetsHolder {
         self.package_targets.spec_timeouts().get(id)
     }
 
+    pub fn get_spec_run_on(&self, id: &QualifiedId<FunId>) -> Option<&String> {
+        self.package_targets.spec_run_on().get(id)
+    }
+
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
