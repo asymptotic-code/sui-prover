@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/uninterpreted/native_integer_pow.fail.move:13:5
+   │
+13 │     ensures(result == 8u8.to_int()); // fails: pow is uninterpreted, can't deduce pow(2,3)==8
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/uninterpreted/native_integer_pow.fail.move:11: foo_spec

@@ -620,10 +620,12 @@ impl PackageTargets {
                             if let Some(target_func_env) =
                                 target_module_env.find_function(env.symbol_pool().make(&fun_name))
                             {
-                                // Validate that the target is a pure function
+                                // Validate that the target is a pure function or a known native function
                                 if !self
                                     .pure_functions
                                     .contains(&target_func_env.get_qualified_id())
+                                    && !env
+                                        .should_be_used_as_func(&target_func_env.get_qualified_id())
                                 {
                                     env.diag(
                                         Severity::Error,
