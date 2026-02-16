@@ -211,14 +211,17 @@ impl<'env> BoogieTranslator<'env> {
 
     /// Emit a bodyless `function $name$pure(params) returns (rets);` for a native
     /// uninterpreted function that has no FunctionTarget data.
-    fn emit_uninterpreted_native_pure(&self, fun_env: &FunctionEnv) {
-        let func_name = boogie_function_name(fun_env, &[], FunctionTranslationStyle::Pure);
+    fn emit_uninterpreted_native_pure(&self, fun_env: &FunctionEnv, inst: &[Type]) {
+        let func_name = boogie_function_name(fun_env, inst, FunctionTranslationStyle::Pure);
 
         let params = fun_env
             .get_parameter_types()
             .iter()
             .enumerate()
-            .map(|(idx, ty)| format!("$t{}: {}", idx, boogie_type(self.env, ty.skip_reference())))
+            .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
+                format!("$t{}: {}", idx, boogie_type(self.env, ty.skip_reference()))
+            })
             .join(", ");
 
         let rets = fun_env
@@ -226,6 +229,7 @@ impl<'env> BoogieTranslator<'env> {
             .iter()
             .enumerate()
             .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
                 format!(
                     "$ret{}: {}",
                     idx,
@@ -451,7 +455,13 @@ impl<'env> BoogieTranslator<'env> {
             for ref fun_env in module_env.get_functions() {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
                     if self.targets.is_uninterpreted(&fun_env.get_qualified_id()) {
-                        self.emit_uninterpreted_native_pure(fun_env);
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
                     }
                     continue;
                 }
