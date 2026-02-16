@@ -468,6 +468,29 @@ impl<'env> BoogieTranslator<'env> {
 
                 self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
 
+                // translate_function_style(Pure) only emits $pure declarations
+                // for functions that are "inlined" per verification analysis.
+                // For pure functions that aren't inlined (e.g., from dependency
+                // packages), call sites still use type-instantiated $pure names.
+                // Emit bodyless $pure declarations so Boogie can resolve them.
+                if self.targets.is_pure_fun(&fun_env.get_qualified_id()) {
+                    let has_baseline = self.targets.has_target(fun_env, &FunctionVariant::Baseline);
+                    let is_inlined = has_baseline
+                        && verification_analysis::get_info(
+                            &self.targets.get_target(fun_env, &FunctionVariant::Baseline),
+                        )
+                        .inlined;
+                    if !is_inlined {
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
+                    }
+                }
+
                 if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
                     self.generate_axiom_function(fun_env);
                     continue;
