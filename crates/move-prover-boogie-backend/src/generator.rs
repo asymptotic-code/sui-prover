@@ -314,6 +314,8 @@ fn generate_function_bpl<W: WriteColor>(
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
+
     check_errors(
         env,
         &options,
@@ -377,6 +379,8 @@ fn generate_module_bpl<W: WriteColor>(
     };
 
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
+
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
 
     check_errors(
         env,
@@ -729,6 +733,20 @@ pub async fn verify_boogie(
     }
 
     Ok(())
+}
+
+/// Write spec hierarchy log files for all specs in the given targets.
+/// Only writes during `AssertsMode::Check` to avoid duplicate writes.
+fn write_spec_hierarchy_logs(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    options: &Options,
+    asserts_mode: AssertsMode,
+) {
+    if asserts_mode == AssertsMode::Check {
+        let output_dir = Path::new(&options.output_path);
+        spec_hierarchy::display_spec_hierarchy(env, targets, output_dir);
+    }
 }
 
 /// Create bytecode and process it.

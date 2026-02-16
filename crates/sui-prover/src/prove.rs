@@ -10,11 +10,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
+use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_stackless_bytecode::function_stats;
-use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
-use move_stackless_bytecode::spec_hierarchy;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::{
     collections::BTreeMap,
@@ -183,21 +181,6 @@ pub async fn execute(
         function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
     }
-
-    let mut options = move_prover_boogie_backend::generator_options::Options::default();
-    options.filter = filter.clone();
-    let (targets, _) = create_and_process_bytecode(
-        &options,
-        &model,
-        &package_targets,
-        FunctionHolderTarget::All,
-    );
-
-    let output_dir = std::path::Path::new(&options.output_path);
-    if !output_dir.exists() {
-        std::fs::create_dir_all(output_dir)?;
-    }
-    spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
 
     execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
 }
