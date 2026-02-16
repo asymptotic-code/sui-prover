@@ -30,25 +30,6 @@ struct CallInfo {
     spec_id: Option<QualifiedId<FunId>>,
 }
 
-/// Generates and writes specification hierarchy trees to log files.
-///
-/// For each spec in the targets, creates a `.log.txt` file in the output directory
-/// showing the complete call hierarchy including:
-/// - All functions called by the spec's underlying implementation
-/// - Spec properties (prove, no_opaque) for functions that have specs
-/// - System functions are excluded (stdlib, Sui framework, etc.)
-/// - Tree structure with proper indentation using box-drawing characters
-///
-/// # Tree Traversal
-/// - Recurses into functions without specs to find nested specs
-/// - Stops recursing at opaque specs (specs without `no_opaque`)
-/// - Recurses into `no_opaque` specs since the prover uses their implementation
-/// - Prevents infinite recursion by tracking displayed functions
-///
-/// # Arguments
-/// * `env` - Global environment containing all function and module information
-/// * `targets` - Holder containing all specs and their relationships
-/// * `output_dir` - Directory where .log.txt files will be written
 /// Writes the hierarchy log file for a single spec using already-built targets.
 ///
 /// This is designed to be called during verification, reusing the
