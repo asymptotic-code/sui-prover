@@ -30,56 +30,57 @@ struct CallInfo {
     spec_id: Option<QualifiedId<FunId>>,
 }
 
-/// Generates and writes specification hierarchy trees to log files.
+/// Writes the hierarchy log file for a single spec using already-built targets.
 ///
-/// For each spec in the targets, creates a `.log.txt` file in the output directory
-/// showing the complete call hierarchy including:
-/// - All functions called by the spec's underlying implementation
-/// - Spec properties (prove, no_opaque) for functions that have specs
-/// - System functions are excluded (stdlib, Sui framework, etc.)
-/// - Tree structure with proper indentation using box-drawing characters
-///
-/// # Tree Traversal
-/// - Recurses into functions without specs to find nested specs
-/// - Stops recursing at opaque specs (specs without `no_opaque`)
-/// - Recurses into `no_opaque` specs since the prover uses their implementation
-/// - Prevents infinite recursion by tracking displayed functions
+/// This is designed to be called during verification, reusing the
+/// `FunctionTargetsHolder` that was already created with proper per-spec
+/// filtering (e.g. `FunctionHolderTarget::Function`).
 ///
 /// # Arguments
-/// * `env` - Global environment containing all function and module information
-/// * `targets` - Holder containing all specs and their relationships
+/// * `env` - Global environment
+/// * `targets` - Targets holder with spec mappings (already built for this spec's context)
+/// * `spec_id` - The spec to write the hierarchy for
 /// * `output_dir` - Directory where .log.txt files will be written
-pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, output_dir: &Path) {
+pub fn write_spec_hierarchy_log(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    spec_id: &QualifiedId<FunId>,
+    output_dir: &Path,
+) {
     let excluded_addresses = get_excluded_addresses();
+    let spec_env = env.get_function(*spec_id);
+    let spec_name = spec_env.get_full_name_str();
 
+    if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
+        let func_env = env.get_function(*fun_id);
+        let header = func_env.get_full_name_str();
+        write_spec_log_file(
+            env,
+            targets,
+            &func_env,
+            spec_name,
+            &header,
+            output_dir,
+            &excluded_addresses,
+        );
+    } else if targets.is_scenario_spec(spec_id) {
+        let header = format!("{} {}", spec_env.get_full_name_str(), SCENARIO_LABEL);
+        write_spec_log_file(
+            env,
+            targets,
+            &spec_env,
+            spec_name,
+            &header,
+            output_dir,
+            &excluded_addresses,
+        );
+    }
+}
+
+/// Writes hierarchy log files for all specs in the given targets.
+pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, output_dir: &Path) {
     for spec_id in targets.specs() {
-        let spec_env = env.get_function(*spec_id);
-        let spec_name = spec_env.get_full_name_str();
-
-        if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
-            let func_env = env.get_function(*fun_id);
-            let header = func_env.get_full_name_str();
-            write_spec_log_file(
-                env,
-                targets,
-                &func_env,
-                spec_name,
-                &header,
-                output_dir,
-                &excluded_addresses,
-            );
-        } else if targets.is_scenario_spec(spec_id) {
-            let header = format!("{} {}", spec_env.get_full_name_str(), SCENARIO_LABEL);
-            write_spec_log_file(
-                env,
-                targets,
-                &spec_env,
-                spec_name,
-                &header,
-                output_dir,
-                &excluded_addresses,
-            );
-        }
+        write_spec_hierarchy_log(env, targets, spec_id, output_dir);
     }
 }
 
