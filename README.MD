@@ -96,6 +96,22 @@ Run from the `move.toml` directory:
 sui-prover
 ```
 
+## Claude Code Integration
+
+Install the Sui Prover skill for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) to get AI-assisted specification writing, verification debugging, and prover guidance.
+
+Add the plugin source:
+```
+/plugin marketplace add asymptotic-code/sui-prover
+```
+
+Install the plugin:
+```
+/plugin install sui-prover@sui-prover
+```
+
+Once installed, Claude Code can help you write specifications, run the prover, and debug verification failures using the `/sui-prover` command.
+
 ## See Also
 
 [Sui Prover Documentation](https://info.asymptotic.tech/sui-prover)
