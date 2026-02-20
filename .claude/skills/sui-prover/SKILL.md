@@ -215,12 +215,88 @@ Import with `use prover::prover::*`:
 | `.to_real()` | Convert primitive to arbitrary-precision real (spec-only) |
 | `fresh<T>()` | Create an unconstrained value of type T |
 
+### Common Abort Patterns
+
+**Overflow/underflow** - Use `.to_int()` for arbitrary-precision arithmetic in asserts:
+```move
+// For: a + b
+asserts(a.to_int().add(b.to_int()).lte(std::u64::max_value!().to_int()));
+
+// For: a * b / c
+let result = a.to_int().mul(b.to_int()).div(c.to_int());
+asserts(result.lte(std::u64::max_value!().to_int()));
+```
+
+**Table/dynamic field access** - Assert existence before borrow:
+```move
+asserts(table.contains(key));
+let value = table.borrow(key);
+```
+Exception: if the implementation guards with `if (!table.contains(key)) { return }`, no assert is needed since the code won't abort.
+
+**Division** - Assert non-zero divisor:
+```move
+asserts(divisor != 0);
+```
+
+**`bag::contains_with_type` pattern** - `bag::contains<K>` does NOT connect with `bag::borrow<K, V>` in the prover, but `bag::contains_with_type<K, V>` does:
+```move
+// WRONG - prover can't connect contains with borrow
+asserts(bag::contains(&bag, key));
+let value = bag::borrow<K, V>(&bag, key); // prover thinks this could abort
+
+// CORRECT - prover connects contains_with_type with borrow
+asserts(bag::contains_with_type<K, V>(&bag, key));
+let value = bag::borrow<K, V>(&bag, key); // prover knows this won't abort
+```
+
+### Common Mistakes
+
+**Asserts must come before the function call that could abort:**
+```move
+// WRONG: Assert after function call that could abort
+let result = risky_function(a, b);
+asserts(a != 0);  // Too late - function already aborted
+
+// CORRECT: Assert before function call
+asserts(a != 0);
+let result = risky_function(a, b);
+```
+
+**Reuse asserts from proven specs.** When your function calls another function that already has a proven spec, copy all asserts from that spec:
+```move
+// If pow_spec has: asserts(base.to_int().pow(exp.to_int()).lte(max.to_int()));
+// Then in your spec that internally calls pow():
+fun my_function_spec(a: u64, b: u8): u64 {
+    asserts(a.to_int().pow(b.to_int()).lte(std::u64::max_value!().to_int()));
+    let result = my_module::my_function(a, b);
+    result
+}
+```
+
+**Early return guards** - When implementation has `if (x == y) { return }`, asserts for code after the early return must be guarded in the spec:
+```move
+if (x != y) {
+    asserts(/* conditions for code after early return */);
+};
+```
+
 ### Common Patterns
 
-**Pure functions** - Mark with `#[ext(pure)]` to use in specs:
+**Pure functions** - Mark with `#[ext(pure)]` to use in specs. Add to all pure getter/view functions — field accessors, view functions, etc. When a getter calls another module's function, that function also needs `#[ext(pure)]`:
 ```move
 #[ext(pure)]
 fun max(a: u64, b: u64): u64 { if (a >= b) { a } else { b } }
+```
+
+**Private struct field access** - Use `#[test_only]` accessor functions in the implementation:
+```move
+// In implementation module:
+#[test_only]
+public fun get_field_name(s: &MyStruct): String { s.name }
+
+// In spec:
+ensures(module::get_field_name(&result) == expected);
 ```
 
 **Inline loop invariants** - Use `invariant!` before the loop:
@@ -244,10 +320,48 @@ fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
 }
 ```
 
+**`no_opaque` for same-file public functions** - If functions `x` and `y` are both public, both have specs in one file, and `y` is called inside `x`, then `y`'s spec should have `no_opaque` so the prover uses the implementation (not `y_spec`) when proving `x_spec`. Exception: if `y` has a loop with `requires(forall!(...))`, keep it opaque to avoid timeouts.
+
+**`boogie_opt` for complex specs** - For specs with many calculations, add `boogie_opt=b"vcsSplitOnEveryAssert"` to improve performance:
+```move
+#[spec(prove, target=module::complex_func, boogie_opt=b"vcsSplitOnEveryAssert")]
+```
+
+**Prefer `asserts` over `requires`** where possible. Use `requires` only for preconditions that truly constrain inputs.
+
+**Ensures with table access** - When ensures use getters that internally call `table.borrow`, add a contains check first:
+```move
+module::set_value(storage, key, value);
+ensures(module::contains(storage, key));       // MUST come first
+ensures(module::get_value(storage, key) == value);
+```
+
+**Extra BPL prelude files** - When the prover fails with `use of undeclared function: $X_module_native_func$pure`, create a `.bpl` prelude file with the missing function definition:
+```move
+#[spec_only(extra_bpl = b"mymodule_prelude.bpl")]
+module specs::mymodule;
+```
+Place the BPL file in the same directory as the spec module.
+
 **Targeting external functions**:
 ```move
 #[spec(prove, target = 0x2::transfer::public_transfer)]
 fun public_transfer_spec<T: key + store>(obj: T, recipient: address) { ... }
+```
+
+**Ghost variables for `transfer::public_transfer`** - When a spec involves `transfer::public_transfer` (directly or indirectly), declare ghost variables:
+```move
+#[spec_only]
+use specs::transfer_spec::{SpecTransferAddress, SpecTransferAddressExists};
+
+#[spec(prove, target = module::func_that_transfers)]
+fun func_spec<T>(...) {
+    ghost::declare_global_mut<SpecTransferAddress, address>();
+    ghost::declare_global_mut<SpecTransferAddressExists, bool>();
+    // ... rest of spec
+    ensures(*ghost::global<SpecTransferAddressExists, bool>());
+    ensures(*ghost::global<SpecTransferAddress, address>() == recipient);
+}
 ```
 
 ## Ghost Variables
@@ -359,34 +473,33 @@ Key points:
 
 When verification fails, follow these steps in order:
 
-### 1. Enable Verbose Output
-```bash
-sui-prover --verbose
-```
+### 1. Interpret the Error
 
-### 2. Filter to the Failing Function
-```bash
-sui-prover --functions my_failing_spec
-```
+**"Code aborts"** → Missing asserts. Add asserts to cover all abort paths in the function and nested calls. Trace through every function call and identify what can abort (overflow, table access, division by zero, assert! statements).
 
-### 3. Keep and Inspect Temporary Files
-```bash
-sui-prover --keep-temp
-```
+**"Assert does not hold"** → The assert condition is wrong. The condition should describe the precondition under which the code does not abort, but the current condition doesn't match reality. Recheck the logic.
 
-### 4. Generate Only (Skip Z3)
-```bash
-sui-prover --generate-only --keep-temp
+### 2. Use Focus for Iterative Development
+```move
+#[spec(prove, focus, target = module::func)]  // Only verify this spec
 ```
+Always use `focus` when developing a spec. Full suite takes very long.
 
-### 5. Split Verification Paths
-```bash
-sui-prover --split-paths 4
-```
+### 3. Debugging Workflow
+1. Add `focus` attribute to the spec you're working on
+2. Run `sui-prover`
+3. If "Code aborts": add missing asserts for abort conditions
+4. If "Assert does not hold": fix the assert condition
+5. Once passing with `focus`, remove `focus` and verify full suite
 
-### 6. Increase Timeout
+### 4. CLI Debugging Flags
 ```bash
-sui-prover --timeout 120
+sui-prover --verbose                    # Detailed output
+sui-prover --functions my_failing_spec  # Filter to one function
+sui-prover --keep-temp                  # Inspect generated .bpl files
+sui-prover --generate-only --keep-temp  # Generate Boogie without running Z3
+sui-prover --split-paths 4              # Split verification paths
+sui-prover --timeout 120                # Increase timeout
 ```
 
 ## Interpreting Results
@@ -399,20 +512,43 @@ sui-prover --timeout 120
 - Increasing `--timeout`
 - Simplifying the specification
 - Using `--split-paths`
+- Adding `boogie_opt=b"vcsSplitOnEveryAssert"` to the spec
 - Adding intermediate assertions
+- Nested table access in ensures is a common timeout cause — consider dropping ensures and keeping abort coverage only
 
 ## Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| Timeout on complex specs | Increase `--timeout`, use `--split-paths`, simplify spec |
+| "Code aborts" | Missing asserts — add asserts for all abort paths in target and nested calls |
+| "Assert does not hold" | Assert condition is wrong — recheck the logic |
+| Timeout on complex specs | Add `boogie_opt=b"vcsSplitOnEveryAssert"`, increase `--timeout`, use `--split-paths` |
+| Timeout from nested table ensures | Drop ensures, keep abort coverage only (asserts without ensures) |
 | "Function not found" | Check module path in `target = ...` attribute |
 | Counterexample unclear | Use `--verbose`, add intermediate `ensures()` |
 | Loop verification fails | Add/strengthen loop invariant (`invariant!` or external) |
-| Pure function not usable in spec | Add `#[ext(pure)]` attribute |
+| Pure function not usable in spec | Add `#[ext(pure)]` attribute; called functions also need it |
 | Abort condition verification fails | Add `asserts()` for all abort paths, or use `ignore_abort` |
 | Spec uses wrong function body | Check `no_opaque` — by default specs are used as opaque summaries |
+| `bag::contains` not connecting with `borrow` | Use `bag::contains_with_type<K, V>` instead of `bag::contains<K>` |
+| `undeclared function: $X_native$pure` | Create `.bpl` prelude file with the missing function, use `extra_bpl` |
+| `undeclared global variable` for transfers | Declare ghost variables for `SpecTransferAddress`/`SpecTransferAddressExists` |
+| `UID object type not found` | Known bug — skip spec for functions that destructure structs to extract UID |
 | Compile errors adding specs | Put specs in a separate package, use `target` attribute |
+
+## Known Issues
+
+### UID Tracking Bug After Struct Destructuring
+When a function destructures a struct to extract a UID and then calls `dynamic_field::remove` on that local UID, the prover loses type information and fails with:
+```
+error[E0022]: UID object type not found: 5
+```
+**Workaround:** Do not write a spec for such functions. The `skip` attribute does NOT help because the error occurs during bytecode transformation before specs are evaluated.
+
+### Method Syntax Limitations
+Method syntax works only when the function is defined in the same module as the receiver type:
+- `bag::contains(bag, key)` → `bag.contains(key)` works (Bag defined in sui::bag)
+- `dynamic_field::borrow(uid, key)` → cannot use method syntax (UID in sui::object, function in sui::dynamic_field)
 
 ## Prerequisites
 
