@@ -477,7 +477,7 @@ When verification fails, follow these steps in order:
 
 **"Code aborts"** → Missing asserts. Add asserts to cover all abort paths in the function and nested calls. Trace through every function call and identify what can abort (overflow, table access, division by zero, assert! statements).
 
-**"Assert does not hold"** → The assert condition is wrong. The condition should describe when code aborts, but the current condition doesn't match reality. Recheck the logic.
+**"Assert does not hold"** → The assert condition is wrong. The condition should describe the precondition under which the code does not abort, but the current condition doesn't match reality. Recheck the logic.
 
 ### 2. Use Focus for Iterative Development
 ```move
