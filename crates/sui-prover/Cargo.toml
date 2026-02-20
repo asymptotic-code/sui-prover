@@ -4,7 +4,7 @@ authors = ["Asymptotic <info@asymptotic.tech>"]
 license = "Apache-2.0"
 publish = false
 edition = "2021"
-version = "0.0.2"
+version = "0.0.7"
 
 [lints]
 workspace = true
