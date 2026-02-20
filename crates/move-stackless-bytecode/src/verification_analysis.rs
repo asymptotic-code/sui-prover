@@ -510,17 +510,17 @@ impl VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined && !info.reachable && !info.verified {
                 info.reachable = true;
-            }
 
-            let mut callees = targets
-                .get_loop_invariants(&fun_env.get_qualified_id())
-                .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
-                .unwrap_or_default();
-            callees.extend(fun_env.get_called_functions());
+                let mut callees = targets
+                    .get_loop_invariants(&fun_env.get_qualified_id())
+                    .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
+                    .unwrap_or_default();
+                callees.extend(fun_env.get_called_functions());
 
-            for calle in callees {
-                let callee_env = fun_env.module_env.env.get_function(calle);
-                Self::mark_reachable(&callee_env, targets);
+                for calle in callees {
+                    let callee_env = fun_env.module_env.env.get_function(calle);
+                    Self::mark_reachable(&callee_env, targets);
+                }
             }
         }
     }
