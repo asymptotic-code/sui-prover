@@ -581,8 +581,10 @@ impl VerificationAnalysisProcessor {
             Self::mark_inlined(&callee_env, targets);
             if let Some(qt) = QuantifierPattern::type_from_qid(callee, env) {
                 if qt.requires_sum() {
-                    let sum_fun_env = env.get_function(env.prover_vec_sum_qid());
-                    Self::mark_inlined(&sum_fun_env, targets);
+                    if let Some(qid) = env.prover_vec_sum_qid_opt() {
+                        let sum_fun_env = env.get_function(qid);
+                        Self::mark_inlined(&sum_fun_env, targets);
+                    }
                 }
             }
         }

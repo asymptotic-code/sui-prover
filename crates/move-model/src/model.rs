@@ -1869,6 +1869,11 @@ impl GlobalEnv {
         self.find_module_id(Self::PROVER_VECTOR_MODULE_NAME)
     }
 
+    pub fn has_prover_vector_module(&self) -> bool {
+        self.find_module_by_name(self.symbol_pool().make(Self::PROVER_VECTOR_MODULE_NAME))
+            .is_some()
+    }
+
     pub fn prover_begin_forall_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_BEGIN_FORALL_LAMBDA)
     }
@@ -2083,16 +2088,32 @@ impl GlobalEnv {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_RANGE)
     }
 
+    pub fn prover_range_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_RANGE)
+    }
+
     pub fn prover_vec_sum_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
+    }
+
+    pub fn prover_vec_sum_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
     }
 
     pub fn prover_vec_sum_range_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM_RANGE)
     }
 
+    pub fn prover_vec_sum_range_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM_RANGE)
+    }
+
     pub fn prover_vec_slice_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
+    }
+
+    pub fn prover_vec_slice_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -3457,45 +3478,47 @@ impl GlobalEnv {
         ]);
 
         // Prover vec iter module functions
-        qids.extend(vec![
-            self.prover_begin_forall_lambda_qid(),
-            self.prover_end_forall_lambda_qid(),
-            self.prover_begin_exists_lambda_qid(),
-            self.prover_end_exists_lambda_qid(),
-            self.prover_begin_map_lambda_qid(),
-            self.prover_begin_map_range_lambda_qid(),
-            self.prover_end_map_lambda_qid(),
-            self.prover_begin_filter_lambda_qid(),
-            self.prover_begin_filter_range_lambda_qid(),
-            self.prover_end_filter_lambda_qid(),
-            self.prover_begin_find_lambda_qid(),
-            self.prover_begin_find_range_lambda_qid(),
-            self.prover_end_find_lambda_qid(),
-            self.prover_begin_find_index_lambda_qid(),
-            self.prover_begin_find_index_range_lambda_qid(),
-            self.prover_end_find_index_lambda_qid(),
-            self.prover_begin_find_indices_lambda_qid(),
-            self.prover_begin_find_indices_range_lambda_qid(),
-            self.prover_end_find_indices_lambda_qid(),
-            self.prover_begin_count_lambda_qid(),
-            self.prover_begin_count_range_lambda_qid(),
-            self.prover_end_count_lambda_qid(),
-            self.prover_begin_any_lambda_qid(),
-            self.prover_begin_any_range_lambda_qid(),
-            self.prover_end_any_lambda_qid(),
-            self.prover_begin_all_lambda_qid(),
-            self.prover_begin_all_range_lambda_qid(),
-            self.prover_end_all_lambda_qid(),
-            self.prover_begin_sum_map_lambda_qid(),
-            self.prover_begin_sum_map_range_lambda_qid(),
-            self.prover_end_sum_map_lambda_qid(),
-            self.prover_begin_range_map_lambda_qid(),
-            self.prover_end_range_map_lambda_qid(),
-            self.prover_range_qid(),
-            self.prover_vec_sum_qid(),
-            self.prover_vec_sum_range_qid(),
-            self.prover_vec_slice_qid(),
-        ]);
+        if self.has_prover_vector_module() {
+            qids.extend(vec![
+                self.prover_begin_forall_lambda_qid(),
+                self.prover_end_forall_lambda_qid(),
+                self.prover_begin_exists_lambda_qid(),
+                self.prover_end_exists_lambda_qid(),
+                self.prover_begin_map_lambda_qid(),
+                self.prover_begin_map_range_lambda_qid(),
+                self.prover_end_map_lambda_qid(),
+                self.prover_begin_filter_lambda_qid(),
+                self.prover_begin_filter_range_lambda_qid(),
+                self.prover_end_filter_lambda_qid(),
+                self.prover_begin_find_lambda_qid(),
+                self.prover_begin_find_range_lambda_qid(),
+                self.prover_end_find_lambda_qid(),
+                self.prover_begin_find_index_lambda_qid(),
+                self.prover_begin_find_index_range_lambda_qid(),
+                self.prover_end_find_index_lambda_qid(),
+                self.prover_begin_find_indices_lambda_qid(),
+                self.prover_begin_find_indices_range_lambda_qid(),
+                self.prover_end_find_indices_lambda_qid(),
+                self.prover_begin_count_lambda_qid(),
+                self.prover_begin_count_range_lambda_qid(),
+                self.prover_end_count_lambda_qid(),
+                self.prover_begin_any_lambda_qid(),
+                self.prover_begin_any_range_lambda_qid(),
+                self.prover_end_any_lambda_qid(),
+                self.prover_begin_all_lambda_qid(),
+                self.prover_begin_all_range_lambda_qid(),
+                self.prover_end_all_lambda_qid(),
+                self.prover_begin_sum_map_lambda_qid(),
+                self.prover_begin_sum_map_range_lambda_qid(),
+                self.prover_end_sum_map_lambda_qid(),
+                self.prover_begin_range_map_lambda_qid(),
+                self.prover_end_range_map_lambda_qid(),
+                self.prover_range_qid(),
+                self.prover_vec_sum_qid(),
+                self.prover_vec_sum_range_qid(),
+                self.prover_vec_slice_qid(),
+            ]);
+        }
 
         // Ghost module functions
         qids.extend(vec![
@@ -3696,45 +3719,47 @@ impl GlobalEnv {
         ]);
 
         // Prover vec iter module functions
-        qids.extend(vec![
-            self.prover_begin_forall_lambda_qid(),
-            self.prover_end_forall_lambda_qid(),
-            self.prover_begin_exists_lambda_qid(),
-            self.prover_end_exists_lambda_qid(),
-            self.prover_begin_map_lambda_qid(),
-            self.prover_begin_map_range_lambda_qid(),
-            self.prover_end_map_lambda_qid(),
-            self.prover_begin_filter_lambda_qid(),
-            self.prover_begin_filter_range_lambda_qid(),
-            self.prover_end_filter_lambda_qid(),
-            self.prover_begin_find_lambda_qid(),
-            self.prover_begin_find_range_lambda_qid(),
-            self.prover_end_find_lambda_qid(),
-            self.prover_begin_find_index_lambda_qid(),
-            self.prover_begin_find_index_range_lambda_qid(),
-            self.prover_end_find_index_lambda_qid(),
-            self.prover_begin_find_indices_lambda_qid(),
-            self.prover_begin_find_indices_range_lambda_qid(),
-            self.prover_end_find_indices_lambda_qid(),
-            self.prover_begin_count_lambda_qid(),
-            self.prover_begin_count_range_lambda_qid(),
-            self.prover_end_count_lambda_qid(),
-            self.prover_begin_any_lambda_qid(),
-            self.prover_begin_any_range_lambda_qid(),
-            self.prover_end_any_lambda_qid(),
-            self.prover_begin_all_lambda_qid(),
-            self.prover_begin_all_range_lambda_qid(),
-            self.prover_end_all_lambda_qid(),
-            self.prover_begin_sum_map_lambda_qid(),
-            self.prover_begin_sum_map_range_lambda_qid(),
-            self.prover_end_sum_map_lambda_qid(),
-            self.prover_begin_range_map_lambda_qid(),
-            self.prover_end_range_map_lambda_qid(),
-            self.prover_range_qid(),
-            self.prover_vec_sum_qid(),
-            self.prover_vec_sum_range_qid(),
-            self.prover_vec_slice_qid(),
-        ]);
+        if self.has_prover_vector_module() {
+            qids.extend(vec![
+                self.prover_begin_forall_lambda_qid(),
+                self.prover_end_forall_lambda_qid(),
+                self.prover_begin_exists_lambda_qid(),
+                self.prover_end_exists_lambda_qid(),
+                self.prover_begin_map_lambda_qid(),
+                self.prover_begin_map_range_lambda_qid(),
+                self.prover_end_map_lambda_qid(),
+                self.prover_begin_filter_lambda_qid(),
+                self.prover_begin_filter_range_lambda_qid(),
+                self.prover_end_filter_lambda_qid(),
+                self.prover_begin_find_lambda_qid(),
+                self.prover_begin_find_range_lambda_qid(),
+                self.prover_end_find_lambda_qid(),
+                self.prover_begin_find_index_lambda_qid(),
+                self.prover_begin_find_index_range_lambda_qid(),
+                self.prover_end_find_index_lambda_qid(),
+                self.prover_begin_find_indices_lambda_qid(),
+                self.prover_begin_find_indices_range_lambda_qid(),
+                self.prover_end_find_indices_lambda_qid(),
+                self.prover_begin_count_lambda_qid(),
+                self.prover_begin_count_range_lambda_qid(),
+                self.prover_end_count_lambda_qid(),
+                self.prover_begin_any_lambda_qid(),
+                self.prover_begin_any_range_lambda_qid(),
+                self.prover_end_any_lambda_qid(),
+                self.prover_begin_all_lambda_qid(),
+                self.prover_begin_all_range_lambda_qid(),
+                self.prover_end_all_lambda_qid(),
+                self.prover_begin_sum_map_lambda_qid(),
+                self.prover_begin_sum_map_range_lambda_qid(),
+                self.prover_end_sum_map_lambda_qid(),
+                self.prover_begin_range_map_lambda_qid(),
+                self.prover_end_range_map_lambda_qid(),
+                self.prover_range_qid(),
+                self.prover_vec_sum_qid(),
+                self.prover_vec_sum_range_qid(),
+                self.prover_vec_slice_qid(),
+            ]);
+        }
 
         // Log module functions
         qids.extend(vec![
@@ -4025,10 +4050,10 @@ impl GlobalEnv {
             self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
-            Some(self.prover_vec_slice_qid()),
-            Some(self.prover_vec_sum_qid()),
-            Some(self.prover_vec_sum_range_qid()),
-            Some(self.prover_range_qid()),
+            self.prover_vec_slice_qid_opt(),
+            self.prover_vec_sum_qid_opt(),
+            self.prover_vec_sum_range_qid_opt(),
+            self.prover_range_qid_opt(),
             // table and object_table native functions
             self.table_is_empty_qid(),
             self.table_length_qid(),

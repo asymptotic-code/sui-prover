@@ -146,20 +146,23 @@ fn bv_helper() -> Vec<BvInfo> {
 }
 
 fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let sum_func_env = env.get_function(env.prover_vec_sum_qid());
-    let sum_func_inlined = targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_func_inlined = env.prover_vec_sum_qid_opt().is_some_and(|qid| {
+        let sum_func_env = env.get_function(qid);
+        targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
-    let sum_range_func_env = env.get_function(env.prover_vec_sum_range_qid());
-    let sum_range_func_inlined = targets
-        .has_target(&sum_range_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_range_func_inlined = env.prover_vec_sum_range_qid_opt().is_some_and(|qid| {
+        let sum_range_func_env = env.get_function(qid);
+        targets.has_target(&sum_range_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
     sum_func_inlined || sum_range_func_inlined
 }
@@ -260,13 +263,10 @@ pub fn add_prelude(
     }
 
     context.insert("include_vec_sum", &should_include_vec_sum(env, targets));
-    context.insert(
-        "include_vector_iter_range",
-        &targets.has_target(
-            &env.get_function(env.prover_range_qid()),
-            &FunctionVariant::Baseline,
-        ),
-    );
+    let include_vector_iter_range = env
+        .prover_range_qid_opt()
+        .is_some_and(|qid| targets.has_target(&env.get_function(qid), &FunctionVariant::Baseline));
+    context.insert("include_vector_iter_range", &include_vector_iter_range);
 
     // let mut table_instances = mono_info
     //     .table_inst
