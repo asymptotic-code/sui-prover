@@ -4272,6 +4272,26 @@ impl<'env> FunctionTranslator<'env> {
                                 });
                         }
 
+                        // For uninterpreted functions, assume return values are valid
+                        // since Z3 has no information about the return type constraints.
+                        if self
+                            .parent
+                            .targets
+                            .is_uninterpreted(&callee_env.get_qualified_id())
+                        {
+                            for &dest in dests.iter() {
+                                let ty = self.get_local_type(dest);
+                                if !ty.is_mutable_reference() {
+                                    emitln!(
+                                        self.writer(),
+                                        "assume $IsValid'{}'({});",
+                                        boogie_type_suffix(env, &ty),
+                                        str_local(dest)
+                                    );
+                                }
+                            }
+                        }
+
                         // Clear the last track location after function call, as the call inserted
                         // location tracks before it returns.
                         *last_tracked_loc = None;
