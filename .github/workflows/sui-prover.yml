@@ -249,15 +249,25 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
-          mkdir -p "$HOME/.asymptotic" 
+          mkdir -p "$HOME/.asymptotic"
           echo "${{ secrets.CLOUD_EXEC_CONFIG }}" > "$HOME/.asymptotic/sui_prover.toml"
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -269,15 +279,18 @@ jobs:
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
+          # Verify boogie version
+          ~/.local/bin/boogie /version
+
       - name: Run
         run: |
           git clone https://github.com/asymptotic-code/integer-library int-lib
 
           cd int-lib/specs
-          sui-prover --ci --cloud
+          sui-prover --ci --timeout 240
 
-          cd ../specs-bv
-          sui-prover --no-bv-int-encoding --ci --cloud
+          cd ../specs-bv --timeout 240
+          sui-prover --no-bv-int-encoding --ci
 
   token-distribution-specs:
     needs: build-prover
