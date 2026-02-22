@@ -71,6 +71,49 @@ fun fresh_spec<T>(): T {
 native fun type_inv<T>(x: &T): bool;
 
 #[spec_only]
+public native fun add_quantifier_pool<T>(pool_name: vector<u8>, term: T);
+#[spec_only]
+public native fun add_quantifier_pool2<T1, T2>(pool_name: vector<u8>, term1: T1, term2: T2);
+#[spec_only]
+public native fun add_quantifier_pool3<T1, T2, T3>(
+    pool_name: vector<u8>, term1: T1, term2: T2, term3: T3,
+);
+#[spec_only]
+public native fun add_quantifier_pool4<T1, T2, T3, T4>(
+    pool_name: vector<u8>, term1: T1, term2: T2, term3: T3, term4: T4,
+);
+#[spec_only]
+public native fun add_quantifier_pool5<T1, T2, T3, T4, T5>(
+    pool_name: vector<u8>, term1: T1, term2: T2, term3: T3, term4: T4, term5: T5,
+);
+#[spec_only]
+public native fun add_quantifier_pool6<T1, T2, T3, T4, T5, T6>(
+    pool_name: vector<u8>, term1: T1, term2: T2, term3: T3, term4: T4, term5: T5, term6: T6,
+);
+#[spec_only]
+public native fun add_quantifier_pool7<T1, T2, T3, T4, T5, T6, T7>(
+    pool_name: vector<u8>,
+    term1: T1, term2: T2, term3: T3, term4: T4, term5: T5, term6: T6, term7: T7,
+);
+#[spec_only]
+public native fun add_quantifier_pool8<T1, T2, T3, T4, T5, T6, T7, T8>(
+    pool_name: vector<u8>,
+    term1: T1, term2: T2, term3: T3, term4: T4, term5: T5, term6: T6, term7: T7, term8: T8,
+);
+#[spec_only]
+public native fun add_quantifier_pool9<T1, T2, T3, T4, T5, T6, T7, T8, T9>(
+    pool_name: vector<u8>,
+    term1: T1, term2: T2, term3: T3, term4: T4, term5: T5, term6: T6, term7: T7, term8: T8,
+    term9: T9,
+);
+#[spec_only]
+public native fun add_quantifier_pool10<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>(
+    pool_name: vector<u8>,
+    term1: T1, term2: T2, term3: T3, term4: T4, term5: T5, term6: T6, term7: T7, term8: T8,
+    term9: T9, term10: T10,
+);
+
+#[spec_only]
 public native fun begin_forall_lambda<T>(): &T;
 #[spec_only]
 public native fun end_forall_lambda(): bool;

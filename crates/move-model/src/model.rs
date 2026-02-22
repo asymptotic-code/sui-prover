@@ -1561,6 +1561,16 @@ impl GlobalEnv {
     const LOG_GHOST_FUNCTION_NAME: &'static str = "ghost";
     const PROVER_VAL_FUNCTION_NAME: &'static str = "val";
     const PROVER_REF_FUNCTION_NAME: &'static str = "ref";
+    const PROVER_ADD_QUANTIFIER_POOL: &'static str = "add_quantifier_pool";
+    const PROVER_ADD_QUANTIFIER_POOL2: &'static str = "add_quantifier_pool2";
+    const PROVER_ADD_QUANTIFIER_POOL3: &'static str = "add_quantifier_pool3";
+    const PROVER_ADD_QUANTIFIER_POOL4: &'static str = "add_quantifier_pool4";
+    const PROVER_ADD_QUANTIFIER_POOL5: &'static str = "add_quantifier_pool5";
+    const PROVER_ADD_QUANTIFIER_POOL6: &'static str = "add_quantifier_pool6";
+    const PROVER_ADD_QUANTIFIER_POOL7: &'static str = "add_quantifier_pool7";
+    const PROVER_ADD_QUANTIFIER_POOL8: &'static str = "add_quantifier_pool8";
+    const PROVER_ADD_QUANTIFIER_POOL9: &'static str = "add_quantifier_pool9";
+    const PROVER_ADD_QUANTIFIER_POOL10: &'static str = "add_quantifier_pool10";
 
     // macro function names
 
@@ -2299,6 +2309,29 @@ impl GlobalEnv {
 
     pub fn prover_ref_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_REF_FUNCTION_NAME)
+    }
+
+    pub fn prover_add_quantifier_pool_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_ADD_QUANTIFIER_POOL)
+    }
+
+    /// Returns all add_quantifier_pool variant qids (pool, pool2, ..., pool10).
+    pub fn prover_add_quantifier_pool_all_qids(&self) -> Vec<QualifiedId<FunId>> {
+        [
+            Self::PROVER_ADD_QUANTIFIER_POOL,
+            Self::PROVER_ADD_QUANTIFIER_POOL2,
+            Self::PROVER_ADD_QUANTIFIER_POOL3,
+            Self::PROVER_ADD_QUANTIFIER_POOL4,
+            Self::PROVER_ADD_QUANTIFIER_POOL5,
+            Self::PROVER_ADD_QUANTIFIER_POOL6,
+            Self::PROVER_ADD_QUANTIFIER_POOL7,
+            Self::PROVER_ADD_QUANTIFIER_POOL8,
+            Self::PROVER_ADD_QUANTIFIER_POOL9,
+            Self::PROVER_ADD_QUANTIFIER_POOL10,
+        ]
+        .iter()
+        .map(|name| self.get_fun_qid(Self::PROVER_MODULE_NAME, name))
+        .collect()
     }
 
     pub fn log_text_qid(&self) -> QualifiedId<FunId> {
@@ -3475,7 +3508,9 @@ impl GlobalEnv {
             self.invariant_end_qid(),
             self.prover_val_qid(),
             self.prover_ref_qid(),
+            self.prover_add_quantifier_pool_qid(),
         ]);
+        qids.extend(self.prover_add_quantifier_pool_all_qids());
 
         // Prover vec iter module functions
         if self.has_prover_vector_module() {
@@ -3717,6 +3752,10 @@ impl GlobalEnv {
             self.declare_global_mut_qid(),
             self.havoc_global_qid(),
         ]);
+
+        // Prover module functions
+        qids.insert(self.prover_add_quantifier_pool_qid());
+        qids.extend(self.prover_add_quantifier_pool_all_qids());
 
         // Prover vec iter module functions
         if self.has_prover_vector_module() {
