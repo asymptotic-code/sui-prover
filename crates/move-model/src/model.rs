@@ -4073,11 +4073,6 @@ impl GlobalEnv {
             self.sui_tx_context_epoch_timestamp_ms_qid(),
             self.sui_tx_context_reference_gas_price_qid(),
             self.sui_tx_context_gas_price_qid(),
-            // std::type_name native functions
-            self.std_type_name_with_defining_ids_qid(),
-            self.std_type_name_with_original_ids_qid(),
-            self.std_type_name_defining_id_qid(),
-            self.std_type_name_original_id_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
