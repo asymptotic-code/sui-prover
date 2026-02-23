@@ -69,10 +69,11 @@ impl<'env> VersionState<'env> {
 
     /// Merge multiple `Ret` instructions into a single `Ret` using `IfThenElse`.
     /// Walks the structured control flow to find the return temp for each branch,
-    /// creates `IfThenElse` merges where branches return different values, then
-    /// replaces all `Ret` instructions with `Nop` and appends a single `Ret`.
+    /// collects `IfThenElse` merges where branches return different values, then
+    /// replaces all `Ret` instructions with `Nop` and appends the merges + single `Ret`.
     fn merge_returns(&mut self, structured: &StructuredBlock) {
-        let Some(merged_ret) = self.merge_return_temp(structured) else {
+        let mut merges = Vec::new();
+        let Some(merged_ret) = self.merge_return_temp(structured, &mut merges) else {
             return;
         };
 
@@ -83,7 +84,22 @@ impl<'env> VersionState<'env> {
             }
         }
 
-        // append single Ret with the merged temp
+        // emit collected merges, then single Ret
+        for merge in &merges {
+            self.builder.set_next_debug_comment(format!(
+                "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
+                merge.fresh, merge.cond, merge.then_ver, merge.else_ver
+            ));
+            self.builder.emit_with(|id| {
+                Bytecode::Call(
+                    id,
+                    vec![merge.fresh],
+                    Operation::IfThenElse,
+                    vec![merge.cond, merge.then_ver, merge.else_ver],
+                    None,
+                )
+            });
+        }
         let attr = self.builder.new_attr();
         self.builder
             .data
@@ -92,21 +108,25 @@ impl<'env> VersionState<'env> {
     }
 
     /// Recursively find (or create) the return temp for a structured block.
-    /// When an `IfThenElse` has branches returning different temps, an
-    /// `IfThenElse` merge instruction is appended and the fresh result is returned.
-    fn merge_return_temp(&mut self, block: &StructuredBlock) -> Option<usize> {
+    /// When an `IfThenElse` has branches returning different temps, a merge is
+    /// collected and the fresh result temp is returned.
+    fn merge_return_temp(
+        &mut self,
+        block: &StructuredBlock,
+        merges: &mut Vec<MergeInfo>,
+    ) -> Option<usize> {
         match block {
             StructuredBlock::Basic { lower, upper } => {
                 for pc in (*lower..=*upper).rev() {
                     if let Bytecode::Ret(_, srcs) = &self.builder.data.code[pc as usize] {
-                        return Some(srcs[0]);
+                        return srcs.first().copied();
                     }
                 }
                 None
             }
             StructuredBlock::Seq(blocks) => {
                 for b in blocks.iter().rev() {
-                    if let Some(t) = self.merge_return_temp(b) {
+                    if let Some(t) = self.merge_return_temp(b, merges) {
                         return Some(t);
                     }
                 }
@@ -117,8 +137,10 @@ impl<'env> VersionState<'env> {
                 then_branch,
                 else_branch,
             } => {
-                let then_ret = self.merge_return_temp(then_branch);
-                let else_ret = else_branch.as_ref().and_then(|b| self.merge_return_temp(b));
+                let then_ret = self.merge_return_temp(then_branch, merges);
+                let else_ret = else_branch
+                    .as_ref()
+                    .and_then(|b| self.merge_return_temp(b, merges));
 
                 match (then_ret, else_ret) {
                     (Some(t), Some(e)) if t == e => Some(t),
@@ -129,14 +151,12 @@ impl<'env> VersionState<'env> {
                         };
                         let ret_type = self.builder.get_local_type(t);
                         let fresh = self.builder.add_local(ret_type);
-                        let attr = self.builder.new_attr();
-                        self.builder.data.code.push(Bytecode::Call(
-                            attr,
-                            vec![fresh],
-                            Operation::IfThenElse,
-                            vec![cond, t, e],
-                            None,
-                        ));
+                        merges.push(MergeInfo {
+                            fresh,
+                            cond,
+                            then_ver: t,
+                            else_ver: e,
+                        });
                         Some(fresh)
                     }
                     (Some(t), None) => Some(t),
@@ -145,7 +165,7 @@ impl<'env> VersionState<'env> {
                 }
             }
             StructuredBlock::IfElseChain { .. } => {
-                self.merge_return_temp(&block.clone().chain_to_if_then_else())
+                self.merge_return_temp(&block.clone().chain_to_if_then_else(), merges)
             }
         }
     }
