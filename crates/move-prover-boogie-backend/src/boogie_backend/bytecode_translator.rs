@@ -248,6 +248,64 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
+    /// Emit Boogie function declarations for std::type_name native functions.
+    /// These are emitted as uninterpreted functions so they can be used in quantifiers.
+    /// The prover treats them as deterministic (same type always returns the same value).
+    fn emit_type_name_functions(&self, fun_env: &FunctionEnv, mono_info: &MonoInfo) {
+        let qid = fun_env.get_qualified_id();
+        let is_defining_id = self.env.std_type_name_defining_id_qid() == Some(qid)
+            || self.env.std_type_name_original_id_qid() == Some(qid);
+        let is_type_name = self.env.std_type_name_with_defining_ids_qid() == Some(qid)
+            || self.env.std_type_name_with_original_ids_qid() == Some(qid);
+
+        if !is_defining_id && !is_type_name {
+            return;
+        }
+
+        let empty = &BTreeSet::new();
+        for type_inst in mono_info
+            .funs
+            .get(&(qid, FunctionVariant::Baseline))
+            .unwrap_or(empty)
+        {
+            let func_name =
+                boogie_function_name(fun_env, type_inst, FunctionTranslationStyle::Default);
+            let rets = fun_env
+                .get_return_types()
+                .iter()
+                .enumerate()
+                .map(|(idx, ty)| {
+                    let ty = ty.instantiate(type_inst);
+                    format!(
+                        "$ret{}: {}",
+                        idx,
+                        boogie_type(self.env, ty.skip_reference())
+                    )
+                })
+                .join(", ");
+
+            // For type parameter instantiations, emit inline bodies using $TypeParamInfo.
+            // defining_id/original_id return address (int) so we can use #N_info->a.
+            // with_defining_ids/with_original_ids return an opaque TypeName struct,
+            // so they stay uninterpreted for type params.
+            match &type_inst[0] {
+                Type::TypeParameter(idx) if is_defining_id => {
+                    emitln!(
+                        self.writer,
+                        "function {{:inline}} {}() returns ({})\n{{ #{}_info->a }}",
+                        func_name,
+                        rets,
+                        idx,
+                    );
+                }
+                _ => {
+                    emitln!(self.writer, "function {}() returns ({});", func_name, rets,);
+                }
+            }
+            emitln!(self.writer);
+        }
+    }
+
     // Generate object::borrow_uid function
     fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
         emitln!(
@@ -463,6 +521,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.emit_uninterpreted_native_pure(fun_env, type_inst);
                         }
                     }
+                    self.emit_type_name_functions(fun_env, &mono_info);
                     continue;
                 }
 
