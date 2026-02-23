@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/pure_functions/pure_early_return.ok.move:23:5
+   │
+23 │     ensures(result == true);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/pure_functions/pure_early_return.ok.move:22: test_is_positive

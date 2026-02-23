@@ -67,6 +67,103 @@ impl<'env> VersionState<'env> {
         }
     }
 
+    /// Merge multiple `Ret` instructions into a single `Ret` using `IfThenElse`.
+    /// Walks the structured control flow to find the return temp for each branch,
+    /// creates `IfThenElse` merges where branches return different values, then
+    /// replaces all `Ret` instructions with `Nop` and appends a single `Ret`.
+    fn merge_returns(&mut self) {
+        let ret_count = self
+            .builder
+            .data
+            .code
+            .iter()
+            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
+            .count();
+        if ret_count <= 1 {
+            return;
+        }
+
+        let Some(structured) = reconstruct_control_flow(&self.builder.data.code) else {
+            return;
+        };
+        let Some(merged_ret) = self.merge_return_temp(&structured) else {
+            return;
+        };
+
+        // replace all Ret instructions with Nop
+        for bc in &mut self.builder.data.code {
+            if matches!(bc, Bytecode::Ret(..)) {
+                *bc = Bytecode::Nop(bc.get_attr_id());
+            }
+        }
+
+        // append single Ret with the merged temp
+        let attr = self.builder.new_attr();
+        self.builder
+            .data
+            .code
+            .push(Bytecode::Ret(attr, vec![merged_ret]));
+    }
+
+    /// Recursively find (or create) the return temp for a structured block.
+    /// When an `IfThenElse` has branches returning different temps, an
+    /// `IfThenElse` merge instruction is appended and the fresh result is returned.
+    fn merge_return_temp(&mut self, block: &StructuredBlock) -> Option<usize> {
+        match block {
+            StructuredBlock::Basic { lower, upper } => {
+                for pc in (*lower..=*upper).rev() {
+                    if let Bytecode::Ret(_, srcs) = &self.builder.data.code[pc as usize] {
+                        return Some(srcs[0]);
+                    }
+                }
+                None
+            }
+            StructuredBlock::Seq(blocks) => {
+                for b in blocks.iter().rev() {
+                    if let Some(t) = self.merge_return_temp(b) {
+                        return Some(t);
+                    }
+                }
+                None
+            }
+            StructuredBlock::IfThenElse {
+                cond_at,
+                then_branch,
+                else_branch,
+            } => {
+                let then_ret = self.merge_return_temp(then_branch);
+                let else_ret = else_branch.as_ref().and_then(|b| self.merge_return_temp(b));
+
+                match (then_ret, else_ret) {
+                    (Some(t), Some(e)) if t == e => Some(t),
+                    (Some(t), Some(e)) => {
+                        let cond = match &self.builder.data.code[*cond_at as usize] {
+                            Bytecode::Branch(_, _, _, c) => *c,
+                            _ => return None,
+                        };
+                        let ret_type = self.builder.get_local_type(t);
+                        let fresh = self.builder.add_local(ret_type);
+                        let attr = self.builder.new_attr();
+                        self.builder.data.code.push(Bytecode::Call(
+                            attr,
+                            vec![fresh],
+                            Operation::IfThenElse,
+                            vec![cond, t, e],
+                            None,
+                        ));
+                        Some(fresh)
+                    }
+                    (Some(t), None) => Some(t),
+                    (None, Some(e)) => Some(e),
+                    (None, None) => None,
+                }
+            }
+            StructuredBlock::IfElseChain { .. } => {
+                self.merge_return_temp(&block.clone().chain_to_if_then_else())
+            }
+        }
+    }
+
     /// Collect variables assigned multiple times and initialize the current version
     /// of each variable to itself (placeholder).
     fn collect_multi_assigned_vars(&mut self) {
@@ -357,41 +454,46 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
             return data;
         }
 
+        let is_pure = targets.is_pure_fun(&func_env.get_qualified_id())
+            || targets.is_axiom_fun(&func_env.get_qualified_id());
+
         let builder = FunctionDataBuilder::new(func_env, data);
         let mut state = VersionState::new(builder);
 
         // step 1: collect all variables assigned multiple times
         state.collect_multi_assigned_vars();
 
-        // skip if no multi-assigned variables
-        if state.current_version.is_empty() {
-            return state.builder.data;
+        if !state.current_version.is_empty() {
+            // step 2: reconstruct control flow
+            let structured_block = match reconstruct_control_flow(&state.builder.data.code) {
+                Some(s) => s,
+                None => {
+                    // cannot reconstruct (loops, switches, etc.)
+                    if is_pure {
+                        func_env.module_env.env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Pure functions with loops are not supported",
+                        );
+                    }
+                    return state.builder.data;
+                }
+            };
+
+            // step 3: compute where each variable completes (last if-then-else with a merge instruction)
+            state.compute_completed_at(&structured_block, &BTreeSet::new());
+
+            // step 4: traverse structured control flow, collecting merges
+            state.process_block(&structured_block);
+
+            // step 5: emit merges
+            state.emit_merges();
         }
 
-        // step 2: reconstruct control flow
-        let structured_block = match reconstruct_control_flow(&state.builder.data.code) {
-            Some(s) => s,
-            None => {
-                // cannot reconstruct (loops, switches, etc.)
-                if targets.is_pure_fun(&func_env.get_qualified_id()) {
-                    func_env.module_env.env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        "Pure functions with loops are not supported",
-                    );
-                }
-                return state.builder.data;
-            }
-        };
-
-        // step 3: compute where each variable completes (last if-then-else with a merge instruction)
-        state.compute_completed_at(&structured_block, &BTreeSet::new());
-
-        // step 4: traverse structured control flow, collecting merges
-        state.process_block(&structured_block);
-
-        // step 5: emit merges
-        state.emit_merges();
+        // step 6: merge early returns for pure/axiom functions
+        if is_pure {
+            state.merge_returns();
+        }
 
         state.builder.data
     }
