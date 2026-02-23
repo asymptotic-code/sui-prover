@@ -179,11 +179,8 @@ impl MoveLoopInvariantsProcessor {
 
     fn is_assignment_before(offset: usize, var_idx: usize, code: &[Bytecode]) -> bool {
         for i in 0..offset {
-            match &code[i] {
-                Bytecode::Assign(_, dest, _, _) if *dest == var_idx => {
-                    return true;
-                }
-                _ => {}
+            if code[i].dests().any(|dest| dest == var_idx) {
+                return true;
             }
         }
         false
@@ -480,10 +477,14 @@ impl MoveLoopInvariantsProcessor {
 
         for (offset, bc) in code.into_iter().enumerate() {
             if let Some(qid) = loop_header_to_invariant.get(&offset) {
+                // Use the rebuilt code length as the offset for variable scope
+                // analysis, not the original code offset. Earlier invariant
+                // insertions shift bytecode positions in the rebuilt code.
+                let emitted_len = builder.data.code.len();
                 let mut args = Self::build_invariant_arguments(
                     &mut builder,
                     &func_env.module_env.env.get_function(*qid),
-                    offset,
+                    emitted_len,
                 );
 
                 // Capture the loop header location before emitting (which consumes bc).
