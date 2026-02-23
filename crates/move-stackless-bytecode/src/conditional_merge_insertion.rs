@@ -71,22 +71,8 @@ impl<'env> VersionState<'env> {
     /// Walks the structured control flow to find the return temp for each branch,
     /// creates `IfThenElse` merges where branches return different values, then
     /// replaces all `Ret` instructions with `Nop` and appends a single `Ret`.
-    fn merge_returns(&mut self) {
-        let ret_count = self
-            .builder
-            .data
-            .code
-            .iter()
-            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
-            .count();
-        if ret_count <= 1 {
-            return;
-        }
-
-        let Some(structured) = reconstruct_control_flow(&self.builder.data.code) else {
-            return;
-        };
-        let Some(merged_ret) = self.merge_return_temp(&structured) else {
+    fn merge_returns(&mut self, structured: &StructuredBlock) {
+        let Some(merged_ret) = self.merge_return_temp(structured) else {
             return;
         };
 
@@ -463,23 +449,35 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         // step 1: collect all variables assigned multiple times
         state.collect_multi_assigned_vars();
 
-        if !state.current_version.is_empty() {
-            // step 2: reconstruct control flow
-            let structured_block = match reconstruct_control_flow(&state.builder.data.code) {
-                Some(s) => s,
-                None => {
-                    // cannot reconstruct (loops, switches, etc.)
-                    if is_pure {
-                        func_env.module_env.env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            "Pure functions with loops are not supported",
-                        );
-                    }
-                    return state.builder.data;
-                }
-            };
+        let ret_count = state
+            .builder
+            .data
+            .code
+            .iter()
+            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
+            .count();
 
+        if state.current_version.is_empty() && ret_count <= 1 {
+            return state.builder.data;
+        }
+
+        // step 2: reconstruct control flow
+        let structured_block = match reconstruct_control_flow(&state.builder.data.code) {
+            Some(s) => s,
+            None => {
+                // cannot reconstruct (loops, switches, etc.)
+                if is_pure {
+                    func_env.module_env.env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "Pure functions with loops are not supported",
+                    );
+                }
+                return state.builder.data;
+            }
+        };
+
+        if !state.current_version.is_empty() {
             // step 3: compute where each variable completes (last if-then-else with a merge instruction)
             state.compute_completed_at(&structured_block, &BTreeSet::new());
 
@@ -491,8 +489,8 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         }
 
         // step 6: merge early returns for pure/axiom functions
-        if is_pure {
-            state.merge_returns();
+        if is_pure && ret_count > 1 {
+            state.merge_returns(&structured_block);
         }
 
         state.builder.data
