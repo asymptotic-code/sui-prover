@@ -243,6 +243,22 @@ impl MoveLoopInvariantsProcessor {
             .collect::<Vec<(String, usize)>>()
     }
 
+    fn resolve_local_by_name(
+        builder: &FunctionDataBuilder,
+        scope_vars: &[(String, usize)],
+        name: &str,
+    ) -> Option<usize> {
+        let sym = builder.fun_env.symbol_pool().make(name);
+        if let Some(&local_idx) = builder.data.name_to_index.get(&sym) {
+            Some(local_idx)
+        } else {
+            scope_vars
+                .iter()
+                .find(|(n, _)| n.as_str() == name)
+                .map(|(_, idx)| *idx)
+        }
+    }
+
     fn build_invariant_arguments(
         builder: &mut FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
@@ -255,16 +271,28 @@ impl MoveLoopInvariantsProcessor {
             let param_name_str = builder.fun_env.symbol_pool().string(param.0);
 
             if param_name_str.starts_with("__old_") {
-                if let Some((idx, param)) =
-                    loop_inv_env
-                        .get_parameters()
-                        .iter()
-                        .enumerate()
-                        .find(|(_, p)| {
-                            loop_inv_env.symbol_pool().string(p.0).to_string()
-                                == &param_name_str["__old_".len()..]
-                        })
+                let base_name = &param_name_str["__old_".len()..];
+                if let Some(param) = loop_inv_env
+                    .get_parameters()
+                    .iter()
+                    .find(|p| loop_inv_env.symbol_pool().string(p.0).to_string() == base_name)
                 {
+                    let Some(target_local_idx) =
+                        Self::resolve_local_by_name(builder, &scope_vars, base_name)
+                    else {
+                        builder.global_env().diag(
+                            Severity::Error,
+                            &builder.fun_env.get_loc(),
+                            &format!(
+                                "Loop invariant function {} expects 'old' parameter '{}' which is not found in function {}",
+                                loop_inv_env.get_full_name_str(),
+                                base_name,
+                                builder.fun_env.get_full_name_str()
+                            ),
+                        );
+                        continue;
+                    };
+
                     let attr_ref = builder.new_attr();
                     let attr_val = builder.new_attr();
 
@@ -282,7 +310,7 @@ impl MoveLoopInvariantsProcessor {
                             builder.global_env().prover_val_qid().id,
                             vec![],
                         ),
-                        vec![idx],
+                        vec![target_local_idx],
                         None,
                     ));
                     builder.emit(Bytecode::Call(
@@ -304,7 +332,7 @@ impl MoveLoopInvariantsProcessor {
                         &format!(
                             "Loop invariant function {} expects 'old' parameter '{}' which is not found in function {}",
                             loop_inv_env.get_full_name_str(),
-                            &param_name_str["__old_".len()..],
+                            base_name,
                             builder.fun_env.get_full_name_str()
                         ),
                     );
@@ -313,14 +341,7 @@ impl MoveLoopInvariantsProcessor {
                 continue;
             }
 
-            let found_idx = if let Some(&local_idx) = builder.data.name_to_index.get(&param.0) {
-                Some(local_idx)
-            } else {
-                scope_vars
-                    .iter()
-                    .find(|(name, _)| param_name_str.as_ref() == name)
-                    .map(|(_, idx)| *idx)
-            };
+            let found_idx = Self::resolve_local_by_name(builder, &scope_vars, &param_name_str);
 
             if let Some(idx) = found_idx {
                 if param.1.skip_reference() != builder.get_local_type(idx).skip_reference() {
