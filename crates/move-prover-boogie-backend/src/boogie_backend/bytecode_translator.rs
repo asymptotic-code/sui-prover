@@ -65,11 +65,11 @@ use crate::boogie_backend::{
         boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
         boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
         boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_reflection_type_name,
-        boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp,
-        boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix,
-        boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check,
-        boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken,
+        boogie_num_type_base, boogie_num_type_string_capital, boogie_resource_memory_name,
+        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
+        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
+        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
+        FunctionTranslationStyle, TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -248,11 +248,9 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
-    /// Emit Boogie inline function definitions for std::type_name native functions.
-    /// These are emitted as inline functions with known return values so they can
-    /// be used in quantifiers. For concrete types, the return value is computed
-    /// at translation time. For type parameters, defining_id/original_id use
-    /// #N_info->a and with_defining_ids/with_original_ids use $TypeName(#N_info).
+    /// Emit Boogie function declarations for std::type_name native functions.
+    /// These are emitted as uninterpreted functions so they can be used in quantifiers.
+    /// The prover treats them as deterministic (same type always returns the same value).
     fn emit_type_name_functions(&self, fun_env: &FunctionEnv, mono_info: &MonoInfo) {
         let qid = fun_env.get_qualified_id();
         let is_defining_id = self.env.std_type_name_defining_id_qid() == Some(qid)
@@ -286,26 +284,24 @@ impl<'env> BoogieTranslator<'env> {
                 })
                 .join(", ");
 
-            let body = if is_type_name {
-                boogie_reflection_type_name(self.env, &type_inst[0], true)
-            } else {
-                // defining_id/original_id return the module address
-                match &type_inst[0] {
-                    Type::Datatype(mid, _, _) => {
-                        let module_env = self.env.get_module(*mid);
-                        format!("{}", module_env.get_name().addr())
-                    }
-                    Type::TypeParameter(idx) => format!("#{}_info->a", idx),
-                    _ => unreachable!("Unexpected type in defining_id/original_id"),
+            // For type parameter instantiations, emit inline bodies using $TypeParamInfo.
+            // defining_id/original_id return address (int) so we can use #N_info->a.
+            // with_defining_ids/with_original_ids return an opaque TypeName struct,
+            // so they stay uninterpreted for type params.
+            match &type_inst[0] {
+                Type::TypeParameter(idx) if is_defining_id => {
+                    emitln!(
+                        self.writer,
+                        "function {{:inline}} {}() returns ({})\n{{ #{}_info->a }}",
+                        func_name,
+                        rets,
+                        idx,
+                    );
                 }
-            };
-            emitln!(
-                self.writer,
-                "function {{:inline}} {}() returns ({})\n{{ {} }}",
-                func_name,
-                rets,
-                body,
-            );
+                _ => {
+                    emitln!(self.writer, "function {}() returns ({});", func_name, rets,);
+                }
+            }
             emitln!(self.writer);
         }
     }
@@ -446,43 +442,13 @@ impl<'env> BoogieTranslator<'env> {
             );
 
             // declare free variables to represent the type info for this type
-            emitln!(writer, "const {}_info: $TypeParamInfo;", param_type);
+            emitln!(writer, "var {}_info: $TypeParamInfo;", param_type);
         }
         emitln!(writer);
 
         self.translate_ghost_global(&mono_info);
 
         let intrinsic_fun_ids = self.env.intrinsic_fun_ids();
-
-        // Determine if with_defining_ids/with_original_ids are used. If so,
-        // TypeName and ascii::String must be non-opaque for inline function bodies.
-        let type_name_non_opaque_modules: BTreeSet<ModuleId> = {
-            let fns_used = [
-                self.env.std_type_name_with_defining_ids_qid(),
-                self.env.std_type_name_with_original_ids_qid(),
-            ]
-            .into_iter()
-            .flatten()
-            .any(|qid| {
-                mono_info
-                    .funs
-                    .contains_key(&(qid, FunctionVariant::Baseline))
-            });
-            if fns_used {
-                // TypeName is in type_name module, String is in ascii module
-                let mut modules = BTreeSet::new();
-                modules.insert(self.env.std_type_name_module_id());
-                if let Some(m) = self
-                    .env
-                    .find_module_by_name(self.env.symbol_pool().make("ascii"))
-                {
-                    modules.insert(m.get_id());
-                }
-                modules
-            } else {
-                BTreeSet::new()
-            }
-        };
 
         let mut translated_types = BTreeSet::new();
         let mut verified_functions_count = 0;
@@ -514,8 +480,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &struct_env.get_qualified_id(),
-                        ) && !type_name_non_opaque_modules
-                            .contains(&struct_env.module_env.get_id()),
+                        ),
                     }
                     .translate();
                 }
