@@ -138,7 +138,7 @@ static INCONSISTENCY_DIAG_STARTS: Lazy<Regex> =
 /// These are informational progress indicators, not verification diagnostics.
 static BOOGIE_TRACE_NOISE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?m)^(Parsing |Coalescing blocks|Inlining|Verifying .+ \.\.\.|.*checking split |.*-->.*split|.*finished with |Boogie program verifier finished)",
+        r"(?m)^(Parsing |Coalescing blocks|Inlining|Verifying .+ \.\.\.|.*checking split |.*-->.*split|.*finished with |Boogie program verifier finished|New lambda:|Old lambda:|Desugaring of lambda|Running abstract interpretation|Implementation .* verified|\s*\[[\d.]+ s)",
     )
     .unwrap()
 });
@@ -1346,6 +1346,10 @@ impl<'env> BoogieWrapper<'env> {
             if !inbetween.is_empty()
                 && !INCONCLUSIVE_DIAG_STARTS.is_match(inbetween)
                 && !INCONSISTENCY_DIAG_STARTS.is_match(inbetween)
+                // In trace mode, Boogie's `-traceverify` dumps verbose output (lambda
+                // bodies, axioms, etc.) between diagnostic lines. We treat the entire
+                // chunk as noise if any known trace-noise pattern appears in it, since
+                // enumerating every possible Boogie internal output line is infeasible.
                 && !(self.options.trace && BOOGIE_TRACE_NOISE.is_match(inbetween))
             {
                 // This is unexpected text and we report it as an internal error

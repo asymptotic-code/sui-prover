@@ -346,11 +346,22 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
+    let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
+    // When --trace is active, ensure vcsSplitOnEveryAssert and vcsCores:1
+    // are present so the trace display can show per-assertion progress.
+    if options.backend.trace {
+        let extra = "vcsSplitOnEveryAssert vcsCores:1";
+        boogie_options = Some(match boogie_options {
+            Some(existing) => format!("{} {}", existing, extra),
+            None => extra.to_string(),
+        });
+    }
+
     Ok(FileOptions {
         file_name,
         code_writer,
         types,
-        boogie_options: targets.get_spec_boogie_options(qid).cloned(),
+        boogie_options,
         timeout: targets.get_spec_timeout(qid).cloned(),
         targets,
         qid: Some(*qid),
