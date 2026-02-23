@@ -1,4 +1,6 @@
-/// Test that pure functions work correctly with various arithmetic operations.
+/// Test that pure functions can have multiple return values.
+/// This aligns pure functions with opaque functions, which already support
+/// any number of return values.
 ///
 /// Expected: Should pass verification.
 module 0x42::pure_multiple_returns;
@@ -6,40 +8,47 @@ module 0x42::pure_multiple_returns;
 #[spec_only]
 use prover::prover::ensures;
 
-// Pure function that adds two numbers
+// Pure function with 2 return values
 #[ext(pure)]
-fun add(x: u64, y: u64): u64 {
-    x + y
+fun swap(x: u64, y: u64): (u64, u64) {
+    (y, x)
 }
 
-// Pure function that multiplies and adds
+// Pure function with 3 return values with overflow protection
 #[ext(pure)]
-fun compute(x: u64, y: u64): u64 {
-    x * 2 + y
+fun triple(x: u64): (u64, u64, u64) {
+    if (x > 10) {
+        (0, 0, 0)
+    } else {
+        (x, x + 1, x + 2)
+    }
 }
 
-public fun call_add(x: u64, y: u64): u64 {
-    add(x, y)
+public fun call_swap(x: u64, y: u64): (u64, u64) {
+    swap(x, y)
 }
 
-public fun call_compute(x: u64, y: u64): u64 {
-    compute(x, y)
+public fun call_triple(x: u64): (u64, u64, u64) {
+    triple(x)
 }
 
-// Verify add function works correctly
+// Verify swap function works correctly
 #[spec(prove)]
-fun test_add_spec(): u64 {
-    let result = call_add(5, 10);
-    // add(5, 10) should return 15
-    ensures(result == 15);
-    result
+fun test_swap_spec(): (u64, u64) {
+    let (a, b) = call_swap(5, 10);
+    // swap(5, 10) should return (10, 5)
+    ensures(a == 10);
+    ensures(b == 5);
+    (a, b)
 }
 
-// Verify compute function works correctly
+// Verify triple function works correctly
 #[spec(prove)]
-fun test_compute_spec(): u64 {
-    let result = call_compute(7, 3);
-    // compute(7, 3) should return 7*2 + 3 = 17
-    ensures(result == 17);
-    result
+fun test_triple_spec(): (u64, u64, u64) {
+    let (x, y, z) = call_triple(7);
+    // triple(7) should return (7, 8, 9)
+    ensures(x == 7);
+    ensures(y == 8);
+    ensures(z == 9);
+    (x, y, z)
 }
