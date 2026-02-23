@@ -5707,7 +5707,7 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall {}i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str, pool_str);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", pool_str, srcs[0]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", pool_str, dests[0], dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall {}j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", pool_str, srcs[0], fun_name, cr_args("j"));
@@ -5742,7 +5742,7 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[2],
                                     dests[0]
                                 );
-                                emitln!(self.writer(), "assume (forall {}i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str, pool_str);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", pool_str, srcs[1], srcs[2]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", pool_str, dests[0], dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall {}j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", pool_str, srcs[1], srcs[2], fun_name, cr_args("j"));
@@ -5761,7 +5761,7 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall {}i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, pool_str, dests[0], dests[0], dests[0]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", pool_str, dests[0], dests[0], dests[0], srcs[0]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", pool_str, dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> ContainsVec($t{}, i)));", pool_str, srcs[0], fun_name, cr_args("i"), dests[0]);
@@ -5784,7 +5784,7 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[2],
                                     dests[0]
                                 );
-                                emitln!(self.writer(), "assume (forall {}i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, pool_str, dests[0], dests[0], dests[0]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", pool_str, dests[0], srcs[1], dests[0], dests[0], srcs[2]);
                                 emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", pool_str, dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
                                 emitln!(self.writer(), "assume (forall {}i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> ContainsVec($t{}, i)));", pool_str, srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);

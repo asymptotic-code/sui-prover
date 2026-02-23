@@ -954,7 +954,7 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
         LenVec(res) <= end - start &&
-        (forall {:pool "{{FN}}"} i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
+        (forall {:pool "{{FN}}"} i: int, {:pool "{{FN}}"} j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
         (forall {:pool "{{FN}}"} i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&
         (forall {:pool "{{FN}}"} i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
         (forall {:pool "{{FN}}"} j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, j))
