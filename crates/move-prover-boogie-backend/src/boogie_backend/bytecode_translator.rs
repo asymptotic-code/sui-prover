@@ -2201,8 +2201,7 @@ impl<'env> FunctionTranslator<'env> {
         let fun_target = self.fun_target;
         let (args, prerets) = self.generate_function_args_and_returns(false);
 
-        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure
-            && self.fun_target.func_env.get_return_count() == 1;
+        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
@@ -2432,8 +2431,7 @@ impl<'env> FunctionTranslator<'env> {
             .get_extension::<GlobalNumberOperationState>()
             .expect("global number operation state");
 
-        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure
-            && self.fun_target.func_env.get_return_count() == 1;
+        let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
 
         // Be sure to set back location to the whole function definition as a default.
         writer.set_location(&fun_target.get_loc().at_start());
@@ -2774,11 +2772,7 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
-        let qid = mid.qualified(*fid);
-        if !self.parent.targets.is_pure_fun(&qid) {
-            return false;
-        }
-        self.parent.env.get_function(qid).get_return_count() == 1
+        self.parent.targets.is_pure_fun(&mid.qualified(*fid))
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -4089,11 +4083,8 @@ impl<'env> FunctionTranslator<'env> {
                                         fun_name = format!("{}{}", fun_name, suffix);
                                     }
                                 }
-                            } else if !is_spec_call
-                                && !is_native_fn
-                                && self.parent.targets.is_pure_fun(&mid.qualified(*fid))
-                            {
-                                // For non-spec calls to pure functions (single or multi-return),
+                            } else if !is_spec_call && use_func && callee_is_pure && !is_native_fn {
+                                // For non-spec calls using function syntax to pure functions,
                                 // add $pure suffix (regardless of current style)
                                 // But not for native functions which use their base name
                                 fun_name = format!("{}{}", fun_name, "$pure");
