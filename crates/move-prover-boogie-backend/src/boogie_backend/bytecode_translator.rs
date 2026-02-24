@@ -2245,9 +2245,10 @@ impl<'env> FunctionTranslator<'env> {
         let writer = self.parent.writer;
         let options = self.parent.options;
         let fun_target = self.fun_target;
-        let (args, prerets) = self.generate_function_args_and_returns(false);
-
         let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
+        let needs_pure_datatype =
+            emit_pure_in_place && self.fun_target.func_env.get_return_count() > 1;
+        let (args, prerets) = self.generate_function_args_and_returns(needs_pure_datatype);
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
@@ -2343,10 +2344,12 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn wrap_return_datatype_name(&self) -> String {
-        format!(
-            "{}_opaque_return_type",
-            self.function_variant_name(FunctionTranslationStyle::Opaque)
-        )
+        let style = if self.style == FunctionTranslationStyle::Pure {
+            FunctionTranslationStyle::Pure
+        } else {
+            FunctionTranslationStyle::Opaque
+        };
+        format!("{}_opaque_return_type", self.function_variant_name(style))
     }
 
     fn wrap_return_arg_in_tuple_datatype(&self, args: String) -> String {
@@ -2574,6 +2577,36 @@ impl<'env> FunctionTranslator<'env> {
                     "var $temp_opaque_res_var: {};",
                     self.wrap_return_datatype_name(),
                 );
+            }
+
+            // Declare temp variables for calls to multi-return pure functions
+            {
+                let mut seen = BTreeSet::new();
+                for bc in fun_target.get_bytecode() {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, inst), _, _) = bc {
+                        let qid = mid.qualified(*fid);
+                        if self.parent.targets.is_pure_fun(&qid) {
+                            let callee_env = env.get_function(qid);
+                            if callee_env.get_return_count() > 1 {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                if seen.insert(callee_name.clone()) {
+                                    let dt_name = format!("{}_opaque_return_type", callee_name);
+                                    emitln!(
+                                        writer,
+                                        "var $temp_pure_res_{}: {};",
+                                        callee_name,
+                                        dt_name,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             self.create_quantifiers_temp_vars();
@@ -2858,6 +2891,7 @@ impl<'env> FunctionTranslator<'env> {
         // Collect straightline assignments and operations
         let mut bindings = Vec::new();
         let mut final_return_temp = None;
+        let mut final_return_expr: Option<String> = None;
 
         // Small helper for infix mapping (arity-checked)
         let op_symbol = |op: &Operation| -> Option<(&'static str, usize)> {
@@ -3071,6 +3105,11 @@ impl<'env> FunctionTranslator<'env> {
                 Ret(_, srcs) => {
                     if let [src] = srcs.as_slice() {
                         final_return_temp = Some(*src);
+                    } else if srcs.len() > 1 {
+                        // Multi-return: wrap in tuple datatype
+                        let name = self.wrap_return_datatype_name();
+                        let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                        final_return_expr = Some(format!("{}({})", name, args));
                     }
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
@@ -3088,6 +3127,8 @@ impl<'env> FunctionTranslator<'env> {
             // No bindings, just return the value
             if let Some(return_temp) = final_return_temp {
                 emitln!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emitln!(writer, "{}", expr);
             } else {
                 panic!("expected Some return value");
             }
@@ -3100,6 +3141,8 @@ impl<'env> FunctionTranslator<'env> {
             // Emit return value
             if let Some(return_temp) = final_return_temp {
                 emit!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emit!(writer, "{}", expr);
             } else if let Some((last_dest, _)) = bindings.last() {
                 emit!(writer, "$t{}", last_dest);
             } else {
@@ -3956,10 +3999,29 @@ impl<'env> FunctionTranslator<'env> {
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
                         if callee_is_pure {
                             use_func = true;
+                            if callee_env.get_return_count() > 1 {
+                                use_func_datatypes = true;
+                            }
                         }
 
+                        let func_datatypes_var = if use_func_datatypes {
+                            if callee_is_pure {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                format!("$temp_pure_res_{}", callee_name)
+                            } else {
+                                "$temp_opaque_res_var".to_string()
+                            }
+                        } else {
+                            String::new()
+                        };
+
                         let dest_str = if use_func_datatypes {
-                            "$temp_opaque_res_var".to_string()
+                            func_datatypes_var.clone()
                         } else {
                             dests
                                 .iter()
@@ -4300,8 +4362,9 @@ impl<'env> FunctionTranslator<'env> {
                             dests.iter().enumerate().for_each(|(idx, val)| {
                                 emitln!(
                                     self.writer(),
-                                    "{} := $temp_opaque_res_var -> $ret{};",
+                                    "{} := {} -> $ret{};",
                                     str_local(*val),
+                                    func_datatypes_var,
                                     idx
                                 )
                             });
@@ -4311,8 +4374,9 @@ impl<'env> FunctionTranslator<'env> {
                                 .for_each(|(idx, val)| {
                                     emitln!(
                                         self.writer(),
-                                        "{} := $temp_opaque_res_var -> $ret{};",
+                                        "{} := {} -> $ret{};",
                                         str_local(*val),
+                                        func_datatypes_var,
                                         dests.len() + idx
                                     )
                                 });
