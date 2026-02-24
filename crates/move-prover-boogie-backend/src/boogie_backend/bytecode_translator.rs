@@ -248,6 +248,51 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
+    /// Emit uninterpreted Boogie function declarations for std::type_name native functions.
+    /// These allow type_name functions to be used in quantifiers.
+    fn emit_type_name_functions(&self, fun_env: &FunctionEnv, mono_info: &MonoInfo) {
+        let type_name_fns = [
+            self.env.std_type_name_with_defining_ids_qid(),
+            self.env.std_type_name_with_original_ids_qid(),
+            self.env.std_type_name_defining_id_qid(),
+            self.env.std_type_name_original_id_qid(),
+        ];
+        if !type_name_fns
+            .into_iter()
+            .flatten()
+            .any(|id| id == fun_env.get_qualified_id())
+        {
+            return;
+        }
+
+        let empty = &BTreeSet::new();
+        for type_inst in mono_info
+            .funs
+            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+            .unwrap_or(empty)
+        {
+            emitln!(
+                self.writer,
+                "function {}() returns ({});",
+                boogie_function_name(fun_env, type_inst, FunctionTranslationStyle::Default),
+                fun_env
+                    .get_return_types()
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, ty)| {
+                        let ty = ty.instantiate(type_inst);
+                        format!(
+                            "$ret{}: {}",
+                            idx,
+                            boogie_type(self.env, ty.skip_reference())
+                        )
+                    })
+                    .join(", "),
+            );
+            emitln!(self.writer);
+        }
+    }
+
     // Generate object::borrow_uid function
     fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
         emitln!(
@@ -463,6 +508,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.emit_uninterpreted_native_pure(fun_env, type_inst);
                         }
                     }
+                    self.emit_type_name_functions(fun_env, &mono_info);
                     continue;
                 }
 
