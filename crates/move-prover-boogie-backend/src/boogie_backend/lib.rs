@@ -103,6 +103,7 @@ struct DynamicFieldInfo {
     fun_borrow: String,
     fun_borrow_mut: String,
     fun_remove: String,
+    fun_remove_if_exists: String,
     fun_exists_with_type: String,
     fun_exists: String,
     fun_exists_inner: String,
@@ -245,13 +246,18 @@ pub fn add_prelude(
         }
     }
     let mut dynamic_field_instances = vec![];
+    let uid_qid = env.uid_qid();
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        if mono_info.is_used_datatype(env, targets, &struct_qid)
-            && mono_info
-                .structs
-                .get(&struct_qid)
-                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
+        // For UID types (when function takes &UID directly), always generate instances
+        // For other types, check if the datatype is used
+        let is_uid_type = uid_qid.as_ref().is_some_and(|uid| *uid == struct_qid);
+        if is_uid_type
+            || (mono_info.is_used_datatype(env, targets, &struct_qid)
+                && mono_info
+                    .structs
+                    .get(&struct_qid)
+                    .is_some_and(|type_inst_set| type_inst_set.contains(type_inst)))
         {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
@@ -716,14 +722,23 @@ impl TableImpl {
 
     fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
         triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
+            .and_then(|fun_qid| {
+                // Check if the function actually exists before trying to format its name
+                let module_env = env.get_module(fun_qid.module_id);
+                if module_env
+                    .into_functions()
+                    .any(|f| f.get_id() == fun_qid.id)
+                {
+                    let fun = env.get_function(fun_qid);
+                    Some(format!(
+                        "${}_{}_{}",
+                        fun.module_env.get_name().addr().to_str_radix(16),
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    ))
+                } else {
+                    None
+                }
             })
             .unwrap_or_default()
     }
@@ -763,6 +778,10 @@ impl DynamicFieldInfo {
             fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
             fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
             fun_remove: Self::triple_opt_to_name(env, env.dynamic_field_remove_qid()),
+            fun_remove_if_exists: Self::triple_opt_to_name(
+                env,
+                env.dynamic_field_remove_if_exists_qid(),
+            ),
             fun_exists_with_type: Self::triple_opt_to_name(
                 env,
                 env.dynamic_field_exists_with_type_qid(),
@@ -818,6 +837,10 @@ impl DynamicFieldInfo {
                 env.dynamic_object_field_borrow_mut_qid(),
             ),
             fun_remove: Self::triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
+            fun_remove_if_exists: Self::triple_opt_to_name(
+                env,
+                env.dynamic_object_field_remove_if_exists_qid(),
+            ),
             fun_exists_with_type: Self::triple_opt_to_name(
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
@@ -839,14 +862,23 @@ impl DynamicFieldInfo {
 
     fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
         triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
+            .and_then(|fun_qid| {
+                // Check if the function actually exists before trying to format its name
+                let module_env = env.get_module(fun_qid.module_id);
+                if module_env
+                    .into_functions()
+                    .any(|f| f.get_id() == fun_qid.id)
+                {
+                    let fun = env.get_function(fun_qid);
+                    Some(format!(
+                        "${}_{}_{}",
+                        fun.module_env.get_name().addr().to_str_radix(16),
+                        fun.module_env.get_name().name().display(fun.symbol_pool()),
+                        fun.get_name_str(),
+                    ))
+                } else {
+                    None
+                }
             })
             .unwrap_or_default()
     }
