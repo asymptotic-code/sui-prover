@@ -79,7 +79,7 @@ impl<'env> VersionState<'env> {
 
         // replace all Ret instructions with Nop
         for bc in &mut self.builder.data.code {
-            if matches!(bc, Bytecode::Ret(..)) {
+            if bc.is_return() {
                 *bc = Bytecode::Nop(bc.get_attr_id());
             }
         }
@@ -474,7 +474,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
             .data
             .code
             .iter()
-            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
+            .filter(|bc| bc.is_return())
             .count();
 
         if state.current_version.is_empty() && ret_count <= 1 {
