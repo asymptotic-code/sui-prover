@@ -68,12 +68,12 @@ impl<'env> VersionState<'env> {
     }
 
     /// Merge multiple `Ret` instructions into a single `Ret` using `IfThenElse`.
-    /// Walks the structured control flow to find the return temp for each branch,
+    /// Walks the structured control flow to find the return temps for each branch,
     /// collects `IfThenElse` merges where branches return different values, then
     /// replaces all `Ret` instructions with `Nop` and appends the merges + single `Ret`.
     fn merge_returns(&mut self, structured: &StructuredBlock) {
         let mut merges = Vec::new();
-        let Some(merged_ret) = self.merge_return_temp(structured, &mut merges) else {
+        let Some(merged_rets) = self.merge_return_temps(structured, &mut merges) else {
             return;
         };
 
@@ -104,29 +104,29 @@ impl<'env> VersionState<'env> {
         self.builder
             .data
             .code
-            .push(Bytecode::Ret(attr, vec![merged_ret]));
+            .push(Bytecode::Ret(attr, merged_rets));
     }
 
-    /// Recursively find (or create) the return temp for a structured block.
-    /// When an `IfThenElse` has branches returning different temps, a merge is
-    /// collected and the fresh result temp is returned.
-    fn merge_return_temp(
+    /// Recursively find (or create) the return temps for a structured block.
+    /// When an `IfThenElse` has branches returning different temps, one merge per
+    /// return component is collected and a vec of fresh result temps is returned.
+    fn merge_return_temps(
         &mut self,
         block: &StructuredBlock,
         merges: &mut Vec<MergeInfo>,
-    ) -> Option<usize> {
+    ) -> Option<Vec<usize>> {
         match block {
             StructuredBlock::Basic { lower, upper } => {
                 for pc in (*lower..=*upper).rev() {
                     if let Bytecode::Ret(_, srcs) = &self.builder.data.code[pc as usize] {
-                        return srcs.first().copied();
+                        return Some(srcs.clone());
                     }
                 }
                 None
             }
             StructuredBlock::Seq(blocks) => {
                 for b in blocks.iter().rev() {
-                    if let Some(t) = self.merge_return_temp(b, merges) {
+                    if let Some(t) = self.merge_return_temps(b, merges) {
                         return Some(t);
                     }
                 }
@@ -137,35 +137,46 @@ impl<'env> VersionState<'env> {
                 then_branch,
                 else_branch,
             } => {
-                let then_ret = self.merge_return_temp(then_branch, merges);
-                let else_ret = else_branch
+                let then_rets = self.merge_return_temps(then_branch, merges);
+                let else_rets = else_branch
                     .as_ref()
-                    .and_then(|b| self.merge_return_temp(b, merges));
+                    .and_then(|b| self.merge_return_temps(b, merges));
 
-                match (then_ret, else_ret) {
+                match (then_rets, else_rets) {
                     (Some(t), Some(e)) if t == e => Some(t),
-                    (Some(t), Some(e)) => {
+                    (Some(t), Some(e)) if t.len() == e.len() => {
                         let cond = match &self.builder.data.code[*cond_at as usize] {
                             Bytecode::Branch(_, _, _, c) => *c,
                             _ => return None,
                         };
-                        let ret_type = self.builder.get_local_type(t);
-                        let fresh = self.builder.add_local(ret_type);
-                        merges.push(MergeInfo {
-                            fresh,
-                            cond,
-                            then_ver: t,
-                            else_ver: e,
-                        });
-                        Some(fresh)
+                        let fresh_rets: Vec<usize> = t
+                            .iter()
+                            .zip(e.iter())
+                            .map(|(&tv, &ev)| {
+                                if tv == ev {
+                                    return tv;
+                                }
+                                let ret_type = self.builder.get_local_type(tv);
+                                let fresh = self.builder.add_local(ret_type);
+                                merges.push(MergeInfo {
+                                    fresh,
+                                    cond,
+                                    then_ver: tv,
+                                    else_ver: ev,
+                                });
+                                fresh
+                            })
+                            .collect();
+                        Some(fresh_rets)
                     }
+                    (Some(t), Some(_)) => Some(t), // mismatched lengths: shouldn't happen
                     (Some(t), None) => Some(t),
                     (None, Some(e)) => Some(e),
                     (None, None) => None,
                 }
             }
             StructuredBlock::IfElseChain { .. } => {
-                self.merge_return_temp(&block.clone().chain_to_if_then_else(), merges)
+                self.merge_return_temps(&block.clone().chain_to_if_then_else(), merges)
             }
         }
     }
