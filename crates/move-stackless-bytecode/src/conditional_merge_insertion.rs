@@ -147,7 +147,7 @@ impl<'env> VersionState<'env> {
                     (Some(t), Some(e)) if t.len() == e.len() => {
                         let cond = match &self.builder.data.code[*cond_at as usize] {
                             Bytecode::Branch(_, _, _, c) => *c,
-                            _ => return None,
+                            _ => unreachable!("expected Branch at cond_at"),
                         };
                         let fresh_rets: Vec<usize> = t
                             .iter()
@@ -169,7 +169,7 @@ impl<'env> VersionState<'env> {
                             .collect();
                         Some(fresh_rets)
                     }
-                    (Some(t), Some(_)) => Some(t), // mismatched lengths: shouldn't happen
+                    (Some(_), Some(_)) => unreachable!("mismatched return value counts"),
                     (Some(t), None) => Some(t),
                     (None, Some(e)) => Some(e),
                     (None, None) => None,
