@@ -22,13 +22,10 @@ use std::{
     rc::Rc,
 };
 
-/// Stores dynamic field type information for a specific function
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DynamicFieldInfo {
     dynamic_field_mappings: BTreeMap<Type, BTreeSet<NameValueInfo>>,
     uid_info: BTreeMap<usize, (usize, Type)>,
-    /// For each UID parameter index, stores the actual object types resolved from call sites.
-    /// This is populated during inter-procedural analysis when we find all callers.
     uid_param_object_types: BTreeMap<usize, BTreeSet<Type>>,
 }
 
@@ -71,8 +68,6 @@ impl DynamicFieldInfo {
         }
     }
 
-    /// Creates a DynamicFieldInfo with a single mapping from the given type to a single dynamic field type.
-    /// This is a convenience method for creating simple dynamic field entries.
     pub fn singleton(ty: Type, name_value_info: NameValueInfo) -> Self {
         Self {
             dynamic_field_mappings: BTreeMap::from([(ty, BTreeSet::from([name_value_info]))]),
@@ -97,7 +92,6 @@ impl DynamicFieldInfo {
             .unique()
     }
 
-    /// union two DynamicFieldTypeInfo
     pub fn union(&self, other: &Self) -> Self {
         let mut new_info = self.clone();
         for (ty, name_value_set) in other.dynamic_field_mappings.iter() {
@@ -117,7 +111,6 @@ impl DynamicFieldInfo {
         new_info
     }
 
-    /// Create a new DynamicFieldTypeInfo with types instantiated using the given type arguments
     pub fn instantiate(&self, type_inst: &[Type]) -> Self {
         Self {
             uid_info: BTreeMap::new(),
@@ -154,64 +147,12 @@ impl DynamicFieldInfo {
     pub fn iter_union(info: impl Iterator<Item = Self>) -> Self {
         info.fold(Self::new(), |acc, info| acc.union(&info))
     }
-
-    /// Substitute a type in dynamic_field_mappings keys with another type.
-    /// Used to replace UID type with actual object type when resolving UID parameters.
-    pub fn substitute_object_type(&self, from_type: &Type, to_type: &Type) -> Self {
-        Self {
-            uid_info: self.uid_info.clone(),
-            uid_param_object_types: self.uid_param_object_types.clone(),
-            dynamic_field_mappings: self
-                .dynamic_field_mappings
-                .iter()
-                .map(|(ty, name_value_set)| {
-                    let new_ty = if ty == from_type {
-                        to_type.clone()
-                    } else {
-                        ty.clone()
-                    };
-                    (new_ty, name_value_set.clone())
-                })
-                .collect(),
-        }
-    }
-
-    /// Get the resolved object types for a UID parameter
-    pub fn get_uid_param_object_types(&self, param_idx: usize) -> Option<&BTreeSet<Type>> {
-        self.uid_param_object_types.get(&param_idx)
-    }
-
-    /// Add a resolved object type for a UID parameter
-    pub fn add_uid_param_object_type(&mut self, param_idx: usize, obj_type: Type) {
-        self.uid_param_object_types
-            .entry(param_idx)
-            .or_insert_with(BTreeSet::new)
-            .insert(obj_type);
-    }
-
-    /// Check if the given temp index is a UID parameter (self-referential in uid_info)
-    pub fn is_uid_parameter(&self, temp_idx: usize) -> bool {
-        self.uid_info
-            .get(&temp_idx)
-            .map(|(obj_local, _)| *obj_local == temp_idx)
-            .unwrap_or(false)
-    }
-
-    /// Get the object type for a UID parameter
-    pub fn get_uid_param_type(&self, temp_idx: usize) -> Option<&Type> {
-        self.uid_info
-            .get(&temp_idx)
-            .filter(|(obj_local, _)| *obj_local == temp_idx)
-            .map(|(_, ty)| ty)
-    }
 }
 
-/// Get the information computed by this analysis for the global environment
 pub fn get_env_info(env: &GlobalEnv) -> Rc<DynamicFieldInfo> {
     env.get_extension::<DynamicFieldInfo>().unwrap()
 }
 
-/// Get the information computed by this analysis for a function
 pub fn get_fun_info(data: &FunctionData) -> &DynamicFieldInfo {
     data.annotations.get::<DynamicFieldInfo>().unwrap()
 }
@@ -220,7 +161,6 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
     let mut return_pos = None;
     for bc in code.into_iter() {
         if return_pos.is_some() {
-            // if function have few return statments
             return None;
         }
 
@@ -239,21 +179,18 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
     return_pos
 }
 
-/// Collect dynamic field type information from a function's bytecode
 fn collect_dynamic_field_info(
     targets: &FunctionTargetsHolder,
     builder: &mut FunctionDataBuilder,
     verified_or_inlined: bool,
 ) -> DynamicFieldInfo {
     let dynamic_field_name_value_fun_qids = vec![
-        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_borrow_qid(),
         builder
             .fun_env
             .module_env
             .env
             .dynamic_field_exists_with_type_qid(),
-        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -269,7 +206,6 @@ fn collect_dynamic_field_info(
     .filter_map(|x| x)
     .collect_vec();
     let dynamic_field_name_value_fun_mut_qids = vec![
-        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_add_qid(),
         builder
             .fun_env
@@ -282,7 +218,6 @@ fn collect_dynamic_field_info(
             .module_env
             .env
             .dynamic_field_remove_if_exists_qid(),
-        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -308,9 +243,7 @@ fn collect_dynamic_field_info(
     .filter_map(|x| x)
     .collect_vec();
     let dynamic_field_name_only_fun_qids = vec![
-        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_exists_qid(),
-        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -330,10 +263,8 @@ fn collect_dynamic_field_info(
     .flatten()
     .collect_vec();
 
-    // Get UID QID for filtering in generic functions
     let uid_qid = builder.fun_env.module_env.env.uid_qid();
 
-    // compute map of temp index that load object ids to type of object
     let uid_info = compute_uid_info(&builder.get_target(), targets, &builder.data.code);
 
     let alias_info =
@@ -368,9 +299,6 @@ fn collect_dynamic_field_info(
                     return None;
                 }
 
-                // For generic functions with UID params, skip self-referential entries to
-                // trigger "UID object type not found" error (prevents bad Boogie type generation).
-                // For non-generic functions, allow UID params.
                 let has_type_params = !builder.fun_env.get_type_parameters().is_empty();
 
                 if dynamic_field_name_value_fun_qids.contains(&callee_id) {
@@ -445,7 +373,6 @@ fn collect_dynamic_field_info(
                     .env
                     .get_function(*fun_id_with_info);
 
-                // native, reachable or intrinsic functions do not access dynamic fields
                 if func_env.is_native() || get_info(&builder.get_target()).reachable {
                     return None;
                 }
@@ -459,7 +386,6 @@ fn collect_dynamic_field_info(
                     ));
                 let callee_info = get_fun_info(callee_data);
 
-                // Substitute UID parameter types with actual object types from caller context
                 let substituted_info =
                     substitute_uid_params(callee_info, &uid_info, &alias_info, srcs, offset);
 
@@ -471,8 +397,6 @@ fn collect_dynamic_field_info(
 
     info.uid_info = uid_info.clone();
 
-    // First pass: identify parent objects whose UIDs are passed to functions with UID parameters.
-    // For any df::* operations on UIDs from these parents, we should use UID type to match callee.
     let mut parents_with_uid_param_calls: BTreeSet<usize> = BTreeSet::new();
     for bc in builder.data.code.iter() {
         if let Bytecode::Call(_, _, Operation::Function(module_id, callee_fun_id, _), srcs, _) = bc
@@ -483,14 +407,10 @@ fn collect_dynamic_field_info(
             }
             if let Some(callee_data) = targets.get_data(&callee_id, &FunctionVariant::Baseline) {
                 let callee_info = get_fun_info(callee_data);
-                // Check if callee has any UID params (self-referential entries)
                 for (param_idx, (obj_local, _)) in &callee_info.uid_info {
                     if param_idx == obj_local && *param_idx < srcs.len() {
-                        // This callee has a UID param at param_idx
-                        // Find the parent object for the UID being passed
                         let uid_temp = srcs[*param_idx];
                         if let Some((parent, _)) = uid_info.get(&uid_temp) {
-                            // Mark this parent as having UIDs passed to UID-param functions
                             parents_with_uid_param_calls.insert(*parent);
                         }
                     }
@@ -509,13 +429,9 @@ fn collect_dynamic_field_info(
                 mut srcs,
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
-                // For direct df::* calls, add the object type from uid_info.
                 if let Some((obj_local, obj_type)) =
                     get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
                 {
-                    // Check if the parent object (or any alias) has UIDs passed to UID-param fns.
-                    // If so, use UID type for consistency between caller's df::* checks and
-                    // callee's df::* operations.
                     let use_uid_type = parents_with_uid_param_calls.contains(obj_local)
                         || parents_with_uid_param_calls.iter().any(|parent| {
                             alias_info.values().any(|state| {
@@ -529,12 +445,10 @@ fn collect_dynamic_field_info(
                         });
 
                     if use_uid_type {
-                        // Use UID type for consistency with callee that has UID param
                         if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
                             type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
                         }
                     } else {
-                        // Normal case: use parent object type
                         srcs[0] = *obj_local;
                         if !dynamic_field_name_value_fun_mut_qids
                             .contains(&module_id.qualified(fun_id))
@@ -560,11 +474,6 @@ fn collect_dynamic_field_info(
     info
 }
 
-/// Add actual object type entries to callee's DynamicFieldInfo based on caller context.
-/// When a function has UID parameters and is called with a UID from a known object,
-/// we add entries for the actual object type (in addition to the UID type entries).
-/// This ensures the Boogie prelude generates procedures for both the callee's UID type
-/// and the caller's actual object type.
 fn substitute_uid_params(
     callee_info: &DynamicFieldInfo,
     caller_uid_info: &BTreeMap<usize, (usize, Type)>,
@@ -574,19 +483,12 @@ fn substitute_uid_params(
 ) -> DynamicFieldInfo {
     let mut result = callee_info.clone();
 
-    // For each UID parameter in callee (self-referential entries where temp_idx == obj_local)
     for (temp_idx, (obj_local, uid_type)) in &callee_info.uid_info {
-        // Check if this is a self-referential entry (UID parameter)
         if temp_idx == obj_local && *temp_idx < srcs.len() {
-            // This is a UID parameter at position temp_idx
-            // Look up the corresponding source in caller's context
             let src_idx = srcs[*temp_idx];
             if let Some((_, actual_obj_type)) =
                 get_uid_object_type(caller_uid_info, alias_info, src_idx, offset)
             {
-                // Add entries for the actual object type (keep UID entries too)
-                // This creates mappings for both UID and MyObject, so Boogie prelude
-                // generates procedures for both types.
                 if let Some(uid_name_values) = callee_info.dynamic_field_mappings.get(uid_type) {
                     result
                         .dynamic_field_mappings
@@ -601,7 +503,6 @@ fn substitute_uid_params(
     result
 }
 
-/// Computes a mapping from temporary indices to the objects and types of objects they reference
 fn compute_uid_info(
     fun_target: &FunctionTarget,
     targets: &FunctionTargetsHolder,
@@ -609,9 +510,6 @@ fn compute_uid_info(
 ) -> BTreeMap<usize, (usize, Type)> {
     let env = fun_target.global_env();
 
-    // First, collect UID parameters - when a function accepts UID directly as a parameter
-    // For UID parameters, we store them with obj_local == param_idx (self-referential)
-    // to mark them as UID parameters. The actual object type will be resolved at call sites.
     let uid_params: BTreeMap<usize, (usize, Type)> = if let Some(uid_qid) = env.uid_qid() {
         (0..fun_target.get_parameter_count())
             .filter_map(|idx| {
@@ -619,9 +517,6 @@ fn compute_uid_info(
                 let inner_ty = ty.skip_reference();
                 if let Some((qid, tys)) = inner_ty.get_datatype() {
                     if qid == uid_qid {
-                        // UID parameter: obj_local is the parameter itself (self-referential marker),
-                        // obj_type is the UID type. At call sites, this will be substituted with
-                        // the actual parent object type via substitute_uid_params.
                         return Some((
                             idx,
                             (idx, Type::Datatype(qid.module_id, qid.id, tys.to_vec())),
@@ -635,10 +530,8 @@ fn compute_uid_info(
         BTreeMap::new()
     };
 
-    // Then collect from bytecode (field accesses and function calls)
     let from_bytecode: BTreeMap<usize, (usize, Type)> = code
         .iter()
-        // Collect all potential UID type mappings, grouped by temporary index
         .filter_map(|bc| match bc {
             Bytecode::Call(
                 attr_id,
@@ -705,7 +598,6 @@ fn compute_uid_info(
         .into_group_map()
         .into_iter()
         .filter_map(|(temp_idx, types)| {
-            // Report errors if there are duplicates
             if types.len() == 1 {
                 Some((temp_idx, (types[0].0.clone(), types[0].1.clone())))
             } else {
@@ -727,27 +619,20 @@ fn compute_uid_info(
         })
         .collect();
 
-    // Merge: bytecode-derived info takes precedence over parameter-derived info
     let mut result = uid_params;
     result.extend(from_bytecode);
 
-    // Propagate UID info through FreezeRef and ReadRef operations.
-    // Note: EliminateImmRefsProcessor runs before DynamicFieldAnalysisProcessor and converts
-    // FreezeRef to ReadRef, so we need to track both.
-    // Also track Assign operations which can propagate references.
     for bc in code {
         match bc {
             Bytecode::Call(_, dests, Operation::FreezeRef, srcs, _)
             | Bytecode::Call(_, dests, Operation::ReadRef, srcs, _) => {
                 if !dests.is_empty() && !srcs.is_empty() {
-                    // If the source is a UID, propagate the mapping to the destination
                     if let Some((obj_local, obj_type)) = result.get(&srcs[0]).cloned() {
                         result.entry(dests[0]).or_insert((obj_local, obj_type));
                     }
                 }
             }
             Bytecode::Assign(_, dest, src, _) => {
-                // Track assignments that propagate UID references
                 if let Some((obj_local, obj_type)) = result.get(src).cloned() {
                     result.entry(*dest).or_insert((obj_local, obj_type));
                 }
@@ -759,10 +644,6 @@ fn compute_uid_info(
     result
 }
 
-/// Checks if a field access at the given offset is accessing the single UID field.
-/// Returns true if:
-/// - The struct has the `key` ability and the offset is 0, OR
-/// - The offset matches the single UID field offset
 fn is_uid_field_access(struct_env: &StructEnv<'_>, offset: usize) -> bool {
     (struct_env.get_abilities().has_key() && offset == 0)
         || Some(offset) == single_uid_field_offset(struct_env)
@@ -800,10 +681,6 @@ fn get_uid_object_type<'a>(
     get_uid_object_type_impl(uid_info, alias_info, temp_idx, off, false, None)
 }
 
-/// Get UID object type, optionally skipping UID parameters (self-referential entries).
-/// When skip_uid_params is true, entries where obj_type is UID are skipped.
-/// This is used in bytecode transformation to avoid adding UID type for UID parameters
-/// in generic functions (prevents recursive Boogie datatype generation).
 fn get_uid_object_type_impl<'a>(
     uid_info: &'a BTreeMap<usize, (usize, Type)>,
     alias_info: &'a BTreeMap<u16, ReachingDefState>,
@@ -812,9 +689,6 @@ fn get_uid_object_type_impl<'a>(
     skip_uid_params: bool,
     uid_qid: Option<QualifiedId<DatatypeId>>,
 ) -> Option<&'a (usize, Type)> {
-    // Helper to check if an entry should be skipped
-    // For generic functions, skip entries where obj_type is UID itself
-    // (these came from UID parameters either directly or through propagation)
     let should_skip = |obj_type: &Type| -> bool {
         if !skip_uid_params {
             return false;
@@ -827,12 +701,10 @@ fn get_uid_object_type_impl<'a>(
         false
     };
 
-    // First check if temp_idx is directly in uid_info
     uid_info
         .get(&temp_idx)
         .filter(|(_, obj_type)| !should_skip(obj_type))
         .or_else(|| {
-            // Otherwise, check if we can find it through alias information
             alias_info.get(&(off as u16)).and_then(|state| {
                 ReachingDefProcessor::all_aliases(state, &temp_idx)
                     .iter()
@@ -876,7 +748,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
-        // Collect the dynamic field info
         let info = collect_dynamic_field_info(targets, &mut builder, info.verified || info.inlined);
 
         builder
@@ -888,11 +759,8 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
     }
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        // Phase 1: Collect UID parameter object types from all call sites
-        let (uid_param_types, _call_site_info) = collect_uid_param_info(env, targets);
+        let uid_param_types = collect_uid_param_info(env, targets);
 
-        // Phase 2: Update callee's DynamicFieldInfo with resolved object types
-        // This ensures the Boogie prelude generates procedures for both UID and MyObject
         for (callee_id, param_types) in &uid_param_types {
             if let Some(data) = targets.get_data_mut(callee_id, &FunctionVariant::Baseline) {
                 if let Some(callee_info) = data.annotations.get::<DynamicFieldInfo>().cloned() {
@@ -901,12 +769,10 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                     for (param_idx, obj_types) in param_types {
                         if let Some((obj_local, uid_type)) = callee_info.uid_info.get(param_idx) {
                             if obj_local == param_idx {
-                                // This is a UID parameter
                                 if let Some(name_values) =
                                     callee_info.dynamic_field_mappings.get(uid_type)
                                 {
                                     for obj_type in obj_types {
-                                        // Add mappings for the actual object type
                                         updated_info
                                             .dynamic_field_mappings
                                             .entry(obj_type.clone())
@@ -929,7 +795,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             }
         }
 
-        // Phase 4: Collect and combine all functions' dynamic field info
         let combined_info = DynamicFieldInfo::iter_union(targets.get_funs().filter_map(|fun_id| {
             targets
                 .get_data(&fun_id, &FunctionVariant::Baseline)
@@ -940,7 +805,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 })
         }));
 
-        // Set the combined info in the environment
         env.set_extension(combined_info);
     }
 
@@ -949,32 +813,15 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
     }
 }
 
-/// Collect UID parameter info from all call sites.
-/// Returns:
-/// 1. A map from callee function ID to a map from parameter index to set of actual object types
-/// 2. A map from caller function ID to a list of (offset, param_idx, obj_local) for call site transforms
 fn collect_uid_param_info(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
-) -> (
-    BTreeMap<
-        move_model::model::QualifiedId<move_model::model::FunId>,
-        BTreeMap<usize, BTreeSet<Type>>,
-    >,
-    BTreeMap<move_model::model::QualifiedId<move_model::model::FunId>, Vec<(usize, usize, usize)>>,
-) {
-    use move_model::model::QualifiedId;
-
+) -> BTreeMap<QualifiedId<move_model::model::FunId>, BTreeMap<usize, BTreeSet<Type>>> {
     let mut param_types: BTreeMap<
         QualifiedId<move_model::model::FunId>,
         BTreeMap<usize, BTreeSet<Type>>,
     > = BTreeMap::new();
-    let mut call_sites: BTreeMap<
-        QualifiedId<move_model::model::FunId>,
-        Vec<(usize, usize, usize)>,
-    > = BTreeMap::new();
 
-    // Scan all functions to find calls to functions with UID parameters
     for fun_id in targets.get_funs() {
         if let Some(data) = targets.get_data(&fun_id, &FunctionVariant::Baseline) {
             let fun_env = env.get_function(fun_id);
@@ -982,16 +829,13 @@ fn collect_uid_param_info(
                 continue;
             }
 
-            // Get the caller's uid_info
             let caller_info = match data.annotations.get::<DynamicFieldInfo>() {
                 Some(info) => info,
                 None => continue,
             };
 
-            // Compute alias info for the caller
             let alias_info = ReachingDefProcessor::analyze_reaching_definitions(&fun_env, data);
 
-            // Scan the caller's bytecode for calls
             for (offset, bc) in data.code.iter().enumerate() {
                 if let Bytecode::Call(
                     _,
@@ -1003,12 +847,10 @@ fn collect_uid_param_info(
                 {
                     let callee_id = module_id.qualified(*callee_fun_id);
 
-                    // Skip recursive calls
                     if callee_id == fun_id {
                         continue;
                     }
 
-                    // Get the callee's info to check if it has UID parameters
                     let callee_data = match targets.get_data(&callee_id, &FunctionVariant::Baseline)
                     {
                         Some(d) => d,
@@ -1019,41 +861,27 @@ fn collect_uid_param_info(
                         None => continue,
                     };
 
-                    // Check each UID parameter in callee
                     for (param_idx, (obj_local, _uid_type)) in &callee_info.uid_info {
-                        // Check if this is a self-referential entry (UID parameter)
                         if param_idx == obj_local && *param_idx < srcs.len() {
-                            // This callee has a UID parameter at param_idx
-                            // Look up the corresponding source in caller's context
                             let src_idx = srcs[*param_idx];
-                            if let Some((caller_obj_local, actual_obj_type)) = get_uid_object_type(
+                            if let Some((_, actual_obj_type)) = get_uid_object_type(
                                 &caller_info.uid_info,
                                 &alias_info,
                                 src_idx,
                                 offset,
                             ) {
-                                // Skip if the actual type is also self-referential (UID param in caller)
                                 if let Some((local, _)) = caller_info.uid_info.get(&src_idx) {
                                     if *local == src_idx {
-                                        // Caller also has a UID parameter, skip
                                         continue;
                                     }
                                 }
 
-                                // Add the actual object type
                                 param_types
                                     .entry(callee_id)
                                     .or_insert_with(BTreeMap::new)
                                     .entry(*param_idx)
                                     .or_insert_with(BTreeSet::new)
                                     .insert(actual_obj_type.clone());
-
-                                // Add call site transform info
-                                call_sites.entry(fun_id).or_insert_with(Vec::new).push((
-                                    offset,
-                                    *param_idx,
-                                    *caller_obj_local,
-                                ));
                             }
                         }
                     }
@@ -1062,5 +890,5 @@ fn collect_uid_param_info(
         }
     }
 
-    (param_types, call_sites)
+    param_types
 }

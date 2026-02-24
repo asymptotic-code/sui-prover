@@ -249,8 +249,6 @@ pub fn add_prelude(
     let uid_qid = env.uid_qid();
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        // For UID types (when function takes &UID directly), always generate instances
-        // For other types, check if the datatype is used
         let is_uid_type = uid_qid.as_ref().is_some_and(|uid| *uid == struct_qid);
         if is_uid_type
             || (mono_info.is_used_datatype(env, targets, &struct_qid)
@@ -723,7 +721,6 @@ impl TableImpl {
     fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
         triple_opt
             .and_then(|fun_qid| {
-                // Check if the function actually exists before trying to format its name
                 let module_env = env.get_module(fun_qid.module_id);
                 if module_env
                     .into_functions()
