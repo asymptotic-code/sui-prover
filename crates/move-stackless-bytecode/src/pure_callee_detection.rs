@@ -1,6 +1,3 @@
-// Copyright (c) Mysten Labs
-// SPDX-License-Identifier: Apache-2.0
-
 //! Identifies functions transitively called by `#[ext(pure)]` functions and
 //! marks them as pure callee candidates. Validation is done later by
 //! `PureFunctionAnalysisProcessor`.
