@@ -983,10 +983,6 @@ impl PackageTargets {
         self.pure_callees.insert(id);
     }
 
-    pub fn remove_pure_callee(&mut self, id: &QualifiedId<FunId>) {
-        self.pure_callees.remove(id);
-    }
-
     pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.axiom_functions
     }

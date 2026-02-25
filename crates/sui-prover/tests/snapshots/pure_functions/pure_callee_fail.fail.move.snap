@@ -11,8 +11,11 @@ warning: unused function
    │
    = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: Function 'pure_callee_fail::checked_sub' can't be used in pure functions. Try marking it with #[ext(pure)] attribute.
-   ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:14:5
-   │
-14 │     checked_sub(x, y)
-   │     ^^^^^^^^^^^^^^^^^
+error: Function 'pure_callee_fail::checked_sub' is called from a pure function but cannot satisfy pure requirements
+  ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:6:1
+  │  
+6 │ ╭ fun checked_sub(x: u64, y: u64): u64 {
+7 │ │     assert!(x >= y, 0);
+8 │ │     x - y
+9 │ │ }
+  │ ╰─^

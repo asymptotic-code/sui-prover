@@ -159,11 +159,16 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
     ) -> FunctionData {
         let qid = fun_env.get_qualified_id();
 
-        // Validate pure callee candidates (silently remove invalid ones)
-        if targets.is_pure_callee(&qid) {
-            if !Self::validate_pure_callee(fun_env, &data, targets) {
-                targets.remove_pure_callee(&qid);
-            }
+        // Validate pure callee candidates
+        if targets.is_pure_callee(&qid) && !Self::validate_pure_callee(fun_env, &data, targets) {
+            fun_env.module_env.env.diag(
+                Severity::Error,
+                &fun_env.get_loc(),
+                &format!(
+                    "Function '{}' is called from a pure function but cannot satisfy pure requirements",
+                    fun_env.get_full_name_str()
+                ),
+            );
         }
 
         if !targets.is_pure_fun(&qid) {
