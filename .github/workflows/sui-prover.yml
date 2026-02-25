@@ -429,7 +429,8 @@ jobs:
           repository: asymptotic-code/cetus-clmm
           ref: specs
           token: ${{ secrets.PAT_TOKEN }}
-          path: cetus    
+          path: cetus
+          submodules: 'recursive'   
 
       - name: Run
         run: |
