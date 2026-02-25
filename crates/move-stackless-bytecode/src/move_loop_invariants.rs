@@ -87,7 +87,7 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             }
 
             Self::handle_targeted_loop_invariant_functions(
-                func_env, targets, data, invs, &loop_info,
+                func_env, data, targets, invs, &loop_info,
             )
         } else {
             Self::handle_classical_loop_invariants(func_env, data, invariants)
@@ -462,8 +462,8 @@ impl MoveLoopInvariantsProcessor {
 
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
-        targets: &FunctionTargetsHolder,
         data: FunctionData,
+        targets: &FunctionTargetsHolder,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>,
     ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
