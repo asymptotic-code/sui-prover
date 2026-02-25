@@ -592,13 +592,13 @@ impl MoveLoopInvariantsProcessor {
         let inv_data = targets
             .get_data(&inv_env.get_qualified_id(), &FunctionVariant::Baseline)
             .expect("void invariant function data not found");
-        // Build temp remapping: params → target locals
+        // build temp remapping: params → target locals
         let mut temp_map: BTreeMap<usize, usize> = BTreeMap::new();
         for i in 0..inv_env.get_parameter_count() {
             temp_map.insert(i, args[i]);
         }
 
-        // First pass: identify Assign copies from already-mapped temps and propagate
+        // first pass: identify Assign copies from already-mapped temps and propagate
         // the mapping, so we can skip them (later passes optimize them away which
         // would invalidate our AttrId tracking).
         let mut skip_offsets: BTreeSet<usize> = BTreeSet::new();
@@ -611,7 +611,7 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // Allocate new temps for remaining non-param locals
+        // allocate new temps for remaining non-param locals
         for i in inv_env.get_parameter_count()..inv_data.local_types.len() {
             if !temp_map.contains_key(&i) {
                 let new_temp = builder.new_temp(inv_data.local_types[i].clone());
@@ -619,7 +619,7 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // Build label remapping
+        // build label remapping
         let mut label_map: BTreeMap<Label, Label> = BTreeMap::new();
         for bc in &inv_data.code {
             if let Bytecode::Label(_, l) = bc {
@@ -627,7 +627,7 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // Allocate end label for Ret → Jump conversion
+        // allocate end label for Ret → Jump conversion
         let end_label = builder.new_label();
 
         let ensures_op = Operation::apply_fun_qid(&builder.global_env().ensures_qid(), vec![]);
@@ -636,12 +636,12 @@ impl MoveLoopInvariantsProcessor {
         let mut last_attr: Option<AttrId> = None;
 
         for (idx, bc) in inv_data.code.iter().enumerate() {
-            // Skip param-copy Assigns that are propagated through temp_map
+            // skip param-copy Assigns that are propagated through temp_map
             if skip_offsets.contains(&idx) {
                 continue;
             }
 
-            // Set location from inv function for this bytecode
+            // set location from inv function for this bytecode
             let old_attr = bc.get_attr_id();
             if let Some(loc) = inv_data.locations.get(&old_attr) {
                 builder.set_loc(loc.clone());
@@ -651,7 +651,7 @@ impl MoveLoopInvariantsProcessor {
 
             let new_attr = builder.new_attr();
 
-            // Convert Ret to Jump(end_label)
+            // convert Ret to Jump(end_label)
             let remapped = if matches!(bc, Bytecode::Ret(..)) {
                 Bytecode::Jump(new_attr, end_label)
             } else {
@@ -663,13 +663,13 @@ impl MoveLoopInvariantsProcessor {
                     .replace_attr_id(new_attr)
             };
 
-            // Track first/last attr for TargetedLoopInfo
+            // track first/last attr for TargetedLoopInfo
             if first_attr.is_none() {
                 first_attr = Some(new_attr);
             }
             last_attr = Some(new_attr);
 
-            // Add secondary label on ensures calls for error reporting
+            // add secondary label on ensures calls for error reporting
             if matches!(&remapped, Bytecode::Call(_, _, op, _, _) if *op == ensures_op) {
                 if let Some(ref loc) = loop_header_loc {
                     builder.data.secondary_labels.insert(
@@ -682,7 +682,7 @@ impl MoveLoopInvariantsProcessor {
             builder.emit(remapped);
         }
 
-        // Emit end label
+        // emit end label
         builder.set_loc(inv_env.get_loc());
         let end_attr = builder.new_attr();
         builder.emit(Bytecode::Label(end_attr, end_label));
