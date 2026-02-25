@@ -86,30 +86,8 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
                 return data;
             }
 
-            // Pre-extract bytecode data for void invariant functions
-            let env = func_env.module_env.env;
-            let void_inv_data: BTreeMap<
-                QualifiedId<FunId>,
-                (Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
-            > = invs
-                .iter()
-                .filter(|(qid, _)| env.get_function(**qid).get_return_count() == 0)
-                .filter_map(|(qid, _)| {
-                    targets.get_data(qid, &FunctionVariant::Baseline).map(|d| {
-                        (
-                            *qid,
-                            (d.code.clone(), d.local_types.clone(), d.locations.clone()),
-                        )
-                    })
-                })
-                .collect();
-
             Self::handle_targeted_loop_invariant_functions(
-                func_env,
-                data,
-                invs,
-                &loop_info,
-                &void_inv_data,
+                func_env, targets, data, invs, &loop_info,
             )
         } else {
             Self::handle_classical_loop_invariants(func_env, data, invariants)
@@ -484,13 +462,10 @@ impl MoveLoopInvariantsProcessor {
 
     pub fn handle_targeted_loop_invariant_functions(
         func_env: &FunctionEnv,
+        targets: &FunctionTargetsHolder,
         data: FunctionData,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>,
-        void_inv_data: &BTreeMap<
-            QualifiedId<FunId>,
-            (Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
-        >,
     ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
@@ -524,12 +499,12 @@ impl MoveLoopInvariantsProcessor {
 
                 let inv_env = func_env.module_env.env.get_function(*qid);
 
-                if let Some(inv_data) = void_inv_data.get(qid) {
+                if inv_env.get_return_count() == 0 {
                     // Void invariant: inline bytecodes
                     let inv_attrs = Self::inline_void_invariant(
                         &mut builder,
+                        targets,
                         &inv_env,
-                        inv_data,
                         &args,
                         loop_header_loc,
                     );
@@ -609,12 +584,17 @@ impl MoveLoopInvariantsProcessor {
 
     fn inline_void_invariant(
         builder: &mut FunctionDataBuilder,
+        targets: &FunctionTargetsHolder,
         inv_env: &FunctionEnv,
-        inv_data: &(Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
         args: &[usize],
         loop_header_loc: Option<Loc>,
     ) -> Vec<AttrId> {
-        let (inv_code, inv_types, inv_locs) = inv_data;
+        let inv_data = targets
+            .get_data(&inv_env.get_qualified_id(), &FunctionVariant::Baseline)
+            .expect("void invariant function data not found");
+        let inv_code = &inv_data.code;
+        let inv_types = &inv_data.local_types;
+        let inv_locs = &inv_data.locations;
         let param_count = inv_env.get_parameter_count();
         let env = builder.global_env();
 

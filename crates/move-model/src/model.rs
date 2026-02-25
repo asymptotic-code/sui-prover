@@ -3718,13 +3718,6 @@ impl GlobalEnv {
             self.havoc_global_qid(),
         ]);
 
-        // Prover spec functions
-        qids.extend(vec![
-            self.requires_qid(),
-            self.ensures_qid(),
-            self.asserts_qid(),
-        ]);
-
         // Prover vec iter module functions
         if self.has_prover_vector_module() {
             qids.extend(vec![
