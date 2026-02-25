@@ -7,7 +7,7 @@ use std::{
 };
 
 use move_model::{
-    model::{FunId, FunctionEnv, GlobalEnv, QualifiedId},
+    model::{FunId, FunctionEnv, GlobalEnv, Loc, QualifiedId},
     ty::{PrimitiveType, Type},
 };
 
@@ -86,7 +86,31 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
                 return data;
             }
 
-            Self::handle_targeted_loop_invariant_functions(func_env, data, invs, &loop_info)
+            // Pre-extract bytecode data for void invariant functions
+            let env = func_env.module_env.env;
+            let void_inv_data: BTreeMap<
+                QualifiedId<FunId>,
+                (Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
+            > = invs
+                .iter()
+                .filter(|(qid, _)| env.get_function(**qid).get_return_count() == 0)
+                .filter_map(|(qid, _)| {
+                    targets.get_data(qid, &FunctionVariant::Baseline).map(|d| {
+                        (
+                            *qid,
+                            (d.code.clone(), d.local_types.clone(), d.locations.clone()),
+                        )
+                    })
+                })
+                .collect();
+
+            Self::handle_targeted_loop_invariant_functions(
+                func_env,
+                data,
+                invs,
+                &loop_info,
+                &void_inv_data,
+            )
         } else {
             Self::handle_classical_loop_invariants(func_env, data, invariants)
         };
@@ -157,19 +181,20 @@ impl MoveLoopInvariantsProcessor {
                 }
             }
 
-            if inv_env.get_return_count() != 1 {
+            let return_count = inv_env.get_return_count();
+            if return_count == 1 {
+                if !inv_env.get_return_type(0).is_bool() {
+                    env.diag(
+                        Severity::Error,
+                        &inv_env.get_loc(),
+                        "Loop invariant functions must return a boolean value",
+                    );
+                }
+            } else if return_count > 1 {
                 env.diag(
                     Severity::Error,
                     &inv_env.get_loc(),
-                    "Loop invariant functions must have exactly one return value",
-                );
-            }
-
-            if !inv_env.get_return_type(0).is_bool() {
-                env.diag(
-                    Severity::Error,
-                    &inv_env.get_loc(),
-                    "Loop invariant functions must return a boolean value",
+                    "Loop invariant functions must have at most one return value",
                 );
             }
         }
@@ -462,6 +487,10 @@ impl MoveLoopInvariantsProcessor {
         data: FunctionData,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>,
+        void_inv_data: &BTreeMap<
+            QualifiedId<FunId>,
+            (Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
+        >,
     ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
@@ -493,75 +522,202 @@ impl MoveLoopInvariantsProcessor {
                 // NOTE: Emit clone! calls before label
                 builder.emit(bc);
 
-                let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
-
-                let mut first_attr_id = None;
-
-                // Set location to the invariant function so that verification
-                // errors point to the invariant definition, not the target function.
                 let inv_env = func_env.module_env.env.get_function(*qid);
-                builder.set_loc(inv_env.get_loc());
 
-                for i in 0..args.len() {
-                    if builder.get_local_type(args[i]).is_mutable_reference() {
-                        let attr = builder.new_attr();
-
-                        if first_attr_id.is_none() {
-                            first_attr_id = Some(attr);
-                        }
-
-                        let ty = builder
-                            .new_temp(builder.get_local_type(args[i]).skip_reference().clone());
-                        builder.emit(Bytecode::Call(
-                            attr,
-                            vec![ty],
-                            Operation::ReadRef,
-                            vec![args[i]],
-                            None,
-                        ));
-                        args[i] = ty;
-                    }
-                }
-
-                let call_attr_id = builder.new_attr();
-                let ensures_attr_id = builder.new_attr();
-
-                if first_attr_id.is_none() {
-                    first_attr_id = Some(call_attr_id);
-                }
-
-                builder.emit(Bytecode::Call(
-                    call_attr_id,
-                    vec![temp],
-                    Operation::apply_fun_qid(qid, vec![]),
-                    args,
-                    None,
-                ));
-
-                builder.emit(Bytecode::Call(
-                    ensures_attr_id,
-                    vec![],
-                    Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
-                    vec![temp],
-                    None,
-                ));
-
-                // Attach the loop header location as a secondary label so that
-                // verification errors show where the loop is.
-                if let Some(loc) = loop_header_loc {
-                    builder.data.secondary_labels.insert(
-                        ensures_attr_id,
-                        (loc, "loop invariant for this loop".to_string()),
+                if let Some(inv_data) = void_inv_data.get(qid) {
+                    // Void invariant: inline bytecodes
+                    let inv_attrs = Self::inline_void_invariant(
+                        &mut builder,
+                        &inv_env,
+                        inv_data,
+                        &args,
+                        loop_header_loc,
                     );
-                }
+                    attrs.insert(inv_attrs);
+                } else {
+                    // Bool invariant: call function and wrap in ensures
+                    let temp = builder.new_temp(Type::Primitive(PrimitiveType::Bool));
 
-                attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
+                    let mut first_attr_id = None;
+
+                    // Set location to the invariant function so that verification
+                    // errors point to the invariant definition, not the target function.
+                    builder.set_loc(inv_env.get_loc());
+
+                    for i in 0..args.len() {
+                        if builder.get_local_type(args[i]).is_mutable_reference() {
+                            let attr = builder.new_attr();
+
+                            if first_attr_id.is_none() {
+                                first_attr_id = Some(attr);
+                            }
+
+                            let ty = builder
+                                .new_temp(builder.get_local_type(args[i]).skip_reference().clone());
+                            builder.emit(Bytecode::Call(
+                                attr,
+                                vec![ty],
+                                Operation::ReadRef,
+                                vec![args[i]],
+                                None,
+                            ));
+                            args[i] = ty;
+                        }
+                    }
+
+                    let call_attr_id = builder.new_attr();
+                    let ensures_attr_id = builder.new_attr();
+
+                    if first_attr_id.is_none() {
+                        first_attr_id = Some(call_attr_id);
+                    }
+
+                    builder.emit(Bytecode::Call(
+                        call_attr_id,
+                        vec![temp],
+                        Operation::apply_fun_qid(qid, vec![]),
+                        args,
+                        None,
+                    ));
+
+                    builder.emit(Bytecode::Call(
+                        ensures_attr_id,
+                        vec![],
+                        Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
+                        vec![temp],
+                        None,
+                    ));
+
+                    // Attach the loop header location as a secondary label so that
+                    // verification errors show where the loop is.
+                    if let Some(loc) = loop_header_loc {
+                        builder.data.secondary_labels.insert(
+                            ensures_attr_id,
+                            (loc, "loop invariant for this loop".to_string()),
+                        );
+                    }
+
+                    attrs.insert(vec![first_attr_id.unwrap(), ensures_attr_id]);
+                }
             } else {
                 builder.emit(bc);
             }
         }
 
         (builder.data, attrs)
+    }
+
+    fn inline_void_invariant(
+        builder: &mut FunctionDataBuilder,
+        inv_env: &FunctionEnv,
+        inv_data: &(Vec<Bytecode>, Vec<Type>, BTreeMap<AttrId, Loc>),
+        args: &[usize],
+        loop_header_loc: Option<Loc>,
+    ) -> Vec<AttrId> {
+        let (inv_code, inv_types, inv_locs) = inv_data;
+        let param_count = inv_env.get_parameter_count();
+        let env = builder.global_env();
+
+        // Build temp remapping: params → target locals
+        let mut temp_map: BTreeMap<usize, usize> = BTreeMap::new();
+        for i in 0..param_count {
+            temp_map.insert(i, args[i]);
+        }
+
+        // First pass: identify Assign copies from already-mapped temps and propagate
+        // the mapping, so we can skip them (later passes optimize them away which
+        // would invalidate our AttrId tracking).
+        let mut skip_offsets: BTreeSet<usize> = BTreeSet::new();
+        for (idx, bc) in inv_code.iter().enumerate() {
+            if let Bytecode::Assign(_, dest, src, _) = bc {
+                if let Some(&mapped_src) = temp_map.get(src) {
+                    temp_map.insert(*dest, mapped_src);
+                    skip_offsets.insert(idx);
+                }
+            }
+        }
+
+        // Allocate new temps for remaining non-param locals
+        for i in param_count..inv_types.len() {
+            if !temp_map.contains_key(&i) {
+                let new_temp = builder.new_temp(inv_types[i].clone());
+                temp_map.insert(i, new_temp);
+            }
+        }
+
+        // Build label remapping
+        let mut label_map: BTreeMap<Label, Label> = BTreeMap::new();
+        for bc in inv_code {
+            if let Bytecode::Label(_, l) = bc {
+                label_map.insert(*l, builder.new_label());
+            }
+        }
+
+        // Allocate end label for Ret → Jump conversion
+        let end_label = builder.new_label();
+
+        let ensures_op = Operation::apply_fun_qid(&env.ensures_qid(), vec![]);
+
+        let mut first_attr: Option<AttrId> = None;
+        let mut last_attr: Option<AttrId> = None;
+
+        for (idx, bc) in inv_code.iter().enumerate() {
+            // Skip param-copy Assigns that are propagated through temp_map
+            if skip_offsets.contains(&idx) {
+                continue;
+            }
+
+            // Set location from inv function for this bytecode
+            let old_attr = bc.get_attr_id();
+            if let Some(loc) = inv_locs.get(&old_attr) {
+                builder.set_loc(loc.clone());
+            } else {
+                builder.set_loc(inv_env.get_loc());
+            }
+
+            let new_attr = builder.new_attr();
+
+            // Convert Ret to Jump(end_label)
+            let remapped = if matches!(bc, Bytecode::Ret(..)) {
+                Bytecode::Jump(new_attr, end_label)
+            } else {
+                bc.clone()
+                    .remap_all_vars(env, &mut |idx| *temp_map.get(&idx).unwrap_or(&idx))
+                    .substitute_labels(&label_map)
+                    .replace_attr_id(new_attr)
+            };
+
+            // Track first/last attr for TargetedLoopInfo
+            if first_attr.is_none() {
+                first_attr = Some(new_attr);
+            }
+            last_attr = Some(new_attr);
+
+            // Add secondary label on ensures calls for error reporting
+            if matches!(&remapped, Bytecode::Call(_, _, op, _, _) if *op == ensures_op) {
+                if let Some(ref loc) = loop_header_loc {
+                    builder.data.secondary_labels.insert(
+                        new_attr,
+                        (loc.clone(), "loop invariant for this loop".to_string()),
+                    );
+                }
+            }
+
+            builder.emit(remapped);
+        }
+
+        // Emit end label
+        builder.set_loc(inv_env.get_loc());
+        let end_attr = builder.new_attr();
+        builder.emit(Bytecode::Label(end_attr, end_label));
+        if last_attr.is_some() {
+            last_attr = Some(end_attr);
+        }
+
+        vec![
+            first_attr.expect("void invariant should have bytecodes"),
+            last_attr.expect("void invariant should have bytecodes"),
+        ]
     }
 
     pub fn new() -> Box<Self> {
