@@ -31,6 +31,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    pure_callees: BTreeSet<QualifiedId<FunId>>,
     axiom_functions: BTreeSet<QualifiedId<FunId>>,
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
@@ -69,6 +70,7 @@ impl PackageTargets {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            pure_callees: BTreeSet::new(),
             axiom_functions: BTreeSet::new(),
             target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
@@ -971,6 +973,18 @@ impl PackageTargets {
 
     pub fn pure_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.pure_functions
+    }
+
+    pub fn pure_callees(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.pure_callees
+    }
+
+    pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
+        self.pure_callees.insert(id);
+    }
+
+    pub fn remove_pure_callee(&mut self, id: &QualifiedId<FunId>) {
+        self.pure_callees.remove(id);
     }
 
     pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {

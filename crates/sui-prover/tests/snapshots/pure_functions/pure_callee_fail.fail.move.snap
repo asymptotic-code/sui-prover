@@ -1,0 +1,18 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+warning: unused function
+   ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:13:5
+   │
+13 │ fun bad_compute(x: u64, y: u64): u64 {
+   │     ^^^^^^^^^^^ The non-'public', non-'entry' function 'bad_compute' is never called. Consider removing it.
+   │
+   = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+error: Function 'pure_callee_fail::checked_sub' can't be used in pure functions. Try marking it with #[ext(pure)] attribute.
+   ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:14:5
+   │
+14 │     checked_sub(x, y)
+   │     ^^^^^^^^^^^^^^^^^
