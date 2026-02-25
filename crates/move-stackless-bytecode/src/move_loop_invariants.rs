@@ -627,13 +627,17 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // the last instruction is always Ret; only need a jump label for early returns
-        let ret_count = inv_data
+        // find the last Ret (if any); earlier Rets are early returns that need a jump label
+        let last_ret_idx = inv_data
             .code
             .iter()
-            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
-            .count();
-        let end_label = if ret_count > 1 {
+            .rposition(|bc| matches!(bc, Bytecode::Ret(..)));
+        let has_early_returns = inv_data
+            .code
+            .iter()
+            .enumerate()
+            .any(|(i, bc)| matches!(bc, Bytecode::Ret(..)) && Some(i) != last_ret_idx);
+        let end_label = if has_early_returns {
             Some(builder.new_label())
         } else {
             None
@@ -651,7 +655,7 @@ impl MoveLoopInvariantsProcessor {
             }
 
             // skip the last Ret (fall through instead of jumping)
-            if matches!(bc, Bytecode::Ret(..)) && idx == inv_data.code.len() - 1 {
+            if matches!(bc, Bytecode::Ret(..)) && Some(idx) == last_ret_idx {
                 continue;
             }
 
