@@ -5,7 +5,7 @@
 //! marks them as pure callee candidates. Validation is done later by
 //! `PureFunctionAnalysisProcessor`.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 
 use move_model::model::GlobalEnv;
 
@@ -25,36 +25,25 @@ impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
     }
 
     fn run(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        // BFS from pure functions to collect all transitive callee candidates
-        let mut visited = BTreeSet::new();
-        let mut queue = VecDeque::new();
-
-        for qid in targets.get_funs() {
-            if targets.is_pure_fun(&qid) {
-                for callee in env.get_function(qid).get_called_functions() {
-                    if visited.insert(callee) {
-                        queue.push_back(callee);
-                    }
-                }
-            }
-        }
+        // Seed BFS with pure functions
+        let mut queue: VecDeque<_> = targets
+            .get_funs()
+            .into_iter()
+            .filter(|qid| targets.is_pure_fun(qid))
+            .collect();
 
         while let Some(qid) = queue.pop_front() {
             for callee in env.get_function(qid).get_called_functions() {
-                if visited.insert(callee) {
-                    queue.push_back(callee);
+                if targets.is_pure_callee(&callee) || targets.is_pure_fun(&callee) {
+                    continue;
                 }
+                let fun_env = env.get_function(callee);
+                if fun_env.is_native() || fun_env.is_intrinsic() {
+                    continue;
+                }
+                targets.add_pure_callee(callee);
+                queue.push_back(callee);
             }
-
-            // Mark non-pure, non-native, non-intrinsic functions as pure callees
-            if targets.is_pure_fun(&qid) || env.should_be_used_as_func(&qid) {
-                continue;
-            }
-            let fun_env = env.get_function(qid);
-            if fun_env.is_native() || fun_env.is_intrinsic() {
-                continue;
-            }
-            targets.add_pure_callee(qid);
         }
     }
 
