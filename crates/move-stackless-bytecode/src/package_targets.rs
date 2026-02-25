@@ -560,27 +560,19 @@ impl PackageTargets {
         }
     }
 
-    fn is_loop_invariant_function(&self, qid: &QualifiedId<FunId>) -> bool {
-        self.loop_invariants
-            .values()
-            .any(|inv_map| inv_map.contains_left(qid))
-    }
-
     fn check_abort_check_scope(&mut self, func_env: &FunctionEnv) {
         if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
         {
-            let is_loop_inv = self.is_loop_invariant_function(&func_env.get_qualified_id());
-
             if attrs
                 .into_iter()
                 .any(|attr| attr.2.value.name().value.as_str() == "no_abort")
             {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
-                if self.is_target(func_env) && !is_loop_inv {
+                if self.is_target(func_env) {
                     self.target_no_abort_check_functions
                         .insert(func_env.get_qualified_id());
                 }
@@ -590,7 +582,7 @@ impl PackageTargets {
                 .any(|attr| attr.2.value.name().value.as_str() == "pure")
             {
                 self.pure_functions.insert(func_env.get_qualified_id());
-                if self.is_target(func_env) && !is_loop_inv {
+                if self.is_target(func_env) {
                     self.target_no_abort_check_functions
                         .insert(func_env.get_qualified_id());
                 }
