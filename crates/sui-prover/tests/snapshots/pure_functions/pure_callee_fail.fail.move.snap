@@ -1,5 +1,6 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
 expression: output
 ---
 exiting with bytecode transformation errors
@@ -11,11 +12,8 @@ warning: unused function
    │
    = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: Function 'pure_callee_fail::checked_sub' is called from a pure function but cannot satisfy pure requirements
-  ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:6:1
-  │  
-6 │ ╭ fun checked_sub(x: u64, y: u64): u64 {
-7 │ │     assert!(x >= y, 0);
-8 │ │     x - y
-9 │ │ }
-  │ ╰─^
+error: Pure functions cannot abort
+  ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:7:5
+  │
+7 │     assert!(x >= y, 0);
+  │     ^^^^^^^^^^^^^^^^^^

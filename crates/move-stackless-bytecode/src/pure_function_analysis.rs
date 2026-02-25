@@ -118,35 +118,6 @@ impl PureFunctionAnalysisProcessor {
 
         true
     }
-
-    /// Silently validate a pure callee candidate. Returns true if valid.
-    fn validate_pure_callee(
-        fun_env: &FunctionEnv,
-        data: &FunctionData,
-        targets: &FunctionTargetsHolder,
-    ) -> bool {
-        // No mutable reference parameters
-        if fun_env
-            .get_parameters()
-            .iter()
-            .any(|p| p.1.is_mutable_reference())
-        {
-            return false;
-        }
-        // No mutable reference locals
-        if data.local_types.iter().any(|ty| ty.is_mutable_reference()) {
-            return false;
-        }
-        // Must be deterministic
-        if !deterministic_analysis::get_info(data).is_deterministic {
-            return false;
-        }
-        // Bytecode must be pure-compatible
-        if Self::check_bytecode(fun_env, data, targets).is_some() {
-            return false;
-        }
-        true
-    }
 }
 
 impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
@@ -159,19 +130,7 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
     ) -> FunctionData {
         let qid = fun_env.get_qualified_id();
 
-        // Validate pure callee candidates
-        if targets.is_pure_callee(&qid) && !Self::validate_pure_callee(fun_env, &data, targets) {
-            fun_env.module_env.env.diag(
-                Severity::Error,
-                &fun_env.get_loc(),
-                &format!(
-                    "Function '{}' is called from a pure function but cannot satisfy pure requirements",
-                    fun_env.get_full_name_str()
-                ),
-            );
-        }
-
-        if !targets.is_pure_fun(&qid) {
+        if !targets.can_be_pure_callee(&qid) {
             return data;
         }
 
