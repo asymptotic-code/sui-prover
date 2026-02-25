@@ -627,17 +627,13 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // find non-skipped Ret indices; early returns need a jump label
-        let ret_indices: Vec<usize> = inv_data
+        // the last instruction is always Ret; only need a jump label for early returns
+        let ret_count = inv_data
             .code
             .iter()
-            .enumerate()
-            .filter(|(i, bc)| !skip_offsets.contains(i) && matches!(bc, Bytecode::Ret(..)))
-            .map(|(i, _)| i)
-            .collect();
-        let last_ret_idx = ret_indices.last().copied();
-        let has_early_returns = ret_indices.len() > 1;
-        let end_label = if has_early_returns {
+            .filter(|bc| matches!(bc, Bytecode::Ret(..)))
+            .count();
+        let end_label = if ret_count > 1 {
             Some(builder.new_label())
         } else {
             None
@@ -655,7 +651,7 @@ impl MoveLoopInvariantsProcessor {
             }
 
             // skip the last Ret (fall through instead of jumping)
-            if matches!(bc, Bytecode::Ret(..)) && Some(idx) == last_ret_idx {
+            if matches!(bc, Bytecode::Ret(..)) && idx == inv_data.code.len() - 1 {
                 continue;
             }
 
