@@ -627,8 +627,21 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        // allocate end label for Ret → Jump conversion
-        let end_label = builder.new_label();
+        // find non-skipped Ret indices; early returns need a jump label
+        let ret_indices: Vec<usize> = inv_data
+            .code
+            .iter()
+            .enumerate()
+            .filter(|(i, bc)| !skip_offsets.contains(i) && matches!(bc, Bytecode::Ret(..)))
+            .map(|(i, _)| i)
+            .collect();
+        let last_ret_idx = ret_indices.last().copied();
+        let has_early_returns = ret_indices.len() > 1;
+        let end_label = if has_early_returns {
+            Some(builder.new_label())
+        } else {
+            None
+        };
 
         let ensures_op = Operation::apply_fun_qid(&builder.global_env().ensures_qid(), vec![]);
 
@@ -638,6 +651,11 @@ impl MoveLoopInvariantsProcessor {
         for (idx, bc) in inv_data.code.iter().enumerate() {
             // skip param-copy Assigns that are propagated through temp_map
             if skip_offsets.contains(&idx) {
+                continue;
+            }
+
+            // skip the last Ret (fall through instead of jumping)
+            if matches!(bc, Bytecode::Ret(..)) && Some(idx) == last_ret_idx {
                 continue;
             }
 
@@ -651,9 +669,9 @@ impl MoveLoopInvariantsProcessor {
 
             let new_attr = builder.new_attr();
 
-            // convert Ret to Jump(end_label)
+            // convert early Ret to Jump(end_label)
             let remapped = if matches!(bc, Bytecode::Ret(..)) {
-                Bytecode::Jump(new_attr, end_label)
+                Bytecode::Jump(new_attr, end_label.unwrap())
             } else {
                 bc.clone()
                     .remap_all_vars(builder.global_env(), &mut |idx| {
@@ -682,11 +700,11 @@ impl MoveLoopInvariantsProcessor {
             builder.emit(remapped);
         }
 
-        // emit end label
-        builder.set_loc(inv_env.get_loc());
-        let end_attr = builder.new_attr();
-        builder.emit(Bytecode::Label(end_attr, end_label));
-        if last_attr.is_some() {
+        // emit end label only if there are early returns
+        if let Some(end_label) = end_label {
+            builder.set_loc(inv_env.get_loc());
+            let end_attr = builder.new_attr();
+            builder.emit(Bytecode::Label(end_attr, end_label));
             last_attr = Some(end_attr);
         }
 
