@@ -627,8 +627,12 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
+        if inv_data.code.is_empty() {
+            return vec![];
+        }
+
         // if there are any Ret instructions before the last instruction, we need a jump label
-        let has_early_returns = inv_data.code[..inv_data.code.len().saturating_sub(1)]
+        let has_early_returns = inv_data.code[..inv_data.code.len() - 1]
             .iter()
             .any(|bc| matches!(bc, Bytecode::Ret(..)));
         let end_label = if has_early_returns {
