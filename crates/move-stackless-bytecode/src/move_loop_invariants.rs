@@ -592,6 +592,10 @@ impl MoveLoopInvariantsProcessor {
         let inv_data = targets
             .get_data(&inv_env.get_qualified_id(), &FunctionVariant::Baseline)
             .expect("void invariant function data not found");
+        if inv_data.code.is_empty() {
+            return vec![];
+        }
+
         // build temp remapping: params → target locals
         let mut temp_map: BTreeMap<usize, usize> = BTreeMap::new();
         for i in 0..inv_env.get_parameter_count() {
@@ -625,10 +629,6 @@ impl MoveLoopInvariantsProcessor {
             if let Bytecode::Label(_, l) = bc {
                 label_map.insert(*l, builder.new_label());
             }
-        }
-
-        if inv_data.code.is_empty() {
-            return vec![];
         }
 
         // if there are any Ret instructions before the last instruction, we need a jump label
