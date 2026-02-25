@@ -7,13 +7,9 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use move_model::model::{FunctionEnv, GlobalEnv};
+use move_model::model::GlobalEnv;
 
-use crate::{
-    function_target::FunctionData,
-    function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
-    pure_function_analysis::PureFunctionAnalysisProcessor,
-};
+use crate::function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder};
 
 pub struct PureCalleeDetectionProcessor();
 
@@ -24,16 +20,19 @@ impl PureCalleeDetectionProcessor {
 }
 
 impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
-    fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+    fn is_single_run(&self) -> bool {
+        true
+    }
+
+    fn run(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // BFS from pure functions to collect all transitive callee candidates
-        let mut candidates = BTreeSet::new();
+        let mut visited = BTreeSet::new();
         let mut queue = VecDeque::new();
 
         for qid in targets.get_funs() {
             if targets.is_pure_fun(&qid) {
-                let fun_env = env.get_function(qid);
-                for callee in fun_env.get_called_functions() {
-                    if candidates.insert(callee) {
+                for callee in env.get_function(qid).get_called_functions() {
+                    if visited.insert(callee) {
                         queue.push_back(callee);
                     }
                 }
@@ -41,21 +40,14 @@ impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
         }
 
         while let Some(qid) = queue.pop_front() {
-            let fun_env = env.get_function(qid);
-            for callee in fun_env.get_called_functions() {
-                if candidates.insert(callee) {
+            for callee in env.get_function(qid).get_called_functions() {
+                if visited.insert(callee) {
                     queue.push_back(callee);
                 }
             }
-        }
 
-        // Mark viable candidates (skip already-pure, native, intrinsic)
-        let native_pure = PureFunctionAnalysisProcessor::native_pure_variants(env);
-        for qid in candidates {
-            if targets.is_pure_fun(&qid)
-                || native_pure.contains(&qid)
-                || env.should_be_used_as_func(&qid)
-            {
+            // Mark non-pure, non-native, non-intrinsic functions as pure callees
+            if targets.is_pure_fun(&qid) || env.should_be_used_as_func(&qid) {
                 continue;
             }
             let fun_env = env.get_function(qid);
@@ -64,16 +56,6 @@ impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
             }
             targets.add_pure_callee(qid);
         }
-    }
-
-    fn process(
-        &self,
-        _targets: &mut FunctionTargetsHolder,
-        _fun_env: &FunctionEnv,
-        data: FunctionData,
-        _scc_opt: Option<&[FunctionEnv]>,
-    ) -> FunctionData {
-        data
     }
 
     fn name(&self) -> String {
