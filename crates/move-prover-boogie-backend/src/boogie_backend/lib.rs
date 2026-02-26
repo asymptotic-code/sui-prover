@@ -249,13 +249,11 @@ pub fn add_prelude(
     let uid_qid = env.uid_qid();
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        let is_uid_type = uid_qid.as_ref().is_some_and(|uid| *uid == struct_qid);
-        if is_uid_type
-            || (mono_info.is_used_datatype(env, targets, &struct_qid)
-                && mono_info
-                    .structs
-                    .get(&struct_qid)
-                    .is_some_and(|type_inst_set| type_inst_set.contains(type_inst)))
+        if mono_info.is_used_datatype(env, targets, &struct_qid)
+            && mono_info
+                .structs
+                .get(&struct_qid)
+                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
         {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
