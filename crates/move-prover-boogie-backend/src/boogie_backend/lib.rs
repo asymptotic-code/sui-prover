@@ -64,6 +64,7 @@ struct TypeInfo {
 struct QuantifierHelperInfo {
     qht: String,
     name: String,
+    pool_id: String,
     quantifier_params: String,
     quantifier_args: String,
     result_type: String,
@@ -569,9 +570,12 @@ impl QuantifierHelperInfo {
             );
         }
 
+        let name = boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure);
+        let pool_id = name.strip_suffix("$pure").unwrap_or(&name).to_string();
         Self {
             qht: info.qht.str().to_string(),
-            name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
+            name,
+            pool_id,
             quantifier_params,
             quantifier_args,
             result_type: boogie_type(env, dst_elem_boogie_type),

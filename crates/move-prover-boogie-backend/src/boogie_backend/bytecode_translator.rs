@@ -2745,30 +2745,38 @@ impl<'env> FunctionTranslator<'env> {
         pool_names
     }
 
-    /// Returns the `{:pool "fun_name"}` annotation if any pool name is a substring of `fun_name`,
-    /// or an empty string if no match. Uses the full `fun_name` as the pool identifier so it
-    /// matches the `{:add_to_pool}` statements and prelude pool annotations.
-    fn pool_annotation(pool_names: &BTreeSet<String>, fun_name: &str) -> String {
+    /// Strips the `$pure` suffix from a Boogie function name for use in pool identifiers.
+    fn strip_pure_suffix(name: &str) -> &str {
+        name.strip_suffix("$pure").unwrap_or(name)
+    }
+
+    /// Returns the `{:pool "kind-fun_name"}` annotation if any pool name is a substring of
+    /// `fun_name`, or an empty string if no match. The pool name is prefixed with the quantifier
+    /// kind for granular pool naming (e.g., `forall-$0x42_mod_f'u64'`).
+    fn pool_annotation(pool_names: &BTreeSet<String>, kind: &str, fun_name: &str) -> String {
+        let pool_id = Self::strip_pure_suffix(fun_name);
         for pool_name in pool_names {
-            if fun_name.contains(pool_name.as_str()) {
-                return format!("{{:pool \"{}\"}}", fun_name);
+            if pool_id.contains(pool_name.as_str()) {
+                return format!("{{:pool \"{}-{}\"}}", kind, pool_id);
             }
         }
         String::new()
     }
 
-    /// Collect all Boogie function names from Quantifier operations in the current function.
-    fn collect_quantifier_fun_names(&self) -> BTreeSet<String> {
-        let mut names = BTreeSet::new();
+    /// Collect all (quantifier_kind, pool_id) pairs from Quantifier operations.
+    /// The pool_id is the Boogie function name with the `$pure` suffix stripped.
+    fn collect_quantifier_pool_ids(&self) -> BTreeSet<(String, String)> {
+        let mut ids = BTreeSet::new();
         for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(_, qid, inst, _), _, _) = bc {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
                 let fun_env = self.parent.env.get_function(*qid);
                 let inst = &self.inst_slice(inst);
                 let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
-                names.insert(fun_name);
+                let pool_id = Self::strip_pure_suffix(&fun_name).to_string();
+                ids.insert((qt.display().to_string(), pool_id));
             }
         }
-        names
+        ids
     }
 
     fn create_quantifiers_temp_vars(&self) {
@@ -3144,7 +3152,8 @@ impl<'env> FunctionTranslator<'env> {
     {
         let env = self.fun_target.global_env();
         let fun_name = &boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
-        let pool_attr = Self::pool_annotation(pool_names, fun_name);
+        let kind = qt.display();
+        let pool_attr = Self::pool_annotation(pool_names, kind, fun_name);
         let pool_str = if pool_attr.is_empty() {
             String::new()
         } else {
@@ -4073,24 +4082,25 @@ impl<'env> FunctionTranslator<'env> {
                                 .unwrap_or_else(|| format!("pool_{}", srcs[0]));
                             // Find all quantifier functions whose Boogie names contain
                             // the user's pool name, and emit {:add_to_pool} for each
-                            let quantifier_fun_names = self.collect_quantifier_fun_names();
-                            let matching_names: Vec<_> = quantifier_fun_names
+                            let quantifier_pool_ids = self.collect_quantifier_pool_ids();
+                            let matching_ids: Vec<_> = quantifier_pool_ids
                                 .iter()
-                                .filter(|name| name.contains(&user_pool_name))
+                                .filter(|(_, name)| name.contains(&user_pool_name))
                                 .collect();
-                            for boogie_name in &matching_names {
+                            for (kind, boogie_name) in &matching_ids {
                                 for src_idx in &srcs[1..] {
                                     let term_str = str_local(*src_idx);
                                     emitln!(
                                         self.writer(),
-                                        "assume {{:add_to_pool \"{}\", {}}} true;",
+                                        "assume {{:add_to_pool \"{}-{}\", {}}} true;",
+                                        kind,
                                         boogie_name,
                                         term_str,
                                     );
                                 }
                             }
                             // Fallback: if no quantifier matched, still emit with user's string
-                            if matching_names.is_empty() {
+                            if matching_ids.is_empty() {
                                 for src_idx in &srcs[1..] {
                                     let term_str = str_local(*src_idx);
                                     emitln!(
@@ -5364,7 +5374,8 @@ impl<'env> FunctionTranslator<'env> {
                         let fun_name =
                             boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
                         let pool_names = self.collect_pool_names();
-                        let pool_attr = Self::pool_annotation(&pool_names, &fun_name);
+                        let kind = qt.display();
+                        let pool_attr = Self::pool_annotation(&pool_names, kind, &fun_name);
                         let pool_str = if pool_attr.is_empty() {
                             String::new()
                         } else {
