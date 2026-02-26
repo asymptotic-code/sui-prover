@@ -80,11 +80,10 @@ fn analyze_type_invariants_r(
                 let matches_module = filter_module.map_or(true, |m| inv_fun_qid.module_id == m);
                 if matches_module {
                     results.push(InvPathResult {
-                        nested_path: nested,
+                        nested_path: nested.clone(),
                         inv_fun: *inv_fun_qid,
                         type_inst: type_params.clone(),
                     });
-                    return;
                 }
             }
 

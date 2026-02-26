@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_nested_deep.ok.move:31:1
+   │
+31 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_nested_deep.ok.move:45: make_bad_inner_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_nested_deep.ok.move:26:1
+   │
+26 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_nested_deep.ok.move:40: make_bad_outer_spec
