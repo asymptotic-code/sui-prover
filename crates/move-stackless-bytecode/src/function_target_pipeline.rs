@@ -809,6 +809,8 @@ impl FunctionTargetPipeline {
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
     ) -> DiGraph<QualifiedId<FunId>, ()> {
+        use crate::stackless_bytecode::{Bytecode, Operation};
+
         let mut graph = DiGraph::new();
         let mut nodes = BTreeMap::new();
         for fun_id in targets.get_funs() {
@@ -818,6 +820,8 @@ impl FunctionTargetPipeline {
         for fun_id in targets.get_funs() {
             let src_idx = nodes.get(&fun_id).unwrap();
             let fun_env = env.get_function(fun_id);
+
+            // Edges from the source-level call graph
             for callee in fun_env.get_called_functions() {
                 // add edge to original callee if it exists in targets
                 if let Some(dst_idx) = nodes.get(&callee) {
@@ -830,6 +834,18 @@ impl FunctionTargetPipeline {
                 {
                     if let Some(dst_idx) = nodes.get(spec_qid) {
                         graph.add_edge(*src_idx, *dst_idx, ());
+                    }
+                }
+            }
+
+            // Edges from bytecode (captures calls added by earlier pipeline passes)
+            if let Some(data) = targets.get_data(&fun_id, &FunctionVariant::Baseline) {
+                for bc in &data.code {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), _, _) = bc {
+                        let callee = mid.qualified(*fid);
+                        if let Some(dst_idx) = nodes.get(&callee) {
+                            graph.add_edge(*src_idx, *dst_idx, ());
+                        }
                     }
                 }
             }

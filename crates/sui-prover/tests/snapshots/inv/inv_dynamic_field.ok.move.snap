@@ -11,10 +11,10 @@ error: prover::ensures does not hold
    │
    =     at tests/inputs/inv/inv_dynamic_field.ok.move:54: drain_spec
 
-error: unknown assertion failed
-   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:29:1
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:33:1
    │
-29 │ public fun make_bad(ctx: &mut TxContext): Vault {
+33 │ }
    │ ^
    │
    =     at tests/inputs/inv/inv_dynamic_field.ok.move:48: make_bad_spec

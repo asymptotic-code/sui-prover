@@ -361,12 +361,12 @@ fn collect_dynamic_field_info(
 
                 let info = targets
                     .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .map(|data| get_fun_info(data))
-                    .expect(&format!(
-                        "callee `{}` of `{}` was filtered out",
-                        func_env.get_full_name_str(),
-                        builder.fun_env.get_full_name_str()
-                    ));
+                    .and_then(|data| data.annotations.get::<DynamicFieldInfo>());
+                let Some(info) = info else {
+                    // Callee may not have been processed yet (e.g. within an SCC
+                    // involving invariant function calls added by TypeInvariantAnalysis)
+                    return None;
+                };
                 Some(info.instantiate(type_inst))
             }
             _ => None,
@@ -455,16 +455,15 @@ fn compute_uid_info(
                     return None;
                 }
 
-                let callee_data = targets
-                    .get_data(&callee_id, &FunctionVariant::Baseline)
-                    .expect(&format!(
-                        "callee `{}` was filtered out",
-                        fun_target
-                            .global_env()
-                            .get_function(callee_id)
-                            .get_full_name_str()
-                    ));
-                let callee_mapping = &get_fun_info(callee_data).uid_info;
+                let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline);
+                let Some(callee_data) = callee_data else {
+                    return None;
+                };
+                let Some(callee_info) = callee_data.annotations.get::<DynamicFieldInfo>() else {
+                    // Callee may not have been processed yet (within an SCC)
+                    return None;
+                };
+                let callee_mapping = &callee_info.uid_info;
 
                 for key in callee_mapping.keys() {
                     if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
