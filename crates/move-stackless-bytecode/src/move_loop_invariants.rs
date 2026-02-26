@@ -596,10 +596,37 @@ impl MoveLoopInvariantsProcessor {
             return vec![];
         }
 
-        // build temp remapping: params → target locals
+        // build temp remapping: params → target locals, emitting ReadRef for
+        // &mut args where the invariant expects &T (EliminateImmRefs already
+        // removed the immutable ref, so the invariant bytecodes expect a value).
         let mut temp_map: BTreeMap<usize, usize> = BTreeMap::new();
+        let mut first_attr: Option<AttrId> = None;
+        let mut last_attr: Option<AttrId> = None;
         for i in 0..inv_env.get_parameter_count() {
-            temp_map.insert(i, args[i]);
+            let arg = args[i];
+            let param_type = &inv_data.local_types[i];
+            if builder.get_local_type(arg).is_mutable_reference() && !param_type.is_reference() {
+                // target arg is &mut T but invariant param is T (immutable ref was eliminated)
+                // emit ReadRef inside the attr range so loop analysis duplicates it
+                builder.set_loc(inv_env.get_loc());
+                let attr = builder.new_attr();
+                let val_temp =
+                    builder.new_temp(builder.get_local_type(arg).skip_reference().clone());
+                builder.emit(Bytecode::Call(
+                    attr,
+                    vec![val_temp],
+                    Operation::ReadRef,
+                    vec![arg],
+                    None,
+                ));
+                if first_attr.is_none() {
+                    first_attr = Some(attr);
+                }
+                last_attr = Some(attr);
+                temp_map.insert(i, val_temp);
+            } else {
+                temp_map.insert(i, arg);
+            }
         }
 
         // first pass: identify Assign copies from already-mapped temps and propagate
@@ -643,9 +670,6 @@ impl MoveLoopInvariantsProcessor {
 
         let ensures_op = Operation::apply_fun_qid(&builder.global_env().ensures_qid(), vec![]);
 
-        let mut first_attr: Option<AttrId> = None;
-        let mut last_attr: Option<AttrId> = None;
-
         for (idx, bc) in inv_data.code.iter().enumerate() {
             // skip param-copy Assigns that are propagated through temp_map
             if skip_offsets.contains(&idx) {
@@ -655,6 +679,29 @@ impl MoveLoopInvariantsProcessor {
             // skip the last Ret (fall through instead of jumping)
             if matches!(bc, Bytecode::Ret(..)) && idx == inv_data.code.len() - 1 {
                 continue;
+            }
+
+            // skip ReadRef on already-dereferenced args (e.g. &mut was ReadRef'd to a value)
+            if let Bytecode::Call(_, ref dests, Operation::ReadRef, ref srcs, _) = bc {
+                let mapped_src = *temp_map.get(&srcs[0]).unwrap_or(&srcs[0]);
+                if !builder.get_local_type(mapped_src).is_reference() {
+                    let dest_temp = builder.new_temp(builder.get_local_type(mapped_src).clone());
+                    temp_map.insert(dests[0], dest_temp);
+                    // emit an Assign so the value is available under the new temp
+                    builder.set_loc(inv_env.get_loc());
+                    let attr = builder.new_attr();
+                    if first_attr.is_none() {
+                        first_attr = Some(attr);
+                    }
+                    last_attr = Some(attr);
+                    builder.emit(Bytecode::Assign(
+                        attr,
+                        dest_temp,
+                        mapped_src,
+                        crate::stackless_bytecode::AssignKind::Copy,
+                    ));
+                    continue;
+                }
             }
 
             // set location from inv function for this bytecode

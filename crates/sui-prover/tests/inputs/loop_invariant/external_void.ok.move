@@ -29,6 +29,13 @@ fun loop_inv_3(i: u64, n: u64, s: u128) {
     ensures(s == (i as u128) * ((i as u128) + 1) / 2);
 }
 
+#[spec_only(loop_inv(target = test4_spec))]
+#[ext(no_abort)]
+fun loop_inv_4(i: u64, n: u64, p: &u128) {
+    ensures(i <= n);
+    ensures(*p == (i as u128) * ((i as u128) + 1) / 2);
+}
+
 #[spec(prove)]
 fun test0_spec(n: u64) {
     let mut i = 0;
@@ -81,6 +88,21 @@ fun test3_spec(n: u64): u128 {
         if (i >= n) {
             break
         }
+    };
+
+    ensures(s == (n as u128) * ((n as u128) + 1) / 2);
+    s
+}
+
+#[spec(prove)]
+fun test4_spec(n: u64): u128 {
+    let mut s: u128 = 0;
+    let mut i = 0;
+    let p: &mut u128 = &mut s;
+
+    while (i < n) {
+        i = i + 1;
+        *p = *p + (i as u128);
     };
 
     ensures(s == (n as u128) * ((n as u128) + 1) / 2);
