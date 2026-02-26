@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_public_mutref.ok.move:14:1
+   │
+14 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_public_mutref.ok.move:22: test_bad
