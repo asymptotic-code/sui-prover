@@ -730,10 +730,10 @@ impl MoveLoopInvariantsProcessor {
             last_attr = Some(end_attr);
         }
 
-        vec![
-            first_attr.expect("void invariant should have bytecodes"),
-            last_attr.expect("void invariant should have bytecodes"),
-        ]
+        match (first_attr, last_attr) {
+            (Some(first), Some(last)) => vec![first, last],
+            _ => vec![],
+        }
     }
 
     pub fn new() -> Box<Self> {
