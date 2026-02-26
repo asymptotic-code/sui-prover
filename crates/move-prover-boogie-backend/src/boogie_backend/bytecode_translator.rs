@@ -13,6 +13,7 @@ use std::{
 
 use bimap::btree::BiBTreeMap;
 use codespan::LineIndex;
+use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{debug, info, log, warn, Level};
@@ -4076,17 +4077,15 @@ impl<'env> FunctionTranslator<'env> {
                                     );
                                 }
                             }
-                            // Fallback: if no quantifier matched, still emit with user's string
                             if matching_ids.is_empty() {
-                                for src_idx in &srcs[1..] {
-                                    let term_str = str_local(*src_idx);
-                                    emitln!(
-                                        self.writer(),
-                                        "assume {{:add_to_pool \"{}\", {}}} true;",
-                                        user_pool_name,
-                                        term_str,
-                                    );
-                                }
+                                env.diag(
+                                    Severity::Warning,
+                                    &self.fun_target.get_loc(),
+                                    &format!(
+                                        "add_quantifier_pool: no quantifier found matching pool name \"{}\"",
+                                        user_pool_name
+                                    ),
+                                );
                             }
                             processed = true;
                         }
