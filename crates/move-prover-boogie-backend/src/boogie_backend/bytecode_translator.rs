@@ -1181,15 +1181,27 @@ impl<'env> BoogieTranslator<'env> {
 
         let target = self.targets.get_target(fun_env, &variant);
 
+        let env = fun_env.module_env.env;
+        let ensures_function = Operation::apply_fun_qid(&env.ensures_qid(), vec![]);
+        let requires_function = Operation::apply_fun_qid(&env.requires_qid(), vec![]);
+        let asserts_function = Operation::apply_fun_qid(&env.asserts_qid(), vec![]);
+        let ensures_asserts_to_requires_subst = BTreeMap::from_iter(vec![
+            (ensures_function, requires_function.clone()),
+            (asserts_function, requires_function),
+        ]);
+
         let mut builder = FunctionDataBuilder::new(target.func_env, target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
         for bc in code.into_iter() {
             match bc {
-                _ => builder.emit(bc.update_abort_action(|aa| match aa {
-                    Some(AbortAction::Check) => Some(AbortAction::Check),
-                    None => None,
-                })),
+                _ => builder.emit(
+                    bc.substitute_operations(&ensures_asserts_to_requires_subst)
+                        .update_abort_action(|aa| match aa {
+                            Some(AbortAction::Check) => Some(AbortAction::Check),
+                            None => None,
+                        }),
+                ),
             }
         }
 

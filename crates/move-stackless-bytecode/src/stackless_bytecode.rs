@@ -586,6 +586,24 @@ impl Bytecode {
         }
     }
 
+    pub fn replace_attr_id(&self, new_id: AttrId) -> Self {
+        use Bytecode::*;
+        match self {
+            Assign(_, d, s, k) => Assign(new_id, *d, *s, *k),
+            Call(_, d, op, s, aa) => Call(new_id, d.clone(), op.clone(), s.clone(), aa.clone()),
+            Ret(_, v) => Ret(new_id, v.clone()),
+            Load(_, d, c) => Load(new_id, *d, c.clone()),
+            Branch(_, l1, l2, t) => Branch(new_id, *l1, *l2, *t),
+            Jump(_, l) => Jump(new_id, *l),
+            VariantSwitch(_, t, ls) => VariantSwitch(new_id, *t, ls.clone()),
+            Label(_, l) => Label(new_id, *l),
+            Abort(_, t) => Abort(new_id, *t),
+            Nop(_) => Nop(new_id),
+            SaveMem(_, ml, qi) => SaveMem(new_id, *ml, qi.clone()),
+            Prop(_, pk, e) => Prop(new_id, pk.clone(), e.clone()),
+        }
+    }
+
     pub fn is_exit(&self) -> bool {
         matches!(
             self,
