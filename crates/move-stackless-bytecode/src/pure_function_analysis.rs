@@ -31,7 +31,6 @@ impl PureFunctionAnalysisProcessor {
         fid: FunId,
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
-        is_callee: bool,
     ) -> Option<String> {
         let qid = mid.qualified(fid);
         let func_env = env.get_function(qid);
@@ -41,23 +40,15 @@ impl PureFunctionAnalysisProcessor {
         {
             return None;
         }
-        if is_callee {
-            Some(format!(
-                "Function '{}' called from a pure function calls non-pure function '{}'",
-                func_env.get_full_name_str(),
-                func_env.get_full_name_str(),
-            ))
-        } else {
-            Some(format!(
-                "Function '{}' can't be used in pure functions.{}",
-                func_env.get_full_name_str(),
-                if func_env.module_env.is_target() {
-                    " Try marking it with #[ext(pure)] attribute."
-                } else {
-                    ""
-                },
-            ))
-        }
+        Some(format!(
+            "Function '{}' can't be used in pure functions.{}",
+            func_env.get_full_name_str(),
+            if func_env.module_env.is_target() {
+                " Try marking it with #[ext(pure)] attribute."
+            } else {
+                ""
+            },
+        ))
     }
 
     // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
@@ -84,7 +75,7 @@ impl PureFunctionAnalysisProcessor {
                 Load(_, _, _) => None,
                 Call(_, _, op, _, _) => match op {
                     Operation::Function(mid, fid, _) => {
-                        Self::check_function(*mid, *fid, fun_env.module_env.env, targets, is_callee)
+                        Self::check_function(*mid, *fid, fun_env.module_env.env, targets)
                     }
                     _ => None,
                 },
