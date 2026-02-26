@@ -34,7 +34,8 @@ impl PureFunctionAnalysisProcessor {
     ) -> Option<String> {
         let qid = mid.qualified(fid);
         let func_env = env.get_function(qid);
-        if targets.can_be_pure_callee(&func_env.get_qualified_id())
+        if targets.is_pure_fun(&func_env.get_qualified_id())
+            || targets.is_pure_callee(&func_env.get_qualified_id())
             || env.should_be_used_as_func(&qid)
             || Self::native_pure_variants(env).contains(&qid)
         {
@@ -142,11 +143,11 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
     ) -> FunctionData {
         let qid = fun_env.get_qualified_id();
 
-        if !targets.can_be_pure_callee(&qid) {
+        let is_callee = targets.is_pure_callee(&qid);
+
+        if !targets.is_pure_fun(&qid) && !is_callee {
             return data;
         }
-
-        let is_callee = targets.is_pure_callee(&qid);
 
         if !Self::check_parameters(fun_env, is_callee) {
             return data;

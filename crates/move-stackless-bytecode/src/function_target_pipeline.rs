@@ -302,10 +302,6 @@ impl FunctionTargetsHolder {
         self.package_targets.pure_callees().contains(id)
     }
 
-    pub fn can_be_pure_callee(&self, id: &QualifiedId<FunId>) -> bool {
-        self.is_pure_fun(id) || self.is_pure_callee(id)
-    }
-
     pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
         self.package_targets.add_pure_callee(id);
     }

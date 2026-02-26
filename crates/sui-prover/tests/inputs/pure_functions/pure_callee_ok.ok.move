@@ -26,7 +26,11 @@ fun add_two(x: u64): u64 {
 // Pure function that calls non-pure helpers
 #[ext(pure)]
 fun compute(x: u64, y: u64): u64 {
-    max_val(add_two(x), y)
+    if (x <= 0xFFFFFFFFFFFFFFFD) {
+        max_val(add_two(x), y)
+    } else {
+        y
+    }
 }
 
 public fun call_compute(x: u64, y: u64): u64 {

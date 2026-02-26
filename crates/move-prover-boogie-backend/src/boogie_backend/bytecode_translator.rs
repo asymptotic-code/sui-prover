@@ -519,7 +519,9 @@ impl<'env> BoogieTranslator<'env> {
                 // For pure functions that aren't inlined (e.g., from dependency
                 // packages), call sites still use type-instantiated $pure names.
                 // Emit bodyless $pure declarations so Boogie can resolve them.
-                if self.targets.can_be_pure_callee(&fun_env.get_qualified_id()) {
+                if self.targets.is_pure_fun(&fun_env.get_qualified_id())
+                    || self.targets.is_pure_callee(&fun_env.get_qualified_id())
+                {
                     let has_baseline = self.targets.has_target(fun_env, &FunctionVariant::Baseline);
                     let is_inlined = has_baseline
                         && verification_analysis::get_info(
@@ -1087,12 +1089,10 @@ impl<'env> BoogieTranslator<'env> {
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
-            if !self
-                .targets
-                .can_be_pure_callee(&fun_target.func_env.get_qualified_id())
-                && !self
-                    .targets
-                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
+            let qid = fun_target.func_env.get_qualified_id();
+            if !self.targets.is_pure_fun(&qid)
+                && !self.targets.is_pure_callee(&qid)
+                && !self.targets.is_axiom_fun(&qid)
             {
                 return; // Only emit if pure, pure callee, or axiom
             }
@@ -2585,7 +2585,9 @@ impl<'env> FunctionTranslator<'env> {
                 for bc in fun_target.get_bytecode() {
                     if let Bytecode::Call(_, _, Operation::Function(mid, fid, inst), _, _) = bc {
                         let qid = mid.qualified(*fid);
-                        if self.parent.targets.can_be_pure_callee(&qid) {
+                        if self.parent.targets.is_pure_fun(&qid)
+                            || self.parent.targets.is_pure_callee(&qid)
+                        {
                             let callee_env = env.get_function(qid);
                             if callee_env.get_return_count() > 1 {
                                 let inst = &self.inst_slice(inst);
@@ -2851,7 +2853,8 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
-        self.parent.targets.can_be_pure_callee(&mid.qualified(*fid))
+        let qid = mid.qualified(*fid);
+        self.parent.targets.is_pure_fun(&qid) || self.parent.targets.is_pure_callee(&qid)
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -3985,7 +3988,7 @@ impl<'env> FunctionTranslator<'env> {
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
                         // Check if callee is marked as pure
-                        let callee_is_pure = self.can_callee_be_function(mid, fid);
+                        let callee_is_pure = self.parent.targets.is_pure_fun(&mid.qualified(*fid));
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;

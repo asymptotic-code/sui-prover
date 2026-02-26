@@ -1,4 +1,4 @@
-//! Identifies functions transitively called by `#[ext(pure)]` functions and
+//! Identifies functions transitively called by pure or axiom functions and
 //! marks them as pure callee candidates. Validation is done later by
 //! `PureFunctionAnalysisProcessor`.
 
@@ -22,16 +22,19 @@ impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
     }
 
     fn run(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        // Seed BFS with pure functions
+        // Seed BFS with pure and axiom functions
         let mut queue: VecDeque<_> = targets
             .get_funs()
             .into_iter()
-            .filter(|qid| targets.is_pure_fun(qid))
+            .filter(|qid| targets.is_pure_fun(qid) || targets.is_axiom_fun(qid))
             .collect();
 
         while let Some(qid) = queue.pop_front() {
             for callee in env.get_function(qid).get_called_functions() {
-                if targets.is_pure_callee(&callee) || targets.is_pure_fun(&callee) {
+                if targets.is_pure_callee(&callee)
+                    || targets.is_pure_fun(&callee)
+                    || targets.is_axiom_fun(&callee)
+                {
                     continue;
                 }
                 let fun_env = env.get_function(callee);
