@@ -450,6 +450,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         if !targets.prover_options().enable_conditional_merge_insertion
             && !self.debug
             && !targets.is_pure_fun(&func_env.get_qualified_id())
+            && !targets.is_pure_callee(&func_env.get_qualified_id())
             && !targets.is_axiom_fun(&func_env.get_qualified_id())
         {
             return data;
@@ -472,6 +473,7 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         }
 
         let is_pure = targets.is_pure_fun(&func_env.get_qualified_id())
+            || targets.is_pure_callee(&func_env.get_qualified_id())
             || targets.is_axiom_fun(&func_env.get_qualified_id());
 
         let builder = FunctionDataBuilder::new(func_env, data);
