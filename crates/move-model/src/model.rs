@@ -2705,13 +2705,6 @@ impl GlobalEnv {
         )
     }
 
-    pub fn dynamic_object_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::DYNAMIC_OBJECT_MODULE_NAME,
-            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
-        )
-    }
-
     pub fn dynamic_object_field_exists_with_type_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::DYNAMIC_OBJECT_MODULE_NAME,
@@ -3970,7 +3963,6 @@ impl GlobalEnv {
             self.dynamic_object_field_borrow_mut_qid(),
             self.dynamic_object_field_remove_qid(),
             self.dynamic_object_field_exists_qid(),
-            self.dynamic_object_field_remove_if_exists_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
         ]
         .into_iter()

@@ -927,6 +927,26 @@ procedure {:inline 2} {{impl.fun_remove}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{
 }
 {%- endif %}
 
+{%- if impl.fun_remove_if_exists != "" %}
+// remove_if_exists: removes the dynamic field if it exists, otherwise no-op
+procedure {:inline 2} {{impl.fun_remove_if_exists}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: $1_option_Option'{{instance.1.suffix}}', m': $Mutation({{Type}})) {
+    var enc_k: int;
+    var t: {{Type}};
+    var val: {{V}};
+    enc_k := {{ENC}}(k);
+    t := $Dereference(m);
+    if (ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        val := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        assume $IsValid{{SV}}(val);
+        m' := $UpdateMutation(m, $Update'{{Type}}'_dynamic_fields{{S}}(t, RemoveTable(t->$dynamic_fields{{S}}, enc_k)));
+        v := $1_option_Option{{SV}}(MakeVec1(val));
+    } else {
+        m' := m;
+        v := $1_option_Option{{SV}}(EmptyVec());
+    }
+}
+{%- endif %}
+
 {%- if impl.fun_exists_with_type != "" %}
 function {:inline} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}): bool {
     ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
