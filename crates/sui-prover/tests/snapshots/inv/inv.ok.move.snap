@@ -4,9 +4,9 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
-   ┌─ tests/inputs/inv/inv.ok.move:26:5
-   │
-26 │     }
-   │     ^
-   │
-   =     at tests/inputs/inv/inv.ok.move:24: increment_spec
+  ┌─ tests/inputs/inv/inv.ok.move:8:5
+  │
+8 │     }
+  │     ^
+  │
+  =     at tests/inputs/inv/inv.ok.move:24: increment_spec

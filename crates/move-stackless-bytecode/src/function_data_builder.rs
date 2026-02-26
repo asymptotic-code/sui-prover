@@ -14,7 +14,7 @@ use crate::{
     stackless_bytecode::{AttrId, Bytecode, HavocKind, Label, Operation, PropKind},
 };
 use move_model::{
-    model::{FunctionEnv, Loc},
+    model::{FunId, FunctionEnv, Loc, QualifiedId},
     ty::{Type, BOOL_TYPE},
 };
 
@@ -278,9 +278,15 @@ impl<'env> FunctionDataBuilder<'env> {
         temp
     }
 
-    pub fn emit_type_inv(&mut self, idx: TempIndex) -> TempIndex {
+    /// Emit a direct call to a specific invariant function, returning the bool temp.
+    pub fn emit_inv_fun_call(
+        &mut self,
+        idx: TempIndex,
+        inv_fun_qid: &QualifiedId<FunId>,
+        type_inst: Vec<Type>,
+    ) -> TempIndex {
         let ty = self.get_local_type(idx);
-        let (val, val_ty) = if ty.is_reference() {
+        let (val, _val_ty) = if ty.is_reference() {
             (self.emit_let_read_ref(idx), ty.skip_reference().clone())
         } else {
             (idx, ty)
@@ -291,7 +297,7 @@ impl<'env> FunctionDataBuilder<'env> {
             Bytecode::Call(
                 id,
                 vec![temp],
-                Operation::apply_fun_qid(&self.fun_env.module_env.env.type_inv_qid(), vec![val_ty]),
+                Operation::Function(inv_fun_qid.module_id, inv_fun_qid.id, type_inst),
                 vec![val],
                 None,
             )
@@ -321,6 +327,16 @@ impl<'env> FunctionDataBuilder<'env> {
                 None,
             )
         });
+    }
+
+    pub fn emit_assert(&mut self, idx: TempIndex) {
+        let temp_exp = self.mk_temporary(idx);
+        self.emit_prop(PropKind::Assert, temp_exp);
+    }
+
+    pub fn emit_assume(&mut self, idx: TempIndex) {
+        let temp_exp = self.mk_temporary(idx);
+        self.emit_prop(PropKind::Assume, temp_exp);
     }
 
     pub fn emit_havoc(&mut self, temp: TempIndex, havoc_kind: HavocKind) {

@@ -611,14 +611,6 @@ impl Analyzer<'_> {
                         Some(actuals.clone()),
                     );
 
-                    if callee_env.get_qualified_id() == self.env.type_inv_qid() {
-                        if let Some((dt_qid, tys)) = actuals[0].get_datatype() {
-                            if let Some(inv_qid) = self.targets.get_inv_by_datatype(&dt_qid) {
-                                self.push_todo_fun(*inv_qid, tys.to_vec());
-                            }
-                        }
-                    }
-
                     // Mark the associated module to be instantiated with the given actuals.
                     // This will instantiate all functions in the module with matching number
                     // of type parameters.
