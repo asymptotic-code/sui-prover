@@ -2721,28 +2721,8 @@ impl<'env> FunctionTranslator<'env> {
 
     /// Collect pool names from add_quantifier_pool calls in the current function's bytecodes.
     fn collect_pool_names(&self) -> BTreeSet<String> {
-        let env = self.parent.env;
-        let pool_qid = env.prover_add_quantifier_pool_qid();
-        let mut pool_names = BTreeSet::new();
-        for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _) = bc {
-                let callee_qid = mid.qualified(*fid);
-                if callee_qid == pool_qid {
-                    // Extract pool name from the ByteArray constant loaded into srcs[0]
-                    if let Some(name) = self.fun_target.get_bytecode().iter().find_map(|bc2| {
-                        if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc2 {
-                            if *dest == srcs[0] {
-                                return String::from_utf8(val.clone()).ok();
-                            }
-                        }
-                        None
-                    }) {
-                        pool_names.insert(name);
-                    }
-                }
-            }
-        }
-        pool_names
+        let pool_qid = self.parent.env.prover_add_quantifier_pool_qid();
+        super::lib::extract_pool_names_from_bytecode(pool_qid, self.fun_target.get_bytecode())
     }
 
     /// Strips the `$pure` suffix from a Boogie function name for use in pool identifiers.
