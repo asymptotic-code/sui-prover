@@ -681,29 +681,6 @@ impl MoveLoopInvariantsProcessor {
                 continue;
             }
 
-            // skip ReadRef on already-dereferenced args (e.g. &mut was ReadRef'd to a value)
-            if let Bytecode::Call(_, ref dests, Operation::ReadRef, ref srcs, _) = bc {
-                let mapped_src = *temp_map.get(&srcs[0]).unwrap_or(&srcs[0]);
-                if !builder.get_local_type(mapped_src).is_reference() {
-                    let dest_temp = builder.new_temp(builder.get_local_type(mapped_src).clone());
-                    temp_map.insert(dests[0], dest_temp);
-                    // emit an Assign so the value is available under the new temp
-                    builder.set_loc(inv_env.get_loc());
-                    let attr = builder.new_attr();
-                    if first_attr.is_none() {
-                        first_attr = Some(attr);
-                    }
-                    last_attr = Some(attr);
-                    builder.emit(Bytecode::Assign(
-                        attr,
-                        dest_temp,
-                        mapped_src,
-                        crate::stackless_bytecode::AssignKind::Copy,
-                    ));
-                    continue;
-                }
-            }
-
             // set location from inv function for this bytecode
             let old_attr = bc.get_attr_id();
             if let Some(loc) = inv_data.locations.get(&old_attr) {
