@@ -2722,12 +2722,12 @@ impl<'env> FunctionTranslator<'env> {
     /// Collect pool names from add_quantifier_pool calls in the current function's bytecodes.
     fn collect_pool_names(&self) -> BTreeSet<String> {
         let env = self.parent.env;
-        let all_pool_qids = env.prover_add_quantifier_pool_all_qids();
+        let pool_qid = env.prover_add_quantifier_pool_qid();
         let mut pool_names = BTreeSet::new();
         for bc in self.fun_target.get_bytecode() {
             if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _) = bc {
                 let callee_qid = mid.qualified(*fid);
-                if all_pool_qids.contains(&callee_qid) {
+                if callee_qid == pool_qid {
                     // Extract pool name from the ByteArray constant loaded into srcs[0]
                     if let Some(name) = self.fun_target.get_bytecode().iter().find_map(|bc2| {
                         if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc2 {
@@ -4056,11 +4056,8 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
-                        if self
-                            .parent
-                            .env
-                            .prover_add_quantifier_pool_all_qids()
-                            .contains(&callee_env.get_qualified_id())
+                        if callee_env.get_qualified_id()
+                            == self.parent.env.prover_add_quantifier_pool_qid()
                         {
                             // Extract pool name from the ByteArray constant loaded into srcs[0]
                             let user_pool_name = self

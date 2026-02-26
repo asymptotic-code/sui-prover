@@ -171,7 +171,7 @@ fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> b
 
 /// Collects all pool name strings from `add_quantifier_pool` calls across all functions.
 fn collect_all_pool_names(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> BTreeSet<String> {
-    let all_pool_qids = env.prover_add_quantifier_pool_all_qids();
+    let pool_qid = env.prover_add_quantifier_pool_qid();
     let mut pool_names = BTreeSet::new();
     for (fun_id, variant) in targets.get_funs_and_variants() {
         let data = targets.get_data(&fun_id, &variant);
@@ -179,7 +179,7 @@ fn collect_all_pool_names(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> B
             for bc in &data.code {
                 if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _) = bc {
                     let callee_qid = mid.qualified(*fid);
-                    if all_pool_qids.contains(&callee_qid) {
+                    if callee_qid == pool_qid {
                         if let Some(name) = data.code.iter().find_map(|bc2| {
                             if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc2 {
                                 if *dest == srcs[0] {
