@@ -168,7 +168,25 @@ impl MoveLoopInvariantsProcessor {
                         "Loop invariant functions must return a boolean value",
                     );
                 }
-            } else if return_count > 1 {
+                let forbidden =
+                    BTreeSet::from([env.requires_qid(), env.ensures_qid(), env.asserts_qid()]);
+                if Self::has_transitive_call_to(env, &inv_env, &forbidden) {
+                    env.diag(
+                        Severity::Error,
+                        &inv_env.get_loc(),
+                        "Bool loop invariant functions must not call requires, ensures, or asserts",
+                    );
+                }
+            } else if return_count == 0 {
+                let forbidden = BTreeSet::from([env.requires_qid(), env.asserts_qid()]);
+                if Self::has_transitive_call_to(env, &inv_env, &forbidden) {
+                    env.diag(
+                        Severity::Error,
+                        &inv_env.get_loc(),
+                        "Void loop invariant functions must not call requires or asserts",
+                    );
+                }
+            } else {
                 env.diag(
                     Severity::Error,
                     &inv_env.get_loc(),
@@ -178,6 +196,26 @@ impl MoveLoopInvariantsProcessor {
         }
 
         !env.has_errors()
+    }
+
+    fn has_transitive_call_to(
+        env: &GlobalEnv,
+        func_env: &FunctionEnv,
+        forbidden: &BTreeSet<QualifiedId<FunId>>,
+    ) -> bool {
+        let mut visited = BTreeSet::new();
+        let mut to_visit: Vec<_> = func_env.get_called_functions().into_iter().collect();
+        while let Some(callee) = to_visit.pop() {
+            if forbidden.contains(&callee) {
+                return true;
+            }
+            if !visited.insert(callee) {
+                continue;
+            }
+            let callee_env = env.get_function(callee);
+            to_visit.extend(callee_env.get_called_functions());
+        }
+        false
     }
 
     fn is_assignment_before(offset: usize, var_idx: usize, code: &[Bytecode]) -> bool {
