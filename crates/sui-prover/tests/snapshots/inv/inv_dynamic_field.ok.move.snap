@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:38:1
+   │
+38 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_dynamic_field.ok.move:54: drain_spec
+
+error: unknown assertion failed
+   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:29:1
+   │
+29 │ public fun make_bad(ctx: &mut TxContext): Vault {
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_dynamic_field.ok.move:48: make_bad_spec
