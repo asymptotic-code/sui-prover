@@ -22,7 +22,7 @@ use move_stackless_bytecode::{
     dynamic_field_analysis::{self, NameValueInfo},
     function_target_pipeline::{FunctionTargetsHolder, FunctionVariant},
     mono_analysis::{self, MonoInfo, PureQuantifierHelperInfo},
-    stackless_bytecode::QuantifierHelperType,
+    stackless_bytecode::{Bytecode, Constant, Operation, QuantifierHelperType},
     verification_analysis,
 };
 
@@ -65,6 +65,7 @@ struct QuantifierHelperInfo {
     qht: String,
     name: String,
     pool_id: String,
+    has_pool: bool,
     quantifier_params: String,
     quantifier_args: String,
     result_type: String,
@@ -166,6 +167,35 @@ fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> b
     });
 
     sum_func_inlined || sum_range_func_inlined
+}
+
+/// Collects all pool name strings from `add_quantifier_pool` calls across all functions.
+fn collect_all_pool_names(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> BTreeSet<String> {
+    let all_pool_qids = env.prover_add_quantifier_pool_all_qids();
+    let mut pool_names = BTreeSet::new();
+    for (fun_id, variant) in targets.get_funs_and_variants() {
+        let data = targets.get_data(&fun_id, &variant);
+        if let Some(data) = data {
+            for bc in &data.code {
+                if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _) = bc {
+                    let callee_qid = mid.qualified(*fid);
+                    if all_pool_qids.contains(&callee_qid) {
+                        if let Some(name) = data.code.iter().find_map(|bc2| {
+                            if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc2 {
+                                if *dest == srcs[0] {
+                                    return String::from_utf8(val.clone()).ok();
+                                }
+                            }
+                            None
+                        }) {
+                            pool_names.insert(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pool_names
 }
 
 /// Adds the prelude to the generated output.
@@ -480,12 +510,13 @@ pub fn add_prelude(
         }
     }
 
+    let pool_names = collect_all_pool_names(env, targets);
     context.insert(
         "quantifier_helpers_instances",
         &mono_info
             .quantifier_helpers
             .iter()
-            .map(|info| QuantifierHelperInfo::new(env, info))
+            .map(|info| QuantifierHelperInfo::new(env, info, &pool_names))
             .collect_vec(),
     );
 
@@ -517,7 +548,11 @@ pub fn add_prelude(
 }
 
 impl QuantifierHelperInfo {
-    fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
+    fn new(
+        env: &GlobalEnv,
+        info: &PureQuantifierHelperInfo,
+        pool_names: &BTreeSet<String>,
+    ) -> Self {
         let func_env = env.get_function(info.function);
         let params_types = Type::instantiate_vec(func_env.get_parameter_types(), &info.inst);
 
@@ -572,10 +607,12 @@ impl QuantifierHelperInfo {
 
         let name = boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure);
         let pool_id = name.strip_suffix("$pure").unwrap_or(&name).to_string();
+        let has_pool = pool_names.iter().any(|pn| pool_id.contains(pn.as_str()));
         Self {
             qht: info.qht.str().to_string(),
             name,
             pool_id,
+            has_pool,
             quantifier_params,
             quantifier_args,
             result_type: boogie_type(env, dst_elem_boogie_type),
