@@ -12,7 +12,7 @@ warning: unused function
    │
    = This warning can be suppressed with '#[allow(unused_function)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error: Pure functions cannot abort
+error: Function 'pure_callee_fail::checked_sub' called from a pure function cannot abort
   ┌─ tests/inputs/pure_functions/pure_callee_fail.fail.move:7:5
   │
 7 │     assert!(x >= y, 0);
