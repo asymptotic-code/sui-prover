@@ -738,31 +738,8 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
             );
         }
 
-        for (datatype, datatype_function) in targets.get_datatype_invs() {
-            let func_env = env.get_function(*datatype_function);
-            // disabled use of specs source functions in datatype invariants to prevent infinite recursion during verification
-
-            let mut all_called_funcs = BTreeSet::new();
-            Self::get_called_functions(&func_env, &mut all_called_funcs);
-            all_called_funcs.iter().for_each(|called| {
-                if env.get_function(*called).is_native() {
-                    return;
-                }
-                if let Some(spec) = targets.get_spec_by_fun(&called) {
-                    env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        "Consider avoiding functions with specs in datatype invariants",
-                    );
-                } else if targets.is_spec(&called) {
-                    env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        "Consider avoiding specs in datatype invariants",
-                    );
-                }
-            });
-        }
+        // Note: invariant function callee validation (preventing circular
+        // invariant checks) is handled by TypeInvariantAnalysisProcessor.
 
         data
     }

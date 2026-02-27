@@ -1,5 +1,7 @@
 use codespan_reporting::diagnostic::Severity;
+use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::{
+    ast::Attribute,
     model::{FunctionEnv, FunctionVisibility, GlobalEnv, Loc, ModuleId, StructOrEnumEnv},
     ty::Type,
 };
@@ -182,6 +184,62 @@ fn module_has_invariant_funs(targets: &FunctionTargetsHolder, module_id: ModuleI
         .any(|(_, inv_fun_qid)| inv_fun_qid.module_id == module_id)
 }
 
+fn is_spec_only(func_env: &FunctionEnv) -> bool {
+    func_env
+        .get_toplevel_attributes()
+        .get_(&AttributeKind_::SpecOnly)
+        .is_some()
+}
+
+fn is_test_only(func_env: &FunctionEnv) -> bool {
+    func_env.get_attributes().iter().any(|attr| {
+        matches!(
+            attr,
+            Attribute::Apply(_, name, _) | Attribute::Assign(_, name, _)
+            if name.display(func_env.symbol_pool()).to_string() == "test_only"
+        )
+    })
+}
+
+/// Validate that an invariant function only calls pure, spec_only,
+/// test_only, or other invariant functions from the same module.
+/// Other same-module calls would create circular requires/ensures: the callee
+/// gets invariant instrumentation that depends on the invariant function,
+/// which in turn calls the callee.
+/// Cross-module calls are fine because the module dependency graph is acyclic.
+fn validate_inv_callees(func_env: &FunctionEnv, targets: &FunctionTargetsHolder) {
+    let env = func_env.module_env.env;
+    let module_id = func_env.module_env.get_id();
+
+    for callee_qid in func_env.get_called_functions() {
+        // Only check same-module callees
+        if callee_qid.module_id != module_id {
+            continue;
+        }
+
+        let callee_env = env.get_function(callee_qid);
+        let allowed = targets.is_pure_fun(&callee_qid)
+            || targets.get_datatype_by_inv(&callee_qid).is_some()
+            || is_spec_only(&callee_env)
+            || is_test_only(&callee_env);
+
+        if !allowed {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "Invariant function `{}` calls same-module function `{}` which is not \
+                     pure, spec_only, or test_only. This would create circular invariant \
+                     checks. Mark the callee with `#[ext(pure)]` or move it to a \
+                     different module.",
+                    func_env.get_full_name_str(),
+                    callee_env.get_full_name_str(),
+                ),
+            );
+        }
+    }
+}
+
 impl FunctionTargetProcessor for TypeInvariantAnalysisProcessor {
     fn process(
         &self,
@@ -203,8 +261,9 @@ impl FunctionTargetProcessor for TypeInvariantAnalysisProcessor {
             return data;
         }
 
-        // Skip invariant functions themselves
+        // Skip invariant functions themselves, but validate their callees
         if is_inv_fun {
+            validate_inv_callees(func_env, targets);
             return data;
         }
 
