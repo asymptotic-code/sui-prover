@@ -72,16 +72,8 @@ impl MonoInfo {
         }
 
         if dt_qid == &env.option_qid().unwrap() {
-            // NOTE: We disable this optimization to make extra bpl more flexible.
-            return targets.has_targeted_extra_bpl(env)
-                || self.is_used_datatype_helper(env, targets, dt_qid)
-                || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
-                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
-                || self.is_generated_module(
-                    env,
-                    targets,
-                    &vec![env.vec_set_module_id(), env.vec_map_module_id()],
-                );
+            // NOTE: cover all option usages is too complex, so we just return true.
+            return true;
         } else if dt_qid == &env.vec_map_entry_qid().unwrap()
             || dt_qid == &env.vec_map_qid().unwrap()
         {
