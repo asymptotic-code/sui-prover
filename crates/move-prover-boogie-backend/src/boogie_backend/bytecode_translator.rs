@@ -4403,6 +4403,7 @@ impl<'env> FunctionTranslator<'env> {
                             .parent
                             .targets
                             .is_uninterpreted(&callee_env.get_qualified_id())
+                            || callee_is_pure
                         {
                             for &dest in dests.iter() {
                                 let ty = self.get_local_type(dest);
