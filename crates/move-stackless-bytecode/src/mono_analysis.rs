@@ -619,6 +619,30 @@ impl Analyzer<'_> {
                             .get_target(&callee_env, &FunctionVariant::Baseline),
                         Some(actuals.clone()),
                     );
+                    // Phantom type parameters of native functions don't appear in
+                    // parameter/return types, so add_type won't see them via
+                    // analyze_fun_types. Explicitly add each type argument to ensure
+                    // struct instantiations (e.g. Node<Tick>) are tracked.
+                    for actual in &actuals {
+                        self.add_type(actual);
+                    }
+                    // Dynamic field native functions use Option<V> and Vec<V> in
+                    // their Boogie templates where V is the value type parameter.
+                    // Add these wrapper types so struct declarations are generated.
+                    if callee_env.module_env.get_id()
+                        == self.env.dynamic_field_module_id()
+                    {
+                        if let Some(option_qid) = self.env.option_qid() {
+                            for actual in &actuals {
+                                self.add_type(&Type::Vector(Box::new(actual.clone())));
+                                self.add_type(&Type::Datatype(
+                                    option_qid.module_id,
+                                    option_qid.id,
+                                    vec![actual.clone()],
+                                ));
+                            }
+                        }
+                    }
 
                     if callee_env.get_qualified_id() == self.env.type_inv_qid() {
                         if let Some((dt_qid, tys)) = actuals[0].get_datatype() {

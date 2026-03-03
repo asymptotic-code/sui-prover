@@ -501,10 +501,11 @@ impl FunctionTargetsHolder {
         let env = spec_env.module_env.env;
 
         if matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck) {
-            if !self
+            let is_system = self
                 .package_targets
-                .is_system_spec(&spec_env.get_qualified_id())
-            {
+                .is_system_spec(&spec_env.get_qualified_id());
+            let is_pure_target = self.package_targets.pure_functions().contains(target_id);
+            if !is_system && !is_pure_target {
                 return;
             }
         } else if matches!(self.target, FunctionHolderTarget::All) {

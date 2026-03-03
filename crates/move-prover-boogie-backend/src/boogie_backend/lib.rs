@@ -246,21 +246,59 @@ pub fn add_prelude(
         }
     }
     let mut dynamic_field_instances = vec![];
+    let mut df_types_emitted = BTreeSet::new();
     let uid_qid = env.uid_qid();
-    for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
+    let env_df_info = dynamic_field_analysis::get_env_info(env);
+    for info in env_df_info.dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        if mono_info.is_used_datatype(env, targets, &struct_qid)
-            && mono_info
-                .structs
-                .get(&struct_qid)
-                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
-        {
+        let is_used = mono_info.is_used_datatype(env, targets, &struct_qid);
+        let in_structs = mono_info
+            .structs
+            .get(&struct_qid)
+            .is_some_and(|type_inst_set| type_inst_set.contains(type_inst));
+        if is_used && in_structs && df_types_emitted.insert(info.0.clone()) {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
             ));
             dynamic_field_instances.push(DynamicFieldInfo::object_dynamic_field(
                 env, options, info.0, info.1, false,
             ));
+        }
+        // If the generic type_inst has type parameters, also generate instances
+        // for all concrete instantiations found during mono analysis.
+        if is_used && type_inst.iter().any(|t| t.is_type_parameter()) {
+            if let Some(all_insts) = mono_info.structs.get(&struct_qid) {
+                for concrete_inst in all_insts {
+                    if concrete_inst == type_inst
+                        || concrete_inst.iter().any(|t| t.is_type_parameter())
+                    {
+                        continue;
+                    }
+                    let concrete_type = info.0.instantiate(concrete_inst);
+                    if !df_types_emitted.insert(concrete_type.clone()) {
+                        continue;
+                    }
+                    let concrete_nvis: BTreeSet<_> = info
+                        .1
+                        .iter()
+                        .map(|nvi| nvi.instantiate(concrete_inst))
+                        .collect();
+                    dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
+                        env,
+                        options,
+                        &concrete_type,
+                        &concrete_nvis,
+                        false,
+                    ));
+                    dynamic_field_instances.push(DynamicFieldInfo::object_dynamic_field(
+                        env,
+                        options,
+                        &concrete_type,
+                        &concrete_nvis,
+                        false,
+                    ));
+                }
+            }
         }
     }
 
@@ -304,7 +342,7 @@ pub fn add_prelude(
         let option_env = option_module_env
             .find_struct(env.symbol_pool().make("Option"))
             .unwrap();
-        let option_instances =
+        let mut option_instances =
             if mono_info.is_used_datatype(env, targets, &option_env.get_qualified_id()) {
                 mono_info
                     .structs
@@ -316,6 +354,15 @@ pub fn add_prelude(
             } else {
                 vec![]
             };
+        // Dynamic field templates use Option<V> for remove_if_exists. Ensure the
+        // concrete value types from dynamic field instances are included.
+        for df in &dynamic_field_instances {
+            for (_, value_info) in &df.insts {
+                if !option_instances.contains(value_info) {
+                    option_instances.push(value_info.clone());
+                }
+            }
+        }
         context.insert("option_instances", &option_instances);
     }
 

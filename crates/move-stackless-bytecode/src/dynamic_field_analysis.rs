@@ -57,6 +57,23 @@ impl NameValueInfo {
             NameValueInfo::NameOnly(name) => name,
         }
     }
+
+    pub fn instantiate(&self, type_inst: &[Type]) -> Self {
+        match self {
+            NameValueInfo::NameValue {
+                name,
+                value,
+                is_mut,
+            } => NameValueInfo::NameValue {
+                name: name.instantiate(type_inst),
+                value: value.instantiate(type_inst),
+                is_mut: *is_mut,
+            },
+            NameValueInfo::NameOnly(name) => {
+                NameValueInfo::NameOnly(name.instantiate(type_inst))
+            }
+        }
+    }
 }
 
 impl DynamicFieldInfo {
@@ -92,6 +109,44 @@ impl DynamicFieldInfo {
             .unique()
     }
 
+    /// Like `dynamic_field_names_values`, but if `ty` is a concrete instantiation
+    /// (e.g. `SkipList<Tick>`), also looks up the generic version (e.g. `SkipList<#0>`)
+    /// and returns the name/value info instantiated with the concrete type args.
+    pub fn dynamic_field_names_values_instantiated(
+        &self,
+        ty: &Type,
+    ) -> Vec<(Type, Type)> {
+        // Try direct lookup first
+        if let Some(nvis) = self.dynamic_field_mappings.get(ty) {
+            return nvis
+                .iter()
+                .filter_map(|nvi| nvi.as_name_value())
+                .map(|(n, v)| (n.clone(), v.clone()))
+                .unique()
+                .collect();
+        }
+        // If not found and ty is a concrete datatype, try the generic version.
+        // The analysis always stores generic types with positional type parameters
+        // (#0, #1, ...), so we reconstruct them to look up the generic entry.
+        if let Type::Datatype(mid, did, targs) = ty {
+            if !targs.is_empty() && targs.iter().any(|t| !t.is_type_parameter()) {
+                let generic_targs: Vec<Type> = (0..targs.len())
+                    .map(|i| Type::TypeParameter(i as u16))
+                    .collect();
+                let generic_ty = Type::Datatype(*mid, *did, generic_targs);
+                if let Some(nvis) = self.dynamic_field_mappings.get(&generic_ty) {
+                    return nvis
+                        .iter()
+                        .filter_map(|nvi| nvi.as_name_value())
+                        .map(|(n, v)| (n.instantiate(targs), v.instantiate(targs)))
+                        .unique()
+                        .collect();
+                }
+            }
+        }
+        vec![]
+    }
+
     /// union two DynamicFieldTypeInfo
     pub fn union(&self, other: &Self) -> Self {
         let mut new_info = self.clone();
@@ -117,20 +172,7 @@ impl DynamicFieldInfo {
                         ty.instantiate(type_inst),
                         name_value_set
                             .iter()
-                            .map(|name_value_info| match name_value_info {
-                                NameValueInfo::NameValue {
-                                    name,
-                                    value,
-                                    is_mut,
-                                } => NameValueInfo::NameValue {
-                                    name: name.instantiate(type_inst),
-                                    value: value.instantiate(type_inst),
-                                    is_mut: *is_mut,
-                                },
-                                NameValueInfo::NameOnly(name) => {
-                                    NameValueInfo::NameOnly(name.instantiate(type_inst))
-                                }
-                            })
+                            .map(|nvi| nvi.instantiate(type_inst))
                             .collect(),
                     )
                 })

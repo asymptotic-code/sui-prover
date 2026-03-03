@@ -1406,8 +1406,7 @@ impl<'env> StructTranslator<'env> {
         );
         let dynamic_field_info = dynamic_field_analysis::get_env_info(self.parent.env);
         let dynamic_field_names_values = dynamic_field_info
-            .dynamic_field_names_values(&struct_type)
-            .collect_vec();
+            .dynamic_field_names_values_instantiated(&struct_type);
 
         // Emit data type
         let struct_name = boogie_struct_name(struct_env, self.type_inst);
@@ -3023,8 +3022,7 @@ impl<'env> FunctionTranslator<'env> {
                             let dynamic_field_info =
                                 dynamic_field_analysis::get_env_info(fun_target.global_env());
                             let dynamic_field_names_values = dynamic_field_info
-                                .dynamic_field_names_values(&struct_type)
-                                .collect_vec();
+                                .dynamic_field_names_values_instantiated(&struct_type);
 
                             // Create EmptyTable() arguments for each dynamic field
                             let dynamic_args = dynamic_field_names_values
@@ -4433,8 +4431,7 @@ impl<'env> FunctionTranslator<'env> {
                         let struct_type = Type::Datatype(*mid, *sid, inst.to_owned());
                         let dynamic_field_info = dynamic_field_analysis::get_env_info(env);
                         let dynamic_field_names_values = dynamic_field_info
-                            .dynamic_field_names_values(&struct_type)
-                            .collect_vec();
+                            .dynamic_field_names_values_instantiated(&struct_type);
 
                         // Create EmptyTable() arguments for each dynamic field
                         let dynamic_args = dynamic_field_names_values
