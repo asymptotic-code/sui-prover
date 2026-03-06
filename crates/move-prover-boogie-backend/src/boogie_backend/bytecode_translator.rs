@@ -4344,14 +4344,42 @@ impl<'env> FunctionTranslator<'env> {
 
                                 let call_line = if use_func { "" } else { "call " };
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                // When calling an opaque spec function with function syntax
+                                // and the only output is a &mut src, wrap with $UpdateMutation
+                                // to preserve the mutation path (l and p fields).
+                                // Only the value should change, not the location or path.
+                                let mut_ref_src_only = use_func
+                                    && !use_func_datatypes
+                                    && dests.is_empty()
+                                    && srcs.iter().any(|idx| {
+                                        self.get_local_type(*idx).is_mutable_reference()
+                                    });
+                                if mut_ref_src_only {
+                                    let src_idx = srcs
+                                        .iter()
+                                        .find(|idx| {
+                                            self.get_local_type(**idx).is_mutable_reference()
+                                        })
+                                        .unwrap();
+                                    let src_str = str_local(*src_idx);
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        src_str,
+                                        src_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                } else {
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
                             }
                         }
 
@@ -4387,9 +4415,12 @@ impl<'env> FunctionTranslator<'env> {
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
                                 .for_each(|(idx, val)| {
+                                    // Wrap with $UpdateMutation to preserve the mutation path
+                                    // (l and p fields). Only the value should change.
                                     emitln!(
                                         self.writer(),
-                                        "{} := {} -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                        str_local(*val),
                                         str_local(*val),
                                         func_datatypes_var,
                                         dests.len() + idx
