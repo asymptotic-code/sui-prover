@@ -352,11 +352,15 @@ impl PackageTargets {
                 self.axiom_functions.insert(func_env.get_qualified_id());
             }
 
+            let extra_bpl_paths: &[String] = match extra_bpl {
+                Some(s) => std::slice::from_ref(s),
+                None => &[],
+            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 env,
                 &func_env.get_loc(),
                 func_env.module_env.get_source_path(),
-                extra_bpl,
+                extra_bpl_paths,
             ) {
                 self.function_extra_bpl
                     .insert(func_env.get_qualified_id(), content);
@@ -454,11 +458,15 @@ impl PackageTargets {
                     .insert(func_env.get_qualified_id(), *timeout);
             }
 
+            let extra_bpl_paths: &[String] = match extra_bpl {
+                Some(s) => std::slice::from_ref(s),
+                None => &[],
+            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 env,
                 &func_env.get_loc(),
                 func_env.module_env.get_source_path(),
-                extra_bpl,
+                extra_bpl_paths,
             ) {
                 self.function_extra_bpl
                     .insert(func_env.get_qualified_id(), content);
@@ -805,9 +813,10 @@ impl PackageTargets {
         env: &GlobalEnv,
         loc: &move_model::model::Loc,
         source_path: &std::ffi::OsStr,
-        extra_bpl: &Option<String>,
+        extra_bpl: &[String],
     ) -> Option<String> {
-        if let Some(path_str) = extra_bpl {
+        let mut contents = Vec::new();
+        for path_str in extra_bpl {
             let extra_path = Path::new(path_str);
 
             if extra_path.extension().map_or(true, |ext| ext != "bpl") {
@@ -816,7 +825,7 @@ impl PackageTargets {
                     loc,
                     &format!("extra_bpl path must have .bpl extension: '{}'", path_str),
                 );
-                return None;
+                continue;
             }
 
             let resolved_path = if extra_path.is_absolute() {
@@ -838,11 +847,11 @@ impl PackageTargets {
                         resolved_path.display()
                     ),
                 );
-                return None;
+                continue;
             }
 
             match fs::read_to_string(&resolved_path) {
-                Ok(content) => Some(content),
+                Ok(content) => contents.push(content),
                 Err(err) => {
                     env.diag(
                         Severity::Error,
@@ -853,11 +862,13 @@ impl PackageTargets {
                             err
                         ),
                     );
-                    None
                 }
             }
-        } else {
+        }
+        if contents.is_empty() {
             None
+        } else {
+            Some(contents.join("\n"))
         }
     }
 
@@ -883,11 +894,15 @@ impl PackageTargets {
                     .insert(module_env.get_id(), attrs);
             }
 
+            let extra_bpl_paths: &[String] = match extra_bpl {
+                Some(s) => std::slice::from_ref(s),
+                None => &[],
+            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 module_env.env,
                 &module_env.get_loc(),
                 module_env.get_source_path(),
-                extra_bpl,
+                extra_bpl_paths,
             ) {
                 self.module_extra_bpl.insert(module_env.get_id(), content);
             }
