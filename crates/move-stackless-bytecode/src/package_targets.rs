@@ -808,53 +808,65 @@ impl PackageTargets {
         extra_bpl: &Option<String>,
     ) -> Option<String> {
         if let Some(path_str) = extra_bpl {
-            let extra_path = Path::new(path_str);
+            // Support comma-separated list of .bpl file paths, e.g. "a.bpl,b.bpl"
+            let paths: Vec<&str> = path_str.split(',').map(|s| s.trim()).collect();
+            let mut contents = Vec::new();
 
-            if extra_path.extension().map_or(true, |ext| ext != "bpl") {
-                env.diag(
-                    Severity::Error,
-                    loc,
-                    &format!("extra_bpl path must have .bpl extension: '{}'", path_str),
-                );
-                return None;
-            }
+            for path_entry in paths {
+                let extra_path = Path::new(path_entry);
 
-            let resolved_path = if extra_path.is_absolute() {
-                extra_path.to_path_buf()
-            } else {
-                Path::new(source_path)
-                    .parent()
-                    .map(|p| p.join(extra_path))
-                    .unwrap_or_else(|| extra_path.to_path_buf())
-            };
+                if extra_path.extension().map_or(true, |ext| ext != "bpl") {
+                    env.diag(
+                        Severity::Error,
+                        loc,
+                        &format!("extra_bpl path must have .bpl extension: '{}'", path_entry),
+                    );
+                    return None;
+                }
 
-            if !resolved_path.exists() {
-                env.diag(
-                    Severity::Error,
-                    loc,
-                    &format!(
-                        "extra_bpl path does not exist: '{}' (resolved to '{}')",
-                        path_str,
-                        resolved_path.display()
-                    ),
-                );
-                return None;
-            }
+                let resolved_path = if extra_path.is_absolute() {
+                    extra_path.to_path_buf()
+                } else {
+                    Path::new(source_path)
+                        .parent()
+                        .map(|p| p.join(extra_path))
+                        .unwrap_or_else(|| extra_path.to_path_buf())
+                };
 
-            match fs::read_to_string(&resolved_path) {
-                Ok(content) => Some(content),
-                Err(err) => {
+                if !resolved_path.exists() {
                     env.diag(
                         Severity::Error,
                         loc,
                         &format!(
-                            "failed to read extra_bpl file '{}': {}",
-                            resolved_path.display(),
-                            err
+                            "extra_bpl path does not exist: '{}' (resolved to '{}')",
+                            path_entry,
+                            resolved_path.display()
                         ),
                     );
-                    None
+                    return None;
                 }
+
+                match fs::read_to_string(&resolved_path) {
+                    Ok(content) => contents.push(content),
+                    Err(err) => {
+                        env.diag(
+                            Severity::Error,
+                            loc,
+                            &format!(
+                                "failed to read extra_bpl file '{}': {}",
+                                resolved_path.display(),
+                                err
+                            ),
+                        );
+                        return None;
+                    }
+                }
+            }
+
+            if contents.is_empty() {
+                None
+            } else {
+                Some(contents.join("\n"))
             }
         } else {
             None
