@@ -573,7 +573,11 @@ impl VerificationAnalysisProcessor {
                 let is_verified = targets.is_verified_spec(spec_id);
                 let no_opaque = targets.omits_opaque(spec_id);
                 Self::mark_inlined(&env.get_function(*spec_id), targets);
-                if !is_verified && !no_opaque {
+                if !is_verified
+                    && !no_opaque
+                    && !targets.is_pure_fun(&callee)
+                    && !targets.is_pure_callee(&callee)
+                {
                     Self::mark_reachable(&callee_env, targets);
                     continue;
                 }
