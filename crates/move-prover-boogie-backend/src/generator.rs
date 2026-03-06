@@ -739,7 +739,10 @@ pub async fn verify_boogie(
             types: &types,
         };
         // Check if this spec should run locally even when remote is configured
-        let should_run_local = run_on.as_ref().map(|s| s.as_str() == RUN_ON_LOCAL).unwrap_or(false);
+        let should_run_local = run_on
+            .as_ref()
+            .map(|s| s.as_str() == RUN_ON_LOCAL)
+            .unwrap_or(false);
 
         if options.remote.is_some() && !should_run_local {
             boogie
@@ -751,7 +754,13 @@ pub async fn verify_boogie(
                 )
                 .await?;
         } else {
-            boogie.call_boogie_and_verify_output(&file_name, timeout, boogie_options)?;
+            if options.remote.is_some() {
+                tokio::task::block_in_place(|| {
+                    boogie.call_boogie_and_verify_output(&file_name, timeout, boogie_options)
+                })?;
+            } else {
+                boogie.call_boogie_and_verify_output(&file_name, timeout, boogie_options)?;
+            }
         }
     }
 
