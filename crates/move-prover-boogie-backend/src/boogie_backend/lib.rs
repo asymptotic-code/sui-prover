@@ -103,6 +103,7 @@ struct DynamicFieldInfo {
     fun_borrow: String,
     fun_borrow_mut: String,
     fun_remove: String,
+    fun_remove_if_exists: String,
     fun_exists_with_type: String,
     fun_exists: String,
     fun_exists_inner: String,
@@ -146,20 +147,23 @@ fn bv_helper() -> Vec<BvInfo> {
 }
 
 fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let sum_func_env = env.get_function(env.prover_vec_sum_qid());
-    let sum_func_inlined = targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_func_inlined = env.prover_vec_sum_qid_opt().is_some_and(|qid| {
+        let sum_func_env = env.get_function(qid);
+        targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
-    let sum_range_func_env = env.get_function(env.prover_vec_sum_range_qid());
-    let sum_range_func_inlined = targets
-        .has_target(&sum_range_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_range_func_inlined = env.prover_vec_sum_range_qid_opt().is_some_and(|qid| {
+        let sum_range_func_env = env.get_function(qid);
+        targets.has_target(&sum_range_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
     sum_func_inlined || sum_range_func_inlined
 }
@@ -242,6 +246,7 @@ pub fn add_prelude(
         }
     }
     let mut dynamic_field_instances = vec![];
+    let uid_qid = env.uid_qid();
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
         if mono_info.is_used_datatype(env, targets, &struct_qid)
@@ -260,13 +265,10 @@ pub fn add_prelude(
     }
 
     context.insert("include_vec_sum", &should_include_vec_sum(env, targets));
-    context.insert(
-        "include_vector_iter_range",
-        &targets.has_target(
-            &env.get_function(env.prover_range_qid()),
-            &FunctionVariant::Baseline,
-        ),
-    );
+    let include_vector_iter_range = env
+        .prover_range_qid_opt()
+        .is_some_and(|qid| targets.has_target(&env.get_function(qid), &FunctionVariant::Baseline));
+    context.insert("include_vector_iter_range", &include_vector_iter_range);
 
     // let mut table_instances = mono_info
     //     .table_inst
@@ -515,6 +517,20 @@ pub fn add_prelude(
     Ok(())
 }
 
+fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
+    triple_opt
+        .and_then(|fun_qid| {
+            let fun = env.get_function(fun_qid);
+            Some(format!(
+                "${}_{}_{}",
+                fun.module_env.get_name().addr().to_str_radix(16),
+                fun.module_env.get_name().name().display(fun.symbol_pool()),
+                fun.get_name_str(),
+            ))
+        })
+        .unwrap_or_default()
+}
+
 impl QuantifierHelperInfo {
     fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
         let func_env = env.get_function(info.function);
@@ -640,19 +656,19 @@ impl TableImpl {
                 })
                 .unwrap_or_default()
             {
-                Self::triple_opt_to_name(env, env.table_new_qid())
+                triple_opt_to_name(env, env.table_new_qid())
             } else {
                 "".to_string()
             },
-            fun_add: Self::triple_opt_to_name(env, env.table_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.table_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.table_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.table_remove_qid()),
-            fun_contains: Self::triple_opt_to_name(env, env.table_contains_qid()),
-            fun_length: Self::triple_opt_to_name(env, env.table_length_qid()),
-            fun_is_empty: Self::triple_opt_to_name(env, env.table_is_empty_qid()),
-            fun_destroy_empty: Self::triple_opt_to_name(env, env.table_destroy_empty_qid()),
-            fun_drop: Self::triple_opt_to_name(env, env.table_drop_qid()),
+            fun_add: triple_opt_to_name(env, env.table_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.table_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.table_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.table_remove_qid()),
+            fun_contains: triple_opt_to_name(env, env.table_contains_qid()),
+            fun_length: triple_opt_to_name(env, env.table_length_qid()),
+            fun_is_empty: triple_opt_to_name(env, env.table_is_empty_qid()),
+            fun_destroy_empty: triple_opt_to_name(env, env.table_destroy_empty_qid()),
+            fun_drop: triple_opt_to_name(env, env.table_drop_qid()),
             fun_value_id: "".to_string(),
         }
     }
@@ -697,35 +713,21 @@ impl TableImpl {
                 })
                 .unwrap_or_default()
             {
-                Self::triple_opt_to_name(env, env.object_table_new_qid())
+                triple_opt_to_name(env, env.object_table_new_qid())
             } else {
                 "".to_string()
             },
-            fun_add: Self::triple_opt_to_name(env, env.object_table_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.object_table_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.object_table_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.object_table_remove_qid()),
-            fun_contains: Self::triple_opt_to_name(env, env.object_table_contains_qid()),
-            fun_length: Self::triple_opt_to_name(env, env.object_table_length_qid()),
-            fun_is_empty: Self::triple_opt_to_name(env, env.object_table_is_empty_qid()),
-            fun_destroy_empty: Self::triple_opt_to_name(env, env.object_table_destroy_empty_qid()),
+            fun_add: triple_opt_to_name(env, env.object_table_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.object_table_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.object_table_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.object_table_remove_qid()),
+            fun_contains: triple_opt_to_name(env, env.object_table_contains_qid()),
+            fun_length: triple_opt_to_name(env, env.object_table_length_qid()),
+            fun_is_empty: triple_opt_to_name(env, env.object_table_is_empty_qid()),
+            fun_destroy_empty: triple_opt_to_name(env, env.object_table_destroy_empty_qid()),
             fun_drop: "".to_string(),
-            fun_value_id: Self::triple_opt_to_name(env, env.object_table_value_id_qid()),
+            fun_value_id: triple_opt_to_name(env, env.object_table_value_id_qid()),
         }
-    }
-
-    fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
-        triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
-            })
-            .unwrap_or_default()
     }
 }
 
@@ -759,15 +761,13 @@ impl DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
             key_insts,
-            fun_add: Self::triple_opt_to_name(env, env.dynamic_field_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.dynamic_field_remove_qid()),
-            fun_exists_with_type: Self::triple_opt_to_name(
-                env,
-                env.dynamic_field_exists_with_type_qid(),
-            ),
-            fun_exists: Self::triple_opt_to_name(env, env.dynamic_field_exists_qid()),
+            fun_add: triple_opt_to_name(env, env.dynamic_field_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.dynamic_field_remove_qid()),
+            fun_remove_if_exists: triple_opt_to_name(env, env.dynamic_field_remove_if_exists_qid()),
+            fun_exists_with_type: triple_opt_to_name(env, env.dynamic_field_exists_with_type_qid()),
+            fun_exists: triple_opt_to_name(env, env.dynamic_field_exists_qid()),
             fun_exists_inner: env
                 .dynamic_field_exists_qid()
                 .map(|fun_qid| {
@@ -811,18 +811,16 @@ impl DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
             key_insts,
-            fun_add: Self::triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(
-                env,
-                env.dynamic_object_field_borrow_mut_qid(),
-            ),
-            fun_remove: Self::triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
-            fun_exists_with_type: Self::triple_opt_to_name(
+            fun_add: triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.dynamic_object_field_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
+            fun_remove_if_exists: "".to_string(), // dynamic object field do not support remove_if_exists
+            fun_exists_with_type: triple_opt_to_name(
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
             ),
-            fun_exists: Self::triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
+            fun_exists: triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
             fun_exists_inner: env
                 .dynamic_object_field_exists_qid()
                 .map(|fun_qid| {
@@ -835,19 +833,5 @@ impl DynamicFieldInfo {
                 })
                 .unwrap_or_default(),
         }
-    }
-
-    fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
-        triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
-            })
-            .unwrap_or_default()
     }
 }

@@ -1,7 +1,8 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 287
 expression: output
 ---
 [internal] boogie exited with compilation errors:
-output/multiple_specs/include_external.fail/bar_specs_double_foo_imported_module::bar_spec_Check.bpl(4350,4): Error: call to undeclared procedure: $42_fb_foo
+output/multiple_specs/include_external.fail/bar_specs_double_foo_imported_module::bar_spec_Check.bpl(4363,4): Error: call to undeclared procedure: $42_fb_foo
 1 name resolution errors detected in output/multiple_specs/include_external.fail/bar_specs_double_foo_imported_module::bar_spec_Check.bpl

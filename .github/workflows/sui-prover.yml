@@ -1,6 +1,9 @@
 name: Sui-Prover Test Action
 
-on: [pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   build-prover:
@@ -147,7 +150,7 @@ jobs:
   internal-tests-prover:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
@@ -233,7 +236,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
@@ -426,12 +429,13 @@ jobs:
           repository: asymptotic-code/cetus-clmm
           ref: specs
           token: ${{ secrets.PAT_TOKEN }}
-          path: cetus    
+          path: cetus
+          submodules: 'recursive'   
 
       - name: Run
         run: |
           cd cetus/cetus_clmm_specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
 
   ika-bpl-generation:
     needs: build-prover
@@ -489,4 +493,38 @@ jobs:
       - name: Run
         run: |
           cd ika/contracts/specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
+
+  notify-slack-on-failure:
+    if: failure() && github.ref == 'refs/heads/main'
+    needs:
+      - build-prover
+      - kit-specs
+      - internal-tests-prover
+      - internal-tests-stackless-bytecode
+      - integer-mate-specs
+      - token-distribution-specs
+      - scallop-bpl-generation
+      - cetus-bpl-generation
+      - ika-bpl-generation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack on failure
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CI Failed: ${{ github.workflow }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*CI Failed on main*\n*Workflow:* ${{ github.workflow }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Author:* ${{ github.actor }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
+

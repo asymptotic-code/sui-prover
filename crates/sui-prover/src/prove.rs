@@ -10,11 +10,9 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::{create_and_process_bytecode, run_boogie_gen};
+use move_prover_boogie_backend::generator::run_boogie_gen;
 use move_stackless_bytecode::function_stats;
-use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
-use move_stackless_bytecode::spec_hierarchy;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
 use std::{
     collections::BTreeMap,
@@ -108,6 +106,10 @@ pub struct GeneralConfig {
     #[clap(name = "skip-spec-no-abort", long, global = true)]
     pub skip_spec_no_abort: bool,
 
+    /// Skip checking external functions that do not abort
+    #[clap(name = "skip-fun-no-abort", long, global = true)]
+    pub skip_fun_no_abort: bool,
+
     /// Dump control-flow graphs to file
     #[clap(name = "stats", long, global = false)]
     pub stats: bool,
@@ -115,6 +117,10 @@ pub struct GeneralConfig {
     /// Whether to enable CI mode for continuous integration environments
     #[clap(name = "ci", long, global = false)]
     pub ci: bool,
+
+    /// Stream Boogie trace output in real time (passes -trace -traceverify to Boogie)
+    #[clap(name = "trace", long, global = true)]
+    pub trace: bool,
 }
 
 #[derive(Args, Default)]
@@ -165,7 +171,7 @@ pub async fn execute(
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
-    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci);
+    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci, None);
 
     general_config.skip_spec_no_abort = general_config.skip_spec_no_abort
         || package_targets.has_focus_specs()
@@ -174,22 +180,6 @@ pub async fn execute(
     if general_config.stats {
         function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
-    } else if general_config.dump_bytecode {
-        let mut options = move_prover_boogie_backend::generator_options::Options::default();
-        options.filter = filter.clone();
-        let (targets, _) = create_and_process_bytecode(
-            &options,
-            &model,
-            &package_targets,
-            FunctionHolderTarget::All,
-        );
-
-        let output_dir = std::path::Path::new(&options.output_path);
-        if !output_dir.exists() {
-            std::fs::create_dir_all(output_dir)?;
-        }
-
-        spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
     }
 
     execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
@@ -229,9 +219,11 @@ async fn execute_backend_boogie(
         general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.prover.skip_fun_no_abort = general_config.skip_fun_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
     options.backend.ci = general_config.ci;
     options.prover.ci = general_config.ci;
+    options.backend.trace = general_config.trace;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();

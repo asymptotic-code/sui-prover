@@ -86,7 +86,12 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     // TODO: delete duplicate diagnostics reporting
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let targets = PackageTargets::new(&env, options.filter.clone(), !options.prover.ci);
+    let targets = PackageTargets::new(
+        &env,
+        options.filter.clone(),
+        !options.prover.ci,
+        options.backend.prelude_extra.as_deref(),
+    );
 
     // Until this point, prover and docgen have same code. Here we part ways.
     if options.run_docgen {
@@ -199,6 +204,10 @@ async fn run_prover_abort_check<W: WriteColor>(
     opt: &Options,
     package_targets: &PackageTargets,
 ) -> anyhow::Result<bool> {
+    if opt.prover.skip_fun_no_abort {
+        return Ok(false);
+    }
+
     let mut options = opt.clone();
     options.backend.func_abort_check_only = true;
 
@@ -280,7 +289,9 @@ async fn run_prover_abort_check<W: WriteColor>(
         return Ok(true);
     }
 
-    print!("\x1B[1A\x1B[2K");
+    if !options.backend.trace {
+        print!("\x1B[1A\x1B[2K");
+    }
     if elapsed.as_secs() > 1 {
         println!("✅ {} ({}s)", file_name, elapsed.as_secs());
     } else {
@@ -307,6 +318,8 @@ fn generate_function_bpl<W: WriteColor>(
     );
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
+
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
 
     check_errors(
         env,
@@ -338,11 +351,22 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
+    let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
+    // When --trace is active, ensure vcsSplitOnEveryAssert and vcsCores:1
+    // are present so the trace display can show per-assertion progress.
+    if options.backend.trace {
+        let extra = "vcsSplitOnEveryAssert vcsCores:1";
+        boogie_options = Some(match boogie_options {
+            Some(existing) => format!("{} {}", existing, extra),
+            None => extra.to_string(),
+        });
+    }
+
     Ok(FileOptions {
         file_name,
         code_writer,
         types,
-        boogie_options: targets.get_spec_boogie_options(qid).cloned(),
+        boogie_options,
         timeout: targets.get_spec_timeout(qid).cloned(),
         run_on: targets.get_spec_run_on(qid).cloned(),
         targets,
@@ -365,9 +389,15 @@ fn generate_module_bpl<W: WriteColor>(
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
     );
-    let target_type = FunctionHolderTarget::Module(*mid);
+    let target_type = if asserts_mode == AssertsMode::SpecNoAbortCheck {
+        FunctionHolderTarget::SpecNoAbortCheck(*mid)
+    } else {
+        FunctionHolderTarget::Module(*mid)
+    };
 
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
+
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
 
     check_errors(
         env,
@@ -438,7 +468,7 @@ async fn verify_bpl<W: WriteColor>(
     if is_error {
         println!("❌ {} ({:.1}s)", file.file_name, elapsed.as_secs_f64());
     } else {
-        if options.remote.is_none() {
+        if options.remote.is_none() && !options.backend.trace {
             print!("\x1B[1A\x1B[2K");
         }
         if elapsed.as_secs() > 1 {
@@ -726,6 +756,20 @@ pub async fn verify_boogie(
     }
 
     Ok(())
+}
+
+/// Write spec hierarchy log files for all specs in the given targets.
+/// Only writes during `AssertsMode::Check` to avoid duplicate writes.
+fn write_spec_hierarchy_logs(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    options: &Options,
+    asserts_mode: AssertsMode,
+) {
+    if asserts_mode == AssertsMode::Check {
+        let output_dir = Path::new(&options.output_path);
+        spec_hierarchy::display_spec_hierarchy(env, targets, output_dir);
+    }
 }
 
 /// Create bytecode and process it.

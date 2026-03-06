@@ -31,6 +31,7 @@ use crate::{
 pub enum FunctionHolderTarget {
     All,
     FunctionsAbortCheck,
+    SpecNoAbortCheck(ModuleId),
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -207,6 +208,10 @@ impl FunctionTargetsHolder {
         matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
     }
 
+    pub fn spec_no_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::SpecNoAbortCheck(..))
+    }
+
     /// Get an iterator for all functions this holder.
     pub fn get_funs(&self) -> impl Iterator<Item = QualifiedId<FunId>> + '_ {
         self.targets.keys().cloned()
@@ -234,6 +239,9 @@ impl FunctionTargetsHolder {
             FunctionHolderTarget::All => true,
             FunctionHolderTarget::FunctionsAbortCheck => {
                 self.package_targets.abort_check_functions().contains(id)
+            }
+            FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                id.module_id == mid && self.package_targets.no_verify_specs().contains(id)
             }
             FunctionHolderTarget::Function(qid) => id == &qid,
             FunctionHolderTarget::Module(mid) => id.module_id == mid,
@@ -288,6 +296,14 @@ impl FunctionTargetsHolder {
 
     pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.pure_functions().contains(id)
+    }
+
+    pub fn is_pure_callee(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.pure_callees().contains(id)
+    }
+
+    pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
+        self.package_targets.add_pure_callee(id);
     }
 
     pub fn is_axiom_fun(&self, id: &QualifiedId<FunId>) -> bool {
@@ -375,6 +391,40 @@ impl FunctionTargetsHolder {
     ) -> bool {
         self.package_targets
             .is_uninterpreted_for_spec(spec_id, callee_id)
+    }
+
+    fn has_extra_bpl(&self, env: &GlobalEnv, mid: &ModuleId) -> bool {
+        if self.package_targets.get_module_extra_bpl(mid).is_some() {
+            return true;
+        }
+        for fun in env.get_module(*mid).get_functions() {
+            if self
+                .package_targets
+                .get_function_extra_bpl(&fun.get_qualified_id())
+                .is_some()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn has_targeted_extra_bpl(&self, env: &GlobalEnv) -> bool {
+        match self.target {
+            FunctionHolderTarget::All => self.package_targets.prelude_extra_exists(),
+            FunctionHolderTarget::FunctionsAbortCheck => {
+                self.package_targets.prelude_extra_exists()
+            }
+            FunctionHolderTarget::SpecNoAbortCheck(mid) => self.has_extra_bpl(env, &mid),
+            FunctionHolderTarget::Function(qid) => {
+                self.package_targets.get_function_extra_bpl(&qid).is_some()
+                    || self
+                        .package_targets
+                        .get_module_extra_bpl(&qid.module_id)
+                        .is_some()
+            }
+            FunctionHolderTarget::Module(mid) => self.has_extra_bpl(env, &mid),
+        }
     }
 
     // Checks if a function is marked as uninterpreted by all verified specs.
@@ -475,13 +525,15 @@ impl FunctionTargetsHolder {
                     ),
                     qid.module_id,
                 ),
-                FunctionHolderTarget::Module(mid) => (
-                    self.package_targets.is_belongs_to_module_explicit_specs(
-                        &env.get_module(mid),
-                        spec_env.get_qualified_id(),
-                    ),
-                    mid,
-                ),
+                FunctionHolderTarget::Module(mid) | FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                    (
+                        self.package_targets.is_belongs_to_module_explicit_specs(
+                            &env.get_module(mid),
+                            spec_env.get_qualified_id(),
+                        ),
+                        mid,
+                    )
+                }
                 FunctionHolderTarget::FunctionsAbortCheck | FunctionHolderTarget::All => {
                     unreachable!()
                 }
@@ -499,6 +551,12 @@ impl FunctionTargetsHolder {
 
         if let Some(qid) = self.function_specs.get_by_right(&target_id) {
             if !self.package_targets.is_system_spec(qid) {
+                if self
+                    .package_targets
+                    .is_system_spec(&spec_env.get_qualified_id())
+                {
+                    return;
+                }
                 env.diag(
                     Severity::Error,
                     &spec_env.get_loc(),

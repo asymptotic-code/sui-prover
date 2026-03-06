@@ -31,6 +31,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    pure_callees: BTreeSet<QualifiedId<FunId>>,
     axiom_functions: BTreeSet<QualifiedId<FunId>>,
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
@@ -49,6 +50,8 @@ pub struct PackageTargets {
         BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
     module_extra_bpl: BTreeMap<ModuleId, String>,
     function_extra_bpl: BTreeMap<QualifiedId<FunId>, String>,
+    /// True when the default/prelude extra BPL file (e.g. prelude_extra option) exists.
+    prelude_extra_exists: bool,
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
@@ -57,11 +60,18 @@ pub struct PackageTargets {
 }
 
 impl PackageTargets {
-    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions, allow_focus_attr: bool) -> Self {
+    pub fn new(
+        env: &GlobalEnv,
+        filter: TargetFilterOptions,
+        allow_focus_attr: bool,
+        prelude_extra_path: Option<&Path>,
+    ) -> Self {
+        let prelude_extra_exists = prelude_extra_path.map(|p| p.exists()).unwrap_or(false);
         let mut s = Self {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            pure_callees: BTreeSet::new(),
             axiom_functions: BTreeSet::new(),
             target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
@@ -79,6 +89,7 @@ impl PackageTargets {
             function_external_attributes: BTreeMap::new(),
             module_extra_bpl: BTreeMap::new(),
             function_extra_bpl: BTreeMap::new(),
+            prelude_extra_exists,
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
@@ -417,6 +428,7 @@ impl PackageTargets {
             explicit_specs,
             extra_bpl,
             uninterpreted: _,
+            ..
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -605,6 +617,7 @@ impl PackageTargets {
             explicit_specs: _,
             extra_bpl: _,
             uninterpreted,
+            ..
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -617,10 +630,12 @@ impl PackageTargets {
                             if let Some(target_func_env) =
                                 target_module_env.find_function(env.symbol_pool().make(&fun_name))
                             {
-                                // Validate that the target is a pure function
+                                // Validate that the target is a pure function or a known native function
                                 if !self
                                     .pure_functions
                                     .contains(&target_func_env.get_qualified_id())
+                                    && !env
+                                        .should_be_used_as_func(&target_func_env.get_qualified_id())
                                 {
                                     env.diag(
                                         Severity::Error,
@@ -968,6 +983,14 @@ impl PackageTargets {
         &self.pure_functions
     }
 
+    pub fn pure_callees(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.pure_callees
+    }
+
+    pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
+        self.pure_callees.insert(id);
+    }
+
     pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.axiom_functions
     }
@@ -1012,6 +1035,10 @@ impl PackageTargets {
 
     pub fn get_function_extra_bpl(&self, func_id: &QualifiedId<FunId>) -> Option<&String> {
         self.function_extra_bpl.get(func_id)
+    }
+
+    pub fn prelude_extra_exists(&self) -> bool {
+        self.prelude_extra_exists
     }
 
     pub fn get_uninterpreted_functions(

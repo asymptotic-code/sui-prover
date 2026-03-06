@@ -1,0 +1,19 @@
+{
+  "name": "sui-prover",
+  "description": "Formal verification for Sui Move smart contracts",
+  "owner": {
+    "name": "Asymptotic",
+    "email": "audit@asymptotic.tech"
+  },
+  "plugins": [
+    {
+      "name": "sui-prover",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/asymptotic-code/sui-prover.git"
+      },
+      "description": "Formal verification for Sui Move smart contracts. Write specifications, run the prover, debug verification failures, and understand results.",
+      "version": "0.1.0"
+    }
+  ]
+}

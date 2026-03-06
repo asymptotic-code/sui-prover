@@ -31,8 +31,11 @@ impl QuantifierPattern {
         }
     }
 
-    pub fn all_patterns(env: &GlobalEnv) -> [QuantifierPattern; 21] {
-        [
+    pub fn all_patterns(env: &GlobalEnv) -> Vec<QuantifierPattern> {
+        if !env.has_prover_vector_module() {
+            return vec![];
+        }
+        vec![
             QuantifierPattern::new(
                 env.prover_begin_forall_lambda_qid(),
                 env.prover_end_forall_lambda_qid(),

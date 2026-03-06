@@ -209,6 +209,90 @@ impl<'env> BoogieTranslator<'env> {
         emitln!(self.writer);
     }
 
+    /// Emit a bodyless `function $name$pure(params) returns (rets);` for a native
+    /// uninterpreted function that has no FunctionTarget data.
+    fn emit_uninterpreted_native_pure(&self, fun_env: &FunctionEnv, inst: &[Type]) {
+        let func_name = boogie_function_name(fun_env, inst, FunctionTranslationStyle::Pure);
+
+        let params = fun_env
+            .get_parameter_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
+                format!("$t{}: {}", idx, boogie_type(self.env, ty.skip_reference()))
+            })
+            .join(", ");
+
+        let rets = fun_env
+            .get_return_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
+                format!(
+                    "$ret{}: {}",
+                    idx,
+                    boogie_type(self.env, ty.skip_reference())
+                )
+            })
+            .join(", ");
+
+        emitln!(
+            self.writer,
+            "function {}({}) returns ({});",
+            func_name,
+            params,
+            rets,
+        );
+        emitln!(self.writer);
+    }
+
+    /// Emit uninterpreted Boogie function declarations for std::type_name native functions.
+    /// These allow type_name functions to be used in quantifiers.
+    fn emit_type_name_functions(&self, fun_env: &FunctionEnv, mono_info: &MonoInfo) {
+        let type_name_fns = [
+            self.env.std_type_name_with_defining_ids_qid(),
+            self.env.std_type_name_with_original_ids_qid(),
+            self.env.std_type_name_defining_id_qid(),
+            self.env.std_type_name_original_id_qid(),
+        ];
+        if !type_name_fns
+            .into_iter()
+            .flatten()
+            .any(|id| id == fun_env.get_qualified_id())
+        {
+            return;
+        }
+
+        let empty = &BTreeSet::new();
+        for type_inst in mono_info
+            .funs
+            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+            .unwrap_or(empty)
+        {
+            emitln!(
+                self.writer,
+                "function {}() returns ({});",
+                boogie_function_name(fun_env, type_inst, FunctionTranslationStyle::Default),
+                fun_env
+                    .get_return_types()
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, ty)| {
+                        let ty = ty.instantiate(type_inst);
+                        format!(
+                            "$ret{}: {}",
+                            idx,
+                            boogie_type(self.env, ty.skip_reference())
+                        )
+                    })
+                    .join(", "),
+            );
+            emitln!(self.writer);
+        }
+    }
+
     // Generate object::borrow_uid function
     fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
         emitln!(
@@ -415,10 +499,45 @@ impl<'env> BoogieTranslator<'env> {
 
             for ref fun_env in module_env.get_functions() {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    if self.targets.is_uninterpreted(&fun_env.get_qualified_id()) {
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
+                    }
+                    self.emit_type_name_functions(fun_env, &mono_info);
                     continue;
                 }
 
                 self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+
+                // translate_function_style(Pure) only emits $pure declarations
+                // for functions that are "inlined" per verification analysis.
+                // For pure functions that aren't inlined (e.g., from dependency
+                // packages), call sites still use type-instantiated $pure names.
+                // Emit bodyless $pure declarations so Boogie can resolve them.
+                if self.targets.is_pure_fun(&fun_env.get_qualified_id())
+                    || self.targets.is_pure_callee(&fun_env.get_qualified_id())
+                {
+                    let has_baseline = self.targets.has_target(fun_env, &FunctionVariant::Baseline);
+                    let is_inlined = has_baseline
+                        && verification_analysis::get_info(
+                            &self.targets.get_target(fun_env, &FunctionVariant::Baseline),
+                        )
+                        .inlined;
+                    if !is_inlined {
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
+                    }
+                }
 
                 if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
                     self.generate_axiom_function(fun_env);
@@ -970,14 +1089,12 @@ impl<'env> BoogieTranslator<'env> {
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
-            if !self
-                .targets
-                .is_pure_fun(&fun_target.func_env.get_qualified_id())
-                && !self
-                    .targets
-                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
+            let qid = fun_target.func_env.get_qualified_id();
+            if !self.targets.is_pure_fun(&qid)
+                && !self.targets.is_pure_callee(&qid)
+                && !self.targets.is_axiom_fun(&qid)
             {
-                return; // Only emit if #[ext(pure)] is present
+                return; // Only emit if pure, pure callee, or axiom
             }
         }
         match style {
@@ -1064,15 +1181,27 @@ impl<'env> BoogieTranslator<'env> {
 
         let target = self.targets.get_target(fun_env, &variant);
 
+        let env = fun_env.module_env.env;
+        let ensures_function = Operation::apply_fun_qid(&env.ensures_qid(), vec![]);
+        let requires_function = Operation::apply_fun_qid(&env.requires_qid(), vec![]);
+        let asserts_function = Operation::apply_fun_qid(&env.asserts_qid(), vec![]);
+        let ensures_asserts_to_requires_subst = BTreeMap::from_iter(vec![
+            (ensures_function, requires_function.clone()),
+            (asserts_function, requires_function),
+        ]);
+
         let mut builder = FunctionDataBuilder::new(target.func_env, target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
         for bc in code.into_iter() {
             match bc {
-                _ => builder.emit(bc.update_abort_action(|aa| match aa {
-                    Some(AbortAction::Check) => Some(AbortAction::Check),
-                    None => None,
-                })),
+                _ => builder.emit(
+                    bc.substitute_operations(&ensures_asserts_to_requires_subst)
+                        .update_abort_action(|aa| match aa {
+                            Some(AbortAction::Check) => Some(AbortAction::Check),
+                            None => None,
+                        }),
+                ),
             }
         }
 
@@ -2128,9 +2257,10 @@ impl<'env> FunctionTranslator<'env> {
         let writer = self.parent.writer;
         let options = self.parent.options;
         let fun_target = self.fun_target;
-        let (args, prerets) = self.generate_function_args_and_returns(false);
-
         let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
+        let needs_pure_datatype =
+            emit_pure_in_place && self.fun_target.func_env.get_return_count() > 1;
+        let (args, prerets) = self.generate_function_args_and_returns(needs_pure_datatype);
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
@@ -2199,6 +2329,16 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "");
         }
 
+        // For SpecNoAbortCheck style in func_abort_check_only mode, we may need to declare the
+        // opaque return datatype if the function returns multiple values (or has mutable references).
+        if self.style == FunctionTranslationStyle::SpecNoAbortCheck
+            && self.should_use_temp_datatypes()
+            && options.func_abort_check_only
+        {
+            // Trigger datatype declaration by calling generate_function_args_and_returns with true
+            let _ = self.generate_function_args_and_returns(true);
+        }
+
         let prefix = if emit_pure_in_place {
             "function"
         } else {
@@ -2216,10 +2356,12 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn wrap_return_datatype_name(&self) -> String {
-        format!(
-            "{}_opaque_return_type",
-            self.function_variant_name(FunctionTranslationStyle::Opaque)
-        )
+        let style = if self.style == FunctionTranslationStyle::Pure {
+            FunctionTranslationStyle::Pure
+        } else {
+            FunctionTranslationStyle::Opaque
+        };
+        format!("{}_opaque_return_type", self.function_variant_name(style))
     }
 
     fn wrap_return_arg_in_tuple_datatype(&self, args: String) -> String {
@@ -2447,6 +2589,38 @@ impl<'env> FunctionTranslator<'env> {
                     "var $temp_opaque_res_var: {};",
                     self.wrap_return_datatype_name(),
                 );
+            }
+
+            // Declare temp variables for calls to multi-return pure functions
+            {
+                let mut seen = BTreeSet::new();
+                for bc in fun_target.get_bytecode() {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, inst), _, _) = bc {
+                        let qid = mid.qualified(*fid);
+                        if self.parent.targets.is_pure_fun(&qid)
+                            || self.parent.targets.is_pure_callee(&qid)
+                        {
+                            let callee_env = env.get_function(qid);
+                            if callee_env.get_return_count() > 1 {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                if seen.insert(callee_name.clone()) {
+                                    let dt_name = format!("{}_opaque_return_type", callee_name);
+                                    emitln!(
+                                        writer,
+                                        "var $temp_pure_res_{}: {};",
+                                        callee_name,
+                                        dt_name,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             self.create_quantifiers_temp_vars();
@@ -2691,7 +2865,8 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
-        self.parent.targets.is_pure_fun(&mid.qualified(*fid))
+        let qid = mid.qualified(*fid);
+        self.parent.targets.is_pure_fun(&qid) || self.parent.targets.is_pure_callee(&qid)
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -2731,6 +2906,7 @@ impl<'env> FunctionTranslator<'env> {
         // Collect straightline assignments and operations
         let mut bindings = Vec::new();
         let mut final_return_temp = None;
+        let mut final_return_expr: Option<String> = None;
 
         // Small helper for infix mapping (arity-checked)
         let op_symbol = |op: &Operation| -> Option<(&'static str, usize)> {
@@ -2793,7 +2969,12 @@ impl<'env> FunctionTranslator<'env> {
                                 let fun_name = boogie_function_name(
                                     &callee_env,
                                     inst,
-                                    if native_fn {
+                                    if native_fn
+                                        && !self
+                                            .parent
+                                            .targets
+                                            .is_uninterpreted(&mid.qualified(*fid))
+                                    {
                                         FunctionTranslationStyle::Default
                                     } else {
                                         FunctionTranslationStyle::Pure
@@ -2939,6 +3120,11 @@ impl<'env> FunctionTranslator<'env> {
                 Ret(_, srcs) => {
                     if let [src] = srcs.as_slice() {
                         final_return_temp = Some(*src);
+                    } else if srcs.len() > 1 {
+                        // Multi-return: wrap in tuple datatype
+                        let name = self.wrap_return_datatype_name();
+                        let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                        final_return_expr = Some(format!("{}({})", name, args));
                     }
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
@@ -2956,6 +3142,8 @@ impl<'env> FunctionTranslator<'env> {
             // No bindings, just return the value
             if let Some(return_temp) = final_return_temp {
                 emitln!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emitln!(writer, "{}", expr);
             } else {
                 panic!("expected Some return value");
             }
@@ -2968,6 +3156,8 @@ impl<'env> FunctionTranslator<'env> {
             // Emit return value
             if let Some(return_temp) = final_return_temp {
                 emit!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emit!(writer, "{}", expr);
             } else if let Some((last_dest, _)) = bindings.last() {
                 emit!(writer, "$t{}", last_dest);
             } else {
@@ -3810,7 +4000,7 @@ impl<'env> FunctionTranslator<'env> {
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
                         // Check if callee is marked as pure
-                        let callee_is_pure = self.can_callee_be_function(mid, fid);
+                        let callee_is_pure = self.parent.targets.is_pure_fun(&mid.qualified(*fid));
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
@@ -3824,10 +4014,29 @@ impl<'env> FunctionTranslator<'env> {
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
                         if callee_is_pure {
                             use_func = true;
+                            if callee_env.get_return_count() > 1 {
+                                use_func_datatypes = true;
+                            }
                         }
 
+                        let func_datatypes_var = if use_func_datatypes {
+                            if callee_is_pure {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                format!("$temp_pure_res_{}", callee_name)
+                            } else {
+                                "$temp_opaque_res_var".to_string()
+                            }
+                        } else {
+                            String::new()
+                        };
+
                         let dest_str = if use_func_datatypes {
-                            "$temp_opaque_res_var".to_string()
+                            func_datatypes_var.clone()
                         } else {
                             dests
                                 .iter()
@@ -3871,10 +4080,18 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
+                            let secondary = if let Some((sec_loc, sec_msg)) =
+                                fun_target.get_secondary_label(attr_id)
+                            {
+                                format!(" @{{{}:{}}}", self.loc_str(sec_loc), sec_msg)
+                            } else {
+                                String::new()
+                            };
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold\"}} {};",
+                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
+                                secondary,
                                 args_str,
                             );
                             processed = true;
@@ -3946,6 +4163,11 @@ impl<'env> FunctionTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             );
 
+                            // Native functions from native_fn_ids() use their base Boogie function name
+                            // (no $pure/$impl suffix) as they have hardcoded definitions in prelude
+                            let is_native_fn =
+                                env.should_be_used_as_func(&callee_env.get_qualified_id());
+
                             if is_spec_call {
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
@@ -3954,7 +4176,9 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    if self.parent.targets.is_pure_fun(&QualifiedId {
+                                    if is_native_fn {
+                                        // Native functions use base name (no suffix)
+                                    } else if self.parent.targets.is_pure_fun(&QualifiedId {
                                         module_id: *mid,
                                         id: *fid,
                                     }) {
@@ -3966,23 +4190,34 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
                                     fun_name = format!("{}{}", fun_name, "$opaque");
                                 } else if self.style == FunctionTranslationStyle::Opaque {
-                                    let suffix = if use_impl {
-                                        if self.parent.targets.is_pure_fun(&QualifiedId {
-                                            module_id: *mid,
-                                            id: *fid,
-                                        }) {
-                                            "$pure"
+                                    if !is_native_fn {
+                                        let suffix = if use_impl {
+                                            if self.parent.targets.is_pure_fun(&QualifiedId {
+                                                module_id: *mid,
+                                                id: *fid,
+                                            }) {
+                                                "$pure"
+                                            } else {
+                                                "$impl"
+                                            }
                                         } else {
-                                            "$impl"
-                                        }
-                                    } else {
-                                        "$opaque"
-                                    };
-                                    fun_name = format!("{}{}", fun_name, suffix);
+                                            "$opaque"
+                                        };
+                                        fun_name = format!("{}{}", fun_name, suffix);
+                                    }
                                 }
-                            } else if !is_spec_call && use_func && callee_is_pure {
+                            } else if !is_spec_call && use_func && callee_is_pure && !is_native_fn {
                                 // For non-spec calls using function syntax to pure functions,
                                 // add $pure suffix (regardless of current style)
+                                // But not for native functions which use their base name
+                                fun_name = format!("{}{}", fun_name, "$pure");
+                            } else if is_native_fn
+                                && self
+                                    .parent
+                                    .targets
+                                    .is_uninterpreted(&callee_env.get_qualified_id())
+                            {
+                                // Uninterpreted native functions use $pure suffix
                                 fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
@@ -4142,8 +4377,9 @@ impl<'env> FunctionTranslator<'env> {
                             dests.iter().enumerate().for_each(|(idx, val)| {
                                 emitln!(
                                     self.writer(),
-                                    "{} := $temp_opaque_res_var -> $ret{};",
+                                    "{} := {} -> $ret{};",
                                     str_local(*val),
+                                    func_datatypes_var,
                                     idx
                                 )
                             });
@@ -4153,11 +4389,33 @@ impl<'env> FunctionTranslator<'env> {
                                 .for_each(|(idx, val)| {
                                     emitln!(
                                         self.writer(),
-                                        "{} := $temp_opaque_res_var -> $ret{};",
+                                        "{} := {} -> $ret{};",
                                         str_local(*val),
+                                        func_datatypes_var,
                                         dests.len() + idx
                                     )
                                 });
+                        }
+
+                        // For uninterpreted functions, assume return values are valid
+                        // since Z3 has no information about the return type constraints.
+                        if self
+                            .parent
+                            .targets
+                            .is_uninterpreted(&callee_env.get_qualified_id())
+                            || callee_is_pure
+                        {
+                            for &dest in dests.iter() {
+                                let ty = self.get_local_type(dest);
+                                if !ty.is_mutable_reference() {
+                                    emitln!(
+                                        self.writer(),
+                                        "assume $IsValid'{}'({});",
+                                        boogie_type_suffix(env, &ty),
+                                        str_local(dest)
+                                    );
+                                }
+                            }
                         }
 
                         // Clear the last track location after function call, as the call inserted

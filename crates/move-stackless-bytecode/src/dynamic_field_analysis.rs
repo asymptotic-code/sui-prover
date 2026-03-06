@@ -235,11 +235,6 @@ fn collect_dynamic_field_info(
             .module_env
             .env
             .dynamic_object_field_remove_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_remove_if_exists_qid(),
     ]
     .into_iter()
     .filter_map(|x| x)

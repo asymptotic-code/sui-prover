@@ -77,6 +77,10 @@ pub struct FunctionData {
     /// A map from byte code attribute to a message to be printed out if verification
     /// fails at this bytecode.
     pub vc_infos: BTreeMap<AttrId, String>,
+    /// A map from byte code attribute to secondary labels for diagnostics.
+    /// Each entry is a (location, message) pair shown as a secondary label when
+    /// verification fails at this bytecode.
+    pub secondary_labels: BTreeMap<AttrId, (Loc, String)>,
     /// Annotations associated with this function. This is shared between multiple function
     /// variants.
     pub annotations: Annotations,
@@ -147,6 +151,11 @@ impl<'env> FunctionTarget<'env> {
     /// Returns the verification condition message, if any, associated with the given attribute.
     pub fn get_vc_info(&self, attr_id: AttrId) -> Option<&String> {
         self.data.vc_infos.get(&attr_id)
+    }
+
+    /// Returns the secondary label, if any, associated with the given attribute.
+    pub fn get_secondary_label(&self, attr_id: AttrId) -> Option<&(Loc, String)> {
+        self.data.secondary_labels.get(&attr_id)
     }
 
     /// Returns true if this function is opaque.
@@ -419,6 +428,7 @@ impl FunctionData {
             loop_invariants,
             debug_comments: Default::default(),
             vc_infos: Default::default(),
+            secondary_labels: Default::default(),
             annotations: Default::default(),
             name_to_index,
             modify_targets,

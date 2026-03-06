@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: Void loop invariant functions must not call requires or asserts
+   ┌─ tests/inputs/loop_invariant/external_void_with_requires.fail.move:7:1
+   │  
+ 7 │ ╭ fun loop_inv(i: u64, n: u64) {
+ 8 │ │     requires(i <= n);
+ 9 │ │     ensures(i <= n);
+10 │ │ }
+   │ ╰─^

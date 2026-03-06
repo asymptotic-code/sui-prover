@@ -9,7 +9,7 @@ use move_prover_boogie_backend::{
 use regex::Regex;
 use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
-use sui_prover::build_model::move_model_for_package_legacy;
+use sui_prover::build_model::move_model_for_package_legacy_unlocked;
 use sui_prover::prove::DEFAULT_EXECUTION_TIMEOUT_SECONDS;
 
 /// Runs the prover on the given file path and returns the output as a string
@@ -105,8 +105,8 @@ integration-test = "0x9"
         config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
         config.skip_fetch_latest_git_deps = true;
 
-        // Try to build the model
-        let result = match move_model_for_package_legacy(config, tmp_dir) {
+        // Try to build the model (using unlocked version for parallel test execution)
+        let result = match move_model_for_package_legacy_unlocked(config, tmp_dir) {
             Ok(model) => {
                 // Create prover options
                 let mut options = Options::default();
@@ -181,6 +181,16 @@ fn post_process_output(output: String, sources_dir: PathBuf) -> String {
         .parent()
         .unwrap();
     let output = output.replace(&format!("{}", base_dir.display()), "tests/../../..");
+
+    // Normalize .move cache directory paths to avoid CI runner differences
+    // Replace paths like /Users/runner/.move/... or /home/user/.move/... with a normalized path
+    let re_move_cache = Regex::new(r"(?:/Users/[^/]+|/home/[^/]+)/\.move/").unwrap();
+    let output = re_move_cache.replace_all(&output, "/NORMALIZED_HOME/.move/");
+
+    // Normalize git branch names in .move cache paths (e.g., _git_more, _git_next, _git_main)
+    // This handles paths like: /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_XXX/
+    let re_git_branch = Regex::new(r"(https___github_com_[^/]+_sui)_git_[^/]+/").unwrap();
+    let output = re_git_branch.replace_all(&output, "${1}_git_NORMALIZED/");
 
     // Use regex to replace numbers with more than one digit followed by u64 with ELIDEDu64
     let re = Regex::new(r"\d{2,}u64").unwrap();

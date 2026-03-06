@@ -7,7 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use bimap::BiBTreeMap;
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
-use move_model::{model::FunctionEnv, ty::Type};
+use move_model::{
+    model::{FunctionEnv, Loc},
+    ty::Type,
+};
 
 use crate::{
     ast::TempIndex,
@@ -102,6 +105,32 @@ impl FunctionTargetProcessor for LoopAnalysisProcessor {
 }
 
 impl LoopAnalysisProcessor {
+    /// Remap ensures operations in duplicated invariant code to use fresh AttrIds with
+    /// a secondary label that indicates whether this is a base case or inductive case check.
+    fn remap_ensures_with_label(
+        builder: &mut FunctionDataBuilder,
+        dup_code: Vec<Bytecode>,
+        ensures_op: &Operation,
+        loop_header_loc: &Loc,
+        message: &str,
+    ) -> Vec<Bytecode> {
+        dup_code
+            .into_iter()
+            .map(|bc| match bc {
+                Bytecode::Call(old_attr_id, dests, op, srcs, aa) if op == *ensures_op => {
+                    builder.set_loc_from_attr(old_attr_id);
+                    let new_attr_id = builder.new_attr();
+                    builder
+                        .data
+                        .secondary_labels
+                        .insert(new_attr_id, (loop_header_loc.clone(), message.to_string()));
+                    Bytecode::Call(new_attr_id, dests, op, srcs, aa)
+                }
+                bc => bc,
+            })
+            .collect()
+    }
+
     /// Perform a loop transformation that eliminate back-edges in a loop and flatten the function
     /// CFG into a directed acyclic graph (DAG).
     ///
@@ -126,8 +155,9 @@ impl LoopAnalysisProcessor {
     ) -> FunctionData {
         let options = targets.prover_options();
 
+        let ensures_op = Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]);
         let ensures_requires_subst = BTreeMap::from_iter(vec![(
-            Operation::apply_fun_qid(&func_env.module_env.env.ensures_qid(), vec![]),
+            ensures_op.clone(),
             Operation::apply_fun_qid(&func_env.module_env.env.requires_qid(), vec![]),
         )]);
         let havoc_global_qid = func_env.module_env.env.havoc_global_qid();
@@ -141,6 +171,7 @@ impl LoopAnalysisProcessor {
             },
         );
         let mut goto_fixes = vec![];
+        let mut loop_header_locs: BTreeMap<Label, Loc> = BTreeMap::new();
         let code = std::mem::take(&mut builder.data.code);
         for (offset, bytecode) in code.into_iter().enumerate() {
             // skip existing invariant instructions
@@ -155,7 +186,16 @@ impl LoopAnalysisProcessor {
             match bytecode {
                 Bytecode::Label(attr_id, label) => {
                     if let Some(loop_info) = loop_annotation.fat_loops.get(&label) {
+                        let loop_header_loc = builder.get_loc(attr_id);
+                        loop_header_locs.insert(label, loop_header_loc.clone());
                         let dup_code = builder.dup_code(&loop_info.loop_invariant.code);
+                        let dup_code = Self::remap_ensures_with_label(
+                            &mut builder,
+                            dup_code,
+                            &ensures_op,
+                            &loop_header_loc,
+                            "loop invariant does not hold on loop entry",
+                        );
                         builder.emit_vec(dup_code);
 
                         builder.set_loc_from_attr(attr_id);
@@ -283,7 +323,15 @@ impl LoopAnalysisProcessor {
             ));
             builder.emit_with(|attr_id| Bytecode::Label(attr_id, *checker_label));
 
+            let loop_header_loc = loop_header_locs[label].clone();
             let dup_code = builder.dup_code(&fat_loop.loop_invariant.code);
+            let dup_code = Self::remap_ensures_with_label(
+                &mut builder,
+                dup_code,
+                &ensures_op,
+                &loop_header_loc,
+                "loop invariant is not preserved by the loop body",
+            );
             builder.emit_vec(dup_code);
 
             builder.clear_next_debug_comment();

@@ -100,15 +100,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         if targets.func_abort_check_mode()
             && targets.target_no_abort_check_functions(&fun_env.get_qualified_id())
         {
-            let info = data
-                .annotations
-                .get_or_default_mut::<VerificationInfo>(true);
-            if !info.inlined {
-                info.verified = true;
-                info.inlined = true;
-                info.reachable = false;
-                Self::mark_callees_inlined(fun_env, targets);
-            }
+            Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
 
@@ -153,10 +145,15 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             .iter()
             .any(|menv| menv.get_id() == fun_env.module_env.get_id());
         if is_in_target_module {
-            if (targets.is_verified_spec(&fun_env.get_qualified_id())
-                || targets.is_spec(&fun_env.get_qualified_id()))
-                && Self::is_within_verification_scope(fun_env, &targets)
-            {
+            let should_verify = if targets.spec_no_abort_check_mode() {
+                targets.is_function_spec(&fun_env.get_qualified_id())
+                    && targets
+                        .no_verify_specs()
+                        .any(|id| *id == fun_env.get_qualified_id())
+            } else {
+                targets.is_verified_spec(&fun_env.get_qualified_id())
+            };
+            if should_verify && Self::is_within_verification_scope(fun_env, &targets) {
                 Self::mark_verified(fun_env, &mut data, targets);
                 // let dynamic_loc = Self::find_dynamics_in_function(&self, fun_env, &data);
                 // if dynamic_loc.is_some() {
@@ -513,17 +510,17 @@ impl VerificationAnalysisProcessor {
                 .get_or_default_mut::<VerificationInfo>(true);
             if !info.inlined && !info.reachable && !info.verified {
                 info.reachable = true;
-            }
 
-            let mut callees = targets
-                .get_loop_invariants(&fun_env.get_qualified_id())
-                .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
-                .unwrap_or_default();
-            callees.extend(fun_env.get_called_functions());
+                let mut callees = targets
+                    .get_loop_invariants(&fun_env.get_qualified_id())
+                    .map(|invs| invs.left_values().map(|id| *id).collect::<Vec<_>>())
+                    .unwrap_or_default();
+                callees.extend(fun_env.get_called_functions());
 
-            for calle in callees {
-                let callee_env = fun_env.module_env.env.get_function(calle);
-                Self::mark_reachable(&callee_env, targets);
+                for calle in callees {
+                    let callee_env = fun_env.module_env.env.get_function(calle);
+                    Self::mark_reachable(&callee_env, targets);
+                }
             }
         }
     }
@@ -576,7 +573,11 @@ impl VerificationAnalysisProcessor {
                 let is_verified = targets.is_verified_spec(spec_id);
                 let no_opaque = targets.omits_opaque(spec_id);
                 Self::mark_inlined(&env.get_function(*spec_id), targets);
-                if !is_verified && !no_opaque {
+                if !is_verified
+                    && !no_opaque
+                    && !targets.is_pure_fun(&callee)
+                    && !targets.is_pure_callee(&callee)
+                {
                     Self::mark_reachable(&callee_env, targets);
                     continue;
                 }
@@ -584,8 +585,10 @@ impl VerificationAnalysisProcessor {
             Self::mark_inlined(&callee_env, targets);
             if let Some(qt) = QuantifierPattern::type_from_qid(callee, env) {
                 if qt.requires_sum() {
-                    let sum_fun_env = env.get_function(env.prover_vec_sum_qid());
-                    Self::mark_inlined(&sum_fun_env, targets);
+                    if let Some(qid) = env.prover_vec_sum_qid_opt() {
+                        let sum_fun_env = env.get_function(qid);
+                        Self::mark_inlined(&sum_fun_env, targets);
+                    }
                 }
             }
         }

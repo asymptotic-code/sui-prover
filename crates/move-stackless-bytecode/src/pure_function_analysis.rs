@@ -35,21 +35,21 @@ impl PureFunctionAnalysisProcessor {
         let qid = mid.qualified(fid);
         let func_env = env.get_function(qid);
         if targets.is_pure_fun(&func_env.get_qualified_id())
+            || targets.is_pure_callee(&func_env.get_qualified_id())
             || env.should_be_used_as_func(&qid)
             || Self::native_pure_variants(env).contains(&qid)
         {
             return None;
-        } else {
-            return Some(format!(
-                "Function '{}' can't be used in pure functions.{}",
-                func_env.get_full_name_str(),
-                if func_env.module_env.is_target() {
-                    " Try marking it with #[ext(pure)] attribute."
-                } else {
-                    ""
-                },
-            ));
         }
+        Some(format!(
+            "Function '{}' can't be used in pure functions.{}",
+            func_env.get_full_name_str(),
+            if func_env.module_env.is_target() {
+                " Try marking it with #[ext(pure)] attribute."
+            } else {
+                ""
+            },
+        ))
     }
 
     // Check if a bytecode instruction can be emitted in a Boogie function (straightline code).
@@ -59,7 +59,16 @@ impl PureFunctionAnalysisProcessor {
         fun_env: &FunctionEnv,
         data: &FunctionData,
         targets: &FunctionTargetsHolder,
+        is_callee: bool,
     ) -> Option<(move_model::model::Loc, String)> {
+        let prefix = if is_callee {
+            format!(
+                "Function '{}' called from a pure function",
+                fun_env.get_full_name_str()
+            )
+        } else {
+            "Pure functions".to_string()
+        };
         for bc in data.code.iter() {
             use Bytecode::*;
             let error = match bc {
@@ -67,7 +76,7 @@ impl PureFunctionAnalysisProcessor {
                 Load(_, _, _) => None,
                 Call(_, _, op, _, _) => match op {
                     Operation::Function(mid, fid, _) => {
-                        Self::check_function(*mid, *fid, fun_env.module_env.env, &targets)
+                        Self::check_function(*mid, *fid, fun_env.module_env.env, targets)
                     }
                     _ => None,
                 },
@@ -77,16 +86,12 @@ impl PureFunctionAnalysisProcessor {
                 Branch(_, _, _, _) => None,
                 Label(_, _) => None,
                 VariantSwitch(_, _, _) => {
-                    Some("Pure functions cannot have variant switch operations".to_string())
+                    Some(format!("{prefix} cannot have variant switch operations"))
                 }
-                Abort(_, _) => Some("Pure functions cannot abort".to_string()),
+                Abort(_, _) => Some(format!("{prefix} cannot abort")),
                 // should be unreachable
-                SaveMem(_, _, _) => {
-                    Some("Pure functions cannot use memory save operations".to_string())
-                }
-                Prop(_, _, _) => {
-                    Some("Pure functions cannot have specification properties".to_string())
-                }
+                SaveMem(_, _, _) => Some(format!("{prefix} cannot use memory save operations")),
+                Prop(_, _, _) => Some(format!("{prefix} cannot have specification properties")),
             };
             if let Some(reason) = error {
                 let loc = data
@@ -101,28 +106,27 @@ impl PureFunctionAnalysisProcessor {
         None
     }
 
-    fn check_parameters(&self, func_env: &FunctionEnv) -> bool {
+    fn check_parameters(func_env: &FunctionEnv, is_callee: bool) -> bool {
         for param in func_env.get_parameters() {
             if param.1.is_mutable_reference() {
-                func_env.module_env.env.diag(
-                    Severity::Error,
-                    &func_env.get_loc(),
-                    &format!(
+                let msg = if is_callee {
+                    format!(
+                        "Function '{}' called from a pure function has mutable reference parameter: '{}'",
+                        func_env.get_full_name_str(),
+                        func_env.symbol_pool().string(param.0)
+                    )
+                } else {
+                    format!(
                         "Pure functions cannot have mutable reference parameters: '{}'",
                         func_env.symbol_pool().string(param.0)
-                    ),
-                );
+                    )
+                };
+                func_env
+                    .module_env
+                    .env
+                    .diag(Severity::Error, &func_env.get_loc(), &msg);
                 return false;
             }
-        }
-
-        if func_env.get_return_count() != 1 {
-            func_env.module_env.env.diag(
-                Severity::Error,
-                &func_env.get_loc(),
-                "Pure functions must have exactly one return value",
-            );
-            return false;
         }
 
         true
@@ -137,27 +141,38 @@ impl FunctionTargetProcessor for PureFunctionAnalysisProcessor {
         data: FunctionData,
         _scc_opt: Option<&[FunctionEnv]>,
     ) -> FunctionData {
-        if !targets.is_pure_fun(&fun_env.get_qualified_id()) {
+        let qid = fun_env.get_qualified_id();
+
+        let is_callee = targets.is_pure_callee(&qid);
+
+        if !targets.is_pure_fun(&qid) && !is_callee {
             return data;
         }
 
-        if !self.check_parameters(fun_env) {
+        if !Self::check_parameters(fun_env, is_callee) {
             return data;
         }
 
         if !deterministic_analysis::get_info(&data).is_deterministic {
-            fun_env.module_env.env.diag(
-                Severity::Error,
-                &fun_env.get_loc(),
-                &format!(
+            let msg = if is_callee {
+                format!(
+                    "Function '{}' called from a pure function must be deterministic",
+                    fun_env.get_full_name_str()
+                )
+            } else {
+                format!(
                     "Pure function '{}' must be deterministic",
                     fun_env.get_full_name_str()
-                ),
-            );
+                )
+            };
+            fun_env
+                .module_env
+                .env
+                .diag(Severity::Error, &fun_env.get_loc(), &msg);
             return data;
         }
 
-        if let Some((loc, reason)) = Self::check_bytecode(fun_env, &data, targets) {
+        if let Some((loc, reason)) = Self::check_bytecode(fun_env, &data, targets, is_callee) {
             fun_env.module_env.env.diag(Severity::Error, &loc, &reason);
             return data;
         }

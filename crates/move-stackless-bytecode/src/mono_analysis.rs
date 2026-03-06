@@ -72,14 +72,8 @@ impl MonoInfo {
         }
 
         if dt_qid == &env.option_qid().unwrap() {
-            return self.is_used_datatype_helper(env, targets, dt_qid)
-                || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
-                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
-                || self.is_generated_module(
-                    env,
-                    targets,
-                    &vec![env.vec_set_module_id(), env.vec_map_module_id()],
-                );
+            // NOTE: cover all option usages is too complex, so we just return true.
+            return true;
         } else if dt_qid == &env.vec_map_entry_qid().unwrap()
             || dt_qid == &env.vec_map_qid().unwrap()
         {
@@ -587,20 +581,29 @@ impl Analyzer<'_> {
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        if spec_qid != &target.func_env.get_qualified_id() {
-                            self.info
-                                .funs
-                                .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                                .or_default()
-                                .insert(actuals.clone());
-                        }
+                        let callee_qid = callee_env.get_qualified_id();
+                        if self.targets.is_pure_fun(&callee_qid)
+                            || self.targets.is_pure_callee(&callee_qid)
+                        {
+                            // Pure functions get inlined $pure bodies in Boogie,
+                            // so we need to analyze their bytecode for type instantiations.
+                            self.push_todo_fun(callee_qid, actuals.clone());
+                        } else {
+                            if spec_qid != &target.func_env.get_qualified_id() {
+                                self.info
+                                    .funs
+                                    .entry((callee_qid, FunctionVariant::Baseline))
+                                    .or_default()
+                                    .insert(actuals.clone());
+                            }
 
-                        self.analyze_fun_types(
-                            &self
-                                .targets
-                                .get_target(&callee_env, &FunctionVariant::Baseline),
-                            Some(actuals.clone()),
-                        );
+                            self.analyze_fun_types(
+                                &self
+                                    .targets
+                                    .get_target(&callee_env, &FunctionVariant::Baseline),
+                                Some(actuals.clone()),
+                            );
+                        }
                     }
                 };
 
