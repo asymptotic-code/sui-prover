@@ -985,27 +985,31 @@ impl<'env> BoogieTranslator<'env> {
                     {
                         let dests_clone = dests.clone();
                         let srcs_clone = srcs.clone();
+                        let omits_opaque = self
+                            .targets
+                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id());
+                        let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                        let does_not_abort =
+                            no_abort_analysis::does_not_abort(self.targets, &callee_fun_env, None);
 
-                        builder.emit(
-                            if self
-                                .targets
-                                .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
-                                || !no_abort_analysis::does_not_abort(
-                                    self.targets,
-                                    &self.env.get_function(module_id.qualified(fun_id)),
-                                    None,
-                                )
-                            {
+                        // For non-deterministic opaque calls with &mut params, skip emitting
+                        // the opaque call. The uninterpreted opaque procedure provides no
+                        // useful constraints (no postconditions) but corrupts the mutation
+                        // path. The subsequent MutationValue havoc correctly models the
+                        // mutation while preserving the original mutation path.
+                        let has_mut_srcs = srcs_clone.iter().enumerate().any(|(param_idx, _)| {
+                            callee_fun_env
+                                .get_local_type(param_idx)
+                                .is_mutable_reference()
+                        });
+                        if omits_opaque || !does_not_abort || skip_havok || !has_mut_srcs {
+                            builder.emit(if omits_opaque || !does_not_abort {
                                 bc
                             } else {
                                 bc.update_abort_action(|_| None)
-                            },
-                        );
-                        if !self
-                            .targets
-                            .omits_opaque(&spec_fun_target.func_env.get_qualified_id())
-                        {
-                            let callee_fun_env = self.env.get_function(module_id.qualified(fun_id));
+                            });
+                        }
+                        if !omits_opaque {
                             for (ret_idx, temp_idx) in dests_clone.iter().enumerate() {
                                 let havoc_kind = if callee_fun_env
                                     .get_return_type(ret_idx)
@@ -4342,16 +4346,50 @@ impl<'env> FunctionTranslator<'env> {
                                     }
                                 }
 
-                                let call_line = if use_func { "" } else { "call " };
+                                // For deterministic opaque calls (Boogie functions) with &mut
+                                // params, wrap in $UpdateMutation to preserve the mutation path.
+                                // A &mut param must return the same location/path as received;
+                                // only the value (v) may change. The uninterpreted opaque
+                                // function may return an arbitrary path, so we force it to use
+                                // the original path from the input mutation.
+                                let is_deterministic_opaque_mut_call = is_spec_call
+                                    && self.style == FunctionTranslationStyle::Opaque
+                                    && !use_impl
+                                    && use_func
+                                    && !use_func_datatypes
+                                    && srcs.iter().any(|idx| {
+                                        self.get_local_type(*idx).is_mutable_reference()
+                                    });
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                if is_deterministic_opaque_mut_call {
+                                    // Generate: $t_i := $UpdateMutation($t_i, $Dereference(f$opaque($t_i)))
+                                    // This preserves $t_i->l and $t_i->p from the input while
+                                    // taking the value from the opaque function result.
+                                    // (All three parts of the rhs are evaluated before assignment.)
+                                    for src_idx in srcs.iter().filter(|idx| {
+                                        self.get_local_type(**idx).is_mutable_reference()
+                                    }) {
+                                        let src_str = str_local(*src_idx);
+                                        emitln!(
+                                            self.writer(),
+                                            "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                            src_str,
+                                            src_str,
+                                            fun_name,
+                                            args_str
+                                        );
+                                    }
+                                } else {
+                                    let call_line = if use_func { "" } else { "call " };
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
                             }
                         }
 
@@ -4387,13 +4425,32 @@ impl<'env> FunctionTranslator<'env> {
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
                                 .for_each(|(idx, val)| {
-                                    emitln!(
-                                        self.writer(),
-                                        "{} := {} -> $ret{};",
-                                        str_local(*val),
-                                        func_datatypes_var,
-                                        dests.len() + idx
-                                    )
+                                    // For deterministic opaque calls with &mut params (datatype
+                                    // return case), preserve the mutation path. At this point
+                                    // the src temp still holds the original input mutation (with
+                                    // correct path), so use $UpdateMutation to keep l/p from the
+                                    // input while taking the value from the opaque result.
+                                    if is_spec_call
+                                        && self.style == FunctionTranslationStyle::Opaque
+                                        && !use_impl
+                                    {
+                                        emitln!(
+                                            self.writer(),
+                                            "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                            str_local(*val),
+                                            str_local(*val),
+                                            func_datatypes_var,
+                                            dests.len() + idx
+                                        )
+                                    } else {
+                                        emitln!(
+                                            self.writer(),
+                                            "{} := {} -> $ret{};",
+                                            str_local(*val),
+                                            func_datatypes_var,
+                                            dests.len() + idx
+                                        )
+                                    }
                                 });
                         }
 
