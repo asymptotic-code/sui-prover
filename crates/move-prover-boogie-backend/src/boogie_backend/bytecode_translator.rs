@@ -2323,7 +2323,8 @@ impl<'env> FunctionTranslator<'env> {
         if self.style == FunctionTranslationStyle::Opaque {
             let (args, orets) =
                 self.generate_function_args_and_returns(self.should_use_temp_datatypes());
-            let prefix = if self.should_use_opaque_as_function(true) {
+            let is_opaque_function = self.should_use_opaque_as_function(true);
+            let prefix = if is_opaque_function {
                 "function"
             } else {
                 "procedure"
@@ -2336,6 +2337,22 @@ impl<'env> FunctionTranslator<'env> {
                 args,
                 orets,
             );
+            // for non-deterministic opaque procedures, add ensures clauses to preserve
+            // mutation paths for &mut parameters. mutable sources are always distinct
+            // (Rust borrow rules), so each returned mutation must have the same location
+            // and path as its corresponding input.
+            if !is_opaque_function {
+                let fun_target = self.fun_target;
+                let return_count = fun_target.func_env.get_return_count();
+                for (mut_idx, i) in (0..fun_target.get_parameter_count())
+                    .filter(|&i| self.get_local_type(i).is_mutable_reference())
+                    .enumerate()
+                {
+                    let ret_idx = return_count + mut_idx;
+                    emitln!(writer, "  ensures $ret{}->l == _$t{}->l;", ret_idx, i);
+                    emitln!(writer, "  ensures $ret{}->p == _$t{}->p;", ret_idx, i);
+                }
+            }
             emitln!(writer, "");
         }
 
@@ -4354,14 +4371,36 @@ impl<'env> FunctionTranslator<'env> {
 
                                 let call_line = if use_func { "" } else { "call " };
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                // for deterministic opaque functions returning a single &mut src,
+                                // wrap with $UpdateMutation to preserve the mutation's location
+                                // and path. mutable sources are distinct (Rust borrow rules).
+                                let single_mut_src = use_func
+                                    && !use_func_datatypes
+                                    && is_spec_call
+                                    && !use_impl
+                                    && dests.is_empty()
+                                    && srcs
+                                        .iter()
+                                        .any(|i| self.get_local_type(*i).is_mutable_reference());
+                                if single_mut_src {
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        dest_str,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                } else {
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
                             }
                         }
 
@@ -4397,9 +4436,13 @@ impl<'env> FunctionTranslator<'env> {
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
                                 .for_each(|(idx, val)| {
+                                    // preserve location and path; take only the value from
+                                    // the opaque result. mutable sources are distinct
+                                    // (Rust borrow rules).
                                     emitln!(
                                         self.writer(),
-                                        "{} := {} -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                        str_local(*val),
                                         str_local(*val),
                                         func_datatypes_var,
                                         dests.len() + idx
