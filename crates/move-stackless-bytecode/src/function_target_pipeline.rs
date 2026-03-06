@@ -425,6 +425,11 @@ impl FunctionTargetsHolder {
 
     // Checks if a function is marked as uninterpreted by all verified specs.
     pub fn is_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        // If globally uninterpreted (via #[ext(uninterpreted)]), always treat as uninterpreted
+        if self.package_targets.is_globally_uninterpreted(func_id) {
+            return true;
+        }
+
         let verified_specs: Vec<_> = self
             .specs()
             .filter(|spec_id| self.is_verified_spec(spec_id))
