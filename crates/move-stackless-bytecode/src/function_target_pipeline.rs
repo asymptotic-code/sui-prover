@@ -427,20 +427,22 @@ impl FunctionTargetsHolder {
                     if in_spec_module.len() == 1 {
                         in_spec_module[0]
                     } else {
-                        let func_names = inv_ids
+                        let labels = inv_ids
                             .iter()
-                            .map(|id| env.get_function(*id).get_full_name_str())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        env.diag(
+                            .map(|id| {
+                                let f = env.get_function(*id);
+                                (f.get_loc(), f.get_full_name_str())
+                            })
+                            .collect::<Vec<_>>();
+                        env.diag_with_labels(
                             Severity::Error,
                             &env.get_function(*target_id).get_loc(),
                             &format!(
-                                "Ambiguous loop invariants for label {} in {}: [{}]",
+                                "Ambiguous loop invariants for label {} in {}",
                                 label,
                                 env.get_function(*target_id).get_full_name_str(),
-                                func_names
                             ),
+                            labels,
                         );
                         continue;
                     }

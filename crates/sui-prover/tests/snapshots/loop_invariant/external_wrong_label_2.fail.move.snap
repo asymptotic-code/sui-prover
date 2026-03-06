@@ -3,14 +3,24 @@ source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Ambiguous loop invariants for label 0 in loop_invariant_external_wrong_label_2_fail::test_spec: [loop_invariant_external_wrong_label_2_fail::loop_inv_1, loop_invariant_external_wrong_label_2_fail::loop_inv_2]
+error: Ambiguous loop invariants for label 0 in loop_invariant_external_wrong_label_2_fail::test_spec
    ┌─ tests/inputs/loop_invariant/external_wrong_label_2.fail.move:18:1
-   │  
-18 │ ╭ fun test_spec(n: u64): u128 {
-19 │ │     let mut s: u128 = 0;
-20 │ │     let mut i = 0;
-21 │ │ 
-   · │
-28 │ │     s
-29 │ │ }
-   │ ╰─^
+   │      
+ 7 │   ╭   fun loop_inv_1(i: u64, n: u64, s: u128): bool {
+ 8 │   │       i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
+ 9 │   │   }
+   │   ╰───' loop_invariant_external_wrong_label_2_fail::loop_inv_1
+   ·   │  
+13 │     ╭ fun loop_inv_2(i: u64, n: u64, s: u128): bool {
+14 │     │     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
+15 │     │ }
+   │     ╰─' loop_invariant_external_wrong_label_2_fail::loop_inv_2
+   ·     │
+18 │ ╭     fun test_spec(n: u64): u128 {
+19 │ │         let mut s: u128 = 0;
+20 │ │         let mut i = 0;
+21 │ │     
+   · │    
+28 │ │         s
+29 │ │     }
+   │ ╰─────^
