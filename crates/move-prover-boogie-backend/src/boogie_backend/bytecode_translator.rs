@@ -2601,6 +2601,40 @@ impl<'env> FunctionTranslator<'env> {
                 );
             }
 
+            // Declare save variables for procedure-style opaque calls with &mut srcs.
+            // When calling a non-deterministic opaque spec procedure, we need to preserve
+            // the mutation path (l, p fields of $Mutation). We save the mutation before
+            // the call and restore path via $UpdateMutation after.
+            if !self.should_use_opaque_as_function(false) {
+                let id = &self.fun_target.func_env.get_qualified_id();
+                let fun_by_spec = self.parent.targets.get_fun_by_spec(id);
+                let mut seen = BTreeSet::new();
+                for bc in self.fun_target.get_bytecode() {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _) = bc {
+                        let is_spec_call = fun_by_spec
+                            == Some(&QualifiedId {
+                                module_id: *mid,
+                                id: *fid,
+                            });
+                        if is_spec_call {
+                            for &src in srcs {
+                                if self.get_local_type(src).is_mutable_reference()
+                                    && seen.insert(src)
+                                {
+                                    let ty = self.get_local_type(src);
+                                    emitln!(
+                                        writer,
+                                        "var $mut_save_{}: {};",
+                                        src,
+                                        boogie_type(env, &ty),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Declare temp variables for calls to multi-return pure functions
             {
                 let mut seen = BTreeSet::new();
@@ -4352,16 +4386,67 @@ impl<'env> FunctionTranslator<'env> {
                                     }
                                 }
 
-                                let call_line = if use_func { "" } else { "call " };
+                                // Collect &mut src indices for path-preservation logic
+                                let mut_src_indices: Vec<TempIndex> = srcs
+                                    .iter()
+                                    .cloned()
+                                    .filter(|&idx| self.get_local_type(idx).is_mutable_reference())
+                                    .collect();
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                let is_proc_opaque = !use_func && is_spec_call && !use_impl;
+
+                                // For procedure-style opaque calls with &mut srcs, save
+                                // the mutations before the call so we can restore path after.
+                                if is_proc_opaque {
+                                    for &src in &mut_src_indices {
+                                        emitln!(
+                                            self.writer(),
+                                            "$mut_save_{} := {};",
+                                            src,
+                                            str_local(src),
+                                        );
+                                    }
+                                }
+
+                                if use_func && !use_func_datatypes && !mut_src_indices.is_empty() {
+                                    // Single &mut src returned as function result: wrap with
+                                    // $UpdateMutation to preserve the mutation path (l, p).
+                                    // The right-hand $t is read first (old value with correct
+                                    // path), then the assignment overwrites it.
+                                    let src = mut_src_indices[0];
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        str_local(src),
+                                        str_local(src),
+                                        fun_name,
+                                        args_str,
+                                    );
+                                } else {
+                                    let call_line = if use_func { "" } else { "call " };
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
+
+                                // For procedure-style opaque calls, restore the mutation path
+                                // using the saved pre-call mutations.
+                                if is_proc_opaque {
+                                    for &src in &mut_src_indices {
+                                        emitln!(
+                                            self.writer(),
+                                            "{} := $UpdateMutation($mut_save_{}, $Dereference({}));",
+                                            str_local(src),
+                                            src,
+                                            str_local(src),
+                                        );
+                                    }
+                                }
                             }
                         }
 
@@ -4393,13 +4478,18 @@ impl<'env> FunctionTranslator<'env> {
                                     idx
                                 )
                             });
+                            // For &mut src results, wrap with $UpdateMutation to preserve the
+                            // mutation path. The original variable still holds the pre-call
+                            // mutation (with correct l and p) since the call only wrote to
+                            // $temp_opaque_res_var.
                             srcs.iter()
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
                                 .for_each(|(idx, val)| {
                                     emitln!(
                                         self.writer(),
-                                        "{} := {} -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                        str_local(*val),
                                         str_local(*val),
                                         func_datatypes_var,
                                         dests.len() + idx
