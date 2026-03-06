@@ -2313,15 +2313,9 @@ impl<'env> FunctionTranslator<'env> {
         if self.style == FunctionTranslationStyle::Opaque {
             let (args, orets) =
                 self.generate_function_args_and_returns(self.should_use_temp_datatypes());
-            let prefix = if self.should_use_opaque_as_function(true) {
-                "function"
-            } else {
-                "procedure"
-            };
             emitln!(
                 writer,
-                "{} {}$opaque({}) returns ({});",
-                prefix,
+                "function {}$opaque({}) returns ({});",
                 self.function_variant_name(FunctionTranslationStyle::Opaque),
                 args,
                 orets,
@@ -2848,7 +2842,7 @@ impl<'env> FunctionTranslator<'env> {
 
         let returns_count = self.fun_target.func_env.get_return_count() + mut_ref_inputs_count;
 
-        returns_count != 1 && self.should_use_opaque_as_function(false)
+        returns_count != 1
     }
 
     fn should_use_opaque_as_function(&self, write: bool) -> bool {
@@ -4002,7 +3996,7 @@ impl<'env> FunctionTranslator<'env> {
                         // Check if callee is marked as pure
                         let callee_is_pure = self.parent.targets.is_pure_fun(&mid.qualified(*fid));
 
-                        if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
+                        if is_spec_call && !use_impl {
                             use_func = true;
                             use_func_datatypes = self.should_use_temp_datatypes();
                         }
@@ -4342,16 +4336,41 @@ impl<'env> FunctionTranslator<'env> {
                                     }
                                 }
 
-                                let call_line = if use_func { "" } else { "call " };
-
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                // For opaque spec calls with a single &mut src and no regular
+                                // returns, wrap with $UpdateMutation to preserve path and location.
+                                // Nothing can change the reference path from an opaque call.
+                                let opaque_mut_srcs: Vec<_> =
+                                    if is_spec_call && !use_impl && !use_func_datatypes {
+                                        srcs.iter()
+                                            .filter(|idx| {
+                                                self.get_local_type(**idx).is_mutable_reference()
+                                            })
+                                            .cloned()
+                                            .collect()
+                                    } else {
+                                        vec![]
+                                    };
+                                if !opaque_mut_srcs.is_empty() && dests.is_empty() {
+                                    let src_str = str_local(opaque_mut_srcs[0]);
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        src_str,
+                                        src_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                } else {
+                                    let call_line = if use_func { "" } else { "call " };
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
                             }
                         }
 
@@ -4387,9 +4406,12 @@ impl<'env> FunctionTranslator<'env> {
                                 .filter(|idx| self.get_local_type(**idx).is_mutable_reference())
                                 .enumerate()
                                 .for_each(|(idx, val)| {
+                                    // Preserve path and location: only extract the value from the
+                                    // opaque result, keeping the original mutation's path intact.
                                     emitln!(
                                         self.writer(),
-                                        "{} := {} -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                        str_local(*val),
                                         str_local(*val),
                                         func_datatypes_var,
                                         dests.len() + idx
