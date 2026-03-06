@@ -735,9 +735,15 @@ impl GlobalEnv {
         self.add_diag(diag);
     }
 
-    /// Checks whether any of the diagnostics contains string.
+    /// Checks whether any of the unreported diagnostics matches the given one.
+    /// Only unreported diagnostics are considered, so that a reported error does not prevent
+    /// the same error from being added again in a subsequent verification task (e.g. concurrent
+    /// lambda invocations where multiple tasks may produce identical timeout diagnostics).
     pub fn has_diag(&self, diag: &Diagnostic<FileId>) -> bool {
-        self.diags.borrow().iter().any(|(d, _)| d == diag)
+        self.diags
+            .borrow()
+            .iter()
+            .any(|(d, reported)| !reported && d == diag)
     }
 
     /// Clear all accumulated diagnosis.
