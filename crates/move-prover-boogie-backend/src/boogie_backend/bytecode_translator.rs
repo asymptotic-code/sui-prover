@@ -1040,15 +1040,25 @@ impl<'env> BoogieTranslator<'env> {
                             .update_abort_action(|_| None),
                     ),
                 },
-                FunctionTranslationStyle::Pure => {
-                    // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
-                    let mut bc = bc.update_abort_action(|_| None);
-                    if self.targets.prover_options().bv_int_encoding {
-                        // only in non-bitvector mode
-                        bc = bc.replace_cast_with_assign();
+                FunctionTranslationStyle::Pure => match bc {
+                    Call(_, _, op, _, _)
+                        if matches!(
+                            op,
+                            Operation::TraceLocal { .. }
+                                | Operation::TraceReturn { .. }
+                                | Operation::TraceMessage { .. }
+                                | Operation::TraceGhost { .. }
+                        ) => {} // Skip trace operations - they have no place in pure function translation
+                    _ => {
+                        // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
+                        let mut bc = bc.update_abort_action(|_| None);
+                        if self.targets.prover_options().bv_int_encoding {
+                            // only in non-bitvector mode
+                            bc = bc.replace_cast_with_assign();
+                        }
+                        builder.emit(bc);
                     }
-                    builder.emit(bc);
-                }
+                },
             }
         }
 
