@@ -2,4 +2,11 @@
 source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
-Verification successful
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/vec_map/remove.move:15:3
+   │
+15 │   ensures(!m.contains(&10));
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/vec_map/remove.move:12: foo_spec
