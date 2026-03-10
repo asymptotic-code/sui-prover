@@ -38,8 +38,12 @@ pub struct PackageTargets {
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
+    // functions that are globally uninterpreted (annotated with #[ext(uninterpreted)]).
+    globally_uninterpreted_functions: BTreeSet<QualifiedId<FunId>>,
     // functions that should be uninterpreted when verifying a specific spec function.
     spec_uninterpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
+    // per-spec override: functions that should be interpreted (not uninterpreted) for a spec.
+    spec_interpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
     loop_invariant_candidates: BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>>,
@@ -78,7 +82,9 @@ impl PackageTargets {
             omit_opaque_specs: BTreeSet::new(),
             focus_specs: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
+            globally_uninterpreted_functions: BTreeSet::new(),
             spec_uninterpreted_functions: BTreeMap::new(),
+            spec_interpreted_functions: BTreeMap::new(),
             spec_boogie_options: BTreeMap::new(),
             spec_timeouts: BTreeMap::new(),
             loop_invariant_candidates: BTreeMap::new(),
@@ -524,10 +530,17 @@ impl PackageTargets {
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
         {
-            if attrs
+            let has_no_abort = attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort")
-            {
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort");
+            let has_pure = attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "pure");
+            let has_uninterpreted = attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "uninterpreted");
+
+            if has_no_abort {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
@@ -535,21 +548,35 @@ impl PackageTargets {
                         .insert(func_env.get_qualified_id());
                 }
             }
-            if attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure")
-            {
+            if has_pure {
                 self.pure_functions.insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
                     self.target_no_abort_check_functions
                         .insert(func_env.get_qualified_id());
                 }
             }
+            if has_uninterpreted {
+                if !has_pure {
+                    let env = func_env.module_env.env;
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
+                            func_env.get_full_name_str(),
+                        ),
+                    );
+                } else {
+                    self.globally_uninterpreted_functions
+                        .insert(func_env.get_qualified_id());
+                }
+            }
         }
     }
 
-    /// Process uninterpreted attributes with validation.
-    /// This runs after check_abort_check_scope, so pure_functions is complete and we can validate.
+    /// Process uninterpreted/interpreted attributes with validation.
+    /// This runs after check_abort_check_scope, so pure_functions and
+    /// globally_uninterpreted_functions are complete and we can validate.
     fn check_uninterpreted_scope(&mut self, func_env: &FunctionEnv) {
         let env = func_env.module_env.env;
         if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
@@ -565,6 +592,7 @@ impl PackageTargets {
             explicit_specs: _,
             extra_bpl: _,
             uninterpreted,
+            interpreted,
             ..
         })) = func_env
             .get_toplevel_attributes()
@@ -627,6 +655,65 @@ impl PackageTargets {
                             Severity::Error,
                             &func_env.get_loc(),
                             "Error parsing uninterpreted target path",
+                        );
+                    }
+                }
+            }
+
+            for module_access in interpreted {
+                match Self::parse_module_access(module_access, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        if let Some(target_module_env) = env.find_module(&module_name) {
+                            if let Some(target_func_env) =
+                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
+                            {
+                                // Validate that the target is globally uninterpreted
+                                if !self
+                                    .globally_uninterpreted_functions
+                                    .contains(&target_func_env.get_qualified_id())
+                                {
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "interpreted target '{}' must be marked with #[ext(uninterpreted)]",
+                                            target_func_env.get_full_name_str(),
+                                        ),
+                                    );
+                                    continue;
+                                }
+
+                                self.spec_interpreted_functions
+                                    .entry(func_env.get_qualified_id())
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert(target_func_env.get_qualified_id());
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!(
+                                        "interpreted target function '{}' not found in module '{}'",
+                                        fun_name,
+                                        target_module_env.get_full_name_str(),
+                                    ),
+                                );
+                            }
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "interpreted target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
+                            );
+                        }
+                    }
+                    None => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Error parsing interpreted target path",
                         );
                     }
                 }
@@ -1000,9 +1087,30 @@ impl PackageTargets {
         spec_id: &QualifiedId<FunId>,
         callee_id: &QualifiedId<FunId>,
     ) -> bool {
+        // If this spec explicitly opts in to interpreting the function, it is not uninterpreted.
+        if self
+            .spec_interpreted_functions
+            .get(spec_id)
+            .map_or(false, |set| set.contains(callee_id))
+        {
+            return false;
+        }
+        // If the function is globally uninterpreted, it is uninterpreted for this spec.
+        if self.globally_uninterpreted_functions.contains(callee_id) {
+            return true;
+        }
+        // Fall back to spec-local uninterpreted list.
         self.spec_uninterpreted_functions
             .get(spec_id)
             .map_or(false, |set| set.contains(callee_id))
+    }
+
+    pub fn is_globally_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        self.globally_uninterpreted_functions.contains(func_id)
+    }
+
+    pub fn globally_uninterpreted_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.globally_uninterpreted_functions
     }
 
     pub fn spec_uninterpreted_functions(
