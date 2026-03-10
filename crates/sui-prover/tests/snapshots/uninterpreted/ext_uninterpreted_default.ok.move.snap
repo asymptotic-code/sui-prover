@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/uninterpreted/ext_uninterpreted_default.ok.move:18:5
+   │
+18 │     ensures(result == 42); // should fail: bar is globally uninterpreted
+   │     ^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/uninterpreted/ext_uninterpreted_default.ok.move:17: foo_spec
+
