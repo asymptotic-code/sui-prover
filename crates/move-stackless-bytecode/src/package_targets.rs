@@ -1,5 +1,4 @@
 use crate::target_filter::TargetFilterOptions;
-use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
@@ -43,7 +42,7 @@ pub struct PackageTargets {
     spec_uninterpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
+    loop_invariant_candidates: BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
     function_external_attributes:
         BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
@@ -82,7 +81,7 @@ impl PackageTargets {
             spec_uninterpreted_functions: BTreeMap::new(),
             spec_boogie_options: BTreeMap::new(),
             spec_timeouts: BTreeMap::new(),
-            loop_invariants: BTreeMap::new(),
+            loop_invariant_candidates: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
             function_external_attributes: BTreeMap::new(),
             module_extra_bpl: BTreeMap::new(),
@@ -200,53 +199,10 @@ impl PackageTargets {
         if let Some(target_func_env) =
             module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
         {
-            if let Some(existing) = self
-                .loop_invariants
-                .get_mut(&target_func_env.get_qualified_id())
-            {
-                match existing.insert(func_env.get_qualified_id(), label) {
-                    bimap::Overwritten::Neither => {}
-                    bimap::Overwritten::Left(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} in {}",
-                                func_env.get_full_name_str(),
-                                fun_name
-                            ),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Right(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} and Label {} in {}",
-                                func_env.get_full_name_str(),
-                                label,
-                                fun_name
-                            ),
-                        );
-                    }
-                }
-            } else {
-                self.loop_invariants
-                    .insert(target_func_env.get_qualified_id(), {
-                        let mut map = BiBTreeMap::new();
-                        map.insert(func_env.get_qualified_id(), label);
-                        map
-                    });
-            }
+            self.loop_invariant_candidates
+                .entry(target_func_env.get_qualified_id())
+                .or_default()
+                .push((func_env.get_qualified_id(), label));
         } else {
             env.diag(
                 Severity::Error,
@@ -1026,10 +982,10 @@ impl PackageTargets {
         &self.spec_timeouts
     }
 
-    pub fn loop_invariants(
+    pub fn loop_invariant_candidates(
         &self,
-    ) -> &BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>> {
-        &self.loop_invariants
+    ) -> &BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>> {
+        &self.loop_invariant_candidates
     }
 
     pub fn get_module_extra_bpl(&self, module_id: &ModuleId) -> Option<&String> {

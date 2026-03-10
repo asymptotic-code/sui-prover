@@ -126,6 +126,7 @@ pub fn build_model_with_target(
             targets.add_target(&func_env);
         }
     }
+    targets.resolve_loop_invariants(&model);
 
     Ok((model, rerooted_path, targets))
 }

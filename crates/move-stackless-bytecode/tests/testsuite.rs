@@ -195,6 +195,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
                 targets.add_target(&func_env);
             }
         }
+        targets.resolve_loop_invariants(&env);
         let show_livevars = std::env::var("STACKLESS_TEST_SHOW_LIVENESS").is_ok();
         let show_borrow = true;
         let show_reach = std::env::var("STACKLESS_TEST_SHOW_REACHING_DEFS").is_ok();

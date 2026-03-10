@@ -790,6 +790,7 @@ pub fn create_and_process_bytecode(
             targets.add_target(&func_env);
         }
     }
+    targets.resolve_loop_invariants(env);
 
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
@@ -855,6 +856,7 @@ fn run_escape(env: &GlobalEnv, targets: &PackageTargets, options: &Options, now:
             targets.add_target(&func_env);
         }
     }
+    targets.resolve_loop_invariants(env);
     println!(
         "Analyzing {} modules, {} declared functions, {} declared structs, {} total bytecodes",
         env.get_module_count(),
