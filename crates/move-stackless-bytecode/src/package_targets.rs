@@ -308,15 +308,11 @@ impl PackageTargets {
                 self.axiom_functions.insert(func_env.get_qualified_id());
             }
 
-            let extra_bpl_paths: &[String] = match extra_bpl {
-                Some(s) => std::slice::from_ref(s),
-                None => &[],
-            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 env,
                 &func_env.get_loc(),
                 func_env.module_env.get_source_path(),
-                extra_bpl_paths,
+                extra_bpl,
             ) {
                 self.function_extra_bpl
                     .insert(func_env.get_qualified_id(), content);
@@ -414,15 +410,11 @@ impl PackageTargets {
                     .insert(func_env.get_qualified_id(), *timeout);
             }
 
-            let extra_bpl_paths: &[String] = match extra_bpl {
-                Some(s) => std::slice::from_ref(s),
-                None => &[],
-            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 env,
                 &func_env.get_loc(),
                 func_env.module_env.get_source_path(),
-                extra_bpl_paths,
+                extra_bpl,
             ) {
                 self.function_extra_bpl
                     .insert(func_env.get_qualified_id(), content);
@@ -769,7 +761,7 @@ impl PackageTargets {
         env: &GlobalEnv,
         loc: &move_model::model::Loc,
         source_path: &std::ffi::OsStr,
-        extra_bpl: &[String],
+        extra_bpl: &Vec<String>,
     ) -> Option<String> {
         let mut contents = Vec::new();
         for path_str in extra_bpl {
@@ -850,15 +842,11 @@ impl PackageTargets {
                     .insert(module_env.get_id(), attrs);
             }
 
-            let extra_bpl_paths: &[String] = match extra_bpl {
-                Some(s) => std::slice::from_ref(s),
-                None => &[],
-            };
             if let Some(content) = Self::validate_and_read_extra_bpl(
                 module_env.env,
                 &module_env.get_loc(),
                 module_env.get_source_path(),
-                extra_bpl_paths,
+                extra_bpl,
             ) {
                 self.module_extra_bpl.insert(module_env.get_id(), content);
             }
