@@ -761,9 +761,10 @@ impl PackageTargets {
         env: &GlobalEnv,
         loc: &move_model::model::Loc,
         source_path: &std::ffi::OsStr,
-        extra_bpl: &Option<String>,
+        extra_bpl: &Vec<String>,
     ) -> Option<String> {
-        if let Some(path_str) = extra_bpl {
+        let mut contents = Vec::new();
+        for path_str in extra_bpl {
             let extra_path = Path::new(path_str);
 
             if extra_path.extension().map_or(true, |ext| ext != "bpl") {
@@ -772,7 +773,7 @@ impl PackageTargets {
                     loc,
                     &format!("extra_bpl path must have .bpl extension: '{}'", path_str),
                 );
-                return None;
+                continue;
             }
 
             let resolved_path = if extra_path.is_absolute() {
@@ -794,11 +795,11 @@ impl PackageTargets {
                         resolved_path.display()
                     ),
                 );
-                return None;
+                continue;
             }
 
             match fs::read_to_string(&resolved_path) {
-                Ok(content) => Some(content),
+                Ok(content) => contents.push(content),
                 Err(err) => {
                     env.diag(
                         Severity::Error,
@@ -809,11 +810,13 @@ impl PackageTargets {
                             err
                         ),
                     );
-                    None
                 }
             }
-        } else {
+        }
+        if contents.is_empty() {
             None
+        } else {
+            Some(contents.join("\n"))
         }
     }
 
