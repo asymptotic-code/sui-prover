@@ -5,9 +5,8 @@ expression: output
 exiting with bytecode transformation errors
 error: #[ext(uninterpreted)] on 'foo::bar' requires #[ext(pure)]
   ┌─ tests/inputs/uninterpreted/ext_uninterpreted_no_pure.fail.move:6:1
-  │
+  │  
 6 │ ╭ fun bar(): u64 {
 7 │ │     42
 8 │ │ }
   │ ╰─^
-
