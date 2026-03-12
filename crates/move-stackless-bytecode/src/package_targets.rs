@@ -18,6 +18,9 @@ use std::{
     path::Path,
 };
 
+/// Valid values for the `run_on` attribute in `#[spec(prove, run_on="...")]`.
+pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud"];
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
     Function(QualifiedId<FunId>),
@@ -418,8 +421,20 @@ impl PackageTargets {
             }
 
             if let Some(run_on_value) = run_on {
-                self.spec_run_on
-                    .insert(func_env.get_qualified_id(), run_on_value.clone());
+                if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
+                    self.spec_run_on
+                        .insert(func_env.get_qualified_id(), run_on_value.clone());
+                } else {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "invalid run_on value \"{}\". Valid values are: {}",
+                            run_on_value,
+                            VALID_RUN_ON_VALUES.join(", ")
+                        ),
+                    );
+                }
             }
 
             if let Some(content) = Self::validate_and_read_extra_bpl(

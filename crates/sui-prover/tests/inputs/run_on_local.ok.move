@@ -5,7 +5,7 @@ public fun foo() {
 }
 
 // This spec should be able to run locally even when --cloud is configured
-#[spec(prove, run_on="local")]
+#[spec(prove, run_on=b"local")]
 public fun foo_spec_local() {
     foo();
 }

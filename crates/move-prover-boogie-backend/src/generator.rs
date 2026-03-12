@@ -19,7 +19,7 @@ use futures::stream::{self, StreamExt};
 use log::{debug, info, warn, LevelFilter};
 use move_model::{
     code_writer::CodeWriter,
-    model::{FunId, GlobalEnv, ModuleId, QualifiedId},
+    model::{FunId, GlobalEnv, Loc, ModuleId, QualifiedId},
     ty::Type,
 };
 use move_stackless_bytecode::package_targets::PackageTargets;
@@ -35,7 +35,9 @@ use move_stackless_bytecode::{
 use std::{fs, path::Path, time::Instant};
 
 /// Constant for the "local" run location value
-const RUN_ON_LOCAL: &str = "local";
+pub const RUN_ON_LOCAL: &str = "local";
+/// Constant for the "cloud" run location value
+pub const RUN_ON_CLOUD: &str = "cloud";
 
 pub struct FileOptions {
     pub file_name: String,
@@ -46,6 +48,7 @@ pub struct FileOptions {
     pub run_on: Option<String>,
     pub targets: FunctionTargetsHolder,
     pub qid: Option<QualifiedId<FunId>>,
+    pub loc: Loc,
 }
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
@@ -278,6 +281,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         None,
         None,
         None,
+        env.internal_loc(),
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -369,6 +373,7 @@ fn generate_function_bpl<W: WriteColor>(
         boogie_options,
         timeout: targets.get_spec_timeout(qid).cloned(),
         run_on: targets.get_spec_run_on(qid).cloned(),
+        loc: env.get_function(*qid).get_loc(),
         targets,
         qid: Some(*qid),
     })
@@ -434,6 +439,7 @@ fn generate_module_bpl<W: WriteColor>(
         boogie_options: None,
         timeout: None,
         run_on: None,
+        loc: env.get_module(*mid).get_loc(),
         targets,
         qid: None,
     })
@@ -458,6 +464,7 @@ async fn verify_bpl<W: WriteColor>(
         file.timeout,
         file.boogie_options,
         file.run_on,
+        file.loc,
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -723,6 +730,7 @@ pub async fn verify_boogie(
     timeout: Option<u64>,
     boogie_options: Option<String>,
     run_on: Option<String>,
+    loc: Loc,
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
 
@@ -738,10 +746,36 @@ pub async fn verify_boogie(
             options: &options.backend,
             types: &types,
         };
-        // Check if this spec should run locally even when remote is configured
-        let should_run_local = run_on.as_ref().map(|s| s.as_str() == RUN_ON_LOCAL).unwrap_or(false);
+        // Determine run location based on per-spec run_on attribute and global config
+        let use_remote = match run_on.as_deref() {
+            Some(RUN_ON_LOCAL) => false,
+            Some(RUN_ON_CLOUD) => {
+                if options.remote.is_none() {
+                    env.diag(
+                        Severity::Error,
+                        &loc,
+                        "spec has run_on=\"cloud\" but cloud is not configured. \
+                         Use --cloud to enable cloud verification.",
+                    );
+                    return Ok(());
+                }
+                true
+            }
+            Some(other) => {
+                env.diag(
+                    Severity::Error,
+                    &loc,
+                    &format!(
+                        "invalid run_on value \"{}\". Expected \"{}\" or \"{}\".",
+                        other, RUN_ON_LOCAL, RUN_ON_CLOUD
+                    ),
+                );
+                return Ok(());
+            }
+            None => options.remote.is_some(),
+        };
 
-        if options.remote.is_some() && !should_run_local {
+        if use_remote {
             boogie
                 .call_remote_boogie_and_verify_output(
                     &file_name,
