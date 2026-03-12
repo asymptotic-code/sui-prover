@@ -22,6 +22,7 @@ use std::{
     rc::Rc,
 };
 
+/// Stores dynamic field type information for a specific function
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DynamicFieldInfo {
     dynamic_field_mappings: BTreeMap<Type, BTreeSet<NameValueInfo>>,
@@ -88,6 +89,8 @@ impl DynamicFieldInfo {
         }
     }
 
+    /// Creates a DynamicFieldInfo with a single mapping from the given type to a single dynamic field type.
+    /// This is a convenience method for creating simple dynamic field entries.
     pub fn singleton(ty: Type, name_value_info: NameValueInfo) -> Self {
         Self {
             dynamic_field_mappings: BTreeMap::from([(ty, BTreeSet::from([name_value_info]))]),
@@ -111,6 +114,7 @@ impl DynamicFieldInfo {
             .unique()
     }
 
+    /// union two DynamicFieldTypeInfo
     pub fn union(&self, other: &Self) -> Self {
         let mut new_info = self.clone();
         for (ty, name_value_set) in other.dynamic_field_mappings.iter() {
@@ -123,6 +127,7 @@ impl DynamicFieldInfo {
         new_info
     }
 
+    /// Create a new DynamicFieldTypeInfo with types instantiated using the given type arguments
     pub fn instantiate(&self, type_inst: &[Type]) -> Self {
         Self {
             uid_info: BTreeMap::new(),
@@ -147,10 +152,12 @@ impl DynamicFieldInfo {
     }
 }
 
+/// Get the information computed by this analysis for the global environment
 pub fn get_env_info(env: &GlobalEnv) -> Rc<DynamicFieldInfo> {
     env.get_extension::<DynamicFieldInfo>().unwrap()
 }
 
+/// Get the information computed by this analysis for a function
 pub fn get_fun_info(data: &FunctionData) -> &DynamicFieldInfo {
     data.annotations.get::<DynamicFieldInfo>().unwrap()
 }
@@ -159,6 +166,7 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
     let mut return_pos = None;
     for bc in code.into_iter() {
         if return_pos.is_some() {
+            // if function have few return statments
             return None;
         }
 
@@ -177,18 +185,21 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
     return_pos
 }
 
+/// Collect dynamic field type information from a function's bytecode
 fn collect_dynamic_field_info(
     targets: &FunctionTargetsHolder,
     builder: &mut FunctionDataBuilder,
     verified_or_inlined: bool,
 ) -> DynamicFieldInfo {
     let dynamic_field_name_value_fun_qids = vec![
+        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_borrow_qid(),
         builder
             .fun_env
             .module_env
             .env
             .dynamic_field_exists_with_type_qid(),
+        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -204,6 +215,7 @@ fn collect_dynamic_field_info(
     .filter_map(|x| x)
     .collect_vec();
     let dynamic_field_name_value_fun_mut_qids = vec![
+        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_add_qid(),
         builder
             .fun_env
@@ -216,6 +228,7 @@ fn collect_dynamic_field_info(
             .module_env
             .env
             .dynamic_field_remove_if_exists_qid(),
+        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -236,7 +249,9 @@ fn collect_dynamic_field_info(
     .filter_map(|x| x)
     .collect_vec();
     let dynamic_field_name_only_fun_qids = vec![
+        // dynamic field operations
         builder.fun_env.module_env.env.dynamic_field_exists_qid(),
+        // dynamic object field operations
         builder
             .fun_env
             .module_env
@@ -258,6 +273,7 @@ fn collect_dynamic_field_info(
 
     let uid_qid = builder.fun_env.module_env.env.uid_qid();
 
+    // compute map of temp index that load object ids to type of object
     let uid_info = compute_uid_info(&builder.get_target(), targets, &builder.data.code);
 
     let alias_info =
@@ -345,6 +361,7 @@ fn collect_dynamic_field_info(
                     .env
                     .get_function(*fun_id_with_info);
 
+                // native, reachable or intrinsic functions do not access dynamic fields
                 if func_env.is_native() || get_info(&builder.get_target()).reachable {
                     return None;
                 }
@@ -449,6 +466,7 @@ fn collect_dynamic_field_info(
     info
 }
 
+/// Computes a mapping from temporary indices to the objects and types of objects they reference
 fn compute_uid_info(
     fun_target: &FunctionTarget,
     targets: &FunctionTargetsHolder,
@@ -476,6 +494,7 @@ fn compute_uid_info(
         BTreeMap::new()
     };
 
+    // First collect all potential UID type mappings, grouped by temporary index
     let from_bytecode: BTreeMap<usize, (usize, Type)> = code
         .iter()
         .filter_map(|bc| match bc {
@@ -544,6 +563,7 @@ fn compute_uid_info(
         .into_group_map()
         .into_iter()
         .filter_map(|(temp_idx, types)| {
+            // Report errors if there are duplicates
             if types.len() == 1 {
                 Some((temp_idx, (types[0].0.clone(), types[0].1.clone())))
             } else {
@@ -590,6 +610,10 @@ fn compute_uid_info(
     result
 }
 
+/// Checks if a field access at the given offset is accessing the single UID field.
+/// Returns true if:
+/// - The struct has the `key` ability and the offset is 0, OR
+/// - The offset matches the single UID field offset
 fn is_uid_field_access(struct_env: &StructEnv<'_>, offset: usize) -> bool {
     (struct_env.get_abilities().has_key() && offset == 0)
         || Some(offset) == single_uid_field_offset(struct_env)
@@ -624,7 +648,9 @@ fn get_uid_object_type<'a>(
     temp_idx: usize,
     off: usize,
 ) -> Option<&'a (usize, Type)> {
+    // First check if temp_idx is directly in uid_info
     uid_info.get(&temp_idx).or_else(|| {
+        // Otherwise, check if we can find it through alias information
         alias_info.get(&(off as u16)).and_then(|state| {
             ReachingDefProcessor::all_aliases(state, &temp_idx)
                 .iter()
@@ -664,6 +690,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
+        // Collect the dynamic field info
         let info = collect_dynamic_field_info(targets, &mut builder, info.verified || info.inlined);
 
         builder
@@ -675,6 +702,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
     }
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        // Collect and combine all functions' dynamic field info
         let mut combined_info =
             DynamicFieldInfo::iter_union(targets.get_funs().filter_map(|fun_id| {
                 targets
@@ -790,6 +818,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 });
         }
 
+        // Set the combined info in the environment
         env.set_extension(combined_info);
     }
 
