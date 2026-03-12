@@ -421,12 +421,6 @@ impl<'env> BoogieTranslator<'env> {
                 suffix,
                 param_type,
             );
-            emitln!(
-                writer,
-                "procedure {{:inline 1}} $0_prover_type_inv'{}'(x: {}) returns (res: bool) {{ res := true; }}",
-                suffix,
-                param_type,
-            );
 
             // declare free variables to represent the type info for this type
             emitln!(writer, "var {}_info: $TypeParamInfo;", param_type);
@@ -1614,35 +1608,6 @@ impl<'env> StructTranslator<'env> {
             );
             emitln!(writer, "var {}: $Memory {};", memory_name, struct_name);
         }
-
-        emitln!(
-            writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            struct_name
-        );
-        writer.indent();
-        if let Some(inv_fun_id) = self
-            .parent
-            .targets
-            .get_inv_by_datatype(&self.struct_env.get_qualified_id())
-        {
-            emitln!(
-                writer,
-                "call res := {}(s);",
-                boogie_function_name(
-                    &self.parent.env.get_function(*inv_fun_id),
-                    self.type_inst,
-                    FunctionTranslationStyle::Default
-                )
-            );
-        } else {
-            emitln!(writer, "res := true;");
-        }
-        emitln!(writer, "return;");
-        writer.unindent();
-        emitln!(writer, "}");
-        emitln!(writer);
     }
 
     // Generate object::borrow_uid function for structs with key ability
@@ -1703,19 +1668,6 @@ impl<'env> StructTranslator<'env> {
 
         // emit object::borrow_uid function
         self.translate_object_borrow_uid();
-
-        emitln!(
-            self.parent.writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            struct_name
-        );
-        self.parent.writer.indent();
-        emitln!(self.parent.writer, "res := true;");
-        emitln!(self.parent.writer, "return;");
-        self.parent.writer.unindent();
-        emitln!(self.parent.writer, "}");
-        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
@@ -1975,34 +1927,6 @@ impl<'env> EnumTranslator<'env> {
             },
         );
 
-        emitln!(
-            writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            enum_name
-        );
-        writer.indent();
-        if let Some(inv_fun_id) = self
-            .parent
-            .targets
-            .get_inv_by_datatype(&self.enum_env.get_qualified_id())
-        {
-            emitln!(
-                writer,
-                "call res := {}(s);",
-                boogie_function_name(
-                    &self.parent.env.get_function(*inv_fun_id),
-                    self.type_inst,
-                    FunctionTranslationStyle::Default
-                )
-            );
-        } else {
-            emitln!(writer, "res := true;");
-        }
-        emitln!(writer, "return;");
-        writer.unindent();
-        emitln!(writer, "}");
-
         emitln!(writer);
     }
 
@@ -2031,19 +1955,6 @@ impl<'env> EnumTranslator<'env> {
             ),
             || emitln!(self.parent.writer, "s1 == s2"),
         );
-
-        emitln!(
-            self.parent.writer,
-            "procedure {{:inline 1}} $0_prover_type_inv'{}'(s: {}) returns (res: bool) {{",
-            suffix,
-            enum_name
-        );
-        self.parent.writer.indent();
-        emitln!(self.parent.writer, "res := true;");
-        emitln!(self.parent.writer, "return;");
-        self.parent.writer.unindent();
-        emitln!(self.parent.writer, "}");
-        emitln!(self.parent.writer);
     }
 
     fn emit_function(&self, signature: &str, body_fn: impl Fn()) {
@@ -4141,37 +4052,6 @@ impl<'env> FunctionTranslator<'env> {
                                 secondary,
                                 args_str,
                             );
-                            processed = true;
-                        }
-
-                        if callee_env.get_qualified_id() == self.parent.env.type_inv_qid() {
-                            if self.style.is_asserts_style() {
-                                emitln!(self.writer(), "{} := true;", dest_str);
-                            } else {
-                                assert_eq!(inst.len(), 1);
-                                if let Some((datatype_qid, datatype_inst)) = &inst[0].get_datatype()
-                                {
-                                    if let Some(inv_qid) =
-                                        self.parent.targets.get_inv_by_datatype(datatype_qid)
-                                    {
-                                        emitln!(
-                                            self.writer(),
-                                            "call {} := {}({});",
-                                            dest_str,
-                                            boogie_function_name(
-                                                &self.parent.env.get_function(*inv_qid),
-                                                datatype_inst,
-                                                FunctionTranslationStyle::Default,
-                                            ),
-                                            args_str,
-                                        );
-                                    } else {
-                                        emitln!(self.writer(), "{} := true;", dest_str);
-                                    }
-                                } else {
-                                    emitln!(self.writer(), "{} := true;", dest_str);
-                                }
-                            }
                             processed = true;
                         }
 

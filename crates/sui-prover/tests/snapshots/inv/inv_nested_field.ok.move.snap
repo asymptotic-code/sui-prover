@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_nested_field.ok.move:19:1
+   │
+19 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_nested_field.ok.move:25: make_bad_spec

@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:38:1
+   │
+38 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_dynamic_field.ok.move:54: drain_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/inv/inv_dynamic_field.ok.move:33:1
+   │
+33 │ }
+   │ ^
+   │
+   =     at tests/inputs/inv/inv_dynamic_field.ok.move:48: make_bad_spec
