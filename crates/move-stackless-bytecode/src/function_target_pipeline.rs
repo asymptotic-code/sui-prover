@@ -44,6 +44,7 @@ pub struct FunctionTargetsHolder {
     package_targets: PackageTargets,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     target: FunctionHolderTarget,
     prover_options: ProverOptions,
 }
@@ -186,6 +187,7 @@ impl FunctionTargetsHolder {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
             datatype_invs: BiBTreeMap::new(),
+            loop_invariants: BTreeMap::new(),
             prover_options,
             target,
             package_targets: package_targets.clone(),
@@ -370,11 +372,100 @@ impl FunctionTargetsHolder {
         self.package_targets.spec_run_on().get(id)
     }
 
+    /// Resolve loop invariant candidates into the final map.
+    /// When multiple invariant functions target the same (target_func, label),
+    /// prefer the one from the same module as the spec selected by this holder.
+    pub fn resolve_loop_invariants(&mut self, env: &GlobalEnv) {
+        for (target_id, entries) in self.package_targets.loop_invariant_candidates() {
+            // group by label, checking for duplicate inv_funcs
+            let mut by_label: BTreeMap<usize, Vec<QualifiedId<FunId>>> = BTreeMap::new();
+            let mut func_to_label: BTreeMap<QualifiedId<FunId>, usize> = BTreeMap::new();
+            let mut has_error = false;
+
+            for (inv_id, label) in entries {
+                if let Some(&existing_label) = func_to_label.get(inv_id) {
+                    if existing_label != *label {
+                        env.diag(
+                            Severity::Error,
+                            &env.get_function(*inv_id).get_loc(),
+                            &format!(
+                                "Loop invariant function {} targets multiple labels ({} and {}) in {}",
+                                env.get_function(*inv_id).get_full_name_str(),
+                                existing_label,
+                                label,
+                                env.get_function(*target_id).get_full_name_str()
+                            ),
+                        );
+                        has_error = true;
+                    }
+                    continue;
+                }
+                func_to_label.insert(*inv_id, *label);
+                by_label.entry(*label).or_default().push(*inv_id);
+            }
+
+            if has_error {
+                continue;
+            }
+
+            // find the spec module for this target function;
+            // if the target itself is a spec, use its own module
+            let spec_module = self
+                .get_spec_by_fun(target_id)
+                .map(|spec_id| spec_id.module_id)
+                .unwrap_or(target_id.module_id);
+
+            let mut resolved: BiBTreeMap<QualifiedId<FunId>, usize> = BiBTreeMap::new();
+
+            for (label, inv_ids) in by_label {
+                let winner = if inv_ids.len() == 1 {
+                    inv_ids[0]
+                } else {
+                    // prefer the invariant from the same module as the spec
+                    let in_spec_module: Vec<_> = inv_ids
+                        .iter()
+                        .filter(|id| id.module_id == spec_module)
+                        .copied()
+                        .collect();
+
+                    if in_spec_module.len() == 1 {
+                        in_spec_module[0]
+                    } else {
+                        let labels = inv_ids
+                            .iter()
+                            .map(|id| {
+                                let f = env.get_function(*id);
+                                (f.get_loc(), f.get_full_name_str())
+                            })
+                            .collect::<Vec<_>>();
+                        env.diag_with_labels(
+                            Severity::Error,
+                            &env.get_function(*target_id).get_loc(),
+                            &format!(
+                                "Ambiguous loop invariants for label {} in {}",
+                                label,
+                                env.get_function(*target_id).get_full_name_str(),
+                            ),
+                            labels,
+                        );
+                        continue;
+                    }
+                };
+
+                resolved.insert(winner, label);
+            }
+
+            if !resolved.is_empty() {
+                self.loop_invariants.insert(*target_id, resolved);
+            }
+        }
+    }
+
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
     ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
-        self.package_targets.loop_invariants().get(id)
+        self.loop_invariants.get(id)
     }
 
     pub fn get_uninterpreted_functions(
@@ -449,8 +540,7 @@ impl FunctionTargetsHolder {
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
-        self.package_targets
-            .loop_invariants()
+        self.loop_invariants
             .iter()
             .map(|(target_fun_id, invs)| {
                 (

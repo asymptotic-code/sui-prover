@@ -601,15 +601,23 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let combined_info = DynamicFieldInfo::iter_union(targets.specs().filter_map(|fun_id| {
+        let combined_info = DynamicFieldInfo::iter_union(
             targets
-                .get_data(&fun_id, &FunctionVariant::Baseline)
-                .and_then(|data| {
-                    data.annotations
-                        .get::<DynamicFieldInfo>()
-                        .map(|info| info.clone())
-                })
-        }));
+                .specs()
+                .copied()
+                .chain(targets.get_funs().filter(|fun_id| {
+                    targets.is_pure_fun(fun_id) || targets.is_abort_check_fun(fun_id)
+                }))
+                .filter_map(|fun_id| {
+                    targets
+                        .get_data(&fun_id, &FunctionVariant::Baseline)
+                        .and_then(|data| {
+                            data.annotations
+                                .get::<DynamicFieldInfo>()
+                                .map(|info| info.clone())
+                        })
+                }),
+        );
 
         // Set the combined info in the environment
         env.set_extension(combined_info);
