@@ -13,6 +13,7 @@ use std::{
 
 use bimap::btree::BiBTreeMap;
 use codespan::LineIndex;
+use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{debug, info, log, warn, Level};
@@ -2859,6 +2860,46 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
+    /// Collect pool names from add_quantifier_pool calls in the current function's bytecodes.
+    fn collect_pool_names(&self) -> BTreeSet<String> {
+        let pool_qid = self.parent.env.prover_add_quantifier_pool_qid();
+        super::lib::extract_pool_names_from_bytecode(pool_qid, self.fun_target.get_bytecode())
+    }
+
+    /// Strips the `$pure` suffix from a Boogie function name for use in pool identifiers.
+    fn strip_pure_suffix(name: &str) -> &str {
+        name.strip_suffix("$pure").unwrap_or(name)
+    }
+
+    /// Returns the `{:pool "kind-fun_name"}` annotation if any pool name is a substring of
+    /// `fun_name`, or an empty string if no match. The pool name is prefixed with the quantifier
+    /// kind for granular pool naming (e.g., `forall-$0x42_mod_f'u64'`).
+    fn pool_annotation(pool_names: &BTreeSet<String>, kind: &str, fun_name: &str) -> String {
+        let pool_id = Self::strip_pure_suffix(fun_name);
+        for pool_name in pool_names {
+            if pool_id.contains(pool_name.as_str()) {
+                return format!("{{:pool \"{}-{}\"}}", kind, pool_id);
+            }
+        }
+        String::new()
+    }
+
+    /// Collect all (quantifier_kind, pool_id) pairs from Quantifier operations.
+    /// The pool_id is the Boogie function name with the `$pure` suffix stripped.
+    fn collect_quantifier_pool_ids(&self) -> BTreeSet<(String, String)> {
+        let mut ids = BTreeSet::new();
+        for bc in self.fun_target.get_bytecode() {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
+                let fun_env = self.parent.env.get_function(*qid);
+                let inst = &self.inst_slice(inst);
+                let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
+                let pool_id = Self::strip_pure_suffix(&fun_name).to_string();
+                ids.insert((qt.display().to_string(), pool_id));
+            }
+        }
+        ids
+    }
+
     fn create_quantifiers_temp_vars(&self) {
         let mut has_find = false;
         let mut has_quantifier_temp_vec = false;
@@ -3054,8 +3095,16 @@ impl<'env> FunctionTranslator<'env> {
                         } else if let Quantifier(qt, qid, inst, li) = op {
                             let qfun_env = fun_target.global_env().get_function(*qid);
                             let inst = &self.inst_slice(inst);
+                            let pool_names = self.collect_pool_names();
                             self.generate_pure_quantifier_expr(
-                                qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
+                                qt,
+                                &qfun_env,
+                                inst,
+                                srcs,
+                                dests,
+                                *li,
+                                &fmt_temp,
+                                &pool_names,
                             )
                         } else if let Operation::Pack(mid, sid, inst) = op {
                             let inst = &self.inst_slice(inst);
@@ -3228,12 +3277,20 @@ impl<'env> FunctionTranslator<'env> {
         dests: &[TempIndex],
         li: usize,
         fmt_temp: &F,
+        pool_names: &BTreeSet<String>,
     ) -> String
     where
         F: Fn(usize) -> String,
     {
         let env = self.fun_target.global_env();
         let fun_name = &boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
+        let kind = qt.display();
+        let pool_attr = Self::pool_annotation(pool_names, kind, fun_name);
+        let pool_str = if pool_attr.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", pool_attr)
+        };
 
         let cr_args = |local_name: &str| -> String {
             if !qt.vector_based() {
@@ -3292,7 +3349,8 @@ impl<'env> FunctionTranslator<'env> {
                 let b_type = boogie_type(env, &loc_type);
                 let suffix = boogie_type_suffix(env, &loc_type);
                 format!(
-                    "(forall x: {} :: $IsValid'{}'(x) ==> {}({}))",
+                    "(forall {}x: {} :: $IsValid'{}'(x) ==> {}({}))",
+                    pool_str,
                     b_type,
                     suffix,
                     fun_name,
@@ -3306,7 +3364,8 @@ impl<'env> FunctionTranslator<'env> {
                 let b_type = boogie_type(env, &loc_type);
                 let suffix = boogie_type_suffix(env, &loc_type);
                 format!(
-                    "(exists x: {} :: $IsValid'{}'(x) && {}({}))",
+                    "(exists {}x: {} :: $IsValid'{}'(x) && {}({}))",
+                    pool_str,
                     b_type,
                     suffix,
                     fun_name,
@@ -3315,7 +3374,8 @@ impl<'env> FunctionTranslator<'env> {
             }
             QuantifierType::Any => {
                 format!(
-                    "(exists i:int :: 0 <= i && i < LenVec({}) && {}({}))",
+                    "(exists {}i:int :: 0 <= i && i < LenVec({}) && {}({}))",
+                    pool_str,
                     fmt_temp(srcs[0]),
                     fun_name,
                     cr_args("i")
@@ -3323,7 +3383,8 @@ impl<'env> FunctionTranslator<'env> {
             }
             QuantifierType::AnyRange => {
                 format!(
-                    "(exists i:int :: {} <= i && i < {} && {}({}))",
+                    "(exists {}i:int :: {} <= i && i < {} && {}({}))",
+                    pool_str,
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
                     fun_name,
@@ -3332,7 +3393,8 @@ impl<'env> FunctionTranslator<'env> {
             }
             QuantifierType::All => {
                 format!(
-                    "(forall i:int :: 0 <= i && i < LenVec({}) ==> {}({}))",
+                    "(forall {}i:int :: 0 <= i && i < LenVec({}) ==> {}({}))",
+                    pool_str,
                     fmt_temp(srcs[0]),
                     fun_name,
                     cr_args("i")
@@ -3340,7 +3402,8 @@ impl<'env> FunctionTranslator<'env> {
             }
             QuantifierType::AllRange => {
                 format!(
-                    "(forall i:int :: {} <= i && i < {} ==> {}({}))",
+                    "(forall {}i:int :: {} <= i && i < {} ==> {}({}))",
+                    pool_str,
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
                     fun_name,
@@ -4141,6 +4204,59 @@ impl<'env> FunctionTranslator<'env> {
                                 secondary,
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id()
+                            == self.parent.env.prover_add_quantifier_pool_qid()
+                        {
+                            // Extract pool name from the ByteArray constant loaded into srcs[0]
+                            let user_pool_name = self
+                                .fun_target
+                                .get_bytecode()
+                                .iter()
+                                .find_map(|bc| {
+                                    if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc {
+                                        if *dest == srcs[0] {
+                                            return Some(
+                                                String::from_utf8(val.clone()).unwrap_or_else(
+                                                    |_| format!("pool_{}", srcs[0]),
+                                                ),
+                                            );
+                                        }
+                                    }
+                                    None
+                                })
+                                .unwrap_or_else(|| format!("pool_{}", srcs[0]));
+                            // Find all quantifier functions whose Boogie names contain
+                            // the user's pool name, and emit {:add_to_pool} for each
+                            let quantifier_pool_ids = self.collect_quantifier_pool_ids();
+                            let matching_ids: Vec<_> = quantifier_pool_ids
+                                .iter()
+                                .filter(|(_, name)| name.contains(&user_pool_name))
+                                .collect();
+                            for (kind, boogie_name) in &matching_ids {
+                                for src_idx in &srcs[1..] {
+                                    let term_str = str_local(*src_idx);
+                                    emitln!(
+                                        self.writer(),
+                                        "assume {{:add_to_pool \"{}-{}\", {}}} true;",
+                                        kind,
+                                        boogie_name,
+                                        term_str,
+                                    );
+                                }
+                            }
+                            if matching_ids.is_empty() {
+                                env.diag(
+                                    Severity::Warning,
+                                    &self.fun_target.get_loc(),
+                                    &format!(
+                                        "add_quantifier_pool: no quantifier found matching pool name \"{}\"",
+                                        user_pool_name
+                                    ),
+                                );
+                            }
                             processed = true;
                         }
 
@@ -5462,6 +5578,14 @@ impl<'env> FunctionTranslator<'env> {
                         let inst = &self.inst_slice(inst);
                         let fun_name =
                             boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
+                        let pool_names = self.collect_pool_names();
+                        let kind = qt.display();
+                        let pool_attr = Self::pool_annotation(&pool_names, kind, &fun_name);
+                        let pool_str = if pool_attr.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{} ", pool_attr)
+                        };
 
                         let loc_type =
                             if qt.vector_based() || matches!(qt, QuantifierType::RangeMap) {
@@ -5509,8 +5633,9 @@ impl<'env> FunctionTranslator<'env> {
                                 let b_type = boogie_type(env, &loc_type);
                                 emitln!(
                                     self.writer(),
-                                    "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));",
+                                    "$t{} := (forall {}x: {} :: $IsValid'{}'(x) ==> {}({}));",
                                     dests[0],
+                                    pool_str,
                                     b_type,
                                     suffix,
                                     fun_name,
@@ -5521,8 +5646,9 @@ impl<'env> FunctionTranslator<'env> {
                                 let b_type = boogie_type(env, &loc_type);
                                 emitln!(
                                     self.writer(),
-                                    "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));",
+                                    "$t{} := (exists {}x: {} :: $IsValid'{}'(x) && {}({}));",
                                     dests[0],
+                                    pool_str,
                                     b_type,
                                     suffix,
                                     fun_name,
@@ -5537,7 +5663,7 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", pool_str, srcs[0], dests[0], fun_name, cr_args("i"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5556,7 +5682,7 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[2],
                                     srcs[1]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", pool_str, srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5575,7 +5701,7 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[1],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i: int :: InRangeVec($t{}, i) ==> ReadVec($t{}, i) == {}({}));", dests[0], dests[0], fun_name, cr_args(&format!("i + $t{}", srcs[0])));
+                                emitln!(self.writer(), "assume (forall {}i: int :: InRangeVec($t{}, i) ==> ReadVec($t{}, i) == {}({}));", pool_str, dests[0], dests[0], fun_name, cr_args(&format!("i + $t{}", srcs[0])));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5584,13 +5710,14 @@ impl<'env> FunctionTranslator<'env> {
                                 );
                             }
                             QuantifierType::Any => {
-                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := (exists {}i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], pool_str, srcs[0], fun_name, cr_args("i"));
                             }
                             QuantifierType::AnyRange => {
                                 emitln!(
                                     self.writer(),
-                                    "$t{} := (exists i:int :: $t{} <= i && i < $t{} && {}({}));",
+                                    "$t{} := (exists {}i:int :: $t{} <= i && i < $t{} && {}({}));",
                                     dests[0],
+                                    pool_str,
                                     srcs[1],
                                     srcs[2],
                                     fun_name,
@@ -5598,13 +5725,14 @@ impl<'env> FunctionTranslator<'env> {
                                 );
                             }
                             QuantifierType::All => {
-                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$t{} := (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], pool_str, srcs[0], fun_name, cr_args("i"));
                             }
                             QuantifierType::AllRange => {
                                 emitln!(
                                     self.writer(),
-                                    "$t{} := (forall i:int :: $t{} <= i && i < $t{} ==> {}({}));",
+                                    "$t{} := (forall {}i:int :: $t{} <= i && i < $t{} ==> {}({}));",
                                     dests[0],
+                                    pool_str,
                                     srcs[1],
                                     srcs[2],
                                     fun_name,
@@ -5613,7 +5741,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::Find => {
                                 emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$find_exists := (exists {}i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", pool_str, srcs[0], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
                                 emitln!(
@@ -5627,7 +5755,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fun_name,
                                     cr_args("$find_i")
                                 );
-                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    assume (forall {}j:int :: 0 <= j && j < $find_i ==> !{}({}));", pool_str, fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
@@ -5646,7 +5774,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::FindRange => {
                                 emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$find_exists := (exists {}i:int :: $t{} <= i && i < $t{} && {}({}));", pool_str, srcs[1], srcs[2], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
                                 emitln!(
@@ -5661,7 +5789,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fun_name,
                                     cr_args("$find_i")
                                 );
-                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    assume (forall {}j:int :: $t{} <= j && j < $find_i ==> !{}({}));", pool_str, srcs[1], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
@@ -5680,7 +5808,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::FindIndex => {
                                 emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$find_exists := (exists {}i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", pool_str, srcs[0], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
                                 emitln!(
@@ -5694,7 +5822,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fun_name,
                                     cr_args("$find_i")
                                 );
-                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    assume (forall {}j:int :: 0 <= j && j < $find_i ==> !{}({}));", pool_str, fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
@@ -5710,7 +5838,7 @@ impl<'env> FunctionTranslator<'env> {
                             }
                             QuantifierType::FindIndexRange => {
                                 emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "$find_exists := (exists {}i:int :: $t{} <= i && i < $t{} && {}({}));", pool_str, srcs[1], srcs[2], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "if ($find_exists) {");
                                 emitln!(self.writer(), "    havoc $find_i;");
                                 emitln!(
@@ -5725,7 +5853,7 @@ impl<'env> FunctionTranslator<'env> {
                                     fun_name,
                                     cr_args("$find_i")
                                 );
-                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "    assume (forall {}j:int :: $t{} <= j && j < $find_i ==> !{}({}));", pool_str, srcs[1], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
@@ -5746,7 +5874,7 @@ impl<'env> FunctionTranslator<'env> {
                                     "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", pool_str, fun_name, cr_args("i"));
                                 emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::CountRange => {
@@ -5756,7 +5884,7 @@ impl<'env> FunctionTranslator<'env> {
                                     "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", pool_str, fun_name, cr_args("i"));
                                 emitln!(
                                     self.writer(),
                                     "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, $t{}, $t{});",
@@ -5772,13 +5900,13 @@ impl<'env> FunctionTranslator<'env> {
                                     "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", pool_str, fun_name, cr_args("i"));
                                 emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::SumMapRange => {
                                 emitln!(self.writer(), "havoc $quantifier_temp_vec;");
                                 emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
+                                emitln!(self.writer(), "assume (forall {}i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", pool_str, srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
                                 emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
                             }
                             QuantifierType::Filter => {
@@ -5795,10 +5923,10 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[0], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str, pool_str);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", pool_str, srcs[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", pool_str, dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall {}j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", pool_str, srcs[0], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5830,10 +5958,10 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[2],
                                     dests[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", srcs[1], srcs[2]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[1], srcs[2], fun_name, cr_args("j"));
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));", pool_str, pool_str);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", pool_str, srcs[1], srcs[2]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", pool_str, dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall {}j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", pool_str, srcs[1], srcs[2], fun_name, cr_args("j"));
                                 emitln!(
                                     self.writer(),
                                     "assume $IsValid'{}'($t{});",
@@ -5849,10 +5977,10 @@ impl<'env> FunctionTranslator<'env> {
                                     dests[0],
                                     srcs[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", dests[0], dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> ContainsVec($t{}, i)));", srcs[0], fun_name, cr_args("i"), dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, pool_str, dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", pool_str, dests[0], dests[0], dests[0], srcs[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", pool_str, dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> ContainsVec($t{}, i)));", pool_str, srcs[0], fun_name, cr_args("i"), dests[0]);
                             }
                             QuantifierType::FindIndicesRange => {
                                 emitln!(self.writer(), "havoc $t{};", dests[0]);
@@ -5872,10 +6000,10 @@ impl<'env> FunctionTranslator<'env> {
                                     srcs[2],
                                     dests[0]
                                 );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", dests[0], srcs[1], dests[0], dests[0], srcs[2]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> ContainsVec($t{}, i)));", srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int, {}j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", pool_str, pool_str, dests[0], dests[0], dests[0]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", pool_str, dests[0], srcs[1], dests[0], dests[0], srcs[2]);
+                                emitln!(self.writer(), "assume (forall {}i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", pool_str, dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
+                                emitln!(self.writer(), "assume (forall {}i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> ContainsVec($t{}, i)));", pool_str, srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
                             }
                         }
                     }
