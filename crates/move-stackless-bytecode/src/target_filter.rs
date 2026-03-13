@@ -5,13 +5,35 @@ use std::collections::HashSet;
 #[derive(clap::Args, Debug, Clone, Deserialize, Serialize, Default)]
 #[clap(next_help_heading = "Filtering Options")]
 pub struct TargetFilterOptions {
-    /// Specify modules names to target
+    /// Specify modules names to target (supports <module> or <package>::<module>)
     #[clap(long = "modules", global = true)]
     pub modules: Option<Vec<String>>,
 
-    /// Specify functions names to target
+    /// Specify functions names to target (supports <function>, <module>::<function>, or <package>::<module>::<function>)
     #[clap(long = "functions", global = true)]
     pub functions: Option<Vec<String>>,
+}
+
+/// Returns true if the given filter string matches the function environment.
+/// Supports three forms:
+///   - `<function>` — matches by simple function name
+///   - `<module>::<function>` — matches by module name and function name
+///   - `<package>::<module>::<function>` — matches by fully qualified name
+fn function_matches(func_env: &FunctionEnv, name: &str) -> bool {
+    // Match simple function name
+    if func_env.get_name_str() == name {
+        return true;
+    }
+    // Match module::function (uses simple module name)
+    if func_env.get_full_name_str() == name {
+        return true;
+    }
+    // Match package::module::function
+    format!(
+        "{}::{}",
+        func_env.module_env.get_full_name_str(),
+        func_env.get_name_str()
+    ) == name
 }
 
 impl TargetFilterOptions {
@@ -21,19 +43,13 @@ impl TargetFilterOptions {
 
     pub fn is_targeted(&self, func_env: &FunctionEnv) -> bool {
         if let Some(modules) = &self.modules {
-            let module_name = &func_env
-                .module_env
-                .get_name()
-                .name()
-                .display(func_env.module_env.env.symbol_pool())
-                .to_string();
-            if !modules.contains(&module_name) {
+            if !modules.iter().any(|m| func_env.module_env.matches_name(m)) {
                 return false;
             }
         }
 
         if let Some(functions) = &self.functions {
-            functions.contains(&func_env.get_name_str())
+            functions.iter().any(|f| function_matches(func_env, f))
         } else {
             true
         }
@@ -46,10 +62,7 @@ impl TargetFilterOptions {
                 if !seen.insert(module) {
                     return Some(format!("Duplicate module `{}` found", module));
                 }
-                if env
-                    .find_module_by_name(env.symbol_pool().make(module))
-                    .is_none()
-                {
+                if !env.get_modules().any(|m| m.matches_name(module)) {
                     return Some(format!("Module `{}` does not exist", module));
                 }
             }
@@ -61,10 +74,7 @@ impl TargetFilterOptions {
             let available_modules: Vec<_> = match &self.modules {
                 Some(f_modules) => env
                     .get_modules()
-                    .filter(|m| {
-                        let name = m.get_name().name().display(env.symbol_pool()).to_string();
-                        f_modules.contains(&name)
-                    })
+                    .filter(|m| f_modules.iter().any(|name| m.matches_name(name)))
                     .collect(),
                 None => env.get_modules().collect(),
             };
@@ -74,10 +84,10 @@ impl TargetFilterOptions {
                     return Some(format!("Duplicate function `{}` found", function));
                 }
 
-                let symbol = env.symbol_pool().make(function);
                 let found = available_modules
                     .iter()
-                    .any(|m| env.find_function_by_name(m.get_id(), symbol).is_some());
+                    .flat_map(|m| m.get_functions())
+                    .any(|f| function_matches(&f, function));
 
                 if !found {
                     return Some(format!("Function `{}` does not exist", function));

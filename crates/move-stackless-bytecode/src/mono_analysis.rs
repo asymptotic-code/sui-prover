@@ -581,20 +581,29 @@ impl Analyzer<'_> {
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        if spec_qid != &target.func_env.get_qualified_id() {
-                            self.info
-                                .funs
-                                .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                                .or_default()
-                                .insert(actuals.clone());
-                        }
+                        let callee_qid = callee_env.get_qualified_id();
+                        if self.targets.is_pure_fun(&callee_qid)
+                            || self.targets.is_pure_callee(&callee_qid)
+                        {
+                            // Pure functions get inlined $pure bodies in Boogie,
+                            // so we need to analyze their bytecode for type instantiations.
+                            self.push_todo_fun(callee_qid, actuals.clone());
+                        } else {
+                            if spec_qid != &target.func_env.get_qualified_id() {
+                                self.info
+                                    .funs
+                                    .entry((callee_qid, FunctionVariant::Baseline))
+                                    .or_default()
+                                    .insert(actuals.clone());
+                            }
 
-                        self.analyze_fun_types(
-                            &self
-                                .targets
-                                .get_target(&callee_env, &FunctionVariant::Baseline),
-                            Some(actuals.clone()),
-                        );
+                            self.analyze_fun_types(
+                                &self
+                                    .targets
+                                    .get_target(&callee_env, &FunctionVariant::Baseline),
+                                Some(actuals.clone()),
+                            );
+                        }
                     }
                 };
 

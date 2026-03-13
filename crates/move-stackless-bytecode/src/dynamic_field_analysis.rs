@@ -727,16 +727,23 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let mut combined_info =
-            DynamicFieldInfo::iter_union(targets.get_funs().filter_map(|fun_id| {
-                targets
-                    .get_data(&fun_id, &FunctionVariant::Baseline)
-                    .and_then(|data| {
-                        data.annotations
-                            .get::<DynamicFieldInfo>()
-                            .map(|info| info.clone())
-                    })
-            }));
+        let mut combined_info = DynamicFieldInfo::iter_union(
+            targets
+                .specs()
+                .copied()
+                .chain(targets.get_funs().filter(|fun_id| {
+                    targets.is_pure_fun(fun_id) || targets.is_abort_check_fun(fun_id)
+                }))
+                .filter_map(|fun_id| {
+                    targets
+                        .get_data(&fun_id, &FunctionVariant::Baseline)
+                        .and_then(|data| {
+                            data.annotations
+                                .get::<DynamicFieldInfo>()
+                                .map(|info| info.clone())
+                        })
+                }),
+        );
 
         // Remove open-typed UID entries. Generic functions taking &UID create
         // UID → {K, T} with open type params that cause ill-founded Boogie types.

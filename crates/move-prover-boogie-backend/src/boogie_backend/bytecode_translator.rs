@@ -1051,15 +1051,25 @@ impl<'env> BoogieTranslator<'env> {
                             .update_abort_action(|_| None),
                     ),
                 },
-                FunctionTranslationStyle::Pure => {
-                    // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
-                    let mut bc = bc.update_abort_action(|_| None);
-                    if self.targets.prover_options().bv_int_encoding {
-                        // only in non-bitvector mode
-                        bc = bc.replace_cast_with_assign();
+                FunctionTranslationStyle::Pure => match bc {
+                    Call(_, _, op, _, _)
+                        if matches!(
+                            op,
+                            Operation::TraceLocal { .. }
+                                | Operation::TraceReturn { .. }
+                                | Operation::TraceMessage { .. }
+                                | Operation::TraceGhost { .. }
+                        ) => {} // Skip trace operations - they have no place in pure function translation
+                    _ => {
+                        // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
+                        let mut bc = bc.update_abort_action(|_| None);
+                        if self.targets.prover_options().bv_int_encoding {
+                            // only in non-bitvector mode
+                            bc = bc.replace_cast_with_assign();
+                        }
+                        builder.emit(bc);
                     }
-                    builder.emit(bc);
-                }
+                },
             }
         }
 
@@ -2600,6 +2610,43 @@ impl<'env> FunctionTranslator<'env> {
                     "var $temp_opaque_res_var: {};",
                     self.wrap_return_datatype_name(),
                 );
+            }
+
+            // declare save variables for mutable references in procedure-style opaque calls
+            {
+                let id = self.fun_target.func_env.get_qualified_id();
+                for bc in fun_target.get_bytecode() {
+                    if let Bytecode::Call(
+                        _,
+                        _,
+                        Operation::Function(callee_mid, callee_fid, _),
+                        srcs,
+                        _,
+                    ) = bc
+                    {
+                        let callee_qid = callee_mid.qualified(*callee_fid);
+                        let is_spec_call =
+                            self.parent.targets.get_fun_by_spec(&id) == Some(&callee_qid);
+                        let use_impl = self.style == FunctionTranslationStyle::Opaque
+                            && self.parent.targets.omits_opaque(&id);
+                        if is_spec_call && !use_impl && !self.should_use_opaque_as_function(false) {
+                            for &src in srcs.iter() {
+                                if self.get_local_type(src).is_mutable_reference() {
+                                    let ty = self.get_local_type(src);
+                                    let num_oper = global_state
+                                        .get_temp_index_oper(mid, fid, src, baseline_flag)
+                                        .unwrap_or(&Bottom);
+                                    emitln!(
+                                        writer,
+                                        "var $mut_save_{}: {};",
+                                        src,
+                                        self.boogie_type_for_fun(env, &ty, num_oper)
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Declare temp variables for calls to multi-return pure functions
@@ -4354,15 +4401,70 @@ impl<'env> FunctionTranslator<'env> {
                                 }
 
                                 let call_line = if use_func { "" } else { "call " };
+                                let has_mut_src = srcs
+                                    .iter()
+                                    .any(|&idx| self.get_local_type(idx).is_mutable_reference());
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                // save mutable references before procedure-style opaque spec call
+                                if is_spec_call
+                                    && !use_impl
+                                    && !self.should_use_opaque_as_function(false)
+                                {
+                                    for &src in srcs.iter() {
+                                        if self.get_local_type(src).is_mutable_reference() {
+                                            emitln!(
+                                                self.writer(),
+                                                "$mut_save_{} := {};",
+                                                src,
+                                                str_local(src)
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // preserve mutation path for function-style spec calls with mutable reference results
+                                if is_spec_call
+                                    && !use_impl
+                                    && use_func
+                                    && !use_func_datatypes
+                                    && has_mut_src
+                                {
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        dest_str,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                } else {
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
+
+                                // restore mutation paths after procedure-style opaque spec call
+                                if is_spec_call
+                                    && !use_impl
+                                    && !self.should_use_opaque_as_function(false)
+                                {
+                                    for &src in srcs.iter() {
+                                        if self.get_local_type(src).is_mutable_reference() {
+                                            emitln!(
+                                                self.writer(),
+                                                "{} := $UpdateMutation($mut_save_{}, $Dereference({}));",
+                                                str_local(src),
+                                                src,
+                                                str_local(src)
+                                            );
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -4400,7 +4502,8 @@ impl<'env> FunctionTranslator<'env> {
                                 .for_each(|(idx, val)| {
                                     emitln!(
                                         self.writer(),
-                                        "{} := {} -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
+                                        str_local(*val),
                                         str_local(*val),
                                         func_datatypes_var,
                                         dests.len() + idx
@@ -4414,6 +4517,7 @@ impl<'env> FunctionTranslator<'env> {
                             .parent
                             .targets
                             .is_uninterpreted(&callee_env.get_qualified_id())
+                            || callee_is_pure
                         {
                             for &dest in dests.iter() {
                                 let ty = self.get_local_type(dest);
