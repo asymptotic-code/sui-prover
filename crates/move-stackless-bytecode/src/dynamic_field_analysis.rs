@@ -740,7 +740,8 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
         // Remove open-typed UID entries. Generic functions taking &UID create
         // UID → {K, T} with open type params that cause ill-founded Boogie types.
-        // Concrete instantiations flow through callee propagation in process.
+        // These exist in per-function info so callee propagation can instantiate them
+        // concretely, but must not reach the global combined info sent to Boogie.
         if let Some(uid_qid) = env.uid_qid() {
             combined_info
                 .dynamic_field_mappings
