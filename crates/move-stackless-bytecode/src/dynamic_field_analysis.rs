@@ -345,7 +345,7 @@ fn collect_dynamic_field_info(
 
                 let func_env = env.get_function(*fun_id_with_info);
 
-                if func_env.is_native() {
+                if func_env.is_native() || func_env.is_intrinsic() {
                     return None;
                 }
 
@@ -401,6 +401,79 @@ fn collect_dynamic_field_info(
     }
 
     info
+}
+
+/// Like `compute_uid_info` but runs before `process` (no callee annotations available).
+/// Computes callee uid_info on-the-fly instead of reading annotations.
+fn compute_uid_info_local(
+    fun_target: &FunctionTarget,
+    targets: &FunctionTargetsHolder,
+    code: &[Bytecode],
+) -> BTreeMap<usize, (usize, Type)> {
+    let env = fun_target.global_env();
+    code.iter()
+        .filter_map(|bc| match bc {
+            Bytecode::Call(
+                attr_id,
+                dests,
+                Operation::BorrowField(mid, sid, tys, offset),
+                srcs,
+                _,
+            ) if is_uid_field_access(&env.get_struct(mid.qualified(*sid)), *offset)
+                && !dests.is_empty() =>
+            {
+                Some((
+                    dests[0],
+                    (srcs[0], Type::Datatype(*mid, *sid, tys.clone()), *attr_id),
+                ))
+            }
+            Bytecode::Call(attr_id, dests, Operation::GetField(mid, sid, tys, offset), srcs, _)
+                if is_uid_field_access(&env.get_struct(mid.qualified(*sid)), *offset)
+                    && !dests.is_empty() =>
+            {
+                Some((
+                    dests[0],
+                    (srcs[0], Type::Datatype(*mid, *sid, tys.clone()), *attr_id),
+                ))
+            }
+            Bytecode::Call(attr_id, dests, Operation::Function(mid, fid, tys), srcs, _)
+                if !dests.is_empty() =>
+            {
+                let callee_id = mid.qualified(*fid);
+                if callee_id == fun_target.global_env().type_inv_qid() {
+                    return None;
+                }
+
+                let callee_data = targets.get_data(&callee_id, &FunctionVariant::Baseline)?;
+                let callee_env = env.get_function(callee_id);
+                let callee_target = FunctionTarget::new(&callee_env, callee_data);
+                let callee_uid_info =
+                    compute_uid_info_local(&callee_target, targets, &callee_data.code);
+
+                for key in callee_uid_info.keys() {
+                    if let Some(ret_pos) = get_function_return_local_pos(*key, &callee_data.code) {
+                        let (_, obj_type) = callee_uid_info.get(key).unwrap();
+                        return Some((
+                            dests[ret_pos],
+                            (srcs[0], obj_type.instantiate(tys), *attr_id),
+                        ));
+                    }
+                }
+
+                None
+            }
+            _ => None,
+        })
+        .into_group_map()
+        .into_iter()
+        .filter_map(|(temp_idx, types)| {
+            if types.len() == 1 {
+                Some((temp_idx, (types[0].0, types[0].1.clone())))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Computes a mapping from temporary indices to the objects and types of objects they reference
@@ -565,15 +638,14 @@ impl DynamicFieldAnalysisProcessor {
 
 impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
     fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
-        let uid_qid = match env.uid_qid() {
-            Some(qid) => qid,
-            None => return,
-        };
+        if env.uid_qid().is_none() {
+            return;
+        }
         let df_qids = collect_df_qids(env);
 
-        // Check if any accessible function has a &UID parameter and makes df calls.
-        // This predicts whether uid_fallback warnings would be emitted during process,
-        // so we can route ALL df operations through UID type for consistency.
+        // Check if any accessible function has a df call where the parent
+        // object type can't be resolved locally. When that happens, fall back
+        // to UID type for ALL df operations for consistency.
         let mut use_uid = false;
         for fun_id in targets.get_funs().collect_vec() {
             let fun_env = env.get_function(fun_id);
@@ -590,21 +662,14 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 continue;
             }
 
-            // Check if any parameter is of type &UID or &mut UID
-            let has_uid_param = (0..target.get_parameter_count()).any(|idx| {
-                let ty = target.get_local_type(idx);
-                ty.skip_reference()
-                    .get_datatype()
-                    .map_or(false, |(qid, _)| qid == uid_qid)
-            });
-            if !has_uid_param {
-                continue;
-            }
+            let uid_info = compute_uid_info_local(&target, targets, &data.code);
+            let alias_info = ReachingDefProcessor::analyze_reaching_definitions(&fun_env, data);
 
-            // Emit warning for each df call in this function
-            for bc in &data.code {
-                if let Bytecode::Call(attr_id, _, Operation::Function(mid, fid, _), _, _) = bc {
-                    if df_qids.all.contains(&mid.qualified(*fid)) {
+            for (offset, bc) in data.code.iter().enumerate() {
+                if let Bytecode::Call(attr_id, _, Operation::Function(mid, fid, _), srcs, _) = bc {
+                    if df_qids.all.contains(&mid.qualified(*fid))
+                        && get_uid_object_type(&uid_info, &alias_info, srcs[0], offset).is_none()
+                    {
                         use_uid = true;
                         let loc = target.get_bytecode_loc(*attr_id);
                         env.add_diag(
