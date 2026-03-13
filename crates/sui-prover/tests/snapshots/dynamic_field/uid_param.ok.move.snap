@@ -4,3 +4,8 @@ assertion_line: 297
 expression: output
 ---
 Verification successful
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param.ok.move:15:5
+   │
+15 │     df::add(uid, WhitelistKey { address: addr }, true);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

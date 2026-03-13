@@ -271,8 +271,6 @@ fn collect_dynamic_field_info(
     .flatten()
     .collect_vec();
 
-    let uid_qid = builder.fun_env.module_env.env.uid_qid();
-
     // compute map of temp index that load object ids to type of object
     let uid_info = compute_uid_info(&builder.get_target(), targets, &builder.data.code);
 
@@ -284,12 +282,11 @@ fn collect_dynamic_field_info(
             Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), srcs, _) => {
                 let callee_id = module_id.qualified(*fun_id);
 
-                if callee_id == builder.fun_env.get_qualified_id() {
-                    return None;
-                }
-
-                let uid_fallback_type = || -> Option<Type> {
-                    let uid_qid = uid_qid?;
+                // When the UID object type can't be determined (e.g. function takes
+                // &UID directly), fall back to placing dynamic fields under UID
+                // itself and emit a warning.
+                let uid_fallback = || -> Option<Type> {
+                    let uid_qid = builder.fun_env.module_env.env.uid_qid()?;
                     if verified_or_inlined
                         || builder
                             .fun_env
@@ -307,10 +304,14 @@ fn collect_dynamic_field_info(
                     Some(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]))
                 };
 
+                if callee_id == builder.fun_env.get_qualified_id() {
+                    return None;
+                }
+
                 if dynamic_field_name_value_fun_qids.contains(&callee_id) {
                     let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
                         .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback_type);
+                        .or_else(&uid_fallback);
                     if let Some(obj_type) = obj_type {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
@@ -326,7 +327,7 @@ fn collect_dynamic_field_info(
                 if dynamic_field_name_value_fun_mut_qids.contains(&callee_id) {
                     let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
                         .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback_type);
+                        .or_else(&uid_fallback);
                     if let Some(obj_type) = obj_type {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
@@ -342,7 +343,7 @@ fn collect_dynamic_field_info(
                 if dynamic_field_name_only_fun_qids.contains(&callee_id) {
                     let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
                         .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback_type);
+                        .or_else(&uid_fallback);
                     if let Some(obj_type) = obj_type {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
@@ -366,43 +367,47 @@ fn collect_dynamic_field_info(
                     return None;
                 }
 
-                let callee_data = targets
+                let info = targets
                     .get_data(fun_id_with_info, &FunctionVariant::Baseline)
+                    .map(|data| get_fun_info(data))
                     .expect(&format!(
                         "callee `{}` of `{}` was filtered out",
                         func_env.get_full_name_str(),
                         builder.fun_env.get_full_name_str()
                     ));
-                let callee_info = get_fun_info(callee_data);
-
-                Some(callee_info.instantiate(type_inst))
+                Some(info.instantiate(type_inst))
             }
             _ => None,
         },
     ));
 
-    info.uid_info = uid_info.clone();
+    info.uid_info = uid_info;
 
-    let mut parents_with_uid_param_calls: BTreeSet<usize> = BTreeSet::new();
-    for bc in builder.data.code.iter() {
-        if let Bytecode::Call(_, _, Operation::Function(module_id, callee_fun_id, _), srcs, _) = bc
-        {
-            let callee_id = module_id.qualified(*callee_fun_id);
-            if callee_id == builder.fun_env.get_qualified_id() {
-                continue;
-            }
-            if let Some(callee_data) = targets.get_data(&callee_id, &FunctionVariant::Baseline) {
-                let callee_info = get_fun_info(callee_data);
-                for (param_idx, (obj_local, _)) in &callee_info.uid_info {
-                    if param_idx == obj_local && *param_idx < srcs.len() {
-                        let uid_temp = srcs[*param_idx];
-                        if let Some((parent, _)) = uid_info.get(&uid_temp) {
-                            parents_with_uid_param_calls.insert(*parent);
-                        }
-                    }
-                }
-            }
-        }
+    // If any dynamic field entries are keyed by UID type, consolidate ALL entries
+    // under UID. This ensures consistency: when a function mixes direct UID usage
+    // (e.g. from an inlined callee taking &UID) with obj.id access, all df operations
+    // use the same Boogie slot. Without this, verification fails because df operations
+    // on the same logical object would map to different Boogie variables.
+    let use_uid_type = builder
+        .fun_env
+        .module_env
+        .env
+        .uid_qid()
+        .map_or(false, |uid_qid| {
+            let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
+            info.dynamic_field_mappings.contains_key(&uid_type)
+        });
+    if use_uid_type {
+        let uid_qid = builder.fun_env.module_env.env.uid_qid().unwrap();
+        let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
+        // Merge all entries under UID type
+        let all_entries: BTreeSet<NameValueInfo> = info
+            .dynamic_field_mappings
+            .values()
+            .flat_map(|s| s.iter().cloned())
+            .collect();
+        info.dynamic_field_mappings.clear();
+        info.dynamic_field_mappings.insert(uid_type, all_entries);
     }
 
     let code = std::mem::take(&mut builder.data.code);
@@ -415,35 +420,21 @@ fn collect_dynamic_field_info(
                 mut srcs,
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
-                if let Some((obj_local, obj_type)) =
-                    get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
-                {
-                    let use_uid_type = parents_with_uid_param_calls.contains(obj_local)
-                        || parents_with_uid_param_calls.iter().any(|parent| {
-                            alias_info.values().any(|state| {
-                                let obj_local_defs =
-                                    ReachingDefProcessor::all_aliases(state, obj_local);
-                                let parent_defs = ReachingDefProcessor::all_aliases(state, parent);
-                                !obj_local_defs.is_disjoint(&parent_defs)
-                                    || obj_local_defs.contains(parent)
-                                    || parent_defs.contains(obj_local)
-                            })
-                        });
-
-                    if use_uid_type {
-                        if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
-                            type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
-                        }
-                    } else {
-                        srcs[0] = *obj_local;
-                        if !dynamic_field_name_value_fun_mut_qids
-                            .contains(&module_id.qualified(fun_id))
-                            && builder.get_local_type(srcs[0]).is_mutable_reference()
-                        {
-                            srcs[0] = builder.emit_let_read_ref(srcs[0]);
-                        }
-                        type_inst.push(obj_type.clone());
+                if use_uid_type {
+                    // All entries consolidated under UID — use UID type for all df calls
+                    if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
+                        type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
                     }
+                } else if let Some((obj_local, obj_type)) =
+                    get_uid_object_type(&info.uid_info, &alias_info, srcs[0], offset)
+                {
+                    srcs[0] = *obj_local;
+                    if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
+                        && builder.get_local_type(srcs[0]).is_mutable_reference()
+                    {
+                        srcs[0] = builder.emit_let_read_ref(srcs[0]);
+                    }
+                    type_inst.push(obj_type.clone());
                 } else if !type_inst.iter().any(|t| t.is_open()) {
                     // Fallback: push UID type only for concrete df calls where parent
                     // is unknown. Generic calls get concrete types via monomorphization.
@@ -472,31 +463,8 @@ fn compute_uid_info(
     targets: &FunctionTargetsHolder,
     code: &[Bytecode],
 ) -> BTreeMap<usize, (usize, Type)> {
-    let env = fun_target.global_env();
-
-    let uid_params: BTreeMap<usize, (usize, Type)> = if let Some(uid_qid) = env.uid_qid() {
-        (0..fun_target.get_parameter_count())
-            .filter_map(|idx| {
-                let ty = fun_target.get_local_type(idx);
-                let inner_ty = ty.skip_reference();
-                if let Some((qid, tys)) = inner_ty.get_datatype() {
-                    if qid == uid_qid {
-                        return Some((
-                            idx,
-                            (idx, Type::Datatype(qid.module_id, qid.id, tys.to_vec())),
-                        ));
-                    }
-                }
-                None
-            })
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
-
-    // First collect all potential UID type mappings, grouped by temporary index
-    let from_bytecode: BTreeMap<usize, (usize, Type)> = code
-        .iter()
+    code.iter()
+        // First collect all potential UID type mappings, grouped by temporary index
         .filter_map(|bc| match bc {
             Bytecode::Call(
                 attr_id,
@@ -583,31 +551,7 @@ fn compute_uid_info(
                 None
             }
         })
-        .collect();
-
-    let mut result = uid_params;
-    result.extend(from_bytecode);
-
-    for bc in code {
-        match bc {
-            Bytecode::Call(_, dests, Operation::FreezeRef, srcs, _)
-            | Bytecode::Call(_, dests, Operation::ReadRef, srcs, _) => {
-                if !dests.is_empty() && !srcs.is_empty() {
-                    if let Some((obj_local, obj_type)) = result.get(&srcs[0]).cloned() {
-                        result.entry(dests[0]).or_insert((obj_local, obj_type));
-                    }
-                }
-            }
-            Bytecode::Assign(_, dest, src, _) => {
-                if let Some((obj_local, obj_type)) = result.get(src).cloned() {
-                    result.entry(*dest).or_insert((obj_local, obj_type));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    result
+        .collect()
 }
 
 /// Checks if a field access at the given offset is accessing the single UID field.
@@ -703,29 +647,35 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let mut combined_info =
-            DynamicFieldInfo::iter_union(targets.get_funs().filter_map(|fun_id| {
-                targets
-                    .get_data(&fun_id, &FunctionVariant::Baseline)
-                    .and_then(|data| {
-                        data.annotations
-                            .get::<DynamicFieldInfo>()
-                            .map(|info| info.clone())
-                    })
-            }));
+        let mut combined_info = DynamicFieldInfo::iter_union(
+            targets
+                .specs()
+                .copied()
+                .chain(targets.get_funs().filter(|fun_id| {
+                    targets.is_pure_fun(fun_id) || targets.is_abort_check_fun(fun_id)
+                }))
+                .filter_map(|fun_id| {
+                    targets
+                        .get_data(&fun_id, &FunctionVariant::Baseline)
+                        .and_then(|data| {
+                            data.annotations
+                                .get::<DynamicFieldInfo>()
+                                .map(|info| info.clone())
+                        })
+                }),
+        );
 
         // Propagate UID-keyed entries through the call graph.
-        // Generic functions with UID params (e.g. borrow_mut<T>(&mut UID, ...))
+        // Generic functions with UID fallback (e.g. borrow_mut<T>(&mut UID, ...))
         // have UID → {u64, T} entries with open types. Callee info propagation
         // is skipped for reachable functions, so concrete instantiations from
         // callers (e.g. borrow_mut<Validator>) don't appear in annotations.
         // This pass transitively instantiates UID entries through the call graph
         // to collect concrete entries like UID → {u64, Validator}.
-        let uid_qid = env.uid_qid();
-        if let Some(uid_qid) = uid_qid {
+        if let Some(uid_qid) = env.uid_qid() {
             let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
 
-            // Collect initial UID entries per function
+            // Collect initial UID entries from ALL functions' annotations
             let funs: Vec<_> = targets.get_funs().collect();
             let mut uid_entries: BTreeMap<_, BTreeSet<NameValueInfo>> = BTreeMap::new();
             for &fun_id in &funs {
