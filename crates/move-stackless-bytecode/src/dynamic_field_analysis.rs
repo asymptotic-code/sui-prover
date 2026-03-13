@@ -420,12 +420,6 @@ fn collect_dynamic_field_info(
                         srcs[0] = builder.emit_let_read_ref(srcs[0]);
                     }
                     type_inst.push(obj_type.clone());
-                } else if !type_inst.iter().any(|t| t.is_open()) {
-                    // Fallback: push UID type only for concrete df calls where parent
-                    // is unknown. Generic calls get concrete types via monomorphization.
-                    if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
-                        type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
-                    }
                 }
                 builder.emit(Bytecode::Call(
                     attr_id,
