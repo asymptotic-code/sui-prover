@@ -348,19 +348,13 @@ fn collect_dynamic_field_info(
 
                 let func_env = env.get_function(*fun_id_with_info);
 
-                // native, reachable or intrinsic functions do not access dynamic fields
-                if func_env.is_native() || get_info(&builder.get_target()).reachable {
+                if func_env.is_native() {
                     return None;
                 }
 
                 let info = targets
                     .get_data(fun_id_with_info, &FunctionVariant::Baseline)
-                    .map(|data| get_fun_info(data))
-                    .expect(&format!(
-                        "callee `{}` of `{}` was filtered out",
-                        func_env.get_full_name_str(),
-                        builder.fun_env.get_full_name_str()
-                    ));
+                    .map(|data| get_fun_info(data))?;
                 Some(info.instantiate(type_inst))
             }
             _ => None,
@@ -684,87 +678,10 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                     })
             }));
 
-        // Propagate UID-keyed entries through the call graph and filter open types.
-        // Generic functions taking &UID create UID → {K, T} with open type params.
-        // Reachable functions skip callee propagation in process, so concrete
-        // instantiations (e.g. UID → {u64, Validator}) don't flow through chains
-        // of reachable functions. This fixpoint loop instantiates them transitively.
-        // Open entries are then removed to avoid ill-founded Boogie types.
+        // Remove open-typed UID entries. Generic functions taking &UID create
+        // UID → {K, T} with open type params that cause ill-founded Boogie types.
+        // Concrete instantiations flow through callee propagation in process.
         if let Some(uid_qid) = env.uid_qid() {
-            let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
-
-            let funs: Vec<_> = targets.get_funs().collect();
-            let mut uid_entries: BTreeMap<_, BTreeSet<NameValueInfo>> = BTreeMap::new();
-            for &fun_id in &funs {
-                if let Some(data) = targets.get_data(&fun_id, &FunctionVariant::Baseline) {
-                    if let Some(info) = data.annotations.get::<DynamicFieldInfo>() {
-                        if let Some(entries) = info.dynamic_field_mappings.get(&uid_type) {
-                            if !entries.is_empty() {
-                                uid_entries.insert(fun_id, entries.clone());
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !uid_entries.is_empty() {
-                loop {
-                    let mut changed = false;
-                    for &fun_id in &funs {
-                        if let Some(data) = targets.get_data(&fun_id, &FunctionVariant::Baseline) {
-                            let mut new_entries = BTreeSet::new();
-                            for bc in &data.code {
-                                if let Bytecode::Call(
-                                    _,
-                                    _,
-                                    Operation::Function(mid, fid, type_inst),
-                                    _,
-                                    _,
-                                ) = bc
-                                {
-                                    let callee_id = mid.qualified(*fid);
-                                    if callee_id == fun_id {
-                                        continue;
-                                    }
-                                    if let Some(callee_entries) =
-                                        uid_entries.get(&callee_id).cloned()
-                                    {
-                                        for nv in &callee_entries {
-                                            new_entries.insert(nv.instantiate(type_inst));
-                                        }
-                                    }
-                                }
-                            }
-                            if !new_entries.is_empty() {
-                                let entry = uid_entries.entry(fun_id).or_insert_with(BTreeSet::new);
-                                let old_len = entry.len();
-                                entry.extend(new_entries);
-                                if entry.len() > old_len {
-                                    changed = true;
-                                }
-                            }
-                        }
-                    }
-                    if !changed {
-                        break;
-                    }
-                }
-
-                let concrete_entries: BTreeSet<NameValueInfo> = uid_entries
-                    .values()
-                    .flat_map(|entries| entries.iter())
-                    .filter(|nv| !nv.is_open())
-                    .cloned()
-                    .collect();
-                if !concrete_entries.is_empty() {
-                    combined_info
-                        .dynamic_field_mappings
-                        .entry(uid_type.clone())
-                        .or_insert_with(BTreeSet::new)
-                        .extend(concrete_entries);
-                }
-            }
-
             combined_info
                 .dynamic_field_mappings
                 .retain(|ty, name_values| {
