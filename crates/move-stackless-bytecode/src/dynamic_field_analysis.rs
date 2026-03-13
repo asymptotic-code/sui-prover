@@ -14,13 +14,17 @@ use crate::{
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use itertools::Itertools;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, StructEnv},
+    model::{FunctionEnv, GlobalEnv, QualifiedId, StructEnv},
     ty::Type,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
+
+/// When set as an env extension, signals that all dynamic field operations
+/// should use UID type instead of the parent object type.
+struct UseUidForDynamicFields;
 
 /// Stores dynamic field type information for a specific function
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -185,91 +189,74 @@ pub fn get_function_return_local_pos(local_idx: usize, code: &[Bytecode]) -> Opt
     return_pos
 }
 
+/// Collect all dynamic field function QualifiedIds from the environment
+fn collect_df_qids(env: &GlobalEnv) -> DfQids {
+    let name_value = vec![
+        // dynamic field operations
+        env.dynamic_field_borrow_qid(),
+        env.dynamic_field_exists_with_type_qid(),
+        // dynamic object field operations
+        env.dynamic_object_field_borrow_qid(),
+        env.dynamic_object_field_exists_with_type_qid(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect_vec();
+    let name_value_mut = vec![
+        // dynamic field operations
+        env.dynamic_field_add_qid(),
+        env.dynamic_field_borrow_mut_qid(),
+        env.dynamic_field_remove_qid(),
+        env.dynamic_field_remove_if_exists_qid(),
+        // dynamic object field operations
+        env.dynamic_object_field_add_qid(),
+        env.dynamic_object_field_borrow_mut_qid(),
+        env.dynamic_object_field_remove_qid(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect_vec();
+    let name_only = vec![
+        // dynamic field operations
+        env.dynamic_field_exists_qid(),
+        // dynamic object field operations
+        env.dynamic_object_field_exists_qid(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect_vec();
+    let all = [&name_value, &name_value_mut, &name_only]
+        .into_iter()
+        .cloned()
+        .flatten()
+        .collect_vec();
+    DfQids {
+        name_value,
+        name_value_mut,
+        name_only,
+        all,
+    }
+}
+
+struct DfQids {
+    name_value: Vec<QualifiedId<move_model::model::FunId>>,
+    name_value_mut: Vec<QualifiedId<move_model::model::FunId>>,
+    name_only: Vec<QualifiedId<move_model::model::FunId>>,
+    all: Vec<QualifiedId<move_model::model::FunId>>,
+}
+
 /// Collect dynamic field type information from a function's bytecode
 fn collect_dynamic_field_info(
     targets: &FunctionTargetsHolder,
     builder: &mut FunctionDataBuilder,
     verified_or_inlined: bool,
+    use_uid: bool,
 ) -> DynamicFieldInfo {
-    let dynamic_field_name_value_fun_qids = vec![
-        // dynamic field operations
-        builder.fun_env.module_env.env.dynamic_field_borrow_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_field_exists_with_type_qid(),
-        // dynamic object field operations
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_borrow_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_exists_with_type_qid(),
-    ]
-    .into_iter()
-    .filter_map(|x| x)
-    .collect_vec();
-    let dynamic_field_name_value_fun_mut_qids = vec![
-        // dynamic field operations
-        builder.fun_env.module_env.env.dynamic_field_add_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_field_borrow_mut_qid(),
-        builder.fun_env.module_env.env.dynamic_field_remove_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_field_remove_if_exists_qid(),
-        // dynamic object field operations
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_add_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_borrow_mut_qid(),
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_remove_qid(),
-    ]
-    .into_iter()
-    .filter_map(|x| x)
-    .collect_vec();
-    let dynamic_field_name_only_fun_qids = vec![
-        // dynamic field operations
-        builder.fun_env.module_env.env.dynamic_field_exists_qid(),
-        // dynamic object field operations
-        builder
-            .fun_env
-            .module_env
-            .env
-            .dynamic_object_field_exists_qid(),
-    ]
-    .into_iter()
-    .filter_map(|x| x)
-    .collect_vec();
-    let all_dynamic_field_fun_qids = [
-        &dynamic_field_name_value_fun_qids,
-        &dynamic_field_name_value_fun_mut_qids,
-        &dynamic_field_name_only_fun_qids,
-    ]
-    .into_iter()
-    .cloned()
-    .flatten()
-    .collect_vec();
+    let env = builder.fun_env.module_env.env;
+    let df_qids = collect_df_qids(env);
+    let uid_type = env
+        .uid_qid()
+        .map(|qid| Type::Datatype(qid.module_id, qid.id, vec![]));
 
     // compute map of temp index that load object ids to type of object
     let uid_info = compute_uid_info(&builder.get_target(), targets, &builder.data.code);
@@ -282,11 +269,21 @@ fn collect_dynamic_field_info(
             Bytecode::Call(_, _, Operation::Function(module_id, fun_id, type_inst), srcs, _) => {
                 let callee_id = module_id.qualified(*fun_id);
 
-                // When the UID object type can't be determined (e.g. function takes
-                // &UID directly), fall back to placing dynamic fields under UID
-                // itself and emit a warning.
-                let uid_fallback = || -> Option<Type> {
-                    let uid_qid = builder.fun_env.module_env.env.uid_qid()?;
+                // Determine the object type for this df call.
+                // When use_uid is set (detected in initialize), always use UID type.
+                // Otherwise, look up the parent object type, falling back to UID
+                // with a warning when the parent can't be determined.
+                let get_obj_type = |offset: usize| -> Option<Type> {
+                    if use_uid {
+                        return uid_type.clone();
+                    }
+                    if let Some((_, obj_type)) =
+                        get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
+                    {
+                        return Some(obj_type.clone());
+                    }
+                    // UID fallback: emit warning when parent is unknown
+                    let uid_qid = env.uid_qid()?;
                     if verified_or_inlined
                         || builder
                             .fun_env
@@ -295,9 +292,11 @@ fn collect_dynamic_field_info(
                             .any(|x| x.is_mutable_reference())
                     {
                         let loc = builder.get_loc(bc.get_attr_id());
-                        builder.fun_env.module_env.env.add_diag(
+                        env.add_diag(
                             Diagnostic::new(Severity::Warning)
-                                .with_message("UID object type not found, dynamic fields will be placed under UID")
+                                .with_message(
+                                    "UID object type not found, dynamic fields will be placed under UID",
+                                )
                                 .with_labels(vec![Label::primary(loc.file_id(), loc.span())]),
                         );
                     }
@@ -308,11 +307,8 @@ fn collect_dynamic_field_info(
                     return None;
                 }
 
-                if dynamic_field_name_value_fun_qids.contains(&callee_id) {
-                    let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
-                        .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback);
-                    if let Some(obj_type) = obj_type {
+                if df_qids.name_value.contains(&callee_id) {
+                    if let Some(obj_type) = get_obj_type(offset) {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
                             NameValueInfo::NameValue {
@@ -324,11 +320,8 @@ fn collect_dynamic_field_info(
                     }
                 }
 
-                if dynamic_field_name_value_fun_mut_qids.contains(&callee_id) {
-                    let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
-                        .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback);
-                    if let Some(obj_type) = obj_type {
+                if df_qids.name_value_mut.contains(&callee_id) {
+                    if let Some(obj_type) = get_obj_type(offset) {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
                             NameValueInfo::NameValue {
@@ -340,11 +333,8 @@ fn collect_dynamic_field_info(
                     }
                 }
 
-                if dynamic_field_name_only_fun_qids.contains(&callee_id) {
-                    let obj_type = get_uid_object_type(&uid_info, &alias_info, srcs[0], offset)
-                        .map(|(_, t)| t.clone())
-                        .or_else(&uid_fallback);
-                    if let Some(obj_type) = obj_type {
+                if df_qids.name_only.contains(&callee_id) {
+                    if let Some(obj_type) = get_obj_type(offset) {
                         return Some(DynamicFieldInfo::singleton(
                             obj_type,
                             NameValueInfo::NameOnly(type_inst[0].clone()),
@@ -356,11 +346,7 @@ fn collect_dynamic_field_info(
                     .get_callee_spec_qid(&builder.fun_env.get_qualified_id(), &callee_id)
                     .unwrap_or(&callee_id);
 
-                let func_env = builder
-                    .fun_env
-                    .module_env
-                    .env
-                    .get_function(*fun_id_with_info);
+                let func_env = env.get_function(*fun_id_with_info);
 
                 // native, reachable or intrinsic functions do not access dynamic fields
                 if func_env.is_native() || get_info(&builder.get_target()).reachable {
@@ -383,18 +369,6 @@ fn collect_dynamic_field_info(
 
     info.uid_info = uid_info;
 
-    // Check if any entries use UID type — if so, all bytecode df calls must use
-    // UID type to match the consolidated annotations from finalize.
-    let use_uid_type = builder
-        .fun_env
-        .module_env
-        .env
-        .uid_qid()
-        .map_or(false, |uid_qid| {
-            let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
-            info.dynamic_field_mappings.contains_key(&uid_type)
-        });
-
     let code = std::mem::take(&mut builder.data.code);
     for (offset, bc) in code.into_iter().enumerate() {
         match bc {
@@ -404,17 +378,19 @@ fn collect_dynamic_field_info(
                 Operation::Function(module_id, fun_id, mut type_inst),
                 mut srcs,
                 aa,
-            ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
-                if use_uid_type {
-                    // All entries consolidated under UID by finalize — bytecode must match
-                    if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
-                        type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
+            ) if df_qids.all.contains(&module_id.qualified(fun_id)) => {
+                if use_uid {
+                    // All df operations use UID type directly
+                    if let Some(ref uid_ty) = uid_type {
+                        type_inst.push(uid_ty.clone());
                     }
                 } else if let Some((obj_local, obj_type)) =
                     get_uid_object_type(&info.uid_info, &alias_info, srcs[0], offset)
                 {
                     srcs[0] = *obj_local;
-                    if !dynamic_field_name_value_fun_mut_qids.contains(&module_id.qualified(fun_id))
+                    if !df_qids
+                        .name_value_mut
+                        .contains(&module_id.qualified(fun_id))
                         && builder.get_local_type(srcs[0]).is_mutable_reference()
                     {
                         srcs[0] = builder.emit_let_read_ref(srcs[0]);
@@ -593,6 +569,66 @@ impl DynamicFieldAnalysisProcessor {
 }
 
 impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
+    fn initialize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
+        let uid_qid = match env.uid_qid() {
+            Some(qid) => qid,
+            None => return,
+        };
+        let df_qids = collect_df_qids(env);
+
+        // Check if any accessible function has a &UID parameter and makes df calls.
+        // This predicts whether uid_fallback warnings would be emitted during process,
+        // so we can route ALL df operations through UID type for consistency.
+        let mut use_uid = false;
+        for fun_id in targets.get_funs().collect_vec() {
+            let fun_env = env.get_function(fun_id);
+            if fun_env.is_native() || fun_env.is_intrinsic() {
+                continue;
+            }
+            let data = match targets.get_data(&fun_id, &FunctionVariant::Baseline) {
+                Some(d) => d,
+                None => continue,
+            };
+            let target = FunctionTarget::new(&fun_env, data);
+            let info = get_info(&target);
+            if !info.accessible() {
+                continue;
+            }
+
+            // Check if any parameter is of type &UID or &mut UID
+            let has_uid_param = (0..target.get_parameter_count()).any(|idx| {
+                let ty = target.get_local_type(idx);
+                ty.skip_reference()
+                    .get_datatype()
+                    .map_or(false, |(qid, _)| qid == uid_qid)
+            });
+            if !has_uid_param {
+                continue;
+            }
+
+            // Emit warning for each df call in this function
+            for bc in &data.code {
+                if let Bytecode::Call(attr_id, _, Operation::Function(mid, fid, _), _, _) = bc {
+                    if df_qids.all.contains(&mid.qualified(*fid)) {
+                        use_uid = true;
+                        let loc = target.get_bytecode_loc(*attr_id);
+                        env.add_diag(
+                            Diagnostic::new(Severity::Warning)
+                                .with_message(
+                                    "UID object type not found, dynamic fields will be placed under UID",
+                                )
+                                .with_labels(vec![Label::primary(loc.file_id(), loc.span())]),
+                        );
+                    }
+                }
+            }
+        }
+
+        if use_uid {
+            env.set_extension(UseUidForDynamicFields);
+        }
+    }
+
     fn process(
         &self,
         targets: &mut FunctionTargetsHolder,
@@ -611,10 +647,21 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             return data;
         }
 
+        let use_uid = fun_env
+            .module_env
+            .env
+            .get_extension::<UseUidForDynamicFields>()
+            .is_some();
+
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
         // Collect the dynamic field info
-        let info = collect_dynamic_field_info(targets, &mut builder, info.verified || info.inlined);
+        let info = collect_dynamic_field_info(
+            targets,
+            &mut builder,
+            info.verified || info.inlined,
+            use_uid,
+        );
 
         builder
             .data
@@ -644,17 +691,16 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 }),
         );
 
-        // Propagate UID-keyed entries through the call graph.
-        // Generic functions with UID fallback (e.g. borrow_mut<T>(&mut UID, ...))
-        // have UID → {u64, T} entries with open types. Callee info propagation
-        // is skipped for reachable functions, so concrete instantiations from
-        // callers (e.g. borrow_mut<Validator>) don't appear in annotations.
-        // This pass transitively instantiates UID entries through the call graph
-        // to collect concrete entries like UID → {u64, Validator}.
         if let Some(uid_qid) = env.uid_qid() {
             let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
 
-            // Collect initial UID entries from ALL functions' annotations
+            // Propagate UID-keyed entries through the call graph.
+            // Generic functions with UID fallback (e.g. borrow_mut<T>(&mut UID, ...))
+            // have UID → {u64, T} entries with open types. Callee info propagation
+            // is skipped for reachable functions, so concrete instantiations from
+            // callers (e.g. borrow_mut<Validator>) don't appear in annotations.
+            // This pass transitively instantiates UID entries through the call graph
+            // to collect concrete entries like UID → {u64, Validator}.
             let funs: Vec<_> = targets.get_funs().collect();
             let mut uid_entries: BTreeMap<_, BTreeSet<NameValueInfo>> = BTreeMap::new();
             for &fun_id in &funs {
@@ -669,10 +715,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 }
             }
 
-            // If any function has UID-keyed entries (i.e., warnings were emitted),
-            // consolidate all dynamic field info under UID — both the global
-            // combined_info and each function's per-function annotation.
-            // This ensures all Boogie slots are consistent across the entire program.
             if !uid_entries.is_empty() {
                 // Propagate: if a callee has UID entries, the caller inherits them
                 // (instantiated with the call's type args). Repeat until fixpoint.
@@ -731,40 +773,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                         .entry(uid_type.clone())
                         .or_insert_with(BTreeSet::new)
                         .extend(concrete_entries);
-                }
-
-                // Consolidate global combined_info: merge all entries under UID type
-                let all_entries: BTreeSet<NameValueInfo> = combined_info
-                    .dynamic_field_mappings
-                    .values()
-                    .flat_map(|s| s.iter().cloned())
-                    .collect();
-                combined_info.dynamic_field_mappings.clear();
-                combined_info
-                    .dynamic_field_mappings
-                    .insert(uid_type.clone(), all_entries);
-
-                // Consolidate each function's per-function annotation under UID
-                for &fun_id in &funs {
-                    if let Some(data) = targets.get_data_mut(&fun_id, &FunctionVariant::Baseline) {
-                        if let Some(info) = data.annotations.get::<DynamicFieldInfo>() {
-                            if !info.dynamic_field_mappings.is_empty()
-                                && !info.dynamic_field_mappings.keys().all(|k| k == &uid_type)
-                            {
-                                let mut new_info = info.clone();
-                                let all: BTreeSet<NameValueInfo> = new_info
-                                    .dynamic_field_mappings
-                                    .values()
-                                    .flat_map(|s| s.iter().cloned())
-                                    .collect();
-                                new_info.dynamic_field_mappings.clear();
-                                new_info
-                                    .dynamic_field_mappings
-                                    .insert(uid_type.clone(), all);
-                                data.annotations.set(new_info, true);
-                            }
-                        }
-                    }
                 }
             }
 
