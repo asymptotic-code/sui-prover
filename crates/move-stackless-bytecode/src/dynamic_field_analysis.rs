@@ -673,34 +673,26 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let mut combined_info = DynamicFieldInfo::iter_union(
-            targets
-                .specs()
-                .copied()
-                .chain(targets.get_funs().filter(|fun_id| {
-                    targets.is_pure_fun(fun_id) || targets.is_abort_check_fun(fun_id)
-                }))
-                .filter_map(|fun_id| {
-                    targets
-                        .get_data(&fun_id, &FunctionVariant::Baseline)
-                        .and_then(|data| {
-                            data.annotations
-                                .get::<DynamicFieldInfo>()
-                                .map(|info| info.clone())
-                        })
-                }),
-        );
+        let mut combined_info =
+            DynamicFieldInfo::iter_union(targets.get_funs().filter_map(|fun_id| {
+                targets
+                    .get_data(&fun_id, &FunctionVariant::Baseline)
+                    .and_then(|data| {
+                        data.annotations
+                            .get::<DynamicFieldInfo>()
+                            .map(|info| info.clone())
+                    })
+            }));
 
+        // Propagate UID-keyed entries through the call graph and filter open types.
+        // Generic functions taking &UID create UID → {K, T} with open type params.
+        // Reachable functions skip callee propagation in process, so concrete
+        // instantiations (e.g. UID → {u64, Validator}) don't flow through chains
+        // of reachable functions. This fixpoint loop instantiates them transitively.
+        // Open entries are then removed to avoid ill-founded Boogie types.
         if let Some(uid_qid) = env.uid_qid() {
             let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
 
-            // Propagate UID-keyed entries through the call graph.
-            // Generic functions with UID fallback (e.g. borrow_mut<T>(&mut UID, ...))
-            // have UID → {u64, T} entries with open types. Callee info propagation
-            // is skipped for reachable functions, so concrete instantiations from
-            // callers (e.g. borrow_mut<Validator>) don't appear in annotations.
-            // This pass transitively instantiates UID entries through the call graph
-            // to collect concrete entries like UID → {u64, Validator}.
             let funs: Vec<_> = targets.get_funs().collect();
             let mut uid_entries: BTreeMap<_, BTreeSet<NameValueInfo>> = BTreeMap::new();
             for &fun_id in &funs {
@@ -716,8 +708,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             }
 
             if !uid_entries.is_empty() {
-                // Propagate: if a callee has UID entries, the caller inherits them
-                // (instantiated with the call's type args). Repeat until fixpoint.
                 loop {
                     let mut changed = false;
                     for &fun_id in &funs {
@@ -760,7 +750,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                     }
                 }
 
-                // Add concrete UID entries to combined info
                 let concrete_entries: BTreeSet<NameValueInfo> = uid_entries
                     .values()
                     .flat_map(|entries| entries.iter())
@@ -776,10 +765,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 }
             }
 
-            // Remove open-typed UID entries. Generic functions create UID → {K, V}
-            // with unresolved type params that cause ill-founded Boogie types.
-            // Non-UID entries (e.g. Versioned → {u64, T}) are kept as the Boogie
-            // backend handles them correctly for generic spec functions.
             combined_info
                 .dynamic_field_mappings
                 .retain(|ty, name_values| {
@@ -789,7 +774,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                             return !name_values.is_empty();
                         }
                     }
-                    !ty.is_open()
+                    true
                 });
         }
 
