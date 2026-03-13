@@ -383,11 +383,8 @@ fn collect_dynamic_field_info(
 
     info.uid_info = uid_info;
 
-    // If any dynamic field entries are keyed by UID type, consolidate ALL entries
-    // under UID. This ensures consistency: when a function mixes direct UID usage
-    // (e.g. from an inlined callee taking &UID) with obj.id access, all df operations
-    // use the same Boogie slot. Without this, verification fails because df operations
-    // on the same logical object would map to different Boogie variables.
+    // Check if any entries use UID type — if so, all bytecode df calls must use
+    // UID type to match the consolidated annotations from finalize.
     let use_uid_type = builder
         .fun_env
         .module_env
@@ -397,18 +394,6 @@ fn collect_dynamic_field_info(
             let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
             info.dynamic_field_mappings.contains_key(&uid_type)
         });
-    if use_uid_type {
-        let uid_qid = builder.fun_env.module_env.env.uid_qid().unwrap();
-        let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
-        // Merge all entries under UID type
-        let all_entries: BTreeSet<NameValueInfo> = info
-            .dynamic_field_mappings
-            .values()
-            .flat_map(|s| s.iter().cloned())
-            .collect();
-        info.dynamic_field_mappings.clear();
-        info.dynamic_field_mappings.insert(uid_type, all_entries);
-    }
 
     let code = std::mem::take(&mut builder.data.code);
     for (offset, bc) in code.into_iter().enumerate() {
@@ -421,7 +406,7 @@ fn collect_dynamic_field_info(
                 aa,
             ) if all_dynamic_field_fun_qids.contains(&module_id.qualified(fun_id)) => {
                 if use_uid_type {
-                    // All entries consolidated under UID — use UID type for all df calls
+                    // All entries consolidated under UID by finalize — bytecode must match
                     if let Some(uid_qid) = builder.fun_env.module_env.env.uid_qid() {
                         type_inst.push(Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]));
                     }
