@@ -59,13 +59,6 @@ impl NameValueInfo {
         }
     }
 
-    pub fn is_open(&self) -> bool {
-        match self {
-            NameValueInfo::NameValue { name, value, .. } => name.is_open() || value.is_open(),
-            NameValueInfo::NameOnly(name) => name.is_open(),
-        }
-    }
-
     pub fn instantiate(&self, type_inst: &[Type]) -> Self {
         match self {
             NameValueInfo::NameValue {
