@@ -388,6 +388,30 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         // Add given type declarations for type parameters.
+        // Collect type param indices that appear in UID's dynamic field entries.
+        // These cannot be declared as datatypes containing UID (would create a cycle).
+        let uid_df_type_params: BTreeSet<u16> = env
+            .uid_qid()
+            .map(|uid_qid| {
+                let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
+                let df_info = dynamic_field_analysis::get_env_info(env);
+                let mut params = BTreeSet::new();
+                for (name, value) in df_info.dynamic_field_names_values(&uid_type) {
+                    name.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                    value.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                }
+                params
+            })
+            .unwrap_or_default();
+
         emitln!(writer, "\n\n// Given Types for Type Parameters\n");
         for idx in &mono_info.type_params {
             let param_type = boogie_type_param(env, *idx);
@@ -397,9 +421,10 @@ impl<'env> BoogieTranslator<'env> {
                 .find_datatype_by_tag(&StructTag::from_str("0x2::object::UID").unwrap())
                 .and_then(|uid_qid| mono_info.structs.get(&uid_qid))
                 .is_some();
-            if is_uid {
+            if is_uid && !uid_df_type_params.contains(idx) {
                 // Sui-specific to allow "using" unresolved type params as Sui objects in Boogie
-                // (otherwise Boogie compilation errors may occur)
+                // (otherwise Boogie compilation errors may occur).
+                // Skip if this type param appears in UID's dynamic fields to avoid circularity.
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
@@ -459,15 +484,26 @@ impl<'env> BoogieTranslator<'env> {
                     if !translated_types.insert(struct_name) {
                         continue;
                     }
+                    // Check if this struct type has dynamic fields - if so, it should not be opaque
+                    let struct_type = Type::Datatype(
+                        struct_env.module_env.get_id(),
+                        struct_env.get_id(),
+                        type_inst.to_vec(),
+                    );
+                    let has_dynamic_fields = dynamic_field_analysis::get_env_info(self.env)
+                        .dynamic_field_names_values(&struct_type)
+                        .next()
+                        .is_some();
                     StructTranslator {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
-                        is_opaque: !mono_info.is_used_datatype(
-                            self.env,
-                            self.targets,
-                            &struct_env.get_qualified_id(),
-                        ),
+                        is_opaque: !has_dynamic_fields
+                            && !mono_info.is_used_datatype(
+                                self.env,
+                                self.targets,
+                                &struct_env.get_qualified_id(),
+                            ),
                     }
                     .translate();
                 }
