@@ -18,13 +18,10 @@ use move_model::{
     ty::Type,
 };
 use std::{
+    cell::Cell,
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
-
-/// When set as an env extension, signals that all dynamic field operations
-/// should use UID type instead of the parent object type.
-struct UseUidForDynamicFields;
 
 /// Stores dynamic field type information for a specific function
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -554,11 +551,15 @@ fn get_uid_object_type<'a>(
     })
 }
 
-pub struct DynamicFieldAnalysisProcessor();
+pub struct DynamicFieldAnalysisProcessor {
+    use_uid: Cell<bool>,
+}
 
 impl DynamicFieldAnalysisProcessor {
     pub fn new() -> Box<Self> {
-        Box::new(Self())
+        Box::new(Self {
+            use_uid: Cell::new(false),
+        })
     }
 }
 
@@ -618,9 +619,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             }
         }
 
-        if use_uid {
-            env.set_extension(UseUidForDynamicFields);
-        }
+        self.use_uid.set(use_uid);
     }
 
     fn process(
@@ -641,11 +640,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             return data;
         }
 
-        let use_uid = fun_env
-            .module_env
-            .env
-            .get_extension::<UseUidForDynamicFields>()
-            .is_some();
+        let use_uid = self.use_uid.get();
 
         let mut builder = FunctionDataBuilder::new(fun_env, data);
 
