@@ -690,9 +690,13 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                 }
             }
 
-            // Propagate: if a callee has UID entries, the caller inherits them
-            // (instantiated with the call's type args). Repeat until fixpoint.
+            // If any function has UID-keyed entries (i.e., warnings were emitted),
+            // consolidate all dynamic field info under UID — both the global
+            // combined_info and each function's per-function annotation.
+            // This ensures all Boogie slots are consistent across the entire program.
             if !uid_entries.is_empty() {
+                // Propagate: if a callee has UID entries, the caller inherits them
+                // (instantiated with the call's type args). Repeat until fixpoint.
                 loop {
                     let mut changed = false;
                     for &fun_id in &funs {
@@ -748,6 +752,40 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                         .entry(uid_type.clone())
                         .or_insert_with(BTreeSet::new)
                         .extend(concrete_entries);
+                }
+
+                // Consolidate global combined_info: merge all entries under UID type
+                let all_entries: BTreeSet<NameValueInfo> = combined_info
+                    .dynamic_field_mappings
+                    .values()
+                    .flat_map(|s| s.iter().cloned())
+                    .collect();
+                combined_info.dynamic_field_mappings.clear();
+                combined_info
+                    .dynamic_field_mappings
+                    .insert(uid_type.clone(), all_entries);
+
+                // Consolidate each function's per-function annotation under UID
+                for &fun_id in &funs {
+                    if let Some(data) = targets.get_data_mut(&fun_id, &FunctionVariant::Baseline) {
+                        if let Some(info) = data.annotations.get::<DynamicFieldInfo>() {
+                            if !info.dynamic_field_mappings.is_empty()
+                                && !info.dynamic_field_mappings.keys().all(|k| k == &uid_type)
+                            {
+                                let mut new_info = info.clone();
+                                let all: BTreeSet<NameValueInfo> = new_info
+                                    .dynamic_field_mappings
+                                    .values()
+                                    .flat_map(|s| s.iter().cloned())
+                                    .collect();
+                                new_info.dynamic_field_mappings.clear();
+                                new_info
+                                    .dynamic_field_mappings
+                                    .insert(uid_type.clone(), all);
+                                data.annotations.set(new_info, true);
+                            }
+                        }
+                    }
                 }
             }
 
