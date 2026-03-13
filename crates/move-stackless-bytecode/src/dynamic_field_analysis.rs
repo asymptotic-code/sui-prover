@@ -727,7 +727,7 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
 
     fn finalize(&self, env: &GlobalEnv, targets: &mut FunctionTargetsHolder) {
         // Collect and combine all functions' dynamic field info
-        let mut combined_info = DynamicFieldInfo::iter_union(
+        let combined_info = DynamicFieldInfo::iter_union(
             targets
                 .specs()
                 .copied()
@@ -744,24 +744,6 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                         })
                 }),
         );
-
-        // Remove open-typed UID entries. Generic functions taking &UID create
-        // UID → {K, T} with open type params that cause ill-founded Boogie types.
-        // These exist in per-function info so callee propagation can instantiate them
-        // concretely, but must not reach the global combined info sent to Boogie.
-        if let Some(uid_qid) = env.uid_qid() {
-            combined_info
-                .dynamic_field_mappings
-                .retain(|ty, name_values| {
-                    if let Some((qid, _)) = ty.get_datatype() {
-                        if qid == uid_qid {
-                            name_values.retain(|nv| !nv.is_open());
-                            return !name_values.is_empty();
-                        }
-                    }
-                    true
-                });
-        }
 
         // Set the combined info in the environment
         env.set_extension(combined_info);
