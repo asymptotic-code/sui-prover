@@ -484,26 +484,16 @@ impl<'env> BoogieTranslator<'env> {
                     if !translated_types.insert(struct_name) {
                         continue;
                     }
-                    // Check if this struct type has dynamic fields - if so, it should not be opaque
-                    let struct_type = Type::Datatype(
-                        struct_env.module_env.get_id(),
-                        struct_env.get_id(),
-                        type_inst.to_vec(),
-                    );
-                    let has_dynamic_fields = dynamic_field_analysis::get_env_info(self.env)
-                        .dynamic_field_names_values(&struct_type)
-                        .next()
-                        .is_some();
                     StructTranslator {
                         parent: self,
                         struct_env,
                         type_inst: type_inst.as_slice(),
-                        is_opaque: !has_dynamic_fields
-                            && !mono_info.is_used_datatype(
-                                self.env,
-                                self.targets,
-                                &struct_env.get_qualified_id(),
-                            ),
+                        is_opaque: !mono_info.is_used_datatype(
+                            self.env,
+                            self.targets,
+                            &struct_env.get_qualified_id(),
+                            type_inst,
+                        ),
                     }
                     .translate();
                 }
@@ -527,6 +517,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &enum_env.get_qualified_id(),
+                            type_inst,
                         ),
                     }
                     .translate();
