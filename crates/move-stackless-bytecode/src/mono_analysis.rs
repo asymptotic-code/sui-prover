@@ -61,7 +61,18 @@ impl MonoInfo {
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
         dt_qid: &QualifiedId<DatatypeId>,
+        type_inst: &[Type],
     ) -> bool {
+        // A struct with dynamic fields must not be opaque
+        let struct_type = Type::Datatype(dt_qid.module_id, dt_qid.id, type_inst.to_vec());
+        if dynamic_field_analysis::get_env_info(env)
+            .dynamic_field_names_values(&struct_type)
+            .next()
+            .is_some()
+        {
+            return true;
+        }
+
         if env
             .get_extension::<WriteBackDatatypeInfo>()
             .unwrap()

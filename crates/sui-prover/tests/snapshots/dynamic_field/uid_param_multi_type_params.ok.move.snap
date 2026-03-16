@@ -4,7 +4,7 @@ expression: output
 ---
 Verification successful
 warning: UID object type not found, dynamic fields will be placed under UID
-   ┌─ tests/inputs/dynamic_field/issue-237.fail.move:19:5
+   ┌─ tests/inputs/dynamic_field/uid_param_multi_type_params.ok.move:11:5
    │
-19 │     dynamic_field::borrow_mut(id, version)
-   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 │     df::add<K, V>(uid, key, val);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

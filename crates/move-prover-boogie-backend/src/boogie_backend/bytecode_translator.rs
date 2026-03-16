@@ -388,6 +388,30 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         // Add given type declarations for type parameters.
+        // Collect type param indices that appear in UID's dynamic field entries.
+        // These cannot be declared as datatypes containing UID (would create a cycle).
+        let uid_df_type_params: BTreeSet<u16> = env
+            .uid_qid()
+            .map(|uid_qid| {
+                let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
+                let df_info = dynamic_field_analysis::get_env_info(env);
+                let mut params = BTreeSet::new();
+                for (name, value) in df_info.dynamic_field_names_values(&uid_type) {
+                    name.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                    value.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                }
+                params
+            })
+            .unwrap_or_default();
+
         emitln!(writer, "\n\n// Given Types for Type Parameters\n");
         for idx in &mono_info.type_params {
             let param_type = boogie_type_param(env, *idx);
@@ -397,9 +421,10 @@ impl<'env> BoogieTranslator<'env> {
                 .find_datatype_by_tag(&StructTag::from_str("0x2::object::UID").unwrap())
                 .and_then(|uid_qid| mono_info.structs.get(&uid_qid))
                 .is_some();
-            if is_uid {
+            if is_uid && !uid_df_type_params.contains(idx) {
                 // Sui-specific to allow "using" unresolved type params as Sui objects in Boogie
-                // (otherwise Boogie compilation errors may occur)
+                // (otherwise Boogie compilation errors may occur).
+                // Skip if this type param appears in UID's dynamic fields to avoid circularity.
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
@@ -467,6 +492,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &struct_env.get_qualified_id(),
+                            type_inst,
                         ),
                     }
                     .translate();
@@ -491,6 +517,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &enum_env.get_qualified_id(),
+                            type_inst,
                         ),
                     }
                     .translate();
@@ -1436,10 +1463,16 @@ impl<'env> StructTranslator<'env> {
             )
         });
         let dynamic_fields = dynamic_field_names_values.iter().map(|(name, value)| {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             format!(
                 "{}: (Table int {})",
                 boogie_dynamic_field_sel(self.parent.env, name, value),
-                boogie_type(env, value),
+                value_type,
             )
         });
         let all_fields = fields.chain(dynamic_fields).join(", ");
@@ -1486,12 +1519,18 @@ impl<'env> StructTranslator<'env> {
             );
         }
         for (pos, (name, value)) in dynamic_field_names_values.iter().enumerate() {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             self.emit_function(
                 &format!(
                     "{}(s: {}, x: (Table int {})): {}",
                     boogie_dynamic_field_update(struct_env, self.type_inst, name, value),
                     struct_name,
-                    boogie_type(env, value),
+                    value_type,
                     struct_name
                 ),
                 || {
