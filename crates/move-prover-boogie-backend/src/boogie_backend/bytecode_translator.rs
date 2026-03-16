@@ -1472,10 +1472,16 @@ impl<'env> StructTranslator<'env> {
             )
         });
         let dynamic_fields = dynamic_field_names_values.iter().map(|(name, value)| {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             format!(
                 "{}: (Table int {})",
                 boogie_dynamic_field_sel(self.parent.env, name, value),
-                boogie_type(env, value),
+                value_type,
             )
         });
         let all_fields = fields.chain(dynamic_fields).join(", ");
@@ -1522,12 +1528,18 @@ impl<'env> StructTranslator<'env> {
             );
         }
         for (pos, (name, value)) in dynamic_field_names_values.iter().enumerate() {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             self.emit_function(
                 &format!(
                     "{}(s: {}, x: (Table int {})): {}",
                     boogie_dynamic_field_update(struct_env, self.type_inst, name, value),
                     struct_name,
-                    boogie_type(env, value),
+                    value_type,
                     struct_name
                 ),
                 || {
