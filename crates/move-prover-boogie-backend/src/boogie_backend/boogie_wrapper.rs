@@ -766,13 +766,15 @@ impl<'env> BoogieWrapper<'env> {
 
             // Erase the current split block (main line + any extra lines).
             let erase_split = |extra: usize| {
-                // Move up and clear each extra line, then clear the main line.
+                // Clear each extra line, then clear the main line.
                 for _ in 0..extra {
-                    print!("\x1B[A\x1B[2K");
+                    print!("\x1B[2K\x1B[A"); // clear, then move up
                 }
-                print!("\r\x1B[2K");
+                print!("\r\x1B[2K"); // cursor to beginning of line, then clear
             };
 
+            let mut timeouts = Vec::new();
+            let mut prev_bpl_line = 0;
             let on_line = |line: &str| {
                 let trimmed = line.trim();
                 if trimmed.starts_with("Verifying ") {
@@ -804,6 +806,13 @@ impl<'env> BoogieWrapper<'env> {
                             println!("    \u{274c} {}", trimmed);
                         }
                     }
+                } else if trimmed.starts_with("--> split #") {
+                    // status line
+                    if trimmed.ends_with("TimeOut") {
+                        if let Some(info) = analysis.assertions.get(&prev_bpl_line) {
+                            timeouts.push(info.description.clone())
+                        }
+                    }
                 } else if let Some(cap) = CHECKING_SPLIT.captures(trimmed) {
                     // Erase previous split block before printing the new one.
                     if in_split.load(std::sync::atomic::Ordering::Relaxed) {
@@ -814,6 +823,7 @@ impl<'env> BoogieWrapper<'env> {
                     let n = cap.name("n").unwrap().as_str();
                     let total = cap.name("total").unwrap().as_str();
                     let bpl_line: usize = cap.name("line").unwrap().as_str().parse().unwrap_or(0);
+                    prev_bpl_line = bpl_line;
                     // Look up the current verification entry point for trace computation.
                     let verify_name = current_verify_proc
                         .lock()
@@ -863,6 +873,9 @@ impl<'env> BoogieWrapper<'env> {
             };
             // After Boogie finishes, print which splits failed
             if let Ok(ref output) = res {
+                for s in timeouts {
+                    println!("\u{23f0} Timed out: {}", s);
+                }
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let failed_locs: Vec<String> = VERIFICATION_DIAG_STARTS
                     .captures_iter(&stdout)
