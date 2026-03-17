@@ -18,6 +18,9 @@ use std::{
     path::Path,
 };
 
+/// Valid values for the `run_on` attribute in `#[spec(prove, run_on="...")]`.
+pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud"];
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
     Function(QualifiedId<FunId>),
@@ -44,6 +47,7 @@ pub struct PackageTargets {
     spec_interpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
+    spec_run_on: BTreeMap<QualifiedId<FunId>, String>,
     loop_invariant_candidates: BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
     function_external_attributes:
@@ -85,6 +89,7 @@ impl PackageTargets {
             spec_interpreted_functions: BTreeMap::new(),
             spec_boogie_options: BTreeMap::new(),
             spec_timeouts: BTreeMap::new(),
+            spec_run_on: BTreeMap::new(),
             loop_invariant_candidates: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
             function_external_attributes: BTreeMap::new(),
@@ -381,6 +386,7 @@ impl PackageTargets {
             ignore_abort,
             boogie_opt,
             timeout,
+            run_on,
             explicit_spec_modules,
             explicit_specs,
             extra_bpl,
@@ -412,6 +418,23 @@ impl PackageTargets {
             if let Some(timeout) = timeout {
                 self.spec_timeouts
                     .insert(func_env.get_qualified_id(), *timeout);
+            }
+
+            if let Some(run_on_value) = run_on {
+                if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
+                    self.spec_run_on
+                        .insert(func_env.get_qualified_id(), run_on_value.clone());
+                } else {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "invalid run_on value \"{}\". Valid values are: {}",
+                            run_on_value,
+                            VALID_RUN_ON_VALUES.join(", ")
+                        ),
+                    );
+                }
             }
 
             if let Some(content) = Self::validate_and_read_extra_bpl(
@@ -1050,6 +1073,10 @@ impl PackageTargets {
 
     pub fn spec_timeouts(&self) -> &BTreeMap<QualifiedId<FunId>, u64> {
         &self.spec_timeouts
+    }
+
+    pub fn spec_run_on(&self) -> &BTreeMap<QualifiedId<FunId>, String> {
+        &self.spec_run_on
     }
 
     pub fn loop_invariant_candidates(

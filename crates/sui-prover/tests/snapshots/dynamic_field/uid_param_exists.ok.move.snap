@@ -1,0 +1,11 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+Verification successful
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_exists.ok.move:14:5
+   │
+14 │     df::exists_with_type<WhitelistKey, bool>(uid, WhitelistKey { address: addr })
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

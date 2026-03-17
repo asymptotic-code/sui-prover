@@ -368,6 +368,10 @@ impl FunctionTargetsHolder {
         self.package_targets.spec_timeouts().get(id)
     }
 
+    pub fn get_spec_run_on(&self, id: &QualifiedId<FunId>) -> Option<&String> {
+        self.package_targets.spec_run_on().get(id)
+    }
+
     /// Resolve loop invariant candidates into the final map.
     /// When multiple invariant functions target the same (target_func, label),
     /// prefer the one from the same module as the spec selected by this holder.
