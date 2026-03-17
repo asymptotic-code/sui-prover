@@ -806,7 +806,8 @@ impl<'env> BoogieWrapper<'env> {
                             println!("    \u{274c} {}", trimmed);
                         }
                     }
-                } else if trimmed.starts_with("--> split #") { // status line
+                } else if trimmed.starts_with("--> split #") {
+                    // status line
                     if trimmed.ends_with("TimeOut") {
                         if let Some(info) = analysis.assertions.get(&prev_bpl_line) {
                             timeouts.push(info.description.clone())
