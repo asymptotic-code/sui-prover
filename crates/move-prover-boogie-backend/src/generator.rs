@@ -655,19 +655,35 @@ async fn verify_batch<W: WriteColor>(
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
     if options.remote.is_some() {
-        let results = stream::iter(files)
-            .map(|file| async move {
-                let mut local_error_writer = Buffer::no_color();
-                let is_error = verify_bpl(env, &mut local_error_writer, options, file).await;
-                (local_error_writer, is_error)
-            })
-            .buffer_unordered(options.remote.as_ref().unwrap().concurrency)
-            .collect::<Vec<_>>()
-            .await;
+        // Separate files into remote and local batches. Files with run_on="local"
+        // use blocking subprocess execution which would starve the tokio runtime
+        // if run inside buffer_unordered, so they must be run sequentially.
+        let (local_files, remote_files): (Vec<_>, Vec<_>) = files
+            .into_iter()
+            .partition(|f| f.run_on.as_deref() == Some(RUN_ON_LOCAL));
 
-        for (local_error_writer, is_error) in results {
-            error_writer.write_all(&local_error_writer.into_inner())?;
-            if is_error? {
+        if !remote_files.is_empty() {
+            let results = stream::iter(remote_files)
+                .map(|file| async move {
+                    let mut local_error_writer = Buffer::no_color();
+                    let is_error = verify_bpl(env, &mut local_error_writer, options, file).await;
+                    (local_error_writer, is_error)
+                })
+                .buffer_unordered(options.remote.as_ref().unwrap().concurrency)
+                .collect::<Vec<_>>()
+                .await;
+
+            for (local_error_writer, is_error) in results {
+                error_writer.write_all(&local_error_writer.into_inner())?;
+                if is_error? {
+                    has_errors = true;
+                }
+            }
+        }
+
+        for file in local_files {
+            let is_error = verify_bpl(env, error_writer, options, file).await?;
+            if is_error {
                 has_errors = true;
             }
         }
