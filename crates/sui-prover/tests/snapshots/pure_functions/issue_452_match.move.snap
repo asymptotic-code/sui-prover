@@ -1,0 +1,16 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with bytecode transformation errors
+error: Pure functions with loops are not supported
+   ┌─ tests/inputs\pure_functions\issue_452_match.move:13:1
+   │  
+13 │ ╭ public fun f(e: E): bool {
+14 │ │     match (e) {
+15 │ │         E::A => true,
+16 │ │         E::B(v) => v > 0,
+17 │ │     }
+18 │ │ }
+   │ ╰─^

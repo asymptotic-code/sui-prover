@@ -1,0 +1,6 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+Verification failed, panic during verification: "unexpected operation PackVariant(ModuleId(123), DatatypeId(Symbol(1793)), VariantId(Symbol(1797)), []) in function issue_452::f2"

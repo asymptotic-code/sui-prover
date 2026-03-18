@@ -55,3 +55,8 @@ output/
 .sparse
 
 crates/sui-prover/tests/sources/*
+
+# Local project memory / operator docs
+AGENTS.md
+MEMORY.md
+RUNBOOK.md
