@@ -8,6 +8,7 @@
 //! The hierarchies respect opaque boundaries (specs without `no_opaque`) and filter out
 //! system functions from standard libraries.
 
+use crate::file_name_sanitizer::sanitize_file_name_component;
 use crate::function_target_pipeline::FunctionTargetsHolder;
 use move_model::model::{FunId, FunctionEnv, GlobalEnv, QualifiedId};
 use num::BigUint;
@@ -20,15 +21,6 @@ const LOG_FILE_EXTENSION: &str = ".log.txt";
 
 /// Label appended to scenario spec names in the tree.
 const SCENARIO_LABEL: &str = "[scenario]";
-
-fn sanitize_log_file_stem(name: &str) -> String {
-    name.chars()
-        .map(|character| match character {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            _ => character,
-        })
-        .collect()
-}
 
 /// Information about a function call, including its display name and associated spec (if any).
 #[derive(Debug)]
@@ -120,7 +112,7 @@ fn write_spec_log_file(
 ) {
     let log_file_path = output_dir.join(format!(
         "{}{}",
-        sanitize_log_file_stem(&spec_name),
+        sanitize_file_name_component(&spec_name),
         LOG_FILE_EXTENSION
     ));
 

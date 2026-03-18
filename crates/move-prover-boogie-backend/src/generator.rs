@@ -25,6 +25,7 @@ use move_model::{
 use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor,
+    file_name_sanitizer::sanitize_file_name_component,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
     },
@@ -49,15 +50,6 @@ pub struct FileOptions {
     pub targets: FunctionTargetsHolder,
     pub qid: Option<QualifiedId<FunId>>,
     pub loc: Loc,
-}
-
-fn sanitize_artifact_file_name(name: &str) -> String {
-    name.chars()
-        .map(|character| match character {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            _ => character,
-        })
-        .collect()
 }
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
@@ -320,7 +312,7 @@ fn generate_function_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = sanitize_artifact_file_name(&format!(
+    let file_name = sanitize_file_name_component(&format!(
         "{}_{:?}",
         env.get_function(*qid).get_full_name_str(),
         asserts_mode
@@ -394,7 +386,7 @@ fn generate_module_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = sanitize_artifact_file_name(&format!(
+    let file_name = sanitize_file_name_component(&format!(
         "{}_{:?}",
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
