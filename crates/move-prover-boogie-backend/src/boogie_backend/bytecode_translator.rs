@@ -3026,6 +3026,58 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
+    fn format_default_value(&self, ty: &Type) -> String {
+        use PrimitiveType::*;
+        use Type::*;
+
+        match ty {
+            Primitive(Bool) => "false".to_string(),
+            Primitive(U8 | U16 | U32 | U64 | U128 | U256 | Num | Address) => "0".to_string(),
+            Primitive(Signer) => "$signer(0)".to_string(),
+            Vector(_) => "EmptyVec()".to_string(),
+            Datatype(..) | TypeParameter(_) => "DefaultVecElem()".to_string(),
+            Reference(..)
+            | Fun(..)
+            | Tuple(..)
+            | TypeDomain(..)
+            | ResourceDomain(..)
+            | Error
+            | Var(..)
+            | Primitive(Range | EventStore) => {
+                panic!("unexpected pure default value type: {:?}", ty)
+            }
+        }
+    }
+
+    fn format_enum_variant_expression(
+        &self,
+        enum_env: &EnumEnv<'_>,
+        variant_env: &VariantEnv<'_>,
+        inst: &[Type],
+        field_values: &[String],
+    ) -> String {
+        let mut provided_fields = field_values.iter();
+        let all_fields = enum_env
+            .get_all_fields()
+            .map(|field| {
+                let field_ty = self.inst(&field.get_type());
+                let EnclosingEnv::Variant(parent_variant) = &field.parent_env else {
+                    unreachable!();
+                };
+                if parent_variant.get_id() == variant_env.get_id() {
+                    provided_fields
+                        .next()
+                        .cloned()
+                        .unwrap_or_else(|| self.format_default_value(&field_ty))
+                } else {
+                    self.format_default_value(&field_ty)
+                }
+            })
+            .chain(iter::once(variant_env.get_tag().to_string()))
+            .join(", ");
+        format!("{}({})", boogie_enum_name(enum_env, inst), all_fields)
+    }
+
     /// Generate Boogie pure function body using let/var expression nesting
     fn generate_pure_expression(&mut self, code: &[Bytecode]) {
         use Bytecode::*;
@@ -3176,6 +3228,16 @@ impl<'env> FunctionTranslator<'env> {
                             let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
 
                             format!("{}({})", boogie_struct_name(&struct_env, inst), all_args)
+                        } else if let Operation::PackVariant(mid, eid, vid, inst) = op {
+                            let inst = &self.inst_slice(inst);
+                            let enum_env = fun_target.global_env().get_module(*mid).into_enum(*eid);
+                            let args = srcs.iter().map(|src| fmt_temp(*src)).collect_vec();
+                            self.format_enum_variant_expression(
+                                &enum_env,
+                                &enum_env.get_variant(*vid),
+                                inst,
+                                &args,
+                            )
                         } else if matches!(op, Operation::Eq | Operation::Neq) {
                             // Handle equality/inequality using $IsEqual functions to support
                             // non-extensional types like vectors and tables

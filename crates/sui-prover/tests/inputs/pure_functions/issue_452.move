@@ -1,5 +1,5 @@
-/// Repro for https://github.com/asymptotic-code/sui-prover/issues/452
-/// Panic when a pure function uses `exists!` with enum variant construction.
+// Repro for https://github.com/asymptotic-code/sui-prover/issues/452
+// Panic when a pure function uses `exists!` with enum variant construction.
 module 0x42::issue_452;
 
 use prover::prover::ensures;

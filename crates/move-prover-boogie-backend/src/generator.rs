@@ -51,6 +51,15 @@ pub struct FileOptions {
     pub loc: Loc,
 }
 
+fn sanitize_artifact_file_name(name: &str) -> String {
+    name.chars()
+        .map(|character| match character {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => character,
+        })
+        .collect()
+}
+
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
     let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
     for module_env in env.get_modules() {
@@ -311,11 +320,11 @@ fn generate_function_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = format!(
+    let file_name = sanitize_artifact_file_name(&format!(
         "{}_{:?}",
         env.get_function(*qid).get_full_name_str(),
         asserts_mode
-    );
+    ));
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 
@@ -385,11 +394,11 @@ fn generate_module_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = format!(
+    let file_name = sanitize_artifact_file_name(&format!(
         "{}_{:?}",
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
-    );
+    ));
     let target_type = if asserts_mode == AssertsMode::SpecNoAbortCheck {
         FunctionHolderTarget::SpecNoAbortCheck(*mid)
     } else {

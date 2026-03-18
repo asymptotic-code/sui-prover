@@ -511,11 +511,21 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
             None => {
                 // cannot reconstruct (loops, switches, etc.)
                 if is_pure {
-                    func_env.module_env.env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        "Pure functions with loops are not supported",
-                    );
+                    let message = if state
+                        .builder
+                        .data
+                        .code
+                        .iter()
+                        .any(|bc| matches!(bc, Bytecode::VariantSwitch(..)))
+                    {
+                        "Pure functions with enum matches are not supported"
+                    } else {
+                        "Pure functions with loops are not supported"
+                    };
+                    func_env
+                        .module_env
+                        .env
+                        .diag(Severity::Error, &func_env.get_loc(), message);
                 }
                 return state.builder.data;
             }

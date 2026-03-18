@@ -21,6 +21,15 @@ const LOG_FILE_EXTENSION: &str = ".log.txt";
 /// Label appended to scenario spec names in the tree.
 const SCENARIO_LABEL: &str = "[scenario]";
 
+fn sanitize_log_file_stem(name: &str) -> String {
+    name.chars()
+        .map(|character| match character {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => character,
+        })
+        .collect()
+}
+
 /// Information about a function call, including its display name and associated spec (if any).
 #[derive(Debug)]
 struct CallInfo {
@@ -109,7 +118,11 @@ fn write_spec_log_file(
     output_dir: &Path,
     excluded_addresses: &[BigUint],
 ) {
-    let log_file_path = output_dir.join(format!("{}{}", spec_name, LOG_FILE_EXTENSION));
+    let log_file_path = output_dir.join(format!(
+        "{}{}",
+        sanitize_log_file_stem(&spec_name),
+        LOG_FILE_EXTENSION
+    ));
 
     let mut content = String::new();
     let mut displayed = BTreeSet::new();

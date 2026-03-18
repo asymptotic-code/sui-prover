@@ -245,6 +245,20 @@ impl Default for BoogieOptions {
 }
 
 impl BoogieOptions {
+    #[cfg(windows)]
+    fn normalize_boogie_option(option: &str) -> String {
+        if let Some(rest) = option.strip_prefix('-') {
+            format!("/{rest}")
+        } else {
+            option.to_string()
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn normalize_boogie_option(option: &str) -> String {
+        option.to_string()
+    }
+
     /// Derive options based on other set options.
     pub fn derive_options(&mut self) {
         use VectorTheory::*;
@@ -296,9 +310,10 @@ impl BoogieOptions {
         let mut seen_options = HashSet::new();
         let mut add = |sl: &[&str]| {
             for s in sl {
-                let key = Self::get_option_key(s);
+                let normalized = Self::normalize_boogie_option(s);
+                let key = Self::get_option_key(&normalized).to_string();
                 seen_options.retain(|existing: &String| Self::get_option_key(existing) != key);
-                seen_options.insert(s.to_string());
+                seen_options.insert(normalized);
             }
         };
 
