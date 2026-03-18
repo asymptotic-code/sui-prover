@@ -3060,7 +3060,7 @@ impl<'env> FunctionTranslator<'env> {
         let all_fields = enum_env
             .get_all_fields()
             .map(|field| {
-                let field_ty = self.inst(&field.get_type());
+                let field_ty = field.get_type().instantiate(inst);
                 let EnclosingEnv::Variant(parent_variant) = &field.parent_env else {
                     unreachable!();
                 };
