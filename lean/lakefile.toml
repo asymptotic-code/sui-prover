@@ -1,0 +1,6 @@
+name = "issue452"
+version = "0.1.0"
+defaultTargets = ["Issue452"]
+
+[[lean_lib]]
+name = "Issue452"

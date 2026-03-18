@@ -60,3 +60,7 @@ crates/sui-prover/tests/sources/*
 AGENTS.md
 MEMORY.md
 RUNBOOK.md
+
+# Lean local build artifacts
+lean/.lake/
+lean/lake-manifest.json
