@@ -176,7 +176,7 @@ impl<'env> BoogieTranslator<'env> {
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
     fn ignore_aborts_var_name(spec_env: &FunctionEnv) -> String {
         format!(
-            "$ign_aborts_{}",
+            "$asserts_of_{}",
             boogie_function_name(spec_env, &[], FunctionTranslationStyle::Default)
         )
     }
