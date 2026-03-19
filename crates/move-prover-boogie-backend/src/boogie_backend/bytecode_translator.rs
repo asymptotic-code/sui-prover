@@ -163,18 +163,14 @@ impl<'env> BoogieTranslator<'env> {
         let targets = self.targets.ignore_aborts_of_targets();
         self.targets
             .get_fun_by_spec(spec_qid)
-            .and_then(|target_fun_qid| {
+            .is_some_and(|target_fun_qid| {
                 let f = self.env.get_function(*target_fun_qid);
                 let simple = f.get_name_str().to_string();
                 let full = f.get_full_name_str();
                 let qualified =
                     format!("{}::{}", f.module_env.get_full_name_str(), f.get_name_str());
-                (targets.contains(&simple)
-                    || targets.contains(&full)
-                    || targets.contains(&qualified))
-                .then_some(true)
+                targets.contains(&simple) || targets.contains(&full) || targets.contains(&qualified)
             })
-            .is_some()
     }
 
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
