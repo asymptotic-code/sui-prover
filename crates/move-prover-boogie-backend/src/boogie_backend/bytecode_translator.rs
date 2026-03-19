@@ -174,7 +174,7 @@ impl<'env> BoogieTranslator<'env> {
     }
 
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
-    fn ignore_aborts_var_name(spec_env: &FunctionEnv) -> String {
+    fn asserts_of_var_name(spec_env: &FunctionEnv) -> String {
         format!(
             "$asserts_of_{}",
             boogie_function_name(spec_env, &[], FunctionTranslationStyle::Default)
@@ -415,7 +415,7 @@ impl<'env> BoogieTranslator<'env> {
         for spec_qid in self.targets.ignore_aborts() {
             if self.has_asserts_of_ref(spec_qid) {
                 let spec_env = env.get_function(*spec_qid);
-                let var_name = Self::ignore_aborts_var_name(&spec_env);
+                let var_name = Self::asserts_of_var_name(&spec_env);
                 emitln!(writer, "var {}: bool;", var_name);
             }
         }
@@ -2971,7 +2971,7 @@ impl<'env> FunctionTranslator<'env> {
             .get_spec_by_fun(&target_func_qid)
             .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function has no spec", name));
         let spec_env = self.parent.env.get_function(*spec_qid);
-        BoogieTranslator::ignore_aborts_var_name(&spec_env)
+        BoogieTranslator::asserts_of_var_name(&spec_env)
     }
 
     fn create_quantifiers_temp_vars(&self) {
@@ -3933,7 +3933,7 @@ impl<'env> FunctionTranslator<'env> {
                                 .contains(&self.fun_target.func_env.get_qualified_id())
                         {
                             if self.has_asserts_of_ref() {
-                                let var_name = BoogieTranslator::ignore_aborts_var_name(
+                                let var_name = BoogieTranslator::asserts_of_var_name(
                                     &self.fun_target.func_env,
                                 );
                                 emitln!(
@@ -3967,7 +3967,7 @@ impl<'env> FunctionTranslator<'env> {
                             && self.has_asserts_of_ref()
                         {
                             let var_name =
-                                BoogieTranslator::ignore_aborts_var_name(&self.fun_target.func_env);
+                                BoogieTranslator::asserts_of_var_name(&self.fun_target.func_env);
                             emitln!(self.writer(), "assume {};", var_name);
                         }
                         if !self
