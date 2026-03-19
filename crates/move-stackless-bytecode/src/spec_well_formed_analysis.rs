@@ -652,19 +652,16 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                                 );
                             }
                         } else {
-                            let hint = if name.contains("::") {
-                                String::new()
+                            let msg = if name.contains("::") {
+                                format!("asserts_of(\"{}\"): function not found", name)
                             } else {
                                 format!(
-                                    "; looked in module {}. Use a qualified name like \"module::function\"",
+                                    "asserts_of(\"{}\"): function not found in module {}. Use a qualified name like \"module::function\"",
+                                    name,
                                     func_env.module_env.get_name().display(env.symbol_pool())
                                 )
                             };
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!("asserts_of(\"{}\"): function not found{}", name, hint),
-                            );
+                            env.diag(Severity::Error, &func_env.get_loc(), &msg);
                         }
                     } else {
                         env.diag(
