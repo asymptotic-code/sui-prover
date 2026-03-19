@@ -166,6 +166,18 @@ fun my_function_spec(args): ReturnType {
 }
 ```
 
+#### Abort Handling
+- `#[spec(prove, ignore_abort)]` — skip abort checking for this spec entirely
+- `prover::asserts_of(b"func_name")` — returns a boolean representing a specific function's abort conditions. Use with `prover::asserts()` to selectively accept another spec's `ignore_abort`:
+```move
+#[spec(prove)]
+fun foo_spec(x: u64): u64 {
+    prover::asserts(prover::asserts_of(b"bar"));  // accept bar_spec's ignore_abort
+    foo(x)
+}
+```
+  Supports qualified names: `b"bar"`, `b"module::bar"`, `b"package::module::bar"`
+
 ## Testing Patterns
 
 ### Snapshot Tests
