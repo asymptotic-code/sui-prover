@@ -160,23 +160,21 @@ impl<'env> BoogieTranslator<'env> {
 
     /// Check if an ignore_abort spec's target function is referenced by any asserts_of declaration.
     fn has_asserts_of_ref(&self, spec_qid: &QualifiedId<FunId>) -> bool {
+        let targets = self.targets.ignore_aborts_of_targets();
         self.targets
             .get_fun_by_spec(spec_qid)
-            .map(|target_fun_qid| {
-                let targets = self.targets.ignore_aborts_of_targets();
-                let target_fun_env = self.env.get_function(*target_fun_qid);
-                let simple_name = target_fun_env.get_name_str().to_string();
-                let full_name = target_fun_env.get_full_name_str();
-                let fully_qualified = format!(
-                    "{}::{}",
-                    target_fun_env.module_env.get_full_name_str(),
-                    target_fun_env.get_name_str()
-                );
-                targets.contains(&simple_name)
-                    || targets.contains(&full_name)
-                    || targets.contains(&fully_qualified)
+            .and_then(|target_fun_qid| {
+                let f = self.env.get_function(*target_fun_qid);
+                let simple = f.get_name_str().to_string();
+                let full = f.get_full_name_str();
+                let qualified =
+                    format!("{}::{}", f.module_env.get_full_name_str(), f.get_name_str());
+                (targets.contains(&simple)
+                    || targets.contains(&full)
+                    || targets.contains(&qualified))
+                .then_some(true)
             })
-            .unwrap_or(false)
+            .is_some()
     }
 
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
