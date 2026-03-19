@@ -3,7 +3,11 @@ module 0x42::foo;
 use prover::prover;
 
 fun foo(x: u64): u64 {
-    bar(x)
+    if (x < 100) {
+        bar(x)
+    } else {
+        x
+    }
 }
 
 fun bar(x: u64): u64 {
