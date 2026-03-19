@@ -272,6 +272,14 @@ impl FunctionTargetsHolder {
         self.package_targets.ignore_aborts().contains(id)
     }
 
+    pub fn ignore_aborts_of(&self) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<String>> {
+        self.package_targets.ignore_aborts_of()
+    }
+
+    pub fn add_ignore_aborts_of(&mut self, spec_qid: QualifiedId<FunId>, name: String) {
+        self.package_targets.add_ignore_aborts_of(spec_qid, name);
+    }
+
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.abort_check_functions().contains(id)
     }

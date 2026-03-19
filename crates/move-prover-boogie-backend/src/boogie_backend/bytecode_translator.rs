@@ -158,6 +158,14 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
+    /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
+    fn ignore_aborts_var_name(spec_env: &FunctionEnv) -> String {
+        format!(
+            "$ign_aborts_{}",
+            boogie_function_name(spec_env, &[], FunctionTranslationStyle::Default)
+        )
+    }
+
     fn generate_axiom_function(&mut self, func_env: &FunctionEnv) {
         let func_name = boogie_function_name(func_env, &[], FunctionTranslationStyle::Pure);
 
@@ -385,6 +393,13 @@ impl<'env> BoogieTranslator<'env> {
                             $IsPrefix'vec'u8''($TypeName(t), {}) ==> t is $TypeParamVector);",
                 TypeIdentToken::convert_to_bytes(TypeIdentToken::make("0x")),
             );
+        }
+
+        // Add per-spec ignore_aborts Boogie variables
+        for spec_qid in self.targets.ignore_aborts() {
+            let spec_env = env.get_function(*spec_qid);
+            let var_name = Self::ignore_aborts_var_name(&spec_env);
+            emitln!(writer, "var {}: bool;", var_name);
         }
 
         // Add given type declarations for type parameters.
@@ -2856,6 +2871,44 @@ impl<'env> FunctionTranslator<'env> {
         // Prelude initialization
         emitln!(writer, "call $InitVerification();");
 
+        // Initialize per-spec ignore_aborts flags
+        let spec_qid = fun_target.func_env.get_qualified_id();
+        let ignore_aborts_of = self
+            .parent
+            .targets
+            .ignore_aborts_of()
+            .get(&spec_qid)
+            .cloned()
+            .unwrap_or_default();
+        for ign_spec_qid in self.parent.targets.ignore_aborts() {
+            let ign_spec_env = self.parent.env.get_function(*ign_spec_qid);
+            let var_name = BoogieTranslator::ignore_aborts_var_name(&ign_spec_env);
+            // Check if this spec declared ignore_aborts_of for the function targeted by ign_spec
+            let should_enable =
+                if let Some(target_fun_qid) = self.parent.targets.get_fun_by_spec(ign_spec_qid) {
+                    let target_fun_env = self.parent.env.get_function(*target_fun_qid);
+                    // Match against all stored names (which may be simple or qualified)
+                    let simple_name = target_fun_env.get_name_str().to_string();
+                    let full_name = target_fun_env.get_full_name_str();
+                    let fully_qualified = format!(
+                        "{}::{}",
+                        target_fun_env.module_env.get_full_name_str(),
+                        target_fun_env.get_name_str()
+                    );
+                    ignore_aborts_of.contains(&simple_name)
+                        || ignore_aborts_of.contains(&full_name)
+                        || ignore_aborts_of.contains(&fully_qualified)
+                } else {
+                    false
+                };
+            emitln!(
+                writer,
+                "{} := {};",
+                var_name,
+                if should_enable { "true" } else { "false" }
+            );
+        }
+
         // Assume reference parameters to be based on the Param(i) Location, ensuring
         // they are disjoint from all other references. This prevents aliasing and is justified as
         // follows:
@@ -2896,6 +2949,75 @@ impl<'env> FunctionTranslator<'env> {
 impl<'env> FunctionTranslator<'env> {
     fn writer(&self) -> &CodeWriter {
         self.parent.writer
+    }
+
+    /// Resolve a potentially-qualified function name to a QualifiedId.
+    /// Supports: `function`, `module::function`, `package::module::function`.
+    fn resolve_function_by_name(
+        &self,
+        name: &str,
+        fun_target: &FunctionTarget,
+    ) -> Option<QualifiedId<FunId>> {
+        let env = self.parent.env;
+        if !name.contains("::") {
+            let sym = env.symbol_pool().make(name);
+            return fun_target
+                .func_env
+                .module_env
+                .find_function(sym)
+                .map(|f| f.get_qualified_id());
+        }
+        for module in env.get_modules() {
+            for func in module.get_functions() {
+                if func.get_full_name_str() == name {
+                    return Some(func.get_qualified_id());
+                }
+                let fully_qualified = format!(
+                    "{}::{}",
+                    func.module_env.get_full_name_str(),
+                    func.get_name_str()
+                );
+                if fully_qualified == name {
+                    return Some(func.get_qualified_id());
+                }
+            }
+        }
+        None
+    }
+
+    /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
+    /// Scans the function bytecodes to find the Load constant that feeds the source operand.
+    /// All validation is done in spec_well_formed_analysis; this panics on invalid input.
+    fn resolve_asserts_of_to_boogie_var(
+        &self,
+        srcs: &[TempIndex],
+        fun_target: &FunctionTarget,
+    ) -> String {
+        use move_stackless_bytecode::stackless_bytecode::Constant;
+
+        // Find the byte string constant loaded into srcs[0]
+        let src_temp = srcs[0];
+        let mut name_opt = None;
+        for bc in fun_target.get_bytecode() {
+            if let Bytecode::Load(_, dest, Constant::ByteArray(bytes)) = bc {
+                if *dest == src_temp {
+                    name_opt = Some(String::from_utf8_lossy(bytes).to_string());
+                    break;
+                }
+            }
+        }
+
+        let name = name_opt.expect("asserts_of() argument must be a byte string literal");
+        let target_func_qid = self
+            .resolve_function_by_name(&name, fun_target)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function not found", name));
+        let spec_qid = self
+            .parent
+            .targets
+            .get_spec_by_fun(&target_func_qid)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function has no spec", name));
+        let spec_env = self.parent.env.get_function(*spec_qid);
+        BoogieTranslator::ignore_aborts_var_name(&spec_env)
     }
 
     fn create_quantifiers_temp_vars(&self) {
@@ -3856,11 +3978,14 @@ impl<'env> FunctionTranslator<'env> {
                                 .ignore_aborts()
                                 .contains(&self.fun_target.func_env.get_qualified_id())
                         {
+                            let var_name =
+                                BoogieTranslator::ignore_aborts_var_name(&self.fun_target.func_env);
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
+                                "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} {};",
                                 self.loc_str(&self.fun_target.get_loc()),
-                                self.fun_target.func_env.get_full_name_str()
+                                self.fun_target.func_env.get_full_name_str(),
+                                var_name,
                             );
                         }
                     }
@@ -4180,6 +4305,14 @@ impl<'env> FunctionTranslator<'env> {
                                 secondary,
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.asserts_of_qid() {
+                            // asserts_of(b"name") translates to the per-spec Boogie variable.
+                            // Resolve the byte string argument to find the target function.
+                            let var_expr = self.resolve_asserts_of_to_boogie_var(srcs, fun_target);
+                            emitln!(self.writer(), "{} := {};", dest_str, var_expr);
                             processed = true;
                         }
 

@@ -1547,6 +1547,7 @@ impl GlobalEnv {
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
+    const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
@@ -2246,6 +2247,10 @@ impl GlobalEnv {
 
     pub fn asserts_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_FUNCTION_NAME)
+    }
+
+    pub fn asserts_of_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_OF_FUNCTION_NAME)
     }
 
     pub fn type_inv_qid(&self) -> QualifiedId<FunId> {
@@ -3464,6 +3469,7 @@ impl GlobalEnv {
             self.requires_qid(),
             self.ensures_qid(),
             self.asserts_qid(),
+            self.asserts_of_qid(),
             self.invariant_begin_qid(),
             self.invariant_end_qid(),
             self.prover_val_qid(),
@@ -3700,6 +3706,9 @@ impl GlobalEnv {
 
     pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
         let mut qids = BTreeSet::new();
+
+        // Prover module functions
+        qids.insert(self.asserts_of_qid());
 
         // Ghost module functions
         qids.extend(vec![
