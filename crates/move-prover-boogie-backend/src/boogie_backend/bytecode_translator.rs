@@ -158,6 +158,29 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
+    /// Check if an ignore_abort spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self, spec_qid: &QualifiedId<FunId>) -> bool {
+        let targets = self.targets.asserts_of_targets();
+        self.targets
+            .get_fun_by_spec(spec_qid)
+            .is_some_and(|target_fun_qid| {
+                let f = self.env.get_function(*target_fun_qid);
+                let simple = f.get_name_str().to_string();
+                let full = f.get_full_name_str();
+                let qualified =
+                    format!("{}::{}", f.module_env.get_full_name_str(), f.get_name_str());
+                targets.contains(&simple) || targets.contains(&full) || targets.contains(&qualified)
+            })
+    }
+
+    /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
+    fn asserts_of_var_name(spec_env: &FunctionEnv) -> String {
+        format!(
+            "$asserts_of_{}",
+            boogie_function_name(spec_env, &[], FunctionTranslationStyle::Default)
+        )
+    }
+
     fn generate_axiom_function(&mut self, func_env: &FunctionEnv) {
         let func_name = boogie_function_name(func_env, &[], FunctionTranslationStyle::Pure);
 
@@ -385,6 +408,16 @@ impl<'env> BoogieTranslator<'env> {
                             $IsPrefix'vec'u8''($TypeName(t), {}) ==> t is $TypeParamVector);",
                 TypeIdentToken::convert_to_bytes(TypeIdentToken::make("0x")),
             );
+        }
+
+        // Add per-spec ignore_aborts Boogie variables, only for specs
+        // that are actually referenced by some asserts_of declaration.
+        for spec_qid in self.targets.ignore_aborts() {
+            if self.has_asserts_of_ref(spec_qid) {
+                let spec_env = env.get_function(*spec_qid);
+                let var_name = Self::asserts_of_var_name(&spec_env);
+                emitln!(writer, "var {}: bool;", var_name);
+            }
         }
 
         // Add given type declarations for type parameters.
@@ -2898,6 +2931,49 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
+    /// Check if the current spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self) -> bool {
+        self.parent
+            .has_asserts_of_ref(&self.fun_target.func_env.get_qualified_id())
+    }
+
+    /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
+    /// Scans the function bytecodes to find the Load constant that feeds the source operand.
+    /// All validation is done in spec_well_formed_analysis; this panics on invalid input.
+    fn resolve_asserts_of_to_boogie_var(
+        &self,
+        srcs: &[TempIndex],
+        fun_target: &FunctionTarget,
+    ) -> String {
+        use move_stackless_bytecode::stackless_bytecode::Constant;
+
+        // Find the byte string constant loaded into srcs[0]
+        let src_temp = srcs[0];
+        let mut name_opt = None;
+        for bc in fun_target.get_bytecode() {
+            if let Bytecode::Load(_, dest, Constant::ByteArray(bytes)) = bc {
+                if *dest == src_temp {
+                    name_opt = Some(String::from_utf8_lossy(bytes).to_string());
+                    break;
+                }
+            }
+        }
+
+        let name = name_opt.expect("asserts_of() argument must be a byte string literal");
+        let target_func_qid = self
+            .parent
+            .env
+            .resolve_function(&name, &fun_target.func_env.module_env)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function not found", name));
+        let spec_qid = self
+            .parent
+            .targets
+            .get_spec_by_fun(&target_func_qid)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function has no spec", name));
+        let spec_env = self.parent.env.get_function(*spec_qid);
+        BoogieTranslator::asserts_of_var_name(&spec_env)
+    }
+
     fn create_quantifiers_temp_vars(&self) {
         let mut has_find = false;
         let mut has_quantifier_temp_vec = false;
@@ -3856,15 +3932,44 @@ impl<'env> FunctionTranslator<'env> {
                                 .ignore_aborts()
                                 .contains(&self.fun_target.func_env.get_qualified_id())
                         {
-                            emitln!(
-                                self.writer(),
-                                "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
-                                self.loc_str(&self.fun_target.get_loc()),
-                                self.fun_target.func_env.get_full_name_str()
-                            );
+                            if self.has_asserts_of_ref() {
+                                let var_name = BoogieTranslator::asserts_of_var_name(
+                                    &self.fun_target.func_env,
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} {};",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str(),
+                                    var_name,
+                                );
+                            } else {
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str()
+                                );
+                            }
                         }
                     }
                     AssertsMode::Assume => {
+                        if FunctionTranslationStyle::Opaque == self.style
+                            && !self
+                                .parent
+                                .targets
+                                .omits_opaque(&self.fun_target.func_env.get_qualified_id())
+                            && self
+                                .parent
+                                .targets
+                                .ignore_aborts()
+                                .contains(&self.fun_target.func_env.get_qualified_id())
+                            && self.has_asserts_of_ref()
+                        {
+                            let var_name =
+                                BoogieTranslator::asserts_of_var_name(&self.fun_target.func_env);
+                            emitln!(self.writer(), "assume {};", var_name);
+                        }
                         if !self
                             .parent
                             .targets
@@ -4180,6 +4285,14 @@ impl<'env> FunctionTranslator<'env> {
                                 secondary,
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.asserts_of_qid() {
+                            // asserts_of(b"name") translates to the per-spec Boogie variable.
+                            // Resolve the byte string argument to find the target function.
+                            let var_expr = self.resolve_asserts_of_to_boogie_var(srcs, fun_target);
+                            emitln!(self.writer(), "{} := {};", dest_str, var_expr);
                             processed = true;
                         }
 
