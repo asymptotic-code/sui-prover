@@ -47,6 +47,9 @@ pub struct FunctionTargetsHolder {
     loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     target: FunctionHolderTarget,
     prover_options: ProverOptions,
+    /// Maps: spec function → set of function names whose ignore_abort this spec accepts.
+    /// Populated by spec_well_formed_analysis, consumed by bytecode_translator.
+    ignore_aborts_of: BTreeMap<QualifiedId<FunId>, BTreeSet<String>>,
 }
 
 /// Describes a function verification flavor.
@@ -191,6 +194,7 @@ impl FunctionTargetsHolder {
             prover_options,
             target,
             package_targets: package_targets.clone(),
+            ignore_aborts_of: BTreeMap::new(),
         }
     }
 
@@ -273,11 +277,14 @@ impl FunctionTargetsHolder {
     }
 
     pub fn ignore_aborts_of(&self) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<String>> {
-        self.package_targets.ignore_aborts_of()
+        &self.ignore_aborts_of
     }
 
     pub fn add_ignore_aborts_of(&mut self, spec_qid: QualifiedId<FunId>, name: String) {
-        self.package_targets.add_ignore_aborts_of(spec_qid, name);
+        self.ignore_aborts_of
+            .entry(spec_qid)
+            .or_insert_with(BTreeSet::new)
+            .insert(name);
     }
 
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {

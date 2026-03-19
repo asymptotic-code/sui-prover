@@ -38,8 +38,6 @@ pub struct PackageTargets {
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
     ignore_aborts: BTreeSet<QualifiedId<FunId>>,
-    /// Maps: spec function → set of function names whose ignore_abort this spec accepts
-    ignore_aborts_of: BTreeMap<QualifiedId<FunId>, BTreeSet<String>>,
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
@@ -83,7 +81,6 @@ impl PackageTargets {
             skipped_specs: BTreeMap::new(),
             no_verify_specs: BTreeSet::new(),
             ignore_aborts: BTreeSet::new(),
-            ignore_aborts_of: BTreeMap::new(),
             omit_opaque_specs: BTreeSet::new(),
             focus_specs: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
@@ -1060,17 +1057,6 @@ impl PackageTargets {
 
     pub fn ignore_aborts(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.ignore_aborts
-    }
-
-    pub fn ignore_aborts_of(&self) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<String>> {
-        &self.ignore_aborts_of
-    }
-
-    pub fn add_ignore_aborts_of(&mut self, spec_qid: QualifiedId<FunId>, name: String) {
-        self.ignore_aborts_of
-            .entry(spec_qid)
-            .or_insert_with(BTreeSet::new)
-            .insert(name);
     }
 
     pub fn omit_opaque_specs(&self) -> &BTreeSet<QualifiedId<FunId>> {
