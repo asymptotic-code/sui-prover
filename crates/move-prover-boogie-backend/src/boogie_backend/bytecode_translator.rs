@@ -158,20 +158,25 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
-    /// Check if a function is referenced by any asserts_of declaration.
-    /// Check if a function is referenced by any asserts_of declaration.
-    fn is_asserts_of_target(&self, target_fun_env: &FunctionEnv) -> bool {
-        let targets = self.targets.ignore_aborts_of_targets();
-        let simple_name = target_fun_env.get_name_str().to_string();
-        let full_name = target_fun_env.get_full_name_str();
-        let fully_qualified = format!(
-            "{}::{}",
-            target_fun_env.module_env.get_full_name_str(),
-            target_fun_env.get_name_str()
-        );
-        targets.contains(&simple_name)
-            || targets.contains(&full_name)
-            || targets.contains(&fully_qualified)
+    /// Check if an ignore_abort spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self, spec_qid: &QualifiedId<FunId>) -> bool {
+        self.targets
+            .get_fun_by_spec(spec_qid)
+            .map(|target_fun_qid| {
+                let targets = self.targets.ignore_aborts_of_targets();
+                let target_fun_env = self.env.get_function(*target_fun_qid);
+                let simple_name = target_fun_env.get_name_str().to_string();
+                let full_name = target_fun_env.get_full_name_str();
+                let fully_qualified = format!(
+                    "{}::{}",
+                    target_fun_env.module_env.get_full_name_str(),
+                    target_fun_env.get_name_str()
+                );
+                targets.contains(&simple_name)
+                    || targets.contains(&full_name)
+                    || targets.contains(&fully_qualified)
+            })
+            .unwrap_or(false)
     }
 
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
@@ -414,13 +419,10 @@ impl<'env> BoogieTranslator<'env> {
         // Add per-spec ignore_aborts Boogie variables, only for specs
         // that are actually referenced by some asserts_of declaration.
         for spec_qid in self.targets.ignore_aborts() {
-            if let Some(target_fun_qid) = self.targets.get_fun_by_spec(spec_qid) {
-                let target_fun_env = env.get_function(*target_fun_qid);
-                if self.is_asserts_of_target(&target_fun_env) {
-                    let spec_env = env.get_function(*spec_qid);
-                    let var_name = Self::ignore_aborts_var_name(&spec_env);
-                    emitln!(writer, "var {}: bool;", var_name);
-                }
+            if self.has_asserts_of_ref(spec_qid) {
+                let spec_env = env.get_function(*spec_qid);
+                let var_name = Self::ignore_aborts_var_name(&spec_env);
+                emitln!(writer, "var {}: bool;", var_name);
             }
         }
 
@@ -2937,15 +2939,8 @@ impl<'env> FunctionTranslator<'env> {
 
     /// Check if the current spec's target function is referenced by any asserts_of declaration.
     fn has_asserts_of_ref(&self) -> bool {
-        let spec_qid = self.fun_target.func_env.get_qualified_id();
         self.parent
-            .targets
-            .get_fun_by_spec(&spec_qid)
-            .map(|target_fun_qid| {
-                let target_fun_env = self.parent.env.get_function(*target_fun_qid);
-                self.parent.is_asserts_of_target(&target_fun_env)
-            })
-            .unwrap_or(false)
+            .has_asserts_of_ref(&self.fun_target.func_env.get_qualified_id())
     }
 
     /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
