@@ -1159,6 +1159,40 @@ impl GlobalEnv {
         self.get_module(module_id).find_function(simple_name)
     }
 
+    /// Resolve a potentially-qualified function name to a QualifiedId.
+    /// Supports: `function` (searched in `caller_module`),
+    /// `module::function`, and `package::module::function`.
+    pub fn resolve_function(
+        &self,
+        name: &str,
+        caller_module: &ModuleEnv,
+    ) -> Option<QualifiedId<FunId>> {
+        if !name.contains("::") {
+            let sym = self.symbol_pool().make(name);
+            return caller_module
+                .find_function(sym)
+                .map(|f| f.get_qualified_id());
+        }
+        for module in self.get_modules() {
+            for func in module.get_functions() {
+                // module::function
+                if func.get_full_name_str() == name {
+                    return Some(func.get_qualified_id());
+                }
+                // package::module::function
+                let fully_qualified = format!(
+                    "{}::{}",
+                    func.module_env.get_full_name_str(),
+                    func.get_name_str()
+                );
+                if fully_qualified == name {
+                    return Some(func.get_qualified_id());
+                }
+            }
+        }
+        None
+    }
+
     /// Gets a StructEnv in this module by its `StructTag`
     pub fn find_datatype_by_tag(
         &self,
@@ -1547,6 +1581,7 @@ impl GlobalEnv {
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
+    const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
@@ -2246,6 +2281,10 @@ impl GlobalEnv {
 
     pub fn asserts_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_FUNCTION_NAME)
+    }
+
+    pub fn asserts_of_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_OF_FUNCTION_NAME)
     }
 
     pub fn type_inv_qid(&self) -> QualifiedId<FunId> {
@@ -3464,6 +3503,7 @@ impl GlobalEnv {
             self.requires_qid(),
             self.ensures_qid(),
             self.asserts_qid(),
+            self.asserts_of_qid(),
             self.invariant_begin_qid(),
             self.invariant_end_qid(),
             self.prover_val_qid(),
@@ -3700,6 +3740,9 @@ impl GlobalEnv {
 
     pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
         let mut qids = BTreeSet::new();
+
+        // Prover module functions
+        qids.insert(self.asserts_of_qid());
 
         // Ghost module functions
         qids.extend(vec![
