@@ -2871,44 +2871,6 @@ impl<'env> FunctionTranslator<'env> {
         // Prelude initialization
         emitln!(writer, "call $InitVerification();");
 
-        // Initialize per-spec ignore_aborts flags
-        let spec_qid = fun_target.func_env.get_qualified_id();
-        let ignore_aborts_of = self
-            .parent
-            .targets
-            .ignore_aborts_of()
-            .get(&spec_qid)
-            .cloned()
-            .unwrap_or_default();
-        for ign_spec_qid in self.parent.targets.ignore_aborts() {
-            let ign_spec_env = self.parent.env.get_function(*ign_spec_qid);
-            let var_name = BoogieTranslator::ignore_aborts_var_name(&ign_spec_env);
-            // Check if this spec declared ignore_aborts_of for the function targeted by ign_spec
-            let should_enable =
-                if let Some(target_fun_qid) = self.parent.targets.get_fun_by_spec(ign_spec_qid) {
-                    let target_fun_env = self.parent.env.get_function(*target_fun_qid);
-                    // Match against all stored names (which may be simple or qualified)
-                    let simple_name = target_fun_env.get_name_str().to_string();
-                    let full_name = target_fun_env.get_full_name_str();
-                    let fully_qualified = format!(
-                        "{}::{}",
-                        target_fun_env.module_env.get_full_name_str(),
-                        target_fun_env.get_name_str()
-                    );
-                    ignore_aborts_of.contains(&simple_name)
-                        || ignore_aborts_of.contains(&full_name)
-                        || ignore_aborts_of.contains(&fully_qualified)
-                } else {
-                    false
-                };
-            emitln!(
-                writer,
-                "{} := {};",
-                var_name,
-                if should_enable { "true" } else { "false" }
-            );
-        }
-
         // Assume reference parameters to be based on the Param(i) Location, ensuring
         // they are disjoint from all other references. This prevents aliasing and is justified as
         // follows:
@@ -3958,6 +3920,21 @@ impl<'env> FunctionTranslator<'env> {
                         }
                     }
                     AssertsMode::Assume => {
+                        if FunctionTranslationStyle::Opaque == self.style
+                            && !self
+                                .parent
+                                .targets
+                                .omits_opaque(&self.fun_target.func_env.get_qualified_id())
+                            && self
+                                .parent
+                                .targets
+                                .ignore_aborts()
+                                .contains(&self.fun_target.func_env.get_qualified_id())
+                        {
+                            let var_name =
+                                BoogieTranslator::ignore_aborts_var_name(&self.fun_target.func_env);
+                            emitln!(self.writer(), "assume {};", var_name);
+                        }
                         if !self
                             .parent
                             .targets
