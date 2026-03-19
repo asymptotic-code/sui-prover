@@ -158,6 +158,24 @@ impl<'env> BoogieTranslator<'env> {
         }
     }
 
+    /// Check if a function is referenced by any asserts_of declaration.
+    fn is_asserts_of_target(
+        &self,
+        asserts_of_targets: &BTreeSet<String>,
+        target_fun_env: &FunctionEnv,
+    ) -> bool {
+        let simple_name = target_fun_env.get_name_str().to_string();
+        let full_name = target_fun_env.get_full_name_str();
+        let fully_qualified = format!(
+            "{}::{}",
+            target_fun_env.module_env.get_full_name_str(),
+            target_fun_env.get_name_str()
+        );
+        asserts_of_targets.contains(&simple_name)
+            || asserts_of_targets.contains(&full_name)
+            || asserts_of_targets.contains(&fully_qualified)
+    }
+
     /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
     fn ignore_aborts_var_name(spec_env: &FunctionEnv) -> String {
         format!(
@@ -395,11 +413,18 @@ impl<'env> BoogieTranslator<'env> {
             );
         }
 
-        // Add per-spec ignore_aborts Boogie variables
+        // Add per-spec ignore_aborts Boogie variables, only for specs
+        // that are actually referenced by some asserts_of declaration.
+        let asserts_of_targets = self.targets.ignore_aborts_of_targets();
         for spec_qid in self.targets.ignore_aborts() {
-            let spec_env = env.get_function(*spec_qid);
-            let var_name = Self::ignore_aborts_var_name(&spec_env);
-            emitln!(writer, "var {}: bool;", var_name);
+            if let Some(target_fun_qid) = self.targets.get_fun_by_spec(spec_qid) {
+                let target_fun_env = env.get_function(*target_fun_qid);
+                if self.is_asserts_of_target(&asserts_of_targets, &target_fun_env) {
+                    let spec_env = env.get_function(*spec_qid);
+                    let var_name = Self::ignore_aborts_var_name(&spec_env);
+                    emitln!(writer, "var {}: bool;", var_name);
+                }
+            }
         }
 
         // Add given type declarations for type parameters.
@@ -2913,6 +2938,21 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
+    /// Check if the current spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self) -> bool {
+        let spec_qid = self.fun_target.func_env.get_qualified_id();
+        self.parent
+            .targets
+            .get_fun_by_spec(&spec_qid)
+            .map(|target_fun_qid| {
+                let asserts_of_targets = self.parent.targets.ignore_aborts_of_targets();
+                let target_fun_env = self.parent.env.get_function(*target_fun_qid);
+                self.parent
+                    .is_asserts_of_target(&asserts_of_targets, &target_fun_env)
+            })
+            .unwrap_or(false)
+    }
+
     /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
     /// Scans the function bytecodes to find the Load constant that feeds the source operand.
     /// All validation is done in spec_well_formed_analysis; this panics on invalid input.
@@ -3908,15 +3948,25 @@ impl<'env> FunctionTranslator<'env> {
                                 .ignore_aborts()
                                 .contains(&self.fun_target.func_env.get_qualified_id())
                         {
-                            let var_name =
-                                BoogieTranslator::ignore_aborts_var_name(&self.fun_target.func_env);
-                            emitln!(
-                                self.writer(),
-                                "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} {};",
-                                self.loc_str(&self.fun_target.get_loc()),
-                                self.fun_target.func_env.get_full_name_str(),
-                                var_name,
-                            );
+                            if self.has_asserts_of_ref() {
+                                let var_name = BoogieTranslator::ignore_aborts_var_name(
+                                    &self.fun_target.func_env,
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} {};",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str(),
+                                    var_name,
+                                );
+                            } else {
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str()
+                                );
+                            }
                         }
                     }
                     AssertsMode::Assume => {
@@ -3930,6 +3980,7 @@ impl<'env> FunctionTranslator<'env> {
                                 .targets
                                 .ignore_aborts()
                                 .contains(&self.fun_target.func_env.get_qualified_id())
+                            && self.has_asserts_of_ref()
                         {
                             let var_name =
                                 BoogieTranslator::ignore_aborts_var_name(&self.fun_target.func_env);

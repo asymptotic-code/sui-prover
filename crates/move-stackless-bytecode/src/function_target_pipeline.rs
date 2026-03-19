@@ -280,6 +280,14 @@ impl FunctionTargetsHolder {
         &self.ignore_aborts_of
     }
 
+    /// Returns the set of function names referenced by any asserts_of declaration.
+    pub fn ignore_aborts_of_targets(&self) -> BTreeSet<String> {
+        self.ignore_aborts_of
+            .values()
+            .flat_map(|names| names.iter().cloned())
+            .collect()
+    }
+
     pub fn add_ignore_aborts_of(&mut self, spec_qid: QualifiedId<FunId>, name: String) {
         self.ignore_aborts_of
             .entry(spec_qid)
