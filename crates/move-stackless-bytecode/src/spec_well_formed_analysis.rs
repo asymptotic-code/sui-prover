@@ -598,7 +598,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                             // Validate it has a spec with ignore_abort
                             if let Some(spec_qid) = targets.get_spec_by_fun(&target_func_qid) {
                                 if targets.ignores_aborts(spec_qid) {
-                                    targets.add_ignore_aborts_of(func_env.get_qualified_id(), name);
+                                    targets.add_asserts_of(func_env.get_qualified_id(), name);
                                 } else {
                                     env.diag(
                                         Severity::Error,

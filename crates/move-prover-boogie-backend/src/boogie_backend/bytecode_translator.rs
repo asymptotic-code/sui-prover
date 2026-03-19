@@ -160,7 +160,7 @@ impl<'env> BoogieTranslator<'env> {
 
     /// Check if an ignore_abort spec's target function is referenced by any asserts_of declaration.
     fn has_asserts_of_ref(&self, spec_qid: &QualifiedId<FunId>) -> bool {
-        let targets = self.targets.ignore_aborts_of_targets();
+        let targets = self.targets.asserts_of_targets();
         self.targets
             .get_fun_by_spec(spec_qid)
             .is_some_and(|target_fun_qid| {
