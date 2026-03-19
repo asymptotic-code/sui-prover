@@ -1159,6 +1159,40 @@ impl GlobalEnv {
         self.get_module(module_id).find_function(simple_name)
     }
 
+    /// Resolve a potentially-qualified function name to a QualifiedId.
+    /// Supports: `function` (searched in `caller_module`),
+    /// `module::function`, and `package::module::function`.
+    pub fn resolve_function(
+        &self,
+        name: &str,
+        caller_module: &ModuleEnv,
+    ) -> Option<QualifiedId<FunId>> {
+        if !name.contains("::") {
+            let sym = self.symbol_pool().make(name);
+            return caller_module
+                .find_function(sym)
+                .map(|f| f.get_qualified_id());
+        }
+        for module in self.get_modules() {
+            for func in module.get_functions() {
+                // module::function
+                if func.get_full_name_str() == name {
+                    return Some(func.get_qualified_id());
+                }
+                // package::module::function
+                let fully_qualified = format!(
+                    "{}::{}",
+                    func.module_env.get_full_name_str(),
+                    func.get_name_str()
+                );
+                if fully_qualified == name {
+                    return Some(func.get_qualified_id());
+                }
+            }
+        }
+        None
+    }
+
     /// Gets a StructEnv in this module by its `StructTag`
     pub fn find_datatype_by_tag(
         &self,

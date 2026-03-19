@@ -383,41 +383,6 @@ impl SpecWellFormedAnalysisProcessor {
         results
     }
 
-    /// Resolve a potentially-qualified function name to a QualifiedId.
-    /// Supports: `function`, `module::function`, `package::module::function`.
-    fn resolve_function_name(
-        env: &move_model::model::GlobalEnv,
-        caller_module: &move_model::model::ModuleEnv,
-        name: &str,
-    ) -> Option<QualifiedId<FunId>> {
-        if !name.contains("::") {
-            // Simple name: look in caller's module only
-            let sym = env.symbol_pool().make(name);
-            return caller_module
-                .find_function(sym)
-                .map(|f| f.get_qualified_id());
-        }
-        // Qualified name: search all modules using the same matching as --functions filter
-        for module in env.get_modules() {
-            for func in module.get_functions() {
-                // module::function
-                if func.get_full_name_str() == name {
-                    return Some(func.get_qualified_id());
-                }
-                // package::module::function
-                let fully_qualified = format!(
-                    "{}::{}",
-                    func.module_env.get_full_name_str(),
-                    func.get_name_str()
-                );
-                if fully_qualified == name {
-                    return Some(func.get_qualified_id());
-                }
-            }
-        }
-        None
-    }
-
     fn get_called_functions(func_env: &FunctionEnv, results: &mut BTreeSet<QualifiedId<FunId>>) {
         func_env.get_called_functions().iter().for_each(|qid| {
             if results.insert(*qid) {
@@ -628,7 +593,7 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                         let name = String::from_utf8_lossy(bytes).to_string();
                         // Resolve the function name (supports qualified names)
                         if let Some(target_func_qid) =
-                            Self::resolve_function_name(env, &func_env.module_env, &name)
+                            env.resolve_function(&name, &func_env.module_env)
                         {
                             // Validate it has a spec with ignore_abort
                             if let Some(spec_qid) = targets.get_spec_by_fun(&target_func_qid) {

@@ -2951,40 +2951,6 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
-    /// Resolve a potentially-qualified function name to a QualifiedId.
-    /// Supports: `function`, `module::function`, `package::module::function`.
-    fn resolve_function_by_name(
-        &self,
-        name: &str,
-        fun_target: &FunctionTarget,
-    ) -> Option<QualifiedId<FunId>> {
-        let env = self.parent.env;
-        if !name.contains("::") {
-            let sym = env.symbol_pool().make(name);
-            return fun_target
-                .func_env
-                .module_env
-                .find_function(sym)
-                .map(|f| f.get_qualified_id());
-        }
-        for module in env.get_modules() {
-            for func in module.get_functions() {
-                if func.get_full_name_str() == name {
-                    return Some(func.get_qualified_id());
-                }
-                let fully_qualified = format!(
-                    "{}::{}",
-                    func.module_env.get_full_name_str(),
-                    func.get_name_str()
-                );
-                if fully_qualified == name {
-                    return Some(func.get_qualified_id());
-                }
-            }
-        }
-        None
-    }
-
     /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
     /// Scans the function bytecodes to find the Load constant that feeds the source operand.
     /// All validation is done in spec_well_formed_analysis; this panics on invalid input.
@@ -3009,7 +2975,9 @@ impl<'env> FunctionTranslator<'env> {
 
         let name = name_opt.expect("asserts_of() argument must be a byte string literal");
         let target_func_qid = self
-            .resolve_function_by_name(&name, fun_target)
+            .parent
+            .env
+            .resolve_function(&name, &fun_target.func_env.module_env)
             .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function not found", name));
         let spec_qid = self
             .parent
