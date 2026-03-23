@@ -21,8 +21,8 @@ fun foo(x: &mut Foo) {
 fun foo_spec(x: &mut Foo) {
     requires(dynamic_object_field::exists_with_type<u64, Bar>(&x.id, 10));
     foo(x);
-    ensures(dynamic_object_field::exists_(&x.id, 10));
+    ensures(dynamic_object_field::exists_(&x.id, 10u64));
     ensures(dynamic_object_field::exists_with_type<u64, Bar>(&x.id, 10));
     ensures(dynamic_object_field::borrow<u64, Bar>(&x.id, 10).bar == 0);
-    ensures(dynamic_object_field::exists_(&x.id, 11));
+    ensures(dynamic_object_field::exists_(&x.id, 11u64));
 }

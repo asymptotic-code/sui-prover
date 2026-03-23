@@ -74,7 +74,7 @@ fun test_find_indices_range_valid_indices() {
     let indices = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
     
     let len = vector::length(&indices);
-    let mut i = 0;
+    let mut i:u8 = 0;
     
     let idx = *vector::borrow(&indices, 0);
     ensures(idx >= 1);
