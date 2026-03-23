@@ -9,7 +9,7 @@ fun f_axiom(x: u64): bool {
 
 // This function has a real abort, so it can't be a pure callee.
 public fun bar(): bool {
-    assert!(1 > 2);
+    assert!(1u8 > 2u8);
     true
 }
 

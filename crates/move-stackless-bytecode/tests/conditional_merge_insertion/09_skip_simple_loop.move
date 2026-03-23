@@ -4,7 +4,7 @@ module 0x42::test {
         let mut y = 2;
         let mut i = 0;
 
-        while (i < 3) {
+        while (i < 3u64) {
             if (cond) {
                 x = x + 10;  // Increment x in then-block
             } else {

@@ -6,5 +6,11 @@ exiting with model building errors
 error: unexpected name in this position
    ┌─ tests/inputs/spec_paths/wrong_module.move:12:28
    │
+10 │     use 0x42::foo;
+   │               --- Similarly named defintion found here
+11 │ 
 12 │     #[spec(prove, target = bar::inc)]
-   │                            ^^^ Could not resolve the name 'bar'
+   │                            ^^^
+   │                            │
+   │                            Could not resolve the name 'bar'
+   │                            Did you mean: 'foo'

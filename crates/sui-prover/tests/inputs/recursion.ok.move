@@ -14,5 +14,5 @@ public fun factorial(x: u64): u64 {
 
 #[spec(prove)]
 public fun my_spec() {
-  ensures(5 * 5 == 25);
+  ensures(5u64 * 5u64 == 25u64);
 }

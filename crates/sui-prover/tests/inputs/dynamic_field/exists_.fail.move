@@ -16,5 +16,5 @@ fun foo(x: &mut Foo) {
 fun foo_spec(x: &mut Foo) {
     requires(!dynamic_field::exists_with_type<u64, u8>(&x.id, 10));
     foo(x);
-    ensures(!dynamic_field::exists_(&x.id, 11));
+    ensures(!dynamic_field::exists_(&x.id, 11u8));
 }
