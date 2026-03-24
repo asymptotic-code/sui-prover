@@ -1539,6 +1539,8 @@ impl GlobalEnv {
         "vdf_spec",
         "zklogin_verified_id_spec",
         "zklogin_verified_issuer_spec",
+        "derived_object_spec",
+        "funds_accumulator_spec",
     ];
     const LOG_MODULE_NAME: &'static str = "log";
     const VECTOR_MODULE_NAME: &'static str = "vector";
