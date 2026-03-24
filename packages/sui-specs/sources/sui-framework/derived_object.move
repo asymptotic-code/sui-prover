@@ -1,4 +1,4 @@
-module specs::derived_object_specs;
+module specs::derived_object_spec;
 
 use sui::derived_object::derive_address;
 
