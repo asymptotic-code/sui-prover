@@ -41,6 +41,13 @@ impl FunctionTargetProcessor for PureCalleeDetectionProcessor {
                 if fun_env.is_native() || fun_env.is_intrinsic() {
                     continue;
                 }
+                // Skip functions with loop invariants: MoveLoopInvariantsProcessor
+                // injects `ensures` calls into their bytecode, which is incompatible
+                // with pure callee validation. TODO: fix MoveLoopInvariantsProcessor
+                // to handle pure callee targets without injecting `ensures`.
+                if targets.get_loop_invariants(&callee).is_some() {
+                    continue;
+                }
                 targets.add_pure_callee(callee);
                 queue.push_back(callee);
             }
