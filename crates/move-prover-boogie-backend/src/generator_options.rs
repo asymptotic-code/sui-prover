@@ -16,11 +16,11 @@ use anyhow::anyhow;
 use clap::{Arg, Command};
 use log::LevelFilter;
 use move_compiler::shared::NumericalAddress;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use simplelog::{
     CombinedLogger, Config, ConfigBuilder, LevelPadding, SimpleLogger, TermLogger, TerminalMode,
 };
+use std::sync::LazyLock;
 
 use crate::boogie_backend::options::{BoogieOptions, RemoteOptions, VectorTheory};
 use codespan_reporting::diagnostic::Severity;
@@ -100,7 +100,7 @@ impl Default for Options {
     }
 }
 
-pub static DEFAULT_OPTIONS: Lazy<Options> = Lazy::new(|| Options::default());
+pub static DEFAULT_OPTIONS: LazyLock<Options> = LazyLock::new(|| Options::default());
 
 impl Options {
     /// Creates options from toml configuration source.

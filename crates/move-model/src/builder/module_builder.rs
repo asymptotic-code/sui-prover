@@ -6,15 +6,15 @@ use itertools::Itertools;
 use std::collections::BTreeMap;
 
 use move_binary_format::{
-    file_format::{Constant, EnumDefinitionIndex, FunctionDefinitionIndex, StructDefinitionIndex},
     CompiledModule,
+    file_format::{Constant, EnumDefinitionIndex, FunctionDefinitionIndex, StructDefinitionIndex},
 };
 use move_bytecode_source_map::source_map::SourceMap;
 use move_compiler::{
     compiled_unit::FunctionInfo,
     expansion::ast as EA,
     parser::ast::{self as PA},
-    shared::{unique_map::UniqueMap, Name},
+    shared::{Name, unique_map::UniqueMap},
 };
 use move_ir_types::ast::ConstantName;
 
@@ -26,7 +26,7 @@ use crate::{
     },
     model::{
         DatatypeId, EnumData, FunId, FunctionData, FunctionVisibility, Loc, ModuleId,
-        NamedConstantData, NamedConstantId, StructData, SCRIPT_BYTECODE_FUN_NAME,
+        NamedConstantData, NamedConstantId, SCRIPT_BYTECODE_FUN_NAME, StructData,
     },
     project_1st,
     symbol::{Symbol, SymbolPool},

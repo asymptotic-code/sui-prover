@@ -19,12 +19,12 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use itertools::Itertools;
 use log::{debug, info, warn};
 use num::{BigInt, BigUint};
-use once_cell::sync::Lazy;
 use pretty::RcDoc;
 use regex::Regex;
 use reqwest;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::LazyLock;
 
 use move_binary_format::file_format::FunctionDefinitionIndex;
 use move_model::{
@@ -113,30 +113,30 @@ pub enum TraceEntry {
 }
 
 // Error message matching
-static VERIFICATION_DIAG_STARTS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^assert_failed\((?P<args>[^)]*)\): (?P<msg>.*)$").unwrap());
+static VERIFICATION_DIAG_STARTS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^assert_failed\((?P<args>[^)]*)\): (?P<msg>.*)$").unwrap());
 
 /// Matches `assert {:msg "assert_failed(file_idx,start,end): message"}` in .bpl files.
-static BPL_ASSERT_MSG: Lazy<Regex> = Lazy::new(|| {
+static BPL_ASSERT_MSG: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"assert \{:msg "assert_failed\((?P<args>[^)]*)\): (?P<msg>[^"]*)"\}"#).unwrap()
 });
 
 /// Matches `checking split N/M (line NNNN)` in Boogie trace output.
-static CHECKING_SPLIT: Lazy<Regex> = Lazy::new(|| {
+static CHECKING_SPLIT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"checking split (?P<n>\d+)/(?P<total>\d+) \(line (?P<line>\d+)\)").unwrap()
 });
 
-static INCONCLUSIVE_DIAG_STARTS: Lazy<Regex> = Lazy::new(|| {
+static INCONCLUSIVE_DIAG_STARTS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^.*\((?P<line>\d+),(?P<col>\d+)\).*Verification(?P<str>.*)(inconclusive|out of resource|timed out).*$")
         .unwrap()
 });
 
-static INCONSISTENCY_DIAG_STARTS: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^inconsistency_detected\((?P<args>[^)]*)\)").unwrap());
+static INCONSISTENCY_DIAG_STARTS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^inconsistency_detected\((?P<args>[^)]*)\)").unwrap());
 
 /// Matches Boogie verbose/trace output lines produced by `-trace -traceverify` flags.
 /// These are informational progress indicators, not verification diagnostics.
-static BOOGIE_TRACE_NOISE: Lazy<Regex> = Lazy::new(|| {
+static BOOGIE_TRACE_NOISE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?m)^(Parsing |Coalescing blocks|Inlining|Verifying .+ \.\.\.|.*checking split |.*-->.*split|.*finished with |Boogie program verifier finished|New lambda:|Old lambda:|Desugaring of lambda|Running abstract interpretation|Implementation .* verified|\s*\[[\d.]+ s)",
     )
@@ -144,20 +144,21 @@ static BOOGIE_TRACE_NOISE: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Matches secondary label annotations embedded in error messages: ` @{(file,start,end):message}`
-static SECONDARY_LABEL: Lazy<Regex> = Lazy::new(|| {
+static SECONDARY_LABEL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r" @\{\((?P<file>\d+),(?P<start>\d+),(?P<end>\d+)\):(?P<msg>[^}]*)\}").unwrap()
 });
 
 /// Matches procedure declarations in .bpl files, capturing the procedure name.
-static BPL_PROC_DECL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^procedure\s+(?:\{[^}]*\}\s+)*(\$\S+)\(").unwrap());
+static BPL_PROC_DECL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^procedure\s+(?:\{[^}]*\}\s+)*(\$\S+)\(").unwrap());
 
 /// Matches call statements in .bpl files, capturing the called procedure name.
-static BPL_CALL_STMT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"call\s+(?:.*:=\s+)?(\$[a-zA-Z0-9_'$#]+)\(").unwrap());
+static BPL_CALL_STMT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"call\s+(?:.*:=\s+)?(\$[a-zA-Z0-9_'$#]+)\(").unwrap());
 
 /// Matches `$at(file_idx,start,end)` location annotations in .bpl files.
-static BPL_AT_LOC: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\$at\((\d+),(\d+),(\d+)\)"#).unwrap());
+static BPL_AT_LOC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\$at\((\d+),(\d+),(\d+)\)"#).unwrap());
 
 /// Information about an assertion in a .bpl file, for trace output.
 struct AssertInfo {
@@ -1423,7 +1424,7 @@ impl<'env> BoogieWrapper<'env> {
 
     /// Extracts the model.
     fn extract_model(&self, model: &mut Model, out: &str, at: &mut usize) {
-        static MODEL_REGION: Lazy<Regex> = Lazy::new(|| {
+        static MODEL_REGION: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"(?m)^\*\*\* MODEL$(?P<mod>(?s:.)*?^\*\*\* END_MODEL$)").unwrap()
         });
 
@@ -1452,9 +1453,9 @@ impl<'env> BoogieWrapper<'env> {
 
     /// Extracts the plain execution trace.
     fn extract_execution_trace(&self, out: &str, at: &mut usize) -> Vec<String> {
-        static TRACE_START: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"(?m)^Execution trace:\s*$").unwrap());
-        static TRACE_ENTRY: Lazy<Regex> = Lazy::new(|| {
+        static TRACE_START: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"(?m)^Execution trace:\s*$").unwrap());
+        static TRACE_ENTRY: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"^\s+(?P<name>[^(]+)\((?P<args>[^)]*)\): (?P<value>.*)\n").unwrap()
         });
         let mut result = vec![];
@@ -1473,9 +1474,9 @@ impl<'env> BoogieWrapper<'env> {
 
     /// Extracts augmented execution trace.
     fn extract_augmented_trace(&self, out: &str, at: &mut usize) -> Vec<TraceEntry> {
-        static TRACE_START: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"(?m)^Augmented execution trace:\s*$").unwrap());
-        static TRACE_ENTRY: Lazy<Regex> = Lazy::new(|| {
+        static TRACE_START: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"(?m)^Augmented execution trace:\s*$").unwrap());
+        static TRACE_ENTRY: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"^\s*\$(?P<name>[a-zA-Z_]+)\((?P<args>[^)]*)\)(:(?P<value>.*))?\n").unwrap()
         });
         let mut result = vec![];

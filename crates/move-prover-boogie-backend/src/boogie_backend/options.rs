@@ -152,7 +152,7 @@ pub struct BoogieOptions {
     pub keep_artifacts: bool,
     /// Eager threshold for quantifier instantiation.
     pub eager_threshold: usize,
-    /// Lazy threshold for quantifier instantiation.
+    /// LazyLock threshold for quantifier instantiation.
     pub lazy_threshold: usize,
     /// Whether to use the new Boogie `{:debug ..}` attribute for tracking debug values.
     pub stable_test_output: bool,
