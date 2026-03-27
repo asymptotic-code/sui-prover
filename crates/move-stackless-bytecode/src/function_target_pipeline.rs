@@ -528,6 +528,22 @@ impl FunctionTargetsHolder {
             FunctionHolderTarget::All => self.package_targets.prelude_extra_exists(),
             FunctionHolderTarget::FunctionsAbortCheck => {
                 self.package_targets.prelude_extra_exists()
+                    || self
+                        .package_targets
+                        .abort_check_functions()
+                        .iter()
+                        .chain(self.package_targets.pure_functions().iter())
+                        .chain(self.package_targets.pure_callees().iter())
+                        .any(|qid| {
+                            self.package_targets
+                                .get_function_extra_bpl(qid)
+                                .is_some()
+                                || self
+                                    .package_targets
+                                    .get_module_extra_bpl(&qid.module_id)
+                                    .is_some()
+                                    
+                        })
             }
             FunctionHolderTarget::SpecNoAbortCheck(mid) => self.has_extra_bpl(env, &mid),
             FunctionHolderTarget::Function(qid) => {

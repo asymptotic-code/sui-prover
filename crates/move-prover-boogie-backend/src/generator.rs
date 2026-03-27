@@ -246,6 +246,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         .abort_check_functions()
         .iter()
         .chain(package_targets.pure_functions().iter())
+        .chain(package_targets.pure_callees().iter())
     {
         if let Some(content) = package_targets.get_function_extra_bpl(qid) {
             extra_bpl_contents.push(content.as_str());
@@ -411,11 +412,16 @@ fn generate_module_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let extra_bpl_contents: Vec<&str> = package_targets
+    let mut extra_bpl_contents: Vec<&str> = package_targets
         .get_module_extra_bpl(mid)
         .into_iter()
         .map(|s| s.as_str())
         .collect();
+    for fun in env.get_module(*mid).get_functions() {
+        if let Some(content) = package_targets.get_function_extra_bpl(&fun.get_qualified_id()) {
+            extra_bpl_contents.push(content.as_str());
+        }
+    }
 
     let (code_writer, types) = generate_boogie(
         env,
