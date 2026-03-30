@@ -242,11 +242,7 @@ async fn run_prover_abort_check<W: WriteColor>(
 
     let mut extra_bpl_contents: Vec<&str> = Vec::new();
     let mut seen_modules = std::collections::BTreeSet::new();
-    for qid in package_targets
-        .abort_check_functions()
-        .iter()
-        .chain(package_targets.pure_functions().iter())
-    {
+    for qid in package_targets.target_no_abort_check_functions() {
         if let Some(content) = package_targets.get_function_extra_bpl(qid) {
             extra_bpl_contents.push(content.as_str());
         }
