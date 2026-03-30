@@ -771,15 +771,8 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
         // transitively contains the parent struct creates a Boogie datatype
         // cycle (e.g. UID → Table<K,V> where Table has a UID field).
         // Report the error at each function that introduces the cyclic usage.
-        let all_funs: Vec<_> =
-            targets
-                .specs()
-                .copied()
-                .chain(targets.get_funs().filter(|fun_id| {
-                    targets.is_pure_fun(fun_id) || targets.is_abort_check_fun(fun_id)
-                }))
-                .collect();
-        for fun_id in &all_funs {
+        let translated_funs: Vec<_> = targets.get_funs().collect();
+        for fun_id in &translated_funs {
             let Some(data) = targets.get_data(fun_id, &FunctionVariant::Baseline) else {
                 continue;
             };
