@@ -14,7 +14,7 @@ use crate::{
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use itertools::Itertools;
 use move_model::{
-    model::{FunctionEnv, GlobalEnv, QualifiedId, StructEnv},
+    model::{DatatypeId, FunctionEnv, GlobalEnv, QualifiedId, StructEnv},
     ty::Type,
 };
 use std::{
@@ -144,6 +144,35 @@ impl DynamicFieldInfo {
     pub fn iter_union(info: impl Iterator<Item = Self>) -> Self {
         info.fold(Self::new(), |acc, info| acc.union(&info))
     }
+}
+
+/// Checks whether a type transitively contains the given struct through its fields.
+pub fn type_transitively_contains_struct(
+    env: &GlobalEnv,
+    ty: &Type,
+    target_qid: &QualifiedId<DatatypeId>,
+    visited: &mut BTreeSet<QualifiedId<DatatypeId>>,
+) -> bool {
+    if let Some((qid, type_args)) = ty.get_datatype() {
+        if qid == *target_qid {
+            return true;
+        }
+        if !visited.insert(qid) {
+            return false;
+        }
+        let module_env = env.get_module(qid.module_id);
+        if let Some(struct_env) = module_env.find_struct(qid.id.symbol()) {
+            for field in struct_env.get_fields() {
+                let field_ty = field.get_type().instantiate(type_args);
+                if type_transitively_contains_struct(env, &field_ty, target_qid, visited) {
+                    return true;
+                }
+            }
+        }
+    } else if let Type::Vector(elem_ty) = ty {
+        return type_transitively_contains_struct(env, elem_ty, target_qid, visited);
+    }
+    false
 }
 
 /// Get the information computed by this analysis for the global environment
@@ -737,6 +766,48 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
                         })
                 }),
         );
+
+        // Detect well-foundedness cycles: a dynamic field value type that
+        // transitively contains the parent struct creates a Boogie datatype
+        // cycle (e.g. UID → Table<K,V> where Table has a UID field).
+        // Report the error at each function that introduces the cyclic usage.
+        let translated_funs: Vec<_> = targets.get_funs().collect();
+        for fun_id in &translated_funs {
+            let Some(data) = targets.get_data(fun_id, &FunctionVariant::Baseline) else {
+                continue;
+            };
+            let Some(info) = data.annotations.get::<DynamicFieldInfo>() else {
+                continue;
+            };
+            for (ty, name_value_set) in &info.dynamic_field_mappings {
+                let Some((struct_qid, _)) = ty.get_datatype() else {
+                    continue;
+                };
+                for nv in name_value_set {
+                    if let Some((_name, value)) = nv.as_name_value() {
+                        if type_transitively_contains_struct(
+                            env,
+                            value,
+                            &struct_qid,
+                            &mut BTreeSet::new(),
+                        ) {
+                            let fun_env = env.get_function(*fun_id);
+                            let struct_env = env.get_struct(struct_qid);
+                            env.error(
+                                &fun_env.get_loc(),
+                                &format!(
+                                    "function `{}` uses a dynamic field whose value type \
+                                     contains `{}`, creating a well-foundedness cycle in \
+                                     the Boogie datatype. This is not yet supported by the prover.",
+                                    fun_env.get_full_name_str(),
+                                    struct_env.get_full_name_str(),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         // Set the combined info in the environment
         env.set_extension(combined_info);
