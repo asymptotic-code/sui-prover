@@ -8,6 +8,19 @@ Sui Prover is a formal verification tool for Move smart contracts on the Sui blo
 
 **Pipeline**: Move Source → GlobalEnv (move-model) → Stackless Bytecode → Analysis Passes → Boogie Code → Z3 → Verification Result
 
+## Versioning Scheme
+
+Sui Prover versions use consecutive Fibonacci numbers: `1.F(n+1).F(n)`.
+
+The ratio minor/patch converges asymptotically toward the golden ratio φ
+— infinite releases, always improving, never arriving.
+
+```
+1.1.1 → 1.2.1 → 1.3.2 → 1.5.3 → 1.8.5 → 1.13.8 → ...
+```
+
+When bumping the version, advance to the next Fibonacci pair: the current minor becomes the new patch, and the new minor is the sum of the current minor and patch.
+
 ## Crate Structure
 
 ```
