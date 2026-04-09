@@ -28,7 +28,7 @@ use anyhow::bail;
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, Severity},
-    term::{emit, termcolor::WriteColor, Config},
+    term::{Config, emit, termcolor::WriteColor},
 };
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -41,13 +41,13 @@ use serde::{Deserialize, Serialize};
 
 pub use move_binary_format::file_format::{AbilitySet, Visibility as FunctionVisibility};
 use move_binary_format::{
+    CompiledModule,
     file_format::{
         AddressIdentifierIndex, Bytecode, Constant as VMConstant, ConstantPoolIndex,
         DatatypeHandleIndex, EnumDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex,
         FunctionHandleIndex, IdentifierIndex, ModuleHandle, SignatureIndex, SignatureToken,
         StructDefinitionIndex, StructFieldInformation, VariantJumpTable, Visibility,
     },
-    CompiledModule,
 };
 use move_bytecode_source_map::{mapping::SourceMapping, source_map::SourceMap};
 use move_command_line_common::files::FileHash;
@@ -1088,7 +1088,7 @@ impl GlobalEnv {
                 .make(module.identifier_at(variant.variant_name).as_str());
             let loc = match enum_smap {
                 None => Loc::default(),
-                Some(smap) => self.to_loc(&smap.variants[tag].0 .1),
+                Some(smap) => self.to_loc(&smap.variants[tag].0.1),
             };
             variant_data.insert(
                 VariantId(variant_name),
@@ -6298,10 +6298,11 @@ impl<'env> FunctionEnv<'env> {
                         .module
                         .function_instantiation_at(*i)
                         .handle;
-                    vec![self
-                        .module_env
-                        .get_used_function(handle_idx)
-                        .get_qualified_id()]
+                    vec![
+                        self.module_env
+                            .get_used_function(handle_idx)
+                            .get_qualified_id(),
+                    ]
                 }
                 Bytecode::VecPack { .. } => vec![
                     self.module_env.env.get_fun_qid("vector", "empty"),

@@ -55,3 +55,4 @@ output/
 .sparse
 
 crates/sui-prover/tests/sources/*
+settings.local.json

@@ -147,7 +147,7 @@ The crate defines well-known identifiers for:
 ## Important Design Patterns
 
 1. **Reference-based access**: `ModuleEnv`, `FunctionEnv` are references, not owned data
-2. **Lazy caching**: Call graphs computed on first access via `RefCell<Option<_>>`
+2. **LazyLock caching**: Call graphs computed on first access via `RefCell<Option<_>>`
 3. **Source mapping**: `FileId` → codespan Files database for error reporting
 4. **Extensions**: `BTreeMap<TypeId, Box<dyn Any>>` for tool-specific data
 

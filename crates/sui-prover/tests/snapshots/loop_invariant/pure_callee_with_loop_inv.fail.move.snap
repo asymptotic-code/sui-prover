@@ -1,0 +1,10 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: Function 'pure_callee_with_loop_inv::active_ids' can't be used in pure functions. Try marking it with #[ext(pure)] attribute.
+   ┌─ tests/inputs/loop_invariant/pure_callee_with_loop_inv.fail.move:53:5
+   │
+53 │     active_ids(set).length() > 0
+   │     ^^^^^^^^^^^^^^^
