@@ -73,7 +73,7 @@ impl<'env> VersionState<'env> {
     /// replaces all `Ret` instructions with `Nop` and appends the merges + single `Ret`.
     fn merge_returns(&mut self, structured: &StructuredBlock) {
         let mut merges = Vec::new();
-        let Some(merged_rets) = self.merge_return_temps(structured, &mut merges) else {
+        let Some(merged_rets) = self.merge_return_temps(structured, &mut merges, None) else {
             return;
         };
 
@@ -107,13 +107,24 @@ impl<'env> VersionState<'env> {
             .push(Bytecode::Ret(attr, merged_rets));
     }
 
-    /// Recursively find (or create) the return temps for a structured block.
-    /// When an `IfThenElse` has branches returning different temps, one merge per
-    /// return component is collected and a vec of fresh result temps is returned.
+    /// Compute the return temps for a structured block, given that falling through
+    /// (not returning) yields `fallthrough`.
+    ///
+    /// - Basic: has a Ret → those temps. No Ret → `fallthrough`.
+    /// - Seq: right-to-left accumulator — each block's fallthrough is the merged
+    ///   result of everything after it.
+    /// - IfThenElse: both branches receive the same `fallthrough`. When `else` is
+    ///   None, the false-path IS the fallthrough. If the two sides return different
+    ///   temps, emit an IfThenElse merge.
+    ///
+    /// Nesting works because `fallthrough` propagates inward: an inner IfThenElse
+    /// with a missing else gets filled by the same fallthrough the outer context
+    /// would use.
     fn merge_return_temps(
         &mut self,
         block: &StructuredBlock,
         merges: &mut Vec<MergeInfo>,
+        fallthrough: Option<Vec<usize>>,
     ) -> Option<Vec<usize>> {
         match block {
             StructuredBlock::Basic { lower, upper } => {
@@ -122,25 +133,25 @@ impl<'env> VersionState<'env> {
                         return Some(srcs.clone());
                     }
                 }
-                None
+                fallthrough
             }
             StructuredBlock::Seq(blocks) => {
+                let mut acc = fallthrough;
                 for b in blocks.iter().rev() {
-                    if let Some(t) = self.merge_return_temps(b, merges) {
-                        return Some(t);
-                    }
+                    acc = self.merge_return_temps(b, merges, acc);
                 }
-                None
+                acc
             }
             StructuredBlock::IfThenElse {
                 cond_at,
                 then_branch,
                 else_branch,
             } => {
-                let then_rets = self.merge_return_temps(then_branch, merges);
-                let else_rets = else_branch
-                    .as_ref()
-                    .and_then(|b| self.merge_return_temps(b, merges));
+                let then_rets = self.merge_return_temps(then_branch, merges, fallthrough.clone());
+                let else_rets = match else_branch.as_ref() {
+                    Some(b) => self.merge_return_temps(b, merges, fallthrough),
+                    None => fallthrough,
+                };
 
                 match (then_rets, else_rets) {
                     (Some(t), Some(e)) if t == e => Some(t),
@@ -176,7 +187,7 @@ impl<'env> VersionState<'env> {
                 }
             }
             StructuredBlock::IfElseChain { .. } => {
-                self.merge_return_temps(&block.clone().chain_to_if_then_else(), merges)
+                self.merge_return_temps(&block.clone().chain_to_if_then_else(), merges, fallthrough)
             }
         }
     }
