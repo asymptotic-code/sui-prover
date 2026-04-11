@@ -673,23 +673,11 @@ impl Analyzer<'_> {
                     self.info
                         .quantifier_helpers
                         .insert(PureQuantifierHelperInfo {
-                            qht: qht.clone(),
+                            qht,
                             function: *callee_id,
                             li: *li,
-                            inst: actuals.clone(),
+                            inst: actuals,
                         });
-                    // The Filter axiom references FindIndices on the same predicate, so
-                    // ensure a FindIndices helper is generated whenever Filter is.
-                    if matches!(qht, QuantifierHelperType::Filter) {
-                        self.info
-                            .quantifier_helpers
-                            .insert(PureQuantifierHelperInfo {
-                                qht: QuantifierHelperType::FindIndices,
-                                function: *callee_id,
-                                li: *li,
-                                inst: actuals,
-                            });
-                    }
                 }
             }
             Call(_, _, WriteBack(_, edge), ..) => {

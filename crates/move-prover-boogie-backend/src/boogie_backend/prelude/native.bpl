@@ -970,20 +970,25 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 
 {%- if instance.qht == "find_indices" %}
 {%- set CAT = instance.captured_args_tail %}
+// find_indices is axiomatized recursively on `end`.
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
-        0 <= LenVec(res) && LenVec(res) <= end - start &&
-        (forall i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, j))
+        0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==>
+            start <= ReadVec(res, i) && ReadVec(res, i) < end &&
+            {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}}))
     )
 );
-// Incremental axiom: find_indices(v, start, end) extends find_indices(v, start, end - 1)
-// by one element (end - 1) when FN(v[end - 1]) holds, and is otherwise equal.
-// This lets Z3 unfold concrete ranges step by step.
+// Strict ordering stated as a separate axiom so Z3 only instantiates it when
+// proving sortedness (e.g. `res[0] < res[1]`).
+axiom (forall {{QP}}, k: int, l: int ::
+    {ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k), ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)}
+    0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
+        ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
+);
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1000,20 +1005,40 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 {%- endif %}
 
 {%- if instance.qht == "filter" %}
-// Filter is axiomatized via FindIndices: the result is the elements of v at the positions
-// selected by FindIndices. This preserves order and multiplicity.
+{%- set CAT = instance.captured_args_tail %}
+// Filter is axiomatized recursively on `end`:
+//   filter(v, start, end) == [] if start >= end
+//   filter(v, start, end) == ExtendVec(filter(v, start, end-1), v[end-1]) if FN(v[end-1])
+//   filter(v, start, end) == filter(v, start, end-1) otherwise
+// The ExtendVec equality is a single term Z3 can resolve without instantiating
+// a per-element forall, which keeps loop-invariant proofs fast.
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
-    (var indices := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) == LenVec(indices) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> ReadVec(res, i) == ReadVec(v, ReadVec(indices, i)))
+        0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
+        (forall i: int :: 0 <= i && i < LenVec(res) ==>
+            {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
+    )
+);
+axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+    (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $FilterQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then
+            LenVec(res) == LenVec(prev) + 1 &&
+            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+            ReadVec(res, LenVec(prev)) == ReadVec(v, end - 1)
+         else
+            LenVec(res) == LenVec(prev) &&
+            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
     ))
 );
 {%- endif %}
 
 {%- if instance.qht == "find_index" %}
+{%- set CAT = instance.captured_args_tail %}
 function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 (
@@ -1022,6 +1047,24 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
         else start <= res && res < end && {{FN}}({{EAB}}ReadVec(v, res){{EAA}}) &&
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
     )
+);
+// Bidirectional incremental axiom: find_index relates to smaller ranges on either end.
+// End-side: if prev hit was at some index, find_index(v, start, end) keeps that index;
+//           otherwise it is end-1 when FN(v[end-1]) holds, else -1.
+// Start-side: if FN(v[start]) holds, result is start; otherwise result == find_index(v, start+1, end).
+axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
+            (if prev != -1 then prev
+             else if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then end - 1
+             else -1))
+);
+axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
+            (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then start
+             else $FindIndexQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}))
 );
 {%- endif %}
 
@@ -1032,14 +1075,21 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
         LenVec(res) == end - start &&
-        (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}})) &&
-        // Incremental relation on `end`, so loop invariants that extend the range can
-        // connect map(v, start, end) to map(v, start, end - 1).
-        (start < end ==>
-            LenVec($MapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})) == end - 1 - start &&
-            (forall j: int :: 0 <= j && j < end - 1 - start ==>
-                ReadVec(res, j) == ReadVec($MapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}}), j)))
+        (forall i: int :: start <= i && i < end ==>
+            ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
+);
+// Incremental axiom on `end`: map(v, start, end) equals map(v, start, end-1)
+// extended by FN(v[end-1]). Stated element-by-element so Z3 handles it more
+// efficiently than a single ExtendVec equality.
+axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+    (var res := $MapQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $MapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+        LenVec(res) == LenVec(prev) + 1 &&
+        (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+    ))
 );
 {%- endif %}
 
@@ -1056,21 +1106,48 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 
 {%- if instance.qht == "count" %}
 {%- set CAT = instance.captured_args_tail %}
-// Count is axiomatized recursively from both ends, letting Z3 unfold concrete ranges
-// step-by-step for whichever direction the client reasons in (e.g. loop invariants
-// that extend the range on the right).
+// Count is axiomatized recursively from both ends, letting Z3 unfold concrete
+// ranges step-by-step for whichever direction the client reasons in. Bounds,
+// base case, and the two recursive steps are separate axioms so Z3 only
+// instantiates the clauses it actually needs.
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     0 <= $CountQuantifierHelper_{{FN}}({{QA}}) &&
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
-    (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0) &&
-    (start < end ==>
+    (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
+);
+// Left step (recursion on `start`): useful for unfolding concrete ranges.
+axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
-            + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}) &&
+            + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+);
+// Right step (recursion on `end`): useful for loop invariants that extend the
+// range on the right.
+axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0))
+            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
+);
+{%- endif %}
+
+{%- if instance.qht == "sum_map" %}
+{%- set CAT = instance.captured_args_tail %}
+// SumMap is axiomatized as a recursive integer sum, like Count but summing the
+// predicate's return value instead of counting boolean matches. Bidirectional
+// recursion lets Z3 unfold ranges from either end.
+function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    (start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0) &&
+    (start < end ==>
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
+            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}) &&
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
+            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}))
 );
 {%- endif %}
 

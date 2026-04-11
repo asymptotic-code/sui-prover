@@ -573,6 +573,7 @@ impl QuantifierHelperInfo {
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()
         } else {
+            // Map, RangeMap, FindIndex, SumMap — use the function's return type.
             &Type::instantiate(&func_env.get_return_type(0), &info.inst)
         };
 

@@ -37,3 +37,16 @@ fun test_sum_map() {
     ensures(sum_map_range!<u64, u64>(&v, 0, 1, |x| x_plus_10(x)) == 20u64.to_int());
     ensures(sum_map_range!<u64, u64>(&v, 1, 3, |x| x_plus_10(x)) == 50u64.to_int());
 }
+
+// Empty vector and empty-range cases: sum over nothing is zero.
+#[spec(prove)]
+fun test_sum_map_empty() {
+    let empty: vector<u64> = vector[];
+    ensures(sum_map!<u64, u64>(&empty, |x| x_plus_10(x)) == 0u64.to_int());
+    ensures(sum_map_range!<u64, u64>(&empty, 0, 0, |x| x_plus_10(x)) == 0u64.to_int());
+
+    let v = vector[10, 20, 10, 20];
+    ensures(sum_map_range!<u64, u64>(&v, 0, 0, |x| x_plus_10(x)) == 0u64.to_int());
+    ensures(sum_map_range!<u64, u64>(&v, 2, 2, |x| x_plus_10(x)) == 0u64.to_int());
+    ensures(sum_map_range!<u64, u64>(&v, 4, 4, |x| x_plus_10(x)) == 0u64.to_int());
+}

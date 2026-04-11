@@ -72,12 +72,24 @@ fun test_find_indices_range_length_bounded() {
 fun test_find_indices_range_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
-    
+
     let len = vector::length(&indices);
     let mut i:u8 = 0;
-    
+
     let idx = *vector::borrow(&indices, 0);
     ensures(idx >= 1);
     ensures(idx < 4);
+}
+
+// Empty vector and empty-range cases.
+#[spec(prove)]
+fun test_find_indices_empty() {
+    let empty: vector<u64> = vector[];
+    let indices = find_indices!<u64>(&empty, |x| x_is_10(x));
+    ensures(vector::length(&indices) == 0);
+
+    let v = vector[10, 20, 10, 30];
+    let empty_range = find_indices_range!<u64>(&v, 2, 2, |x| x_is_10(x));
+    ensures(vector::length(&empty_range) == 0);
 }
 

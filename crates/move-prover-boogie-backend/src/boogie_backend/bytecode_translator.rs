@@ -156,6 +156,7 @@ impl<'env> BoogieTranslator<'env> {
 
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
             QuantifierHelperType::Count => format!("$CountQuantifierHelper_{}", function_name),
+            QuantifierHelperType::SumMap => format!("$SumMapQuantifierHelper_{}", function_name),
         }
     }
 
@@ -3508,22 +3509,24 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::SumMap => {
-                let map_quant_name = self
+                let sum_map_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
                 format!(
-                    "$0_vec_$sum'u64'({0}({1}, 0, LenVec({1}){2}), 0, LenVec({1}))",
-                    map_quant_name,
+                    "{}({}, 0, LenVec({}){})",
+                    sum_map_quant_name,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[0]),
                     extra_args,
                 )
             }
             QuantifierType::SumMapRange => {
-                let map_quant_name = self
+                let sum_map_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
-                format!("(var $temp_map := {}({}, {}, {}{}); $0_vec_$sum'u64'($temp_map, 0, LenVec($temp_map)))",
-                    map_quant_name,
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
+                format!(
+                    "{}({}, {}, {}{})",
+                    sum_map_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),

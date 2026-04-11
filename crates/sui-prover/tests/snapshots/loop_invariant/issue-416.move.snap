@@ -18,8 +18,8 @@ error: prover::ensures does not hold
     │            - loop invariant is not preserved by the loop body
     │
     =     Boogie does not return any augmented executed trace. See the plain trace below:
-      output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(5174,9): anon0
+      output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(5181,9): anon0
       output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(3831,5): inline$$1_vector_pop_back'u8'$0$anon3_Else
-      output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(4870,17): inline$$42_issue_416_bar$impl$0$anon6_Then$1
+      output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(4877,17): inline$$42_issue_416_bar$impl$0$anon6_Then$1
       output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(2085,5): inline$$AddU64$0$anon3_Else
       output/loop_invariant/issue-416/issue_416::bar_spec_Check.bpl(2088,9): inline$$AddU64$0$anon2
