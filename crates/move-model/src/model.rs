@@ -1638,6 +1638,7 @@ impl GlobalEnv {
     const PROVER_VEC_SUM: &'static str = "sum";
     const PROVER_VEC_SUM_RANGE: &'static str = "sum_range";
     const PROVER_VEC_SLICE: &'static str = "slice";
+    const PROVER_VEC_CONCAT: &'static str = "concat";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -2151,6 +2152,14 @@ impl GlobalEnv {
 
     pub fn prover_vec_slice_qid_opt(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
+    }
+
+    pub fn prover_vec_concat_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    }
+
+    pub fn prover_vec_concat_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -3552,6 +3561,7 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
+                self.prover_vec_concat_qid(),
             ]);
         }
 
@@ -3796,6 +3806,7 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
+                self.prover_vec_concat_qid(),
             ]);
         }
 
@@ -4088,6 +4099,7 @@ impl GlobalEnv {
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
             self.prover_vec_slice_qid_opt(),
+            self.prover_vec_concat_qid_opt(),
             self.prover_vec_sum_qid_opt(),
             self.prover_vec_sum_range_qid_opt(),
             self.prover_range_qid_opt(),

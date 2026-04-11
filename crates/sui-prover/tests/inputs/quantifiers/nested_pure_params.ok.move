@@ -153,12 +153,12 @@ fun vec_filter_in_range(v: &vector<u64>): &vector<u64> {
 }
 
 #[ext(pure)]
-fun vec_find_divisible_indices(v: &vector<u64>, divisor: u64): vector<u64> {
+fun vec_find_divisible_indices(v: &vector<u64>, divisor: u64): &vector<u64> {
     find_indices!<u64>(v, |x| is_divisible_by(x, divisor))
 }
 
 #[ext(pure)]
-fun vec_find_divisible_indices_in_range(v: &vector<u64>, start: u64, end: u64, divisor: u64): vector<u64> {
+fun vec_find_divisible_indices_in_range(v: &vector<u64>, start: u64, end: u64, divisor: u64): &vector<u64> {
     find_indices_range!<u64>(v, start, end, |x| is_divisible_by(x, divisor))
 }
 
@@ -339,7 +339,7 @@ fun test_filter_range_check() {
 fun test_find_indices() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vec_find_divisible_indices(&v, divisor) == vector[1, 3]); // indices 1 and 3 have elements divisible by 20 (20, 40)
+    ensures(*vec_find_divisible_indices(&v, divisor) == vector[1, 3]); // indices 1 and 3 have elements divisible by 20 (20, 40)
 }
 
 // Test: find_indices_range with divisor from context
@@ -347,5 +347,5 @@ fun test_find_indices() {
 fun test_find_indices_range() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vec_find_divisible_indices_in_range(&v, 0, 2, divisor) == vector[1]); // index 1 has 20
+    ensures(*vec_find_divisible_indices_in_range(&v, 0, 2, divisor) == vector[1]); // index 1 has 20
 }

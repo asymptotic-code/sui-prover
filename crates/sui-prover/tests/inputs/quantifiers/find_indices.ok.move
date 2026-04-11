@@ -22,12 +22,12 @@ fun x_is_even(x: &u64): bool {
 fun test_find_indices_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
-    let len = vector::length(&indices);
+
+    let len = vector::length(indices);
     let mut i = 0;
 
     while (i < len) {
-        let idx = *vector::borrow(&indices, i);
+        let idx = *vector::borrow(indices, i);
         ensures(idx < vector::length(&v));
         i = i + 1;
     };
@@ -38,8 +38,8 @@ fun test_find_indices_valid_indices() {
 fun test_find_indices_length_bounded() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
-    ensures(vector::length(&indices) <= vector::length(&v));
+
+    ensures(vector::length(indices) <= vector::length(&v));
 }
 
 // Test that indices are sorted (using simple two-element comparison)
@@ -47,13 +47,13 @@ fun test_find_indices_length_bounded() {
 fun test_find_indices_sorted_simple() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
-    let len = vector::length(&indices);
+
+    let len = vector::length(indices);
     if (len >= 2) {
-        ensures(*vector::borrow(&indices, 0) < *vector::borrow(&indices, 1));
+        ensures(*vector::borrow(indices, 0) < *vector::borrow(indices, 1));
     };
     if (len >= 3) {
-        ensures(*vector::borrow(&indices, 1) < *vector::borrow(&indices, 2));
+        ensures(*vector::borrow(indices, 1) < *vector::borrow(indices, 2));
     };
 }
 
@@ -62,9 +62,9 @@ fun test_find_indices_sorted_simple() {
 fun test_find_indices_range_length_bounded() {
     let v = vector[10, 20, 10, 30, 10, 40];
     let result = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
-    
+
     // Result length bounded by range size (4 - 1 = 3)
-    ensures(vector::length(&result) <= 3);
+    ensures(vector::length(result) <= 3);
 }
 
 // Test that range indices are within the specified range
@@ -73,10 +73,10 @@ fun test_find_indices_range_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
 
-    let len = vector::length(&indices);
-    let mut i:u8 = 0;
+    let len = vector::length(indices);
+    let mut i: u8 = 0;
 
-    let idx = *vector::borrow(&indices, 0);
+    let idx = *vector::borrow(indices, 0);
     ensures(idx >= 1);
     ensures(idx < 4);
 }
@@ -86,10 +86,10 @@ fun test_find_indices_range_valid_indices() {
 fun test_find_indices_empty() {
     let empty: vector<u64> = vector[];
     let indices = find_indices!<u64>(&empty, |x| x_is_10(x));
-    ensures(vector::length(&indices) == 0);
+    ensures(vector::length(indices) == 0);
 
     let v = vector[10, 20, 10, 30];
     let empty_range = find_indices_range!<u64>(&v, 2, 2, |x| x_is_10(x));
-    ensures(vector::length(&empty_range) == 0);
+    ensures(vector::length(empty_range) == 0);
 }
 

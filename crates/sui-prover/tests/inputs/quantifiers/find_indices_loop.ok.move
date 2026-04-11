@@ -13,7 +13,7 @@ fun is_odd(x: &u64): bool {
 fun find_odd_indices(v: &vector<u64>): vector<u64> {
     let mut i = 0;
     let mut r = vector[];
-    invariant!(|| ensures(i <= v.length() && r == find_indices_range!(v, 0, i, |j| is_odd(j))));
+    invariant!(|| ensures(i <= v.length() && r == *find_indices_range!(v, 0, i, |j| is_odd(j))));
     while (i < v.length()) {
         if (is_odd(&v[i])) {
             r.push_back(i);
@@ -26,6 +26,6 @@ fun find_odd_indices(v: &vector<u64>): vector<u64> {
 #[spec(prove)]
 fun find_odd_indices_spec(v: &vector<u64>): vector<u64> {
     let r = find_odd_indices(v);
-    ensures(r == find_indices!(v, |j| is_odd(j)));
+    ensures(r == *find_indices!(v, |j| is_odd(j)));
     r
 }

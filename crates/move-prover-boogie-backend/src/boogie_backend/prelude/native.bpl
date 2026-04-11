@@ -376,6 +376,10 @@ function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: in
     SliceVec(v, start, end)
 }
 
+function {:inline} $0_vector_iter_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+    ConcatVec(v1, v2)
+}
+
 {%- if instance.is_number -%}
 {%- if include_vec_sum -%}
 
@@ -1167,9 +1171,9 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
             ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
 );
-// Incremental axiom on `end`: map(v, start, end) equals map(v, start, end-1)
-// extended by FN(v[end-1]). Stated element-by-element so Z3 handles it more
-// efficiently than a single ExtendVec equality.
+// End-step axiom: map(v, start, end) equals map(v, start, end-1) extended by
+// FN(v[end-1]). Stated element-by-element so Z3 handles it more efficiently
+// than a single ExtendVec equality.
 axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
