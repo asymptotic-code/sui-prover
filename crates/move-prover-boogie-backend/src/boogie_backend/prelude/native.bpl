@@ -1094,6 +1094,7 @@ axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
 {%- endif %}
 
 {%- if instance.qht == "range_map" %}
+{%- set CAT = instance.captured_args_tail %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
@@ -1101,6 +1102,17 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) == (if start <= end then end - start else 0) &&
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
+);
+// Incremental axiom on `end`, so loops that extend the integer range can
+// connect range_map(start, end) to range_map(start, end - 1).
+axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+    (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $RangeMapQuantifierHelper_{{FN}}(start, end - 1{{CAT}});
+        LenVec(res) == LenVec(prev) + 1 &&
+        (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}(end - 1){{EAA}})
+    ))
 );
 {%- endif %}
 
