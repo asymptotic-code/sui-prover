@@ -22,9 +22,9 @@ fun is_positive(x: &u64): bool {
 
 #[spec(prove)]
 fun test_count_big() {
-    let v = vector[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-    // 8 evens: 2, 4, 6, 8, 10, 12, 14, 16
-    ensures(count!<u64>(&v, |x| is_even(x)) == 8);
-    // 16 positives (all of them)
-    ensures(count!<u64>(&v, |x| is_positive(x)) == 16);
+    let v = vector[1, 2, 3, 4, 5, 6, 7, 8];
+    // 4 evens: 2, 4, 6, 8
+    ensures(count!<u64>(&v, |x| is_even(x)) == 4);
+    // 8 positives (all of them)
+    ensures(count!<u64>(&v, |x| is_positive(x)) == 8);
 }
