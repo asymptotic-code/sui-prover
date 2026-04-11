@@ -960,6 +960,94 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 
 {% endmacro dynamic_field_module %}
 
+{# =====================================================================
+   Quantifier helper macro
+   =====================================================================
+
+   Emits Boogie axiomatizations for the iterator combinators that appear
+   as `Operation::Quantifier` in the stackless bytecode:
+
+     map, map_range, range_map, filter, filter_range, find_index,
+     find_index_range, find, find_range, find_indices,
+     find_indices_range, count, count_range, sum_map, sum_map_range
+
+   Each Move predicate/closure (per type instantiation) gets one helper
+   function declared as an uninterpreted Boogie function plus a set of
+   axioms that constrain its result. The backend emits a single call
+   `$<Kind>QuantifierHelper_<FN>(v, start, end[, captured...])` at the
+   use site; Z3 handles the rest via the axioms here.
+
+   See `crates/move-stackless-bytecode/src/stackless_bytecode.rs` for
+   `QuantifierHelperType` and the mapping from `QuantifierType`. The
+   backend collects one `PureQuantifierHelperInfo` per unique
+   `(qht, function, li, type-instantiation)` in `mono_analysis.rs`,
+   then renders this macro once for each.
+
+   ---------------------------------------------------------------------
+   Axiomatization pattern
+   ---------------------------------------------------------------------
+
+   Every helper has a MAIN axiom stating the result's shape (length
+   bound, base case, per-element predicate) and, when a loop invariant
+   or recursive unfolding can benefit, one or more INCREMENTAL axioms
+   that relate `helper(v, start, end)` to `helper(v, start, end - 1)`
+   (end-step) or `helper(v, start + 1, end)` (start-step).
+
+     count   — end-step + start-step + bounds/base (split into three
+                 separate axioms so Z3 instantiates only what's needed)
+     sum_map — end-step + start-step + base (single conjunction)
+     map, filter, find_indices — end-step only (nested-var
+                 `var res := ...; var prev := ...` element-wise form;
+                 ExtendVec-equality form is slower for Z3 in practice)
+     find_index — end-step + start-step (inline if-then-else form)
+     range_map  — end-step only
+
+   Start-recursion is only added for helpers that have scalar results
+   (count, sum_map) or a scalar return like find_index — the suffix
+   invariant pattern (`processed_scalar + helper(v, i, n) == total`)
+   needs it. Vector-valued helpers (map/filter/find_indices/range_map)
+   don't currently need start-step axioms since Move specs don't
+   naturally express suffix invariants over vector values.
+
+   ---------------------------------------------------------------------
+   Template variables (set per instance by backend/lib.rs)
+   ---------------------------------------------------------------------
+
+     FN   — Boogie name of the Move predicate function (with suffix)
+     QP   — Boogie parameter list of the helper, e.g.
+              "v: Vec (int), start: int, end: int, $t2: int"
+            (for range_map: no `v`; just "start: int, end: int, ...")
+     QA   — matching positional argument list, e.g.
+              "v, start, end, $t2"
+     RT   — Boogie result element type. For map/range_map it's the
+            predicate's return type; for filter it's v's element type;
+            for find_indices it's int (u64); for count/sum_map the
+            whole helper returns int (RT unused).
+     CAT  — trailing captured-arg list with leading ", " when non-empty,
+            e.g. ", $t2". Used to rebuild recursive helper calls such as
+              `$CountQuantifierHelper_FN(v, start + 1, end{{CAT}})`
+            Without it the captured args would be lost in the recursion.
+     EAB, EAA — pre/post captured args around the *lifted argument*
+            inside a predicate call. For a predicate `f(a, x, b)` with
+            the bound var at position 1, EAB = "$t0, " and
+            EAA = ", $t2", so `{{FN}}({{EAB}}expr{{EAA}})` expands to
+            `f($t0, expr, $t2)`.
+
+   ---------------------------------------------------------------------
+   Adding a new helper kind
+   ---------------------------------------------------------------------
+
+   1. Add a variant to `QuantifierHelperType` in stackless_bytecode.rs
+      and map the corresponding `QuantifierType` in
+      `into_quantifier_helper_type`.
+   2. Handle the variant in `get_quantifier_helper_name` and
+      `generate_pure_quantifier_expr` in bytecode_translator.rs.
+   3. Handle the result type in `QuantifierHelperInfo::new` in lib.rs.
+   4. Add a new `{% if instance.qht == "..." %}` block here with the
+      function declaration and axioms. Follow the pattern: main axiom
+      (shape) then incremental axiom(s) if loop invariants will need
+      them. Test with a loop-invariant test before committing.
+#}
 {% macro quantifier_helpers_module(instance) %}
 {%- set QP = instance.quantifier_params -%}
 {%- set QA = instance.quantifier_args -%}
