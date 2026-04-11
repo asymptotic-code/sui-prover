@@ -239,13 +239,13 @@ fun test_filter_range() {
 // Test: find_indices
 #[spec(prove)]
 fun test_find_indices() {
-    let v = vector[10, 20, 30, 40];
+    let v = vector[11, 20, 31, 40];
     ensures(vec_find_even_indices(&v) == vector[1, 3]); // indices 1 and 3 have even elements (20, 40)
 }
 
 // Test: find_indices_range
 #[spec(prove)]
 fun test_find_indices_range() {
-    let v = vector[10, 20, 30, 40];
+    let v = vector[11, 20, 31, 40];
     ensures(vec_find_even_indices_in_range(&v, 0, 2) == vector[1]); // index 1 has 20
 }

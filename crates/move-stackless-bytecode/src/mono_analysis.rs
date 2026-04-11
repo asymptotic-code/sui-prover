@@ -666,19 +666,25 @@ impl Analyzer<'_> {
                     .insert(actuals.clone());
                 self.push_todo_fun(*callee_id, actuals.clone());
 
-                if self
-                    .targets
-                    .is_pure_fun(&target.func_env.get_qualified_id())
-                    || self
-                        .targets
-                        .is_axiom_fun(&target.func_env.get_qualified_id())
-                {
-                    // collect quantifier helper info for pure functions
-                    if let Some(qht) = qt.into_quantifier_helper_type() {
+                // Collect quantifier helper info unconditionally — the backend always emits
+                // quantifier/map/filter operations via helper functions, so every call site
+                // needs its helper instantiated (not just pure/axiom contexts).
+                if let Some(qht) = qt.into_quantifier_helper_type() {
+                    self.info
+                        .quantifier_helpers
+                        .insert(PureQuantifierHelperInfo {
+                            qht: qht.clone(),
+                            function: *callee_id,
+                            li: *li,
+                            inst: actuals.clone(),
+                        });
+                    // The Filter axiom references FindIndices on the same predicate, so
+                    // ensure a FindIndices helper is generated whenever Filter is.
+                    if matches!(qht, QuantifierHelperType::Filter) {
                         self.info
                             .quantifier_helpers
                             .insert(PureQuantifierHelperInfo {
-                                qht,
+                                qht: QuantifierHelperType::FindIndices,
                                 function: *callee_id,
                                 li: *li,
                                 inst: actuals,

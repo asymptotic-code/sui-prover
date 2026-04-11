@@ -66,6 +66,9 @@ struct QuantifierHelperInfo {
     name: String,
     quantifier_params: String,
     quantifier_args: String,
+    /// Trailing captured-parameter args (leading ", " when non-empty), so templates
+    /// can build a variant call like `Helper(v, start + 1, end{captured_args_tail})`.
+    captured_args_tail: String,
     result_type: String,
     extra_args_before: String,
     extra_args_after: String,
@@ -560,8 +563,12 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
+        let mut captured_args_tail = String::new();
 
-        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
+        let dst_elem_boogie_type = if matches!(
+            info.qht,
+            QuantifierHelperType::FindIndices | QuantifierHelperType::Count
+        ) {
             &Type::Primitive(PrimitiveType::U64)
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()
@@ -585,14 +592,12 @@ impl QuantifierHelperInfo {
                     })
                     .join(", ")
             );
-            quantifier_args = format!(
-                "{}, {}",
-                quantifier_args,
-                (0..func_env.get_parameter_count())
-                    .filter(|idx| *idx != info.li)
-                    .map(|val| format!("$t{}", val.to_string()))
-                    .join(", ")
-            );
+            let captured_list = (0..func_env.get_parameter_count())
+                .filter(|idx| *idx != info.li)
+                .map(|val| format!("$t{}", val.to_string()))
+                .join(", ");
+            quantifier_args = format!("{}, {}", quantifier_args, captured_list);
+            captured_args_tail = format!(", {}", captured_list);
         }
 
         Self {
@@ -600,6 +605,7 @@ impl QuantifierHelperInfo {
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
+            captured_args_tail,
             result_type: boogie_type(env, dst_elem_boogie_type),
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
