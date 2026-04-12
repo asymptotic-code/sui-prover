@@ -1081,18 +1081,39 @@ axiom (forall {{QP}}, k: int, l: int ::
     0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
         ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
 );
-// End-step axiom with single trigger so concrete-vector tests can unfold.
-axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// End-step axiom with compound trigger. find_indices uses the BOTH-compound
+// configuration (end-step and start-step both compound-triggered) so Z3
+// handles prefix-invariant and suffix-invariant loop proofs uniformly. The
+// cost is that concrete-vector tests can no longer prove exact value equality
+// via recursive unfolding — they need to lean on the main axiom's properties
+// (length, in-range, predicate-holds) or an explicit ext(axiom) lemma.
+axiom (forall {{QP}}, prev_end: int ::
+    {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
-    (var prev := $FindIndicesQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then
+    (var prev := $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-            ReadVec(res, LenVec(prev)) == end - 1
+            ReadVec(res, LenVec(prev)) == prev_end
          else
             LenVec(res) == LenVec(prev) &&
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
+    ))
+);
+// Start-step axiom with compound trigger — mirror of end-step.
+axiom (forall {{QP}}, next_start: int ::
+    {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+            LenVec(res) == LenVec(tail) + 1 &&
+            ReadVec(res, 0) == start &&
+            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+         else
+            LenVec(res) == LenVec(tail) &&
+            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j) == ReadVec(tail, j)))
     ))
 );
 {%- endif %}

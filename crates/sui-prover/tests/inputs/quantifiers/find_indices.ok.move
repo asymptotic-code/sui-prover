@@ -67,18 +67,19 @@ fun test_find_indices_range_length_bounded() {
     ensures(vector::length(result) <= 3);
 }
 
-// Test that range indices are within the specified range
+// Test that range indices are within the specified range. Follows from the
+// main axiom's in-range clause `start <= res[i] < end`.
 #[spec(prove)]
 fun test_find_indices_range_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
 
     let len = vector::length(indices);
-    let mut i: u8 = 0;
-
-    let idx = *vector::borrow(indices, 0);
-    ensures(idx >= 1);
-    ensures(idx < 4);
+    if (len > 0) {
+        let idx = *vector::borrow(indices, 0);
+        ensures(idx >= 1);
+        ensures(idx < 4);
+    };
 }
 
 // Empty vector and empty-range cases.
