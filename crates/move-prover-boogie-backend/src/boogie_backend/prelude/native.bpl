@@ -1255,8 +1255,8 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
 );
-// Incremental axiom on `end`, so loops that extend the integer range can
-// connect range_map(start, end) to range_map(start, end - 1).
+// End-step axiom: range_map(start, end) equals range_map(start, end-1) extended
+// by FN(end-1). Single trigger so concrete verifications can unfold.
 axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
@@ -1264,6 +1264,19 @@ axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}(end - 1){{EAA}})
+    ))
+);
+// Start-step axiom: range_map(start, end) equals [FN(start)] prepended to
+// range_map(next_start, end). Compound trigger with fresh variable to prevent
+// matching loops while enabling suffix-invariant loop proofs.
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}});
+        LenVec(res) == LenVec(tail) + 1 &&
+        ReadVec(res, 0) == {{FN}}({{EAB}}start{{EAA}}) &&
+        (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
