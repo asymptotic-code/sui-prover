@@ -1069,10 +1069,19 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
+        // Soundness: every element of res is a valid in-range index where FN holds.
         (forall i: int :: 0 <= i && i < LenVec(res) ==>
             start <= ReadVec(res, i) && ReadVec(res, i) < end &&
             {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}}))
     )
+);
+// Completeness: every index in [start, end) where FN holds is in res. Stated
+// as a separate axiom so Z3 only instantiates it when proving membership
+// (the ContainsVec existential is expensive and shouldn't fire on every
+// main-axiom trigger match).
+axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
+    (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+        ContainsVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), j))
 );
 // Strict ordering stated as a separate axiom so Z3 only instantiates it when
 // proving sortedness (e.g. `res[0] < res[1]`).
@@ -1132,6 +1141,7 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
+        // Soundness: every element of res satisfies FN.
         (forall i: int :: 0 <= i && i < LenVec(res) ==>
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
     )
