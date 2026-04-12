@@ -1081,6 +1081,7 @@ axiom (forall {{QP}}, k: int, l: int ::
     0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
         ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
 );
+// End-step axiom with single trigger so concrete-vector tests can unfold.
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1114,6 +1115,7 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
     )
 );
+// End-step axiom with single trigger so concrete-vector tests can unfold.
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
@@ -1125,6 +1127,21 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
          else
             LenVec(res) == LenVec(prev) &&
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
+    ))
+);
+// Start-step axiom with compound trigger — see map's comment for rationale.
+axiom (forall {{QP}}, next_start: int ::
+    {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+            LenVec(res) == LenVec(tail) + 1 &&
+            ReadVec(res, 0) == ReadVec(v, start) &&
+            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+         else
+            LenVec(res) == LenVec(tail) &&
+            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j) == ReadVec(tail, j)))
     ))
 );
 {%- endif %}
@@ -1172,8 +1189,8 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // End-step axiom: map(v, start, end) equals map(v, start, end-1) extended by
-// FN(v[end-1]). Stated element-by-element so Z3 handles it more efficiently
-// than a single ExtendVec equality.
+// FN(v[end-1]). Single trigger so concrete-vector verifications can unfold
+// the recursion from a fresh helper call.
 axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1181,6 +1198,24 @@ axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+    ))
+);
+// Start-step axiom: map(v, start, end) equals [FN(v[start])] prepended to
+// map(next_start, end). Compound trigger with a fresh bound variable
+// `next_start` requires BOTH `map(v, start, end)` and `map(v, next_start, end)`
+// to be in the E-graph before firing (guarded by `next_start == start + 1`
+// in the body). This prevents matching loops on concrete big-vector tests
+// (which only have a single fresh helper call) while still firing for
+// suffix-invariant loop proofs where both iterations' helper terms are
+// simultaneously present.
+axiom (forall {{QP}}, next_start: int ::
+    {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $MapQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        LenVec(res) == LenVec(tail) + 1 &&
+        ReadVec(res, 0) == {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) &&
+        (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
