@@ -1204,7 +1204,9 @@ function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) == end - start &&
+        0 <= LenVec(res) &&
+        LenVec(res) == (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: start <= i && i < end ==>
             ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
@@ -1247,7 +1249,9 @@ function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+        0 <= LenVec(res) &&
         LenVec(res) == (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
 );
@@ -1296,18 +1300,27 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
 {%- if instance.qht == "sum_map" %}
 {%- set CAT = instance.captured_args_tail %}
 // SumMap is axiomatized as a recursive integer sum, like Count but summing the
-// predicate's return value instead of counting boolean matches. Bidirectional
-// recursion lets Z3 unfold ranges from either end.
+// predicate's return value instead of counting boolean matches. Split into
+// separate axioms (bounds/base, left-step, right-step) so Z3 can instantiate
+// only the clauses it needs — same rationale as count.
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
-    (start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0) &&
-    (start < end ==>
+    start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
+);
+// Left step (recursion on `start`): useful for unfolding concrete ranges.
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
-            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}) &&
+            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+);
+// Right step (recursion on `end`): useful for loop invariants that extend
+// the range on the right.
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}))
+            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
 );
 {%- endif %}
 
