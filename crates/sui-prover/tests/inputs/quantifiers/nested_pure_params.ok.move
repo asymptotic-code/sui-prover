@@ -334,20 +334,20 @@ fun test_filter_range_check() {
     ensures(*vec_filter_in_range(&v) == vector[5, 10, 15]); // filters to elements in [5,15]
 }
 
-// Test: find_indices with divisor from context
-// find_indices uses compound-trigger recursive axioms so exact-value
-// equality isn't provable via unfolding; assert length bounds instead.
-#[spec(prove)]
+// Test: find_indices with divisor from context. The per-spec extra_bpl
+// supplies a single-trigger end-step axiom for this helper instance so
+// the exact concrete result can be proved.
+#[spec(prove, extra_bpl = b"nested_pure_params.ok.bpl")]
 fun test_find_indices() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vector::length(vec_find_divisible_indices(&v, divisor)) <= 4);
+    ensures(*vec_find_divisible_indices(&v, divisor) == vector[1, 3]);
 }
 
 // Test: find_indices_range with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params.ok.bpl")]
 fun test_find_indices_range() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vector::length(vec_find_divisible_indices_in_range(&v, 0, 2, divisor)) <= 2);
+    ensures(*vec_find_divisible_indices_in_range(&v, 0, 2, divisor) == vector[1]);
 }

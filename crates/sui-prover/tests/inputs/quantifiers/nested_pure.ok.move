@@ -238,17 +238,18 @@ fun test_filter_range() {
 
 // Test: find_indices
 // find_indices uses compound-trigger recursive axioms so exact-value
-// equality on concrete inputs isn't provable via unfolding; assert a
-// main-axiom-provable length bound instead.
-#[spec(prove)]
+// equality on concrete inputs isn't provable via unfolding alone; the
+// extra_bpl file nested_pure.ok.bpl supplies a single-trigger end-step
+// axiom for this helper instance so the exact result can be proved.
+#[spec(prove, extra_bpl = b"nested_pure.ok.bpl")]
 fun test_find_indices() {
     let v = vector[11, 20, 31, 40];
-    ensures(vector::length(vec_find_even_indices(&v)) <= 4);
+    ensures(*vec_find_even_indices(&v) == vector[1, 3]);
 }
 
 // Test: find_indices_range
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure.ok.bpl")]
 fun test_find_indices_range() {
     let v = vector[11, 20, 31, 40];
-    ensures(vector::length(vec_find_even_indices_in_range(&v, 0, 2)) <= 2);
+    ensures(*vec_find_even_indices_in_range(&v, 0, 2) == vector[1]);
 }
