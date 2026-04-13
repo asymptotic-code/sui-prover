@@ -88,8 +88,6 @@ axiom (forall v: Vec ({{T}}), e: {{T}}:: {$IndexOfVec{{S}}(v, e)}
 function {:inline} $RangeVec{{S}}(v: Vec ({{T}})): $Range {
     $Range(0, LenVec(v))
 }
-
-
 function {:inline} $EmptyVec{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
@@ -846,8 +844,6 @@ procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
 {%- endif %}
 
 {% endmacro table_module %}
-
-
 {# Dynamic fields
    =======
 #}
@@ -1100,44 +1096,36 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 
 {%- if instance.qht == "find_indices" %}
 {%- set CAT = instance.captured_args_tail %}
-// find_indices is axiomatized recursively on `end`.
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
-// Congruence: $IsEqual vectors give equal results.
+// congruence: $IsEqual inputs give equal results
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FindIndicesQuantifierHelper_{{FN}}({{QA}}) == $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-// Main axiom: validity, bounds, base case, soundness, completeness.
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
-        // Soundness: every element of res is a valid in-range index where FN holds.
+        // soundness: every element is a valid in-range index where FN holds
         (forall i: int :: InRangeVec(res, i) ==>
             start <= ReadVec(res, i) && ReadVec(res, i) < end &&
             {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
-        // Completeness: every index in [start, end) where FN holds is in res.
+        // completeness: every matching index in [start, end) is in res
         (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
             ContainsVec(res, j))
     )
 );
-// Strict ordering stated as a separate axiom so Z3 only instantiates it when
-// proving sortedness (e.g. `res[0] < res[1]`).
+// strict ordering — separate trigger so it only fires when comparing elements
 axiom (forall {{QP}}, k: int, l: int ::
     {ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k), ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)}
     0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
         ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
 );
-// End-step axiom with compound trigger. find_indices uses the BOTH-compound
-// configuration (end-step and start-step both compound-triggered) so Z3
-// handles prefix-invariant and suffix-invariant loop proofs uniformly. The
-// cost is that concrete-vector tests can no longer prove exact value equality
-// via recursive unfolding — they need to lean on the main axiom's properties
-// (length, in-range, predicate-holds) or an explicit ext(axiom) lemma.
+// end-step — compound trigger prevents matching loops
 axiom (forall {{QP}}, prev_end: int ::
     {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
@@ -1151,7 +1139,7 @@ axiom (forall {{QP}}, prev_end: int ::
             res == prev)
     ))
 );
-// Start-step axiom with compound trigger — mirror of end-step.
+// start-step — compound trigger, mirror of end-step
 axiom (forall {{QP}}, next_start: int ::
     {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
@@ -1169,38 +1157,32 @@ axiom (forall {{QP}}, next_start: int ::
 
 {%- if instance.qht == "filter" %}
 {%- set CAT = instance.captured_args_tail %}
-// Filter is axiomatized recursively on `end`:
-//   filter(v, start, end) == [] if start >= end
-//   filter(v, start, end) == ExtendVec(filter(v, start, end-1), v[end-1]) if FN(v[end-1])
-//   filter(v, start, end) == filter(v, start, end-1) otherwise
-// The ExtendVec equality is a single term Z3 can resolve without instantiating
-// a per-element forall, which keeps loop-invariant proofs fast.
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
+// congruence
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FilterQuantifierHelper_{{FN}}({{QA}}) == $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-// Main axiom: validity, bounds, base case, soundness, provenance, completeness.
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
-        // Soundness: every element of res satisfies FN.
+        // soundness: every element satisfies FN
         (forall i: int :: InRangeVec(res, i) ==>
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
-        // Provenance: every element of res came from v.
+        // provenance: every element came from v
         (forall i: int :: InRangeVec(res, i) ==>
             ContainsVec(v, ReadVec(res, i))) &&
-        // Completeness: every element of v in [start, end) satisfying FN is in res.
+        // completeness: every matching v-element is in res
         (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
             ContainsVec(res, ReadVec(v, j)))
     )
 );
-// End-step axiom with compound trigger.
+// end-step — compound trigger
 axiom (forall {{QP}}, prev_end: int ::
     {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
@@ -1214,7 +1196,7 @@ axiom (forall {{QP}}, prev_end: int ::
             res == prev)
     ))
 );
-// Start-step axiom with compound trigger — see map's comment for rationale.
+// start-step — compound trigger
 axiom (forall {{QP}}, next_start: int ::
     {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
@@ -1247,10 +1229,8 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
     )
 );
-// Bidirectional incremental axiom: find_index relates to smaller ranges on either end.
-// End-side: if prev hit was at some index, find_index(v, start, end) keeps that index;
-//           otherwise it is end-1 when FN(v[end-1]) holds, else -1.
-// Start-side: if FN(v[start]) holds, result is start; otherwise result == find_index(v, start+1, end).
+// bidirectional step axioms
+
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
@@ -1276,7 +1256,7 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierH
         $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-// Main axiom: validity, bounds, base case, element-wise mapping.
+// main axiom
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1288,10 +1268,8 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
             ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
 );
-// End-step axiom with compound trigger. Map's main axiom (element-wise forall)
-// already provides exact values for concrete tests via a single trigger, so
-// the step axioms don't need to fire for fresh calls — only for loop invariants
-// where both consecutive helper terms are in the E-graph.
+// end-step — compound trigger
+
 axiom (forall {{QP}}, prev_end: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
@@ -1302,14 +1280,8 @@ axiom (forall {{QP}}, prev_end: int ::
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
     ))
 );
-// Start-step axiom: map(v, start, end) equals [FN(v[start])] prepended to
-// map(next_start, end). Compound trigger with a fresh bound variable
-// `next_start` requires BOTH `map(v, start, end)` and `map(v, next_start, end)`
-// to be in the E-graph before firing (guarded by `next_start == start + 1`
-// in the body). This prevents matching loops on concrete big-vector tests
-// (which only have a single fresh helper call) while still firing for
-// suffix-invariant loop proofs where both iterations' helper terms are
-// simultaneously present.
+// start-step — compound trigger
+
 axiom (forall {{QP}}, next_start: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
@@ -1325,7 +1297,7 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "range_map" %}
 {%- set CAT = instance.captured_args_tail %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-// Main axiom: validity, bounds, base case, element-wise mapping from range.
+// main axiomfrom range.
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
@@ -1336,9 +1308,7 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
 );
-// End-step axiom with compound trigger. Range_map's main axiom (element-wise
-// forall) already provides exact values for concrete tests, so the step
-// axioms only need to fire for loop invariants.
+// end-step — compound trigger
 axiom (forall {{QP}}, prev_end: int ::
     {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
@@ -1349,9 +1319,7 @@ axiom (forall {{QP}}, prev_end: int ::
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}prev_end{{EAA}})
     ))
 );
-// Start-step axiom: range_map(start, end) equals [FN(start)] prepended to
-// range_map(next_start, end). Compound trigger with fresh variable to prevent
-// matching loops while enabling suffix-invariant loop proofs.
+// start-step — compound trigger
 axiom (forall {{QP}}, next_start: int ::
     {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
@@ -1366,10 +1334,8 @@ axiom (forall {{QP}}, next_start: int ::
 
 {%- if instance.qht == "count" %}
 {%- set CAT = instance.captured_args_tail %}
-// Count is axiomatized recursively from both ends, letting Z3 unfold concrete
-// ranges step-by-step for whichever direction the client reasons in. Bounds,
-// base case, and the two recursive steps are separate axioms so Z3 only
-// instantiates the clauses it actually needs.
+// count: bidirectional recursive axioms (bounds/base, left-step, right-step)
+
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1382,15 +1348,15 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
-// Left step (recursion on `start`): useful for unfolding concrete ranges.
+// left step
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
             + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
-// Right step (recursion on `end`): useful for loop invariants that extend the
-// range on the right.
+// right step
+
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1401,10 +1367,8 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
 
 {%- if instance.qht == "sum_map" %}
 {%- set CAT = instance.captured_args_tail %}
-// SumMap is axiomatized as a recursive integer sum, like Count but summing the
-// predicate's return value instead of counting boolean matches. Split into
-// separate axioms (bounds/base, left-step, right-step) so Z3 can instantiate
-// only the clauses it needs — same rationale as count.
+// sum_map: bidirectional recursive axioms (base, left-step, right-step)
+
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1415,15 +1379,15 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifi
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
-// Left step (recursion on `start`): useful for unfolding concrete ranges.
+// left step
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
             + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
-// Right step (recursion on `end`): useful for loop invariants that extend
-// the range on the right.
+// right step
+
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1487,8 +1451,6 @@ axiom (forall v: int :: {$1_bcs_serialize'address'(v)}
      ( var r := $1_bcs_serialize'address'(v); LenVec(r) == $serialized_address_len));
 {% endif %}
 {% endmacro hash_module %}
-
-
 {# Event Module
    ============
 #}

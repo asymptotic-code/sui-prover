@@ -5590,11 +5590,6 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                     Quantifier(qt, qid, inst, li) => {
-                        // Delegate to the function-based translation used by pure expressions.
-                        // All quantifier / map / filter / find / count / sum ops are now emitted
-                        // as calls to axiomatized helper functions (see prelude/native.bpl and
-                        // mono_analysis.rs::quantifier_helpers), keeping statement-context and
-                        // expression-context translation on a single path.
                         let qfun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fmt_temp = |idx: TempIndex| -> String { format!("$t{}", idx) };
@@ -5602,8 +5597,7 @@ impl<'env> FunctionTranslator<'env> {
                             qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
                         );
                         emitln!(self.writer(), "$t{} := {};", dests[0], expr);
-                        // Helper functions are uninterpreted — we need to assume the result
-                        // is well-formed (e.g. LenVec >= 0 for vector results).
+                        // assume well-formedness of the uninterpreted result
                         let dest_ty = self.get_local_type(dests[0]).instantiate(inst);
                         emitln!(
                             self.writer(),

@@ -666,9 +666,6 @@ impl Analyzer<'_> {
                     .insert(actuals.clone());
                 self.push_todo_fun(*callee_id, actuals.clone());
 
-                // Collect quantifier helper info unconditionally — the backend always emits
-                // quantifier/map/filter operations via helper functions, so every call site
-                // needs its helper instantiated (not just pure/axiom contexts).
                 if let Some(qht) = qt.into_quantifier_helper_type() {
                     self.info
                         .quantifier_helpers

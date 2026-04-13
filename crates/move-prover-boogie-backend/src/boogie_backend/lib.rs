@@ -66,20 +66,16 @@ struct QuantifierHelperInfo {
     name: String,
     quantifier_params: String,
     quantifier_args: String,
-    /// Trailing captured-parameter args (leading ", " when non-empty), so templates
-    /// can build a variant call like `Helper(v, start + 1, end{captured_args_tail})`.
+    /// e.g. ", $t2" — trailing captured args for recursive helper calls.
     captured_args_tail: String,
     result_type: String,
-    /// The `$IsValid` suffix for the helper's result type (e.g. "vec'u64'" for
-    /// Vec<u64>). Used by the template to emit `$IsValid'<suffix>'(helper(...))`.
+    /// e.g. "vec'u64'" — for `$IsValid'<suffix>'(helper(...))`.
     result_is_valid_suffix: String,
-    /// The `$IsEqual` suffix for the helper's input vector type (e.g. "vec'u64'"
-    /// for Vec<u64>). Used to emit congruence axioms:
-    ///   $IsEqual'<suffix>'(v1, v2) ==> helper(v1, ...) == helper(v2, ...).
-    /// Empty for range_map (which has no input vector).
+    /// e.g. "vec'u64'" — for `$IsEqual'<suffix>'(v1, v2)` in congruence axioms.
+    /// Empty for range_map (no input vector).
     input_vec_is_equal_suffix: String,
-    /// Boogie type of the input vector's elements (e.g. "int" for u64). Used to
-    /// declare the `v2` parameter in congruence axioms. Empty for range_map.
+    /// e.g. "int" — Boogie type of input vector elements, for `v2` declaration
+    /// in congruence axioms. Empty for range_map.
     input_elem_type: String,
     extra_args_before: String,
     extra_args_after: String,
@@ -584,7 +580,6 @@ impl QuantifierHelperInfo {
         } else if matches!(info.qht, QuantifierHelperType::Filter) {
             &params_types[info.li].skip_reference()
         } else {
-            // Map, RangeMap, FindIndex, SumMap — use the function's return type.
             &Type::instantiate(&func_env.get_return_type(0), &info.inst)
         };
 
@@ -612,7 +607,6 @@ impl QuantifierHelperInfo {
             captured_args_tail = format!(", {}", captured_list);
         }
 
-        // Compute the $IsValid suffix for the helper's full result type.
         let result_is_valid_suffix = if matches!(
             info.qht,
             QuantifierHelperType::Map
@@ -620,20 +614,17 @@ impl QuantifierHelperInfo {
                 | QuantifierHelperType::Filter
                 | QuantifierHelperType::FindIndices
         ) {
-            // Vector-valued: Vec<elem_type>
+            // vector-valued: suffix for Vec<elem_type>
             let vec_type = Type::Vector(Box::new(dst_elem_boogie_type.clone()));
             boogie_type_suffix(env, &vec_type)
         } else {
-            // Scalar-valued (count, sum_map, find_index): the element type IS the result type
+            // scalar-valued: suffix for the result type directly
             boogie_type_suffix(env, dst_elem_boogie_type)
         };
 
-        // Compute the $IsEqual suffix and element type for the helper's INPUT vector.
-        // All helpers except range_map take a Vec<T> as first argument where
-        // T is the predicate's parameter type.
         let (input_vec_is_equal_suffix, input_elem_type) =
             if matches!(info.qht, QuantifierHelperType::RangeMap) {
-                (String::new(), String::new()) // range_map has no input vector
+                (String::new(), String::new()) // no input vector
             } else {
                 let elem_ty = params_types[info.li].skip_reference();
                 let vec_type = Type::Vector(Box::new(elem_ty.clone()));
