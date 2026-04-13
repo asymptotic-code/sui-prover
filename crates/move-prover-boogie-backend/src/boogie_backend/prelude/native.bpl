@@ -1102,6 +1102,12 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set CAT = instance.captured_args_tail %}
 // find_indices is axiomatized recursively on `end`.
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+// Validity: the result is always a well-formed vector. Stated explicitly
+// because $IsValid functions are not inlined, so Z3 won't derive this
+// from the soundness axiom alone.
+axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.result_is_valid_suffix}}'($FindIndicesQuantifierHelper_{{FN}}({{QA}}))
+);
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1144,8 +1150,7 @@ axiom (forall {{QP}}, prev_end: int ::
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == prev_end
          else
-            LenVec(res) == LenVec(prev) &&
-            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
+            res == prev)
     ))
 );
 // Start-step axiom with compound trigger — mirror of end-step.
@@ -1159,8 +1164,7 @@ axiom (forall {{QP}}, next_start: int ::
             ReadVec(res, 0) == start &&
             (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
          else
-            LenVec(res) == LenVec(tail) &&
-            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j) == ReadVec(tail, j)))
+            res == tail)
     ))
 );
 {%- endif %}
@@ -1174,6 +1178,10 @@ axiom (forall {{QP}}, next_start: int ::
 // The ExtendVec equality is a single term Z3 can resolve without instantiating
 // a per-element forall, which keeps loop-invariant proofs fast.
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+// Validity: the result is always a well-formed vector.
+axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.result_is_valid_suffix}}'($FilterQuantifierHelper_{{FN}}({{QA}}))
+);
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
@@ -1206,8 +1214,7 @@ axiom (forall {{QP}}, prev_end: int ::
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == ReadVec(v, prev_end)
          else
-            LenVec(res) == LenVec(prev) &&
-            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
+            res == prev)
     ))
 );
 // Start-step axiom with compound trigger — see map's comment for rationale.
@@ -1221,8 +1228,7 @@ axiom (forall {{QP}}, next_start: int ::
             ReadVec(res, 0) == ReadVec(v, start) &&
             (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
          else
-            LenVec(res) == LenVec(tail) &&
-            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j) == ReadVec(tail, j)))
+            res == tail)
     ))
 );
 {%- endif %}
@@ -1261,6 +1267,9 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 {%- if instance.qht == "map" %}
 {%- set CAT = instance.captured_args_tail %}
 function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.result_is_valid_suffix}}'($MapQuantifierHelper_{{FN}}({{QA}}))
+);
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1308,6 +1317,9 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "range_map" %}
 {%- set CAT = instance.captured_args_tail %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.result_is_valid_suffix}}'($RangeMapQuantifierHelper_{{FN}}({{QA}}))
+);
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});

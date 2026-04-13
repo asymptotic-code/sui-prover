@@ -28,7 +28,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type,
+        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type, boogie_type_suffix,
         boogie_type_suffix_bv, FunctionTranslationStyle,
     },
     bytecode_translator::has_native_equality,
@@ -70,6 +70,9 @@ struct QuantifierHelperInfo {
     /// can build a variant call like `Helper(v, start + 1, end{captured_args_tail})`.
     captured_args_tail: String,
     result_type: String,
+    /// The `$IsValid` suffix for the helper's result type (e.g. "vec'u64'" for
+    /// Vec<u64>). Used by the template to emit `$IsValid'<suffix>'(helper(...))`.
+    result_is_valid_suffix: String,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -601,6 +604,22 @@ impl QuantifierHelperInfo {
             captured_args_tail = format!(", {}", captured_list);
         }
 
+        // Compute the $IsValid suffix for the helper's full result type.
+        let result_is_valid_suffix = if matches!(
+            info.qht,
+            QuantifierHelperType::Map
+                | QuantifierHelperType::RangeMap
+                | QuantifierHelperType::Filter
+                | QuantifierHelperType::FindIndices
+        ) {
+            // Vector-valued: Vec<elem_type>
+            let vec_type = Type::Vector(Box::new(dst_elem_boogie_type.clone()));
+            boogie_type_suffix(env, &vec_type)
+        } else {
+            // Scalar-valued (count, sum_map, find_index): the element type IS the result type
+            boogie_type_suffix(env, dst_elem_boogie_type)
+        };
+
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
@@ -608,6 +627,7 @@ impl QuantifierHelperInfo {
             quantifier_args,
             captured_args_tail,
             result_type: boogie_type(env, dst_elem_boogie_type),
+            result_is_valid_suffix,
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
                 .join(""),
