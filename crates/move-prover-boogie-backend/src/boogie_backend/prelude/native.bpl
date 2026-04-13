@@ -1102,12 +1102,19 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set CAT = instance.captured_args_tail %}
 // find_indices is axiomatized recursively on `end`.
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-// Validity: the result is always a well-formed vector. Stated explicitly
-// because $IsValid functions are not inlined, so Z3 won't derive this
-// from the soundness axiom alone.
+// Validity: the result is always a well-formed vector.
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
     $IsValid'{{instance.result_is_valid_suffix}}'($FindIndicesQuantifierHelper_{{FN}}({{QA}}))
 );
+{%- if instance.input_vec_is_equal_suffix != "" %}
+// Congruence: $IsEqual vectors give equal results. Since the helper is
+// uninterpreted, Z3 only gets congruence for Boogie `==`, not for the
+// weaker $IsEqual. This axiom bridges the gap.
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FindIndicesQuantifierHelper_{{FN}}({{QA}}) == $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1178,10 +1185,15 @@ axiom (forall {{QP}}, next_start: int ::
 // The ExtendVec equality is a single term Z3 can resolve without instantiating
 // a per-element forall, which keeps loop-invariant proofs fast.
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-// Validity: the result is always a well-formed vector.
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
     $IsValid'{{instance.result_is_valid_suffix}}'($FilterQuantifierHelper_{{FN}}({{QA}}))
 );
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FilterQuantifierHelper_{{FN}}({{QA}}) == $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
@@ -1236,6 +1248,12 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "find_index" %}
 {%- set CAT = instance.captured_args_tail %}
 function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) == $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndexQuantifierHelper_{{FN}}({{QA}});
@@ -1270,6 +1288,12 @@ function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
     $IsValid'{{instance.result_is_valid_suffix}}'($MapQuantifierHelper_{{FN}}({{QA}}))
 );
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1364,6 +1388,12 @@ axiom (forall {{QP}}, next_start: int ::
 // base case, and the two recursive steps are separate axioms so Z3 only
 // instantiates the clauses it actually needs.
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $CountQuantifierHelper_{{FN}}({{QA}}) == $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     0 <= $CountQuantifierHelper_{{FN}}({{QA}}) &&
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
@@ -1393,6 +1423,12 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
 // separate axioms (bounds/base, left-step, right-step) so Z3 can instantiate
 // only the clauses it needs — same rationale as count.
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) == $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );

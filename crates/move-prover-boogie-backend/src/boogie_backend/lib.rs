@@ -73,6 +73,14 @@ struct QuantifierHelperInfo {
     /// The `$IsValid` suffix for the helper's result type (e.g. "vec'u64'" for
     /// Vec<u64>). Used by the template to emit `$IsValid'<suffix>'(helper(...))`.
     result_is_valid_suffix: String,
+    /// The `$IsEqual` suffix for the helper's input vector type (e.g. "vec'u64'"
+    /// for Vec<u64>). Used to emit congruence axioms:
+    ///   $IsEqual'<suffix>'(v1, v2) ==> helper(v1, ...) == helper(v2, ...).
+    /// Empty for range_map (which has no input vector).
+    input_vec_is_equal_suffix: String,
+    /// Boogie type of the input vector's elements (e.g. "int" for u64). Used to
+    /// declare the `v2` parameter in congruence axioms. Empty for range_map.
+    input_elem_type: String,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -620,6 +628,21 @@ impl QuantifierHelperInfo {
             boogie_type_suffix(env, dst_elem_boogie_type)
         };
 
+        // Compute the $IsEqual suffix and element type for the helper's INPUT vector.
+        // All helpers except range_map take a Vec<T> as first argument where
+        // T is the predicate's parameter type.
+        let (input_vec_is_equal_suffix, input_elem_type) =
+            if matches!(info.qht, QuantifierHelperType::RangeMap) {
+                (String::new(), String::new()) // range_map has no input vector
+            } else {
+                let elem_ty = params_types[info.li].skip_reference();
+                let vec_type = Type::Vector(Box::new(elem_ty.clone()));
+                (
+                    boogie_type_suffix(env, &vec_type),
+                    boogie_type(env, &elem_ty),
+                )
+            };
+
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
@@ -628,6 +651,8 @@ impl QuantifierHelperInfo {
             captured_args_tail,
             result_type: boogie_type(env, dst_elem_boogie_type),
             result_is_valid_suffix,
+            input_vec_is_equal_suffix,
+            input_elem_type,
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}, ", i.to_string()))
                 .join(""),
