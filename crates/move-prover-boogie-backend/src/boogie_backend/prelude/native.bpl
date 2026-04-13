@@ -1108,7 +1108,7 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-        0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
+        LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // soundness: every element is a valid in-range index where FN holds
         (forall i: int :: InRangeVec(res, i) ==>
@@ -1169,7 +1169,7 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-        0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
+        LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // soundness: every element satisfies FN
         (forall i: int :: InRangeVec(res, i) ==>
@@ -1261,7 +1261,7 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-        0 <= LenVec(res) &&
+
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: start <= i && i < end ==>
@@ -1302,7 +1302,7 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-        0 <= LenVec(res) &&
+
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
