@@ -1227,8 +1227,7 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EABC}}ReadVec(v, j){{EAA}}))
     )
 );
-// bidirectional step axioms
-
+// end-step
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
     (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
@@ -1237,6 +1236,7 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
              else if {{FN}}({{EABC}}ReadVec(v, end - 1){{EAA}}) then end - 1
              else -1))
 );
+// start-step
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1254,12 +1254,10 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierH
         $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-// main axiom
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: start <= i && i < end ==>
@@ -1267,7 +1265,6 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // end-step — compound trigger
-
 axiom (forall {{QP}}, prev_end: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
@@ -1279,7 +1276,6 @@ axiom (forall {{QP}}, prev_end: int ::
     ))
 );
 // start-step — compound trigger
-
 axiom (forall {{QP}}, next_start: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
@@ -1295,12 +1291,10 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "range_map" %}
 {%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-// main axiomfrom range.
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
-
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EABC}}(i + start){{EAA}}))
@@ -1332,8 +1326,6 @@ axiom (forall {{QP}}, next_start: int ::
 
 {%- if instance.qht == "count" %}
 {%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
-// count: bidirectional recursive axioms (bounds/base, left-step, right-step)
-
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1354,7 +1346,6 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
             + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
 // right step
-
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1365,8 +1356,6 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
 
 {%- if instance.qht == "sum_map" %}
 {%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
-// sum_map: bidirectional recursive axioms (base, left-step, right-step)
-
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1385,7 +1374,6 @@ axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
             + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
 // right step
-
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
