@@ -312,7 +312,7 @@ fun test_find_range() {
 }
 
 // Test: filter with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -320,7 +320,7 @@ fun test_filter() {
 }
 
 // Test: filter_range with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -328,7 +328,7 @@ fun test_filter_range() {
 }
 
 // Test: filter with multiple context parameters
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_in_range.bpl")]
 fun test_filter_range_check() {
     let v = vector[1, 5, 10, 15];
     ensures(*vec_filter_in_range(&v) == vector[5, 10, 15]); // filters to elements in [5,15]
@@ -337,7 +337,7 @@ fun test_filter_range_check() {
 // Test: find_indices with divisor from context. The per-spec extra_bpl
 // supplies a single-trigger end-step axiom for this helper instance so
 // the exact concrete result can be proved.
-#[spec(prove, extra_bpl = b"nested_pure_params.ok.bpl")]
+#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
 fun test_find_indices() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
@@ -345,7 +345,7 @@ fun test_find_indices() {
 }
 
 // Test: find_indices_range with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params.ok.bpl")]
+#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
 fun test_find_indices_range() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;

@@ -14,7 +14,7 @@ fun is_even(x: &u64): bool {
     *x % 2 == 0
 }
 
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_big.ok.bpl")]
 fun test_filter_big() {
     let v = vector[1, 2, 3, 4, 5, 6, 7, 8];
     ensures(filter!<u64>(&v, |x| is_even(x)) == vector[2, 4, 6, 8]);

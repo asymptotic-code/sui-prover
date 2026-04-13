@@ -1,9 +1,4 @@
-// Per-spec extra_bpl: single-trigger end-step axiom for the `is_divisible_by`-
-// indexed find_indices helper in nested_pure_params.ok.move. See
-// find_indices_big.ok.bpl for the rationale. is_divisible_by captures the
-// `divisor` argument, so the helper signature has an extra `$t1: int`
-// parameter.
-
+// Single-trigger end-step axiom for find_indices with is_divisible_by in nested_pure_params.ok.move.
 axiom (forall v: Vec (int), start: int, end: int, $t1: int ::
     {$FindIndicesQuantifierHelper_$42_nested_pure_ok_is_divisible_by$pure(v, start, end, $t1)}
     start < end ==>

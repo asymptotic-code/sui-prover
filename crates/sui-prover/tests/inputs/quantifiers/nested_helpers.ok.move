@@ -31,7 +31,7 @@ fun double(x: &u64): u64 {
 }
 
 // count over a filtered vector.
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_helpers.ok.bpl")]
 fun test_count_of_filter() {
     let v = vector[0, 1, 2, 3, 4, 5];
     // Filter to evens [0, 2, 4], then count positives [2, 4] -> 2.
@@ -39,7 +39,7 @@ fun test_count_of_filter() {
 }
 
 // sum_map over a filtered vector.
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_helpers.ok.bpl")]
 fun test_sum_map_of_filter() {
     let v = vector[1, 2, 3, 4];
     // Filter to evens [2, 4], then double -> [4, 8], sum = 12.

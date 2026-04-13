@@ -223,14 +223,14 @@ fun test_find_range() {
 }
 
 // Test: filter
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even(&v) == vector[2, 4]); // filters to only even elements
 }
 
 // Test: filter_range
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even_in_range(&v, 1, 4) == vector[2, 4]); // filters range [1,4) to even elements
@@ -241,14 +241,14 @@ fun test_filter_range() {
 // equality on concrete inputs isn't provable via unfolding alone; the
 // extra_bpl file nested_pure.ok.bpl supplies a single-trigger end-step
 // axiom for this helper instance so the exact result can be proved.
-#[spec(prove, extra_bpl = b"nested_pure.ok.bpl")]
+#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
 fun test_find_indices() {
     let v = vector[11, 20, 31, 40];
     ensures(*vec_find_even_indices(&v) == vector[1, 3]);
 }
 
 // Test: find_indices_range
-#[spec(prove, extra_bpl = b"nested_pure.ok.bpl")]
+#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
 fun test_find_indices_range() {
     let v = vector[11, 20, 31, 40];
     ensures(*vec_find_even_indices_in_range(&v, 0, 2) == vector[1]);

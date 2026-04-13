@@ -1,10 +1,4 @@
-// Per-spec extra_bpl: single-trigger end-step axiom for the `is_even`-indexed
-// find_indices helper in nested_pure.ok.move. See find_indices_big.ok.bpl
-// for the rationale; the compound-trigger global axioms don't support
-// concrete exact-value unfolding from a fresh helper call, so tests that
-// assert equality like `find_indices(v, is_even) == vector[1, 3]` need a
-// single-trigger axiom scoped to just the spec.
-
+// Single-trigger end-step axiom for find_indices with is_even in nested_pure.ok.move.
 axiom (forall v: Vec (int), start: int, end: int ::
     {$FindIndicesQuantifierHelper_$42_nested_pure_ok_is_even$pure(v, start, end)}
     start < end ==>

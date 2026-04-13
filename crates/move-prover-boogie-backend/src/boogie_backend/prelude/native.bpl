@@ -1146,15 +1146,16 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
     )
 );
-// End-step axiom with single trigger so concrete-vector tests can unfold.
-axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// End-step axiom with compound trigger.
+axiom (forall {{QP}}, prev_end: int ::
+    {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
-    (var prev := $FilterQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then
+    (var prev := $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-            ReadVec(res, LenVec(prev)) == ReadVec(v, end - 1)
+            ReadVec(res, LenVec(prev)) == ReadVec(v, prev_end)
          else
             LenVec(res) == LenVec(prev) &&
             (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)))
@@ -1221,16 +1222,18 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
             ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
 );
-// End-step axiom: map(v, start, end) equals map(v, start, end-1) extended by
-// FN(v[end-1]). Single trigger so concrete-vector verifications can unfold
-// the recursion from a fresh helper call.
-axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// End-step axiom with compound trigger. Map's main axiom (element-wise forall)
+// already provides exact values for concrete tests via a single trigger, so
+// the step axioms don't need to fire for fresh calls — only for loop invariants
+// where both consecutive helper terms are in the E-graph.
+axiom (forall {{QP}}, prev_end: int ::
+    {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
-    (var prev := $MapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+    (var prev := $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
     ))
 );
 // Start-step axiom: map(v, start, end) equals [FN(v[start])] prepended to
@@ -1265,15 +1268,17 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
 );
-// End-step axiom: range_map(start, end) equals range_map(start, end-1) extended
-// by FN(end-1). Single trigger so concrete verifications can unfold.
-axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// End-step axiom with compound trigger. Range_map's main axiom (element-wise
+// forall) already provides exact values for concrete tests, so the step
+// axioms only need to fire for loop invariants.
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
-    (var prev := $RangeMapQuantifierHelper_{{FN}}(start, end - 1{{CAT}});
+    (var prev := $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}(end - 1){{EAA}})
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}prev_end{{EAA}})
     ))
 );
 // Start-step axiom: range_map(start, end) equals [FN(start)] prepended to
