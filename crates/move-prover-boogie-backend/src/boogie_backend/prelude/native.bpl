@@ -1102,37 +1102,28 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set CAT = instance.captured_args_tail %}
 // find_indices is axiomatized recursively on `end`.
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-// Validity: the result is always a well-formed vector.
-axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
-    $IsValid'{{instance.result_is_valid_suffix}}'($FindIndicesQuantifierHelper_{{FN}}({{QA}}))
-);
 {%- if instance.input_vec_is_equal_suffix != "" %}
-// Congruence: $IsEqual vectors give equal results. Since the helper is
-// uninterpreted, Z3 only gets congruence for Boogie `==`, not for the
-// weaker $IsEqual. This axiom bridges the gap.
+// Congruence: $IsEqual vectors give equal results.
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FindIndicesQuantifierHelper_{{FN}}({{QA}}) == $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
+// Main axiom: validity, bounds, base case, soundness, completeness.
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // Soundness: every element of res is a valid in-range index where FN holds.
         (forall i: int :: InRangeVec(res, i) ==>
             start <= ReadVec(res, i) && ReadVec(res, i) < end &&
-            {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}}))
+            {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
+        // Completeness: every index in [start, end) where FN holds is in res.
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+            ContainsVec(res, j))
     )
-);
-// Completeness: every index in [start, end) where FN holds is in res. Stated
-// as a separate axiom so Z3 only instantiates it when proving membership
-// (the ContainsVec existential is expensive and shouldn't fire on every
-// main-axiom trigger match).
-axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
-    (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
-        ContainsVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), j))
 );
 // Strict ordering stated as a separate axiom so Z3 only instantiates it when
 // proving sortedness (e.g. `res[0] < res[1]`).
@@ -1185,35 +1176,29 @@ axiom (forall {{QP}}, next_start: int ::
 // The ExtendVec equality is a single term Z3 can resolve without instantiating
 // a per-element forall, which keeps loop-invariant proofs fast.
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
-    $IsValid'{{instance.result_is_valid_suffix}}'($FilterQuantifierHelper_{{FN}}({{QA}}))
-);
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FilterQuantifierHelper_{{FN}}({{QA}}) == $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
+// Main axiom: validity, bounds, base case, soundness, provenance, completeness.
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // Soundness: every element of res satisfies FN.
         (forall i: int :: InRangeVec(res, i) ==>
-            {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
+            {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+        // Provenance: every element of res came from v.
+        (forall i: int :: InRangeVec(res, i) ==>
+            ContainsVec(v, ReadVec(res, i))) &&
+        // Completeness: every element of v in [start, end) satisfying FN is in res.
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+            ContainsVec(res, ReadVec(v, j)))
     )
-);
-// Provenance: every element of res came from v. Separate axiom so the
-// ContainsVec existential doesn't bloat the main axiom body.
-axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
-    (forall i: int :: InRangeVec($FilterQuantifierHelper_{{FN}}({{QA}}), i) ==>
-        ContainsVec(v, ReadVec($FilterQuantifierHelper_{{FN}}({{QA}}), i)))
-);
-// Completeness: every element of v in [start, end) satisfying FN appears in res.
-axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
-    (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
-        ContainsVec($FilterQuantifierHelper_{{FN}}({{QA}}), ReadVec(v, j)))
 );
 // End-step axiom with compound trigger.
 axiom (forall {{QP}}, prev_end: int ::
@@ -1285,18 +1270,17 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 {%- if instance.qht == "map" %}
 {%- set CAT = instance.captured_args_tail %}
 function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-axiom (forall {{QP}} :: {$MapQuantifierHelper_{{FN}}({{QA}})}
-    $IsValid'{{instance.result_is_valid_suffix}}'($MapQuantifierHelper_{{FN}}({{QA}}))
-);
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
+// Main axiom: validity, bounds, base case, element-wise mapping.
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) &&
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
@@ -1341,12 +1325,11 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "range_map" %}
 {%- set CAT = instance.captured_args_tail %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-axiom (forall {{QP}} :: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
-    $IsValid'{{instance.result_is_valid_suffix}}'($RangeMapQuantifierHelper_{{FN}}({{QA}}))
-);
+// Main axiom: validity, bounds, base case, element-wise mapping from range.
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         0 <= LenVec(res) &&
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
