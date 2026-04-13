@@ -568,15 +568,17 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
-        let dst_elem_boogie_type = if matches!(
-            info.qht,
-            QuantifierHelperType::FindIndices | QuantifierHelperType::Count
-        ) {
-            &Type::Primitive(PrimitiveType::U64)
-        } else if matches!(info.qht, QuantifierHelperType::Filter) {
-            &params_types[info.li].skip_reference()
-        } else {
-            &Type::instantiate(&func_env.get_return_type(0), &info.inst)
+        // for vector-valued helpers this is the element type of the result vec;
+        // for scalar-valued helpers it's the scalar result type itself.
+        let dst_elem_boogie_type = match info.qht {
+            // find_indices returns Vec<u64> (indices)
+            QuantifierHelperType::FindIndices => &Type::Primitive(PrimitiveType::U64),
+            // filter returns Vec<T> where T is the input element type
+            QuantifierHelperType::Filter => &params_types[info.li].skip_reference(),
+            // count returns u64
+            QuantifierHelperType::Count => &Type::Primitive(PrimitiveType::U64),
+            // map, range_map, find_index, sum_map — use the predicate's return type
+            _ => &Type::instantiate(&func_env.get_return_type(0), &info.inst),
         };
 
         if func_env.get_parameter_count() > 1 {
