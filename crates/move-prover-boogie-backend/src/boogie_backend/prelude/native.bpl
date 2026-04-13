@@ -1146,6 +1146,17 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
     )
 );
+// Provenance: every element of res came from v. Separate axiom so the
+// ContainsVec existential doesn't bloat the main axiom body.
+axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+    (forall i: int :: 0 <= i && i < LenVec($FilterQuantifierHelper_{{FN}}({{QA}})) ==>
+        ContainsVec(v, ReadVec($FilterQuantifierHelper_{{FN}}({{QA}}), i)))
+);
+// Completeness: every element of v in [start, end) satisfying FN appears in res.
+axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+    (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+        ContainsVec($FilterQuantifierHelper_{{FN}}({{QA}}), ReadVec(v, j)))
+);
 // End-step axiom with compound trigger.
 axiom (forall {{QP}}, prev_end: int ::
     {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
