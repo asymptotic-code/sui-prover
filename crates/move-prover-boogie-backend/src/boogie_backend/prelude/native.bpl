@@ -1056,15 +1056,12 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
             predicate's return type; for filter it's v's element type;
             for find_indices it's int (u64); for count/sum_map the
             whole helper returns int (RT unused).
-     CAT  — trailing captured-arg list with leading ", " when non-empty,
-            e.g. ", $t2". Used to rebuild recursive helper calls such as
-              `$CountQuantifierHelper_FN(v, start + 1, end{{CAT}})`
-            Without it the captured args would be lost in the recursion.
-     EAB, EAA — pre/post captured args around the *lifted argument*
-            inside a predicate call. For a predicate `f(a, x, b)` with
-            the bound var at position 1, EAB = "$t0, " and
-            EAA = ", $t2", so `{{FN}}({{EAB}}expr{{EAA}})` expands to
-            `f($t0, expr, $t2)`.
+     EAB  — captured args BEFORE the bound var, comma-separated.
+            e.g. "$t0" for `f(a, x, b)` with bound var at position 1.
+     EAA  — captured args AFTER the bound var, each with leading ", ".
+            e.g. ", $t2".
+     CAT  — derived in template from EAB and EAA: the trailing captured
+            args for recursive helper calls (e.g. ", $t0, $t2").
 
    ---------------------------------------------------------------------
    Adding a new helper kind
@@ -1093,9 +1090,10 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set RT = instance.result_type -%}
 {%- set EAB = instance.extra_args_before -%}
 {%- set EAA = instance.extra_args_after -%}
+{%- if EAB == "" -%}{%- set EABC = "" -%}{%- else -%}{%- set EABC = EAB ~ ", " -%}{%- endif -%}
 
 {%- if instance.qht == "find_indices" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
 // congruence: $IsEqual inputs give equal results
@@ -1113,9 +1111,9 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
         // soundness: every element is a valid in-range index where FN holds
         (forall i: int :: InRangeVec(res, i) ==>
             start <= ReadVec(res, i) && ReadVec(res, i) < end &&
-            {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
+            {{FN}}({{EABC}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
         // completeness: every matching index in [start, end) is in res
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+        (forall j: int :: start <= j && j < end && {{FN}}({{EABC}}ReadVec(v, j){{EAA}}) ==>
             ContainsVec(res, j))
     )
 );
@@ -1131,7 +1129,7 @@ axiom (forall {{QP}}, prev_end: int ::
     prev_end + 1 == end && start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
     (var prev := $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
+        (if {{FN}}({{EABC}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
             (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == prev_end
@@ -1145,7 +1143,7 @@ axiom (forall {{QP}}, next_start: int ::
     next_start == start + 1 && start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
     (var tail := $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+        (if {{FN}}({{EABC}}ReadVec(v, start){{EAA}}) then
             LenVec(res) == LenVec(tail) + 1 &&
             ReadVec(res, 0) == start &&
             (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
@@ -1156,7 +1154,7 @@ axiom (forall {{QP}}, next_start: int ::
 {%- endif %}
 
 {%- if instance.qht == "filter" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
 // congruence
@@ -1173,12 +1171,12 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
         (start >= end ==> res == EmptyVec()) &&
         // soundness: every element satisfies FN
         (forall i: int :: InRangeVec(res, i) ==>
-            {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+            {{FN}}({{EABC}}ReadVec(res, i){{EAA}})) &&
         // provenance: every element came from v
         (forall i: int :: InRangeVec(res, i) ==>
             ContainsVec(v, ReadVec(res, i))) &&
         // completeness: every matching v-element is in res
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
+        (forall j: int :: start <= j && j < end && {{FN}}({{EABC}}ReadVec(v, j){{EAA}}) ==>
             ContainsVec(res, ReadVec(v, j)))
     )
 );
@@ -1188,7 +1186,7 @@ axiom (forall {{QP}}, prev_end: int ::
     prev_end + 1 == end && start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
     (var prev := $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
+        (if {{FN}}({{EABC}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
             (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == ReadVec(v, prev_end)
@@ -1202,7 +1200,7 @@ axiom (forall {{QP}}, next_start: int ::
     next_start == start + 1 && start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
     (var tail := $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
-        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+        (if {{FN}}({{EABC}}ReadVec(v, start){{EAA}}) then
             LenVec(res) == LenVec(tail) + 1 &&
             ReadVec(res, 0) == ReadVec(v, start) &&
             (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
@@ -1213,7 +1211,7 @@ axiom (forall {{QP}}, next_start: int ::
 {%- endif %}
 
 {%- if instance.qht == "find_index" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1224,9 +1222,9 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuant
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndexQuantifierHelper_{{FN}}({{QA}});
-        if (forall i: int :: start <= i && i < end ==> !{{FN}}({{EAB}}ReadVec(v, i){{EAA}})) then res == -1
-        else start <= res && res < end && {{FN}}({{EAB}}ReadVec(v, res){{EAA}}) &&
-            (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
+        if (forall i: int :: start <= i && i < end ==> !{{FN}}({{EABC}}ReadVec(v, i){{EAA}})) then res == -1
+        else start <= res && res < end && {{FN}}({{EABC}}ReadVec(v, res){{EAA}}) &&
+            (forall j: int :: start <= j && j < res ==> !{{FN}}({{EABC}}ReadVec(v, j){{EAA}}))
     )
 );
 // bidirectional step axioms
@@ -1236,19 +1234,19 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
             (if prev != -1 then prev
-             else if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then end - 1
+             else if {{FN}}({{EABC}}ReadVec(v, end - 1){{EAA}}) then end - 1
              else -1))
 );
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
-            (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then start
+            (if {{FN}}({{EABC}}ReadVec(v, start){{EAA}}) then start
              else $FindIndexQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}))
 );
 {%- endif %}
 
 {%- if instance.qht == "map" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
 axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
@@ -1265,7 +1263,7 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: start <= i && i < end ==>
-            ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
+            ReadVec(res, i - start) == {{FN}}({{EABC}}ReadVec(v, i){{EAA}}))
     )
 );
 // end-step — compound trigger
@@ -1277,7 +1275,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var prev := $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EABC}}ReadVec(v, prev_end){{EAA}})
     ))
 );
 // start-step — compound trigger
@@ -1288,14 +1286,14 @@ axiom (forall {{QP}}, next_start: int ::
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
     (var tail := $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
         LenVec(res) == LenVec(tail) + 1 &&
-        ReadVec(res, 0) == {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) &&
+        ReadVec(res, 0) == {{FN}}({{EABC}}ReadVec(v, start){{EAA}}) &&
         (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
 
 {%- if instance.qht == "range_map" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 // main axiomfrom range.
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
@@ -1305,7 +1303,7 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
-        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
+        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EABC}}(i + start){{EAA}}))
     )
 );
 // end-step — compound trigger
@@ -1316,7 +1314,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var prev := $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
         (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
-        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}prev_end{{EAA}})
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EABC}}prev_end{{EAA}})
     ))
 );
 // start-step — compound trigger
@@ -1326,14 +1324,14 @@ axiom (forall {{QP}}, next_start: int ::
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
     (var tail := $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}});
         LenVec(res) == LenVec(tail) + 1 &&
-        ReadVec(res, 0) == {{FN}}({{EAB}}start{{EAA}}) &&
+        ReadVec(res, 0) == {{FN}}({{EABC}}start{{EAA}}) &&
         (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
 
 {%- if instance.qht == "count" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 // count: bidirectional recursive axioms (bounds/base, left-step, right-step)
 
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
@@ -1352,7 +1350,7 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
 axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
-            (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
+            (if {{FN}}({{EABC}}ReadVec(v, start){{EAA}}) then 1 else 0)
             + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
 // right step
@@ -1361,12 +1359,12 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
+            + (if {{FN}}({{EABC}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
 );
 {%- endif %}
 
 {%- if instance.qht == "sum_map" %}
-{%- set CAT = instance.captured_args_tail %}
+{%- if EAB == "" %}{% set CAT = EAA %}{% else %}{% set CAT = ", " ~ EAB ~ EAA %}{% endif %}
 // sum_map: bidirectional recursive axioms (base, left-step, right-step)
 
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
@@ -1383,7 +1381,7 @@ axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
-            {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
+            {{FN}}({{EABC}}ReadVec(v, start){{EAA}})
             + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
 );
 // right step
@@ -1392,7 +1390,7 @@ axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+            + {{FN}}({{EABC}}ReadVec(v, end - 1){{EAA}})
 );
 {%- endif %}
 

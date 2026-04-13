@@ -66,8 +66,6 @@ struct QuantifierHelperInfo {
     name: String,
     quantifier_params: String,
     quantifier_args: String,
-    /// e.g. ", $t2" — trailing captured args for recursive helper calls.
-    captured_args_tail: String,
     result_type: String,
     /// e.g. "vec'u64'" — for `$IsValid'<suffix>'(helper(...))`.
     result_is_valid_suffix: String,
@@ -570,8 +568,6 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
-        let mut captured_args_tail = String::new();
-
         let dst_elem_boogie_type = if matches!(
             info.qht,
             QuantifierHelperType::FindIndices | QuantifierHelperType::Count
@@ -604,7 +600,6 @@ impl QuantifierHelperInfo {
                 .map(|val| format!("$t{}", val.to_string()))
                 .join(", ");
             quantifier_args = format!("{}, {}", quantifier_args, captured_list);
-            captured_args_tail = format!(", {}", captured_list);
         }
 
         let result_is_valid_suffix = if matches!(
@@ -639,14 +634,13 @@ impl QuantifierHelperInfo {
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
-            captured_args_tail,
             result_type: boogie_type(env, dst_elem_boogie_type),
             result_is_valid_suffix,
             input_vec_is_equal_suffix,
             input_elem_type,
             extra_args_before: (0..info.li)
-                .map(|i| format!("$t{}, ", i.to_string()))
-                .join(""),
+                .map(|i| format!("$t{}", i.to_string()))
+                .join(", "),
             extra_args_after: (info.li + 1..func_env.get_parameter_count())
                 .map(|i| format!(", $t{}", i.to_string()))
                 .join(""),
