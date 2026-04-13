@@ -568,17 +568,14 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
-        // for vector-valued helpers this is the element type of the result vec;
-        // for scalar-valued helpers it's the scalar result type itself.
-        let dst_elem_boogie_type = match info.qht {
-            // find_indices returns Vec<u64> (indices)
-            QuantifierHelperType::FindIndices => &Type::Primitive(PrimitiveType::U64),
-            // filter returns Vec<T> where T is the input element type
-            QuantifierHelperType::Filter => &params_types[info.li].skip_reference(),
-            // count returns u64
-            QuantifierHelperType::Count => &Type::Primitive(PrimitiveType::U64),
-            // map, range_map, find_index, sum_map — use the predicate's return type
-            _ => &Type::instantiate(&func_env.get_return_type(0), &info.inst),
+        // element type of the result vector (only meaningful for vector-valued helpers)
+        let vec_elem_type = match info.qht {
+            QuantifierHelperType::FindIndices => &Type::Primitive(PrimitiveType::U64), // indices
+            QuantifierHelperType::Filter => &params_types[info.li].skip_reference(), // same as input
+            QuantifierHelperType::Map | QuantifierHelperType::RangeMap => {
+                &Type::instantiate(&func_env.get_return_type(0), &info.inst) // predicate return
+            }
+            _ => &Type::Primitive(PrimitiveType::Bool), // unused for scalar helpers
         };
 
         if func_env.get_parameter_count() > 1 {
@@ -604,19 +601,21 @@ impl QuantifierHelperInfo {
             quantifier_args = format!("{}, {}", quantifier_args, captured_list);
         }
 
-        let result_is_valid_suffix = if matches!(
+        // $IsValid suffix and RT are only used by vector-valued helpers
+        let (result_type, result_is_valid_suffix) = if matches!(
             info.qht,
             QuantifierHelperType::Map
                 | QuantifierHelperType::RangeMap
                 | QuantifierHelperType::Filter
                 | QuantifierHelperType::FindIndices
         ) {
-            // vector-valued: suffix for Vec<elem_type>
-            let vec_type = Type::Vector(Box::new(dst_elem_boogie_type.clone()));
-            boogie_type_suffix(env, &vec_type)
+            let vec_type = Type::Vector(Box::new(vec_elem_type.clone()));
+            (
+                boogie_type(env, vec_elem_type),
+                boogie_type_suffix(env, &vec_type),
+            )
         } else {
-            // scalar-valued: suffix for the result type directly
-            boogie_type_suffix(env, dst_elem_boogie_type)
+            (String::new(), String::new())
         };
 
         let (input_vec_is_equal_suffix, input_elem_type) =
@@ -636,7 +635,7 @@ impl QuantifierHelperInfo {
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
-            result_type: boogie_type(env, dst_elem_boogie_type),
+            result_type,
             result_is_valid_suffix,
             input_vec_is_equal_suffix,
             input_elem_type,
