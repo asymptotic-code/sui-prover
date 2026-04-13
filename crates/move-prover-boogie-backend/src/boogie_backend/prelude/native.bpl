@@ -1121,7 +1121,7 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // Soundness: every element of res is a valid in-range index where FN holds.
-        (forall i: int :: 0 <= i && i < LenVec(res) ==>
+        (forall i: int :: InRangeVec(res, i) ==>
             start <= ReadVec(res, i) && ReadVec(res, i) < end &&
             {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}}))
     )
@@ -1154,7 +1154,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var prev := $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
-            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+            (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == prev_end
          else
             res == prev)
@@ -1169,7 +1169,7 @@ axiom (forall {{QP}}, next_start: int ::
         (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
             LenVec(res) == LenVec(tail) + 1 &&
             ReadVec(res, 0) == start &&
-            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+            (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
          else
             res == tail)
     ))
@@ -1200,14 +1200,14 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
         0 <= LenVec(res) && LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // Soundness: every element of res satisfies FN.
-        (forall i: int :: 0 <= i && i < LenVec(res) ==>
+        (forall i: int :: InRangeVec(res, i) ==>
             {{FN}}({{EAB}}ReadVec(res, i){{EAA}}))
     )
 );
 // Provenance: every element of res came from v. Separate axiom so the
 // ContainsVec existential doesn't bloat the main axiom body.
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
-    (forall i: int :: 0 <= i && i < LenVec($FilterQuantifierHelper_{{FN}}({{QA}})) ==>
+    (forall i: int :: InRangeVec($FilterQuantifierHelper_{{FN}}({{QA}}), i) ==>
         ContainsVec(v, ReadVec($FilterQuantifierHelper_{{FN}}({{QA}}), i)))
 );
 // Completeness: every element of v in [start, end) satisfying FN appears in res.
@@ -1223,7 +1223,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var prev := $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
             LenVec(res) == LenVec(prev) + 1 &&
-            (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+            (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
             ReadVec(res, LenVec(prev)) == ReadVec(v, prev_end)
          else
             res == prev)
@@ -1238,7 +1238,7 @@ axiom (forall {{QP}}, next_start: int ::
         (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
             LenVec(res) == LenVec(tail) + 1 &&
             ReadVec(res, 0) == ReadVec(v, start) &&
-            (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+            (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
          else
             res == tail)
     ))
@@ -1314,7 +1314,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
     (var prev := $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
-        (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
     ))
 );
@@ -1333,7 +1333,7 @@ axiom (forall {{QP}}, next_start: int ::
     (var tail := $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
         LenVec(res) == LenVec(tail) + 1 &&
         ReadVec(res, 0) == {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) &&
-        (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+        (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
@@ -1362,7 +1362,7 @@ axiom (forall {{QP}}, prev_end: int ::
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
     (var prev := $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}});
         LenVec(res) == LenVec(prev) + 1 &&
-        (forall j: int :: 0 <= j && j < LenVec(prev) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
         ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}prev_end{{EAA}})
     ))
 );
@@ -1376,7 +1376,7 @@ axiom (forall {{QP}}, next_start: int ::
     (var tail := $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}});
         LenVec(res) == LenVec(tail) + 1 &&
         ReadVec(res, 0) == {{FN}}({{EAB}}start{{EAA}}) &&
-        (forall j: int :: 0 <= j && j < LenVec(tail) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+        (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
     ))
 );
 {%- endif %}
