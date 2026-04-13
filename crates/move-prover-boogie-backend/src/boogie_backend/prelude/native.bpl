@@ -969,11 +969,14 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
    =====================================================================
 
    Emits Boogie axiomatizations for the iterator combinators that appear
-   as `Operation::Quantifier` in the stackless bytecode:
+   as `Operation::Quantifier` in the stackless bytecode. Seven helper
+   kinds are implemented, each corresponding to a `QuantifierHelperType`:
 
-     map, map_range, range_map, filter, filter_range, find_index,
-     find_index_range, find, find_range, find_indices,
-     find_indices_range, count, count_range, sum_map, sum_map_range
+     find_indices, filter, find_index, map, range_map, count, sum_map
+
+   Multiple `QuantifierType` variants map to the same helper kind (e.g.
+   `Map` and `MapRange` both use `QuantifierHelperType::Map`; `Find` and
+   `FindRange` use `FindIndex`; etc.).
 
    Each Move predicate/closure (per type instantiation) gets one helper
    function declared as an uninterpreted Boogie function plus a set of
@@ -991,27 +994,57 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
    Axiomatization pattern
    ---------------------------------------------------------------------
 
-   Every helper has a MAIN axiom stating the result's shape (length
-   bound, base case, per-element predicate) and, when a loop invariant
-   or recursive unfolding can benefit, one or more INCREMENTAL axioms
-   that relate `helper(v, start, end)` to `helper(v, start, end - 1)`
-   (end-step) or `helper(v, start + 1, end)` (start-step).
+   Every helper has:
 
-     count   — end-step + start-step + bounds/base (split into three
-                 separate axioms so Z3 instantiates only what's needed)
-     sum_map — end-step + start-step + base (single conjunction)
-     map, filter, find_indices — end-step only (nested-var
-                 `var res := ...; var prev := ...` element-wise form;
-                 ExtendVec-equality form is slower for Z3 in practice)
-     find_index — end-step + start-step (inline if-then-else form)
-     range_map  — end-step only
+   1. A MAIN axiom (single trigger `{helper(QA)}`) stating the result's
+      shape: length bound, empty-range base case, per-element properties.
+      For find_indices and filter this also includes soundness (predicate
+      holds at each result element) and completeness (every matching
+      v-element is in the result, via ContainsVec). For map and range_map
+      the element-wise forall gives exact values directly.
 
-   Start-recursion is only added for helpers that have scalar results
-   (count, sum_map) or a scalar return like find_index — the suffix
-   invariant pattern (`processed_scalar + helper(v, i, n) == total`)
-   needs it. Vector-valued helpers (map/filter/find_indices/range_map)
-   don't currently need start-step axioms since Move specs don't
-   naturally express suffix invariants over vector values.
+   2. An END-STEP axiom relating helper(v, start, end) to
+      helper(v, start, end-1): enables loop invariants that extend the
+      range on the right.
+
+   3. A START-STEP axiom relating helper(v, start, end) to
+      helper(v, start+1, end): enables suffix-invariant loop proofs
+      using the `concat` native.
+
+   Trigger strategy (prevents matching loops):
+
+   - Vector-valued helpers (find_indices, filter, map, range_map) use
+     COMPOUND triggers on both end-step and start-step. A fresh bound
+     variable (`prev_end` or `next_start`) in the pattern, with a guard
+     like `prev_end + 1 == end`, requires both the current and recursive
+     helper terms to be in the E-graph before firing. This prevents the
+     axiom from matching-looping on a single fresh call:
+
+       axiom (forall QP, prev_end: int ::
+           {helper(QA), helper(v, start, prev_end, ...)}
+           prev_end + 1 == end && start < end ==> body)
+
+     For concrete-value tests (e.g. `filter(v) == vector[...]`), the
+     step axioms can't fire because only one helper term exists. Tests
+     that need concrete unfolding supply a per-spec `extra_bpl` file
+     with a single-trigger variant of the end-step axiom.
+
+   - Scalar-valued helpers (count, sum_map, find_index) use SINGLE
+     triggers on both steps. Matching loops are less of a concern for
+     scalar results because Z3's anti-loop heuristics handle the
+     monotonically-decreasing chain efficiently.
+
+   Additional axioms:
+
+   - find_indices has a SEPARATE strict-ordering axiom triggered on
+     `{ReadVec(res, k), ReadVec(res, l)}` (only fires when Z3 reads
+     two elements for comparison).
+
+   - find_indices and filter have SEPARATE completeness axioms (via
+     ContainsVec) stating that every matching element is in the result.
+
+   - count and sum_map split their bounds/base, left-step, and
+     right-step into separate axioms for selective instantiation.
 
    ---------------------------------------------------------------------
    Template variables (set per instance by backend/lib.rs)
@@ -1049,8 +1082,13 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
    3. Handle the result type in `QuantifierHelperInfo::new` in lib.rs.
    4. Add a new `{% if instance.qht == "..." %}` block here with the
       function declaration and axioms. Follow the pattern: main axiom
-      (shape) then incremental axiom(s) if loop invariants will need
-      them. Test with a loop-invariant test before committing.
+      (shape + completeness), then compound-trigger end-step + start-step
+      for vector-valued helpers, or single-trigger bidirectional steps
+      for scalar-valued helpers. Test with both prefix-invariant and
+      suffix-invariant loop tests before committing.
+   5. If the helper is vector-valued and tests need concrete-value
+      unfolding, create per-spec `extra_bpl` files with a single-trigger
+      end-step axiom for the specific helper instance.
 #}
 {% macro quantifier_helpers_module(instance) %}
 {%- set QP = instance.quantifier_params -%}
