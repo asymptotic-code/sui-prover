@@ -1090,9 +1090,11 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set RT = instance.result_type -%}
 {%- set EAA = instance.extra_args_after -%}
 {%- if instance.extra_args_before == "" -%}
-  {%- set EAB = "" -%}{%- set CAT = EAA -%}
+  {%- set EAB = "" -%}
+  {%- set CAT = EAA -%}
 {%- else -%}
-  {%- set EAB = instance.extra_args_before ~ ", " -%}{%- set CAT = ", " ~ instance.extra_args_before ~ EAA -%}
+  {%- set EAB = instance.extra_args_before ~ ", " -%}
+  {%- set CAT = ", " ~ instance.extra_args_before ~ EAA -%}
 {%- endif -%}
 
 {%- if instance.qht == "find_indices" %}
@@ -1111,12 +1113,9 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // soundness: every element is a valid in-range index where FN holds
-        (forall i: int :: InRangeVec(res, i) ==>
-            start <= ReadVec(res, i) && ReadVec(res, i) < end &&
-            {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
+        (forall i: int :: InRangeVec(res, i) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end && {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
         // completeness: every matching index in [start, end) is in res
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
-            ContainsVec(res, j))
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, j))
     )
 );
 // strict ordering — separate trigger so it only fires when comparing elements
@@ -1171,14 +1170,11 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
         LenVec(res) <= (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
         // soundness: every element satisfies FN
-        (forall i: int :: InRangeVec(res, i) ==>
-            {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+        (forall i: int :: InRangeVec(res, i) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
         // provenance: every element came from v
-        (forall i: int :: InRangeVec(res, i) ==>
-            ContainsVec(v, ReadVec(res, i))) &&
+        (forall i: int :: InRangeVec(res, i) ==> ContainsVec(v, ReadVec(res, i))) &&
         // completeness: every matching v-element is in res
-        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==>
-            ContainsVec(res, ReadVec(v, j)))
+        (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, ReadVec(v, j)))
     )
 );
 // end-step — compound trigger
@@ -1259,8 +1255,7 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         LenVec(res) == (if start <= end then end - start else 0) &&
         (start >= end ==> res == EmptyVec()) &&
-        (forall i: int :: start <= i && i < end ==>
-            ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
+        (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
 );
 // end-step — compound trigger
