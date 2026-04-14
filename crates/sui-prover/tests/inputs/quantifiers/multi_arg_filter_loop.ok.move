@@ -1,6 +1,6 @@
 // Loop test exercising filter with a predicate that captures a runtime
-// parameter (`threshold`). Stresses the `captured_args_tail` template path
-// for filter's recursive axioms.
+// parameter (`threshold`). Stresses the extra-captured-args path (CAT) in
+// filter's recursive axioms.
 
 module 0x42::multi_arg_filter_loop_ok;
 
