@@ -402,11 +402,13 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
-// for vectors nested ranges have sums bounded by the larger
+{%- if instance.is_unsigned %}
+// for vectors nested ranges have sums bounded by the larger (unsigned elements)
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+{%- endif %}
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
@@ -445,11 +447,13 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
-// for vectors nested ranges have sums bounded by the larger
+{%- if instance.is_unsigned %}
+// for vectors nested ranges have sums bounded by the larger (unsigned elements)
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
+{%- endif %}
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
@@ -1403,6 +1407,19 @@ axiom (forall {{QP}}, split_point: int ::
     0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
         $SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
             == $SumMapQuantifierHelper_{{FN}}({{QA}}));
+// singleton — sum over [a, a+1] equals FN applied to v[a]
+axiom (forall {{QP}}, a: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), ReadVec(v, a)}
+    0 <= a && a < LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, a, a+1{{CAT}}) == {{FN}}({{EAB}}ReadVec(v, a){{EAA}}));
+{%- if instance.result_is_unsigned %}
+// bounding — nested range sum <= outer (FN returns unsigned)
+axiom (forall {{QP}}, a: int, b: int ::
+    {$SumMapQuantifierHelper_{{FN}}(v, a, b{{CAT}}), $SumMapQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.input_vec_is_equal_suffix}}'(v) &&
+    0 <= start && start <= a && a <= b && b <= end && end <= LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, a, b{{CAT}}) <= $SumMapQuantifierHelper_{{FN}}({{QA}}));
+{%- endif %}
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}
