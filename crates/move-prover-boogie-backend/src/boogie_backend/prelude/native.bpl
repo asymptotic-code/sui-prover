@@ -378,6 +378,16 @@ function {:inline} $0_vector_iter_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})):
     ConcatVec(v1, v2)
 }
 
+// Total borrow: for in-range indices this is ReadVec(v, i); for out-of-range
+// indices the underlying vector theory returns an uninterpreted (but
+// deterministic) value — exactly the "unknown" semantics. Never aborts.
+procedure {:inline 1} $0_vector_ext_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int) returns (dst: {{T}}) {
+    dst := ReadVec(v, i);
+}
+function {:inline} $0_vector_ext_borrow_or_unknown{{S}}$pure(v: Vec ({{T}}), i: int): {{T}} {
+    ReadVec(v, i)
+}
+
 {%- if instance.is_number -%}
 {%- if include_vec_sum -%}
 
