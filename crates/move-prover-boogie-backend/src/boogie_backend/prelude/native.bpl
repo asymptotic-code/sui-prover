@@ -402,17 +402,32 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
-// for vectors nested ranges have sums bounded by the larger
+{%- if instance.is_unsigned %}
+// for vectors nested ranges have sums bounded by the larger (unsigned elements)
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
+{%- endif %}
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+// left-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
+  next_start == start + 1 && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'(v->v[start], $0_vec_$sum{{S}}(v, next_start, end)));
+
+// right-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
+  prev_end + 1 == end && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, start, prev_end), v->v[prev_end]));
 
 {%- else -%}
 
@@ -432,17 +447,32 @@ axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
-// for vectors nested ranges have sums bounded by the larger
+{%- if instance.is_unsigned %}
+// for vectors nested ranges have sums bounded by the larger (unsigned elements)
 axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
+{%- endif %}
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+// left-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
+  next_start == start + 1 && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == v->v[start] + $0_vec_$sum{{S}}(v, next_start, end));
+
+// right-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
+  prev_end + 1 == end && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $0_vec_$sum{{S}}(v, start, prev_end) + v->v[prev_end]);
 
 {%- endif %}
 
@@ -1344,6 +1374,12 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
             $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
             + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
 );
+// split — compound trigger on the two sub-range counts
+axiom (forall {{QP}}, split_point: int ::
+    {$CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
+    0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
+        $CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
+            == $CountQuantifierHelper_{{FN}}({{QA}}));
 {%- endif %}
 
 {%- if instance.qht == "sum_map" %}
@@ -1371,6 +1407,25 @@ axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
             $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
             + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
 );
+// split — compound trigger on the two sub-range sums
+axiom (forall {{QP}}, split_point: int ::
+    {$SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
+    0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
+            == $SumMapQuantifierHelper_{{FN}}({{QA}}));
+// singleton — sum over [a, a+1] equals FN applied to v[a]
+axiom (forall {{QP}}, a: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), ReadVec(v, a)}
+    0 <= a && a < LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, a, a+1{{CAT}}) == {{FN}}({{EAB}}ReadVec(v, a){{EAA}}));
+{%- if instance.result_is_unsigned %}
+// bounding — nested range sum <= outer (FN returns unsigned)
+axiom (forall {{QP}}, a: int, b: int ::
+    {$SumMapQuantifierHelper_{{FN}}(v, a, b{{CAT}}), $SumMapQuantifierHelper_{{FN}}({{QA}})}
+    $IsValid'{{instance.input_vec_is_equal_suffix}}'(v) &&
+    0 <= start && start <= a && a <= b && b <= end && end <= LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, a, b{{CAT}}) <= $SumMapQuantifierHelper_{{FN}}({{QA}}));
+{%- endif %}
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}

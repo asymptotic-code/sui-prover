@@ -57,6 +57,8 @@ struct TypeInfo {
     has_native_equality: bool,
     is_bv: bool,
     is_number: bool,
+    /// True for U8..U256 (fixed-width unsigned). False for Num (arbitrary precision).
+    is_unsigned: bool,
     bit_width: String,
 }
 
@@ -75,6 +77,10 @@ struct QuantifierHelperInfo {
     /// e.g. "int" — Boogie type of input vector elements, for `v2` declaration
     /// in congruence axioms. Empty for range_map.
     input_elem_type: String,
+    /// True iff FN's Move return type is a fixed-width unsigned int (U8..U256).
+    /// Used by helpers (e.g. sum_map bounding) to gate axioms that depend on
+    /// non-negativity of mapped values.
+    result_is_unsigned: bool,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -625,6 +631,13 @@ impl QuantifierHelperInfo {
                 )
             };
 
+        // True when FN's Move return type is a fixed-width unsigned int
+        // (U8..U256). Used by helpers (e.g. sum_map bounding) to gate axioms
+        // that depend on non-negativity of mapped values.
+        let result_is_unsigned = Type::instantiate(&func_env.get_return_type(0), &info.inst)
+            .get_bit_width()
+            .is_some();
+
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
@@ -634,6 +647,7 @@ impl QuantifierHelperInfo {
             result_is_valid_suffix,
             input_vec_is_equal_suffix,
             input_elem_type,
+            result_is_unsigned,
             extra_args_before: (0..info.li)
                 .map(|i| format!("$t{}", i.to_string()))
                 .join(", "),
@@ -654,6 +668,7 @@ impl TypeInfo {
             is_bv: bv_flag && ty.is_number(),
             bit_width: ty.get_bit_width().unwrap_or(8).to_string(),
             is_number: ty.is_number(),
+            is_unsigned: ty.get_bit_width().is_some(),
         }
     }
 }
