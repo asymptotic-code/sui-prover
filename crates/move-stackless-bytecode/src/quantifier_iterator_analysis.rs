@@ -141,6 +141,16 @@ impl QuantifierPattern {
                 env.prover_end_range_map_lambda_qid(),
                 QuantifierType::RangeMap,
             ),
+            QuantifierPattern::new(
+                env.prover_begin_range_count_lambda_qid(),
+                env.prover_end_range_count_lambda_qid(),
+                QuantifierType::RangeCount,
+            ),
+            QuantifierPattern::new(
+                env.prover_begin_range_sum_map_lambda_qid(),
+                env.prover_end_range_sum_map_lambda_qid(),
+                QuantifierType::RangeSumMap,
+            ),
         ]
     }
 

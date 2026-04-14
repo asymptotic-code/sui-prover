@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_sum_map.fail.move:24:5
+   │
+24 │     ensures(range_sum_map!<u64>(5, 5, |x| identity(x)) == 1u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_sum_map.fail.move:24: test_range_sum_map_empty_not_zero
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/range_sum_map.fail.move:18:5
+   │
+18 │     ensures(range_sum_map!<u64>(0, 4, |x| identity(x)) == 7u64.to_int());
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/range_sum_map.fail.move:18: test_range_sum_map_wrong_sum

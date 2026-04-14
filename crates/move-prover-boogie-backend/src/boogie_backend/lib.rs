@@ -560,7 +560,7 @@ impl QuantifierHelperInfo {
         let func_env = env.get_function(info.function);
         let params_types = Type::instantiate_vec(func_env.get_parameter_types(), &info.inst);
 
-        let mut quantifier_params = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_params = if info.qht.range_based() {
             "start: int, end: int".to_string()
         } else {
             format!(
@@ -569,7 +569,7 @@ impl QuantifierHelperInfo {
             )
         };
 
-        let mut quantifier_args = if matches!(info.qht, QuantifierHelperType::RangeMap) {
+        let mut quantifier_args = if info.qht.range_based() {
             "start, end".to_string()
         } else {
             "v, start, end".to_string()
@@ -619,17 +619,16 @@ impl QuantifierHelperInfo {
             (String::new(), String::new())
         };
 
-        let (input_vec_is_equal_suffix, input_elem_type) =
-            if matches!(info.qht, QuantifierHelperType::RangeMap) {
-                (String::new(), String::new()) // no input vector
-            } else {
-                let elem_ty = params_types[info.li].skip_reference();
-                let vec_type = Type::Vector(Box::new(elem_ty.clone()));
-                (
-                    boogie_type_suffix(env, &vec_type),
-                    boogie_type(env, &elem_ty),
-                )
-            };
+        let (input_vec_is_equal_suffix, input_elem_type) = if info.qht.range_based() {
+            (String::new(), String::new()) // no input vector
+        } else {
+            let elem_ty = params_types[info.li].skip_reference();
+            let vec_type = Type::Vector(Box::new(elem_ty.clone()));
+            (
+                boogie_type_suffix(env, &vec_type),
+                boogie_type(env, &elem_ty),
+            )
+        };
 
         // True when FN's Move return type is a fixed-width unsigned int
         // (U8..U256). Used by helpers (e.g. sum_map bounding) to gate axioms

@@ -1428,6 +1428,69 @@ axiom (forall {{QP}}, a: int, b: int ::
 {%- endif %}
 {%- endif %}
 
+{%- if instance.qht == "range_count" %}
+function $RangeCountQuantifierHelper_{{FN}}({{QP}}): int;
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    0 <= $RangeCountQuantifierHelper_{{FN}}({{QA}}) &&
+    $RangeCountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
+    (start >= end ==> $RangeCountQuantifierHelper_{{FN}}({{QA}}) == 0)
+);
+// left step
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
+            (if {{FN}}({{EAB}}start{{EAA}}) then 1 else 0)
+            + $RangeCountQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+);
+// right step
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
+            $RangeCountQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
+            + (if {{FN}}({{EAB}}end - 1{{EAA}}) then 1 else 0)
+);
+// split — compound trigger on the two sub-range counts
+axiom (forall {{QP}}, split_point: int ::
+    {$RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}), $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})}
+    start <= split_point && split_point <= end ==>
+        $RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}) + $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})
+            == $RangeCountQuantifierHelper_{{FN}}({{QA}}));
+{%- endif %}
+
+{%- if instance.qht == "range_sum_map" %}
+function $RangeSumMapQuantifierHelper_{{FN}}({{QP}}): int;
+axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
+    start >= end ==> $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) == 0
+);
+// left step
+axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            {{FN}}({{EAB}}start{{EAA}})
+            + $RangeSumMapQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+);
+// right step
+axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            $RangeSumMapQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
+            + {{FN}}({{EAB}}end - 1{{EAA}})
+);
+// split — compound trigger on the two sub-range sums
+axiom (forall {{QP}}, split_point: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}(start, split_point{{CAT}}), $RangeSumMapQuantifierHelper_{{FN}}(split_point, end{{CAT}})}
+    start <= split_point && split_point <= end ==>
+        $RangeSumMapQuantifierHelper_{{FN}}(start, split_point{{CAT}}) + $RangeSumMapQuantifierHelper_{{FN}}(split_point, end{{CAT}})
+            == $RangeSumMapQuantifierHelper_{{FN}}({{QA}}));
+{%- if instance.result_is_unsigned %}
+// bounding — nested range sum <= outer (FN returns unsigned)
+axiom (forall {{QP}}, a: int, b: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}(a, b{{CAT}}), $RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
+    start <= a && a <= b && b <= end ==>
+        $RangeSumMapQuantifierHelper_{{FN}}(a, b{{CAT}}) <= $RangeSumMapQuantifierHelper_{{FN}}({{QA}}));
+{%- endif %}
+{%- endif %}
+
 {% endmacro quantifier_helpers_module %}
 
 {% macro dynamic_field_key_module(impl, instance) %}
