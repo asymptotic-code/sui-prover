@@ -148,6 +148,9 @@ impl<'env> BoogieTranslator<'env> {
             QuantifierHelperType::RangeCount => {
                 format!("$RangeCountQuantifierHelper_{}", function_name)
             }
+            QuantifierHelperType::RangeSumMap => {
+                format!("$RangeSumMapQuantifierHelper_{}", function_name)
+            }
             QuantifierHelperType::FindIndex => {
                 format!("$FindIndexQuantifierHelper_{}", function_name)
             }
@@ -3490,6 +3493,18 @@ impl<'env> FunctionTranslator<'env> {
                 format!(
                     "{}({}, {}{})",
                     count_quant_name,
+                    fmt_temp(srcs[0]),
+                    fmt_temp(srcs[1]),
+                    extra_args,
+                )
+            }
+            QuantifierType::RangeSumMap => {
+                let sum_map_quant_name = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::RangeSumMap, fun_name);
+                format!(
+                    "{}({}, {}{})",
+                    sum_map_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     extra_args,

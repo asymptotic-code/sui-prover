@@ -139,6 +139,7 @@ pub enum QuantifierType {
     SumMapRange,
     RangeMap,
     RangeCount,
+    RangeSumMap,
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
@@ -146,6 +147,7 @@ pub enum QuantifierHelperType {
     Map,
     RangeMap,
     RangeCount,
+    RangeSumMap,
     FindIndex,
     FindIndices,
     Filter,
@@ -159,6 +161,7 @@ impl QuantifierHelperType {
             QuantifierHelperType::Map => "map",
             QuantifierHelperType::RangeMap => "range_map",
             QuantifierHelperType::RangeCount => "range_count",
+            QuantifierHelperType::RangeSumMap => "range_sum_map",
             QuantifierHelperType::FindIndex => "find_index",
             QuantifierHelperType::FindIndices => "find_indices",
             QuantifierHelperType::Filter => "filter",
@@ -170,7 +173,9 @@ impl QuantifierHelperType {
     pub fn range_based(&self) -> bool {
         matches!(
             self,
-            QuantifierHelperType::RangeMap | QuantifierHelperType::RangeCount
+            QuantifierHelperType::RangeMap
+                | QuantifierHelperType::RangeCount
+                | QuantifierHelperType::RangeSumMap
         )
     }
 }
@@ -200,6 +205,7 @@ impl QuantifierType {
             QuantifierType::SumMapRange => "sum_map_range",
             QuantifierType::RangeMap => "range_map",
             QuantifierType::RangeCount => "range_count",
+            QuantifierType::RangeSumMap => "range_sum_map",
         }
     }
 
@@ -212,6 +218,7 @@ impl QuantifierType {
             && *self != QuantifierType::Exists
             && *self != QuantifierType::RangeMap
             && *self != QuantifierType::RangeCount
+            && *self != QuantifierType::RangeSumMap
     }
 
     pub fn range_based(&self) -> bool {
@@ -228,6 +235,7 @@ impl QuantifierType {
                 | QuantifierType::SumMapRange
                 | QuantifierType::RangeMap
                 | QuantifierType::RangeCount
+                | QuantifierType::RangeSumMap
         )
     }
 
@@ -260,6 +268,7 @@ impl QuantifierType {
             }
             QuantifierType::RangeMap => Some(QuantifierHelperType::RangeMap),
             QuantifierType::RangeCount => Some(QuantifierHelperType::RangeCount),
+            QuantifierType::RangeSumMap => Some(QuantifierHelperType::RangeSumMap),
             _ => None,
         }
     }
