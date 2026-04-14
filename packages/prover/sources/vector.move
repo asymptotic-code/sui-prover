@@ -34,7 +34,7 @@ public native fun begin_find_indices_lambda<T>(v: &vector<T>): &T;
 #[spec_only]
 public native fun begin_find_indices_range_lambda<T>(v: &vector<T>, start: u64, end: u64): &T;
 #[spec_only]
-public native fun end_find_indices_lambda(): vector<u64>;
+public native fun end_find_indices_lambda(): &vector<u64>;
 #[spec_only]
 public native fun begin_count_lambda<T>(v: &vector<T>): &T;
 #[spec_only]
@@ -80,6 +80,9 @@ public native fun sum_range<T>(v: &vector<T>, start: u64, end: u64): Integer;
 #[spec_only]
 public native fun slice<T>(v: &vector<T>, start: u64, end: u64): &vector<T>;
 
+#[spec_only]
+public native fun concat<T>(v1: &vector<T>, v2: &vector<T>): &vector<T>;
+
 // advanced macros patterns over vectors
 #[spec_only]
 public macro fun map<$T, $U>($v: &vector<$T>, $f: |&$T| -> $U): &vector<$U> {
@@ -114,7 +117,7 @@ public macro fun find_index<$T>($v: &vector<$T>, $f: |&$T| -> bool): Option<u64>
 }
 
 #[spec_only]
-public macro fun find_indices<$T>($v: &vector<$T>, $f: |&$T| -> bool): vector<u64> {
+public macro fun find_indices<$T>($v: &vector<$T>, $f: |&$T| -> bool): &vector<u64> {
     let v = $v;
     let x: &$T = begin_find_indices_lambda<$T>(v);
     let _ = $f(x);
@@ -187,7 +190,7 @@ public macro fun find_index_range<$T>($v: &vector<$T>, $start: u64, $end: u64, $
 }
 
 #[spec_only]
-public macro fun find_indices_range<$T>($v: &vector<$T>, $start: u64, $end: u64, $f: |&$T| -> bool): vector<u64> {
+public macro fun find_indices_range<$T>($v: &vector<$T>, $start: u64, $end: u64, $f: |&$T| -> bool): &vector<u64> {
     let v = $v;
     let x: &$T = begin_find_indices_range_lambda<$T>(v, $start, $end);
     let _ = $f(x);

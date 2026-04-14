@@ -7,4 +7,4 @@ error: unexpected name in this position
    ┌─ tests/inputs/spec_paths/wrong_module.move:12:28
    │
 12 │     #[spec(prove, target = bar::inc)]
-   │                            ^^^ Could not resolve the name 'bar'
+   │                            ^^^^^^^^ Unexpected module identifier. A module identifier is not a valid expression

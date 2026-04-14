@@ -22,9 +22,9 @@ fun x_is_even(x: &u64): bool {
 fun test_wrong_count() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
+
     // This assertion is incorrect - should be 2, not 3
-    ensures(vector::length(&indices) == 3); // EXPECTED FAILURE 1
+    ensures(vector::length(indices) == 3); // EXPECTED FAILURE 1
 }
 
 // This should fail - wrong index value
@@ -32,9 +32,9 @@ fun test_wrong_count() {
 fun test_wrong_index() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
+
     // First occurrence is at index 0, not 1
-    ensures(*vector::borrow(&indices, 0) == 1); // EXPECTED FAILURE 2
+    ensures(*vector::borrow(indices, 0) == 1); // EXPECTED FAILURE 2
 }
 
 // This should fail - claiming a non-existent index
@@ -42,9 +42,9 @@ fun test_wrong_index() {
 fun test_wrong_contains() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
+
     // Index 1 has value 20, not 10, so 1 shouldn't be in indices
-    ensures(vector::contains(&indices, &1)); // EXPECTED FAILURE 3
+    ensures(vector::contains(indices, &1)); // EXPECTED FAILURE 3
 }
 
 // This should fail - assuming wrong order
@@ -52,9 +52,9 @@ fun test_wrong_contains() {
 fun test_wrong_order() {
     let v = vector[10, 20, 10, 30, 10];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
-    
+
     // Indices should be 0, 2, 4 - not 0, 4, 2
-    ensures(*vector::borrow(&indices, 1) == 4); // EXPECTED FAILURE 4
+    ensures(*vector::borrow(indices, 1) == 4); // EXPECTED FAILURE 4
 }
 
 // This should fail - wrong predicate count assumption
@@ -62,7 +62,7 @@ fun test_wrong_order() {
 fun test_wrong_predicate() {
     let v = vector[10, 20, 30, 40];
     let indices = find_indices!<u64>(&v, |x| x_is_even(x));
-    
+
     // All elements are even, so length should be 4, not 2
-    ensures(vector::length(&indices) == 2); // EXPECTED FAILURE 5
+    ensures(vector::length(indices) == 2); // EXPECTED FAILURE 5
 }

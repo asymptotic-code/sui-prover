@@ -94,6 +94,8 @@ pub struct ProverOptions {
     pub bv_int_encoding: bool,
     /// Skip checking spec functions that do not abort
     pub skip_spec_no_abort: bool,
+    /// Skip checking external functions that do not abort
+    pub skip_fun_no_abort: bool,
     /// CI mode
     pub ci: bool,
     /// Whether to emit debug trace instructions for counterexample generation
@@ -135,6 +137,7 @@ impl Default for ProverOptions {
             ban_int_2_bv: false,
             bv_int_encoding: true,
             skip_spec_no_abort: false,
+            skip_fun_no_abort: false,
             ci: false,
             debug_trace: true,
         }

@@ -91,6 +91,7 @@ pub struct BoogieTranslator<'env> {
 pub enum AssertsMode {
     Check,
     Assume,
+    SpecNoAbortCheck,
 }
 
 pub struct FunctionTranslator<'env> {
@@ -154,7 +155,32 @@ impl<'env> BoogieTranslator<'env> {
                 format!("$FindIndicesQuantifierHelper_{}", function_name)
             }
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
+            QuantifierHelperType::Count => format!("$CountQuantifierHelper_{}", function_name),
+            QuantifierHelperType::SumMap => format!("$SumMapQuantifierHelper_{}", function_name),
         }
+    }
+
+    /// Check if an ignore_abort spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self, spec_qid: &QualifiedId<FunId>) -> bool {
+        let targets = self.targets.asserts_of_targets();
+        self.targets
+            .get_fun_by_spec(spec_qid)
+            .is_some_and(|target_fun_qid| {
+                let f = self.env.get_function(*target_fun_qid);
+                let simple = f.get_name_str().to_string();
+                let full = f.get_full_name_str();
+                let qualified =
+                    format!("{}::{}", f.module_env.get_full_name_str(), f.get_name_str());
+                targets.contains(&simple) || targets.contains(&full) || targets.contains(&qualified)
+            })
+    }
+
+    /// Generate a Boogie variable name for a per-spec ignore_aborts flag.
+    fn asserts_of_var_name(spec_env: &FunctionEnv) -> String {
+        format!(
+            "$asserts_of_{}",
+            boogie_function_name(spec_env, &[], FunctionTranslationStyle::Default)
+        )
     }
 
     fn generate_axiom_function(&mut self, func_env: &FunctionEnv) {
@@ -206,6 +232,104 @@ impl<'env> BoogieTranslator<'env> {
             args
         );
         emitln!(self.writer);
+    }
+
+    /// Emit a bodyless `function $name$pure(params) returns (rets);` for a native
+    /// uninterpreted function that has no FunctionTarget data.
+    fn emit_uninterpreted_native_pure(&self, fun_env: &FunctionEnv, inst: &[Type]) {
+        let func_name = boogie_function_name(fun_env, inst, FunctionTranslationStyle::Pure);
+
+        let params = fun_env
+            .get_parameter_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
+                format!("$t{}: {}", idx, boogie_type(self.env, ty.skip_reference()))
+            })
+            .join(", ");
+
+        let rets = fun_env
+            .get_return_types()
+            .iter()
+            .enumerate()
+            .map(|(idx, ty)| {
+                let ty = ty.instantiate(inst);
+                format!(
+                    "$ret{}: {}",
+                    idx,
+                    boogie_type(self.env, ty.skip_reference())
+                )
+            })
+            .join(", ");
+
+        emitln!(
+            self.writer,
+            "function {}({}) returns ({});",
+            func_name,
+            params,
+            rets,
+        );
+        emitln!(self.writer);
+    }
+
+    /// Emit uninterpreted Boogie function declarations for std::type_name native functions.
+    /// These allow type_name functions to be used in quantifiers.
+    fn emit_type_name_functions(&self, fun_env: &FunctionEnv, mono_info: &MonoInfo) {
+        let type_name_fns = [
+            self.env.std_type_name_with_defining_ids_qid(),
+            self.env.std_type_name_with_original_ids_qid(),
+            self.env.std_type_name_defining_id_qid(),
+            self.env.std_type_name_original_id_qid(),
+        ];
+        if !type_name_fns
+            .into_iter()
+            .flatten()
+            .any(|id| id == fun_env.get_qualified_id())
+        {
+            return;
+        }
+
+        let empty = &BTreeSet::new();
+        for type_inst in mono_info
+            .funs
+            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+            .unwrap_or(empty)
+        {
+            emitln!(
+                self.writer,
+                "function {}() returns ({});",
+                boogie_function_name(fun_env, type_inst, FunctionTranslationStyle::Default),
+                fun_env
+                    .get_return_types()
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, ty)| {
+                        let ty = ty.instantiate(type_inst);
+                        format!(
+                            "$ret{}: {}",
+                            idx,
+                            boogie_type(self.env, ty.skip_reference())
+                        )
+                    })
+                    .join(", "),
+            );
+            emitln!(self.writer);
+        }
+    }
+
+    // Generate object::borrow_uid function
+    fn translate_object_borrow_uid(&self, suffix: &str, obj_name: &str) {
+        emitln!(
+            self.writer,
+            "function {{:inline}} $2_object_borrow_uid'{}'(obj: {}): $2_object_UID {{",
+            suffix,
+            obj_name,
+        );
+        self.writer.indent();
+        emitln!(self.writer, "obj->$id");
+        self.writer.unindent();
+        emitln!(self.writer, "}");
     }
 
     pub fn translate(&mut self) {
@@ -288,7 +412,41 @@ impl<'env> BoogieTranslator<'env> {
             );
         }
 
+        // Add per-spec ignore_aborts Boogie variables, only for specs
+        // that are actually referenced by some asserts_of declaration.
+        for spec_qid in self.targets.ignore_aborts() {
+            if self.has_asserts_of_ref(spec_qid) {
+                let spec_env = env.get_function(*spec_qid);
+                let var_name = Self::asserts_of_var_name(&spec_env);
+                emitln!(writer, "var {}: bool;", var_name);
+            }
+        }
+
         // Add given type declarations for type parameters.
+        // Collect type param indices that appear in UID's dynamic field entries.
+        // These cannot be declared as datatypes containing UID (would create a cycle).
+        let uid_df_type_params: BTreeSet<u16> = env
+            .uid_qid()
+            .map(|uid_qid| {
+                let uid_type = Type::Datatype(uid_qid.module_id, uid_qid.id, vec![]);
+                let df_info = dynamic_field_analysis::get_env_info(env);
+                let mut params = BTreeSet::new();
+                for (name, value) in df_info.dynamic_field_names_values(&uid_type) {
+                    name.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                    value.visit(&mut |t| {
+                        if let Type::TypeParameter(idx) = t {
+                            params.insert(*idx);
+                        }
+                    });
+                }
+                params
+            })
+            .unwrap_or_default();
+
         emitln!(writer, "\n\n// Given Types for Type Parameters\n");
         for idx in &mono_info.type_params {
             let param_type = boogie_type_param(env, *idx);
@@ -298,25 +456,15 @@ impl<'env> BoogieTranslator<'env> {
                 .find_datatype_by_tag(&StructTag::from_str("0x2::object::UID").unwrap())
                 .and_then(|uid_qid| mono_info.structs.get(&uid_qid))
                 .is_some();
-            if is_uid {
+            if is_uid && !uid_df_type_params.contains(idx) {
                 // Sui-specific to allow "using" unresolved type params as Sui objects in Boogie
-                // (otherwise Boogie compilation errors may occur)
+                // (otherwise Boogie compilation errors may occur).
+                // Skip if this type param appears in UID's dynamic fields to avoid circularity.
                 emitln!(writer, "datatype {} {{", param_type);
                 emitln!(writer, "    {}($id: $2_object_UID)", param_type);
                 emitln!(writer, "}");
 
-                // Generate object::borrow_uid function for type parameter with uid field
-                let param_object_borrow_uid_fun_name = format!("$2_object_borrow_uid'{}'", suffix);
-                emitln!(
-                    writer,
-                    "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
-                    param_object_borrow_uid_fun_name,
-                    param_type
-                );
-                writer.indent();
-                emitln!(writer, "res := obj->$id;");
-                writer.unindent();
-                emitln!(writer, "}");
+                self.translate_object_borrow_uid(&suffix, &param_type);
             } else {
                 emitln!(writer, "type {};", param_type);
             }
@@ -379,6 +527,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &struct_env.get_qualified_id(),
+                            type_inst,
                         ),
                     }
                     .translate();
@@ -403,6 +552,7 @@ impl<'env> BoogieTranslator<'env> {
                             self.env,
                             self.targets,
                             &enum_env.get_qualified_id(),
+                            type_inst,
                         ),
                     }
                     .translate();
@@ -411,10 +561,45 @@ impl<'env> BoogieTranslator<'env> {
 
             for ref fun_env in module_env.get_functions() {
                 if fun_env.is_native() || intrinsic_fun_ids.contains(&fun_env.get_qualified_id()) {
+                    if self.targets.is_uninterpreted(&fun_env.get_qualified_id()) {
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
+                    }
+                    self.emit_type_name_functions(fun_env, &mono_info);
                     continue;
                 }
 
                 self.translate_function_style(fun_env, FunctionTranslationStyle::Pure);
+
+                // translate_function_style(Pure) only emits $pure declarations
+                // for functions that are "inlined" per verification analysis.
+                // For pure functions that aren't inlined (e.g., from dependency
+                // packages), call sites still use type-instantiated $pure names.
+                // Emit bodyless $pure declarations so Boogie can resolve them.
+                if self.targets.is_pure_fun(&fun_env.get_qualified_id())
+                    || self.targets.is_pure_callee(&fun_env.get_qualified_id())
+                {
+                    let has_baseline = self.targets.has_target(fun_env, &FunctionVariant::Baseline);
+                    let is_inlined = has_baseline
+                        && verification_analysis::get_info(
+                            &self.targets.get_target(fun_env, &FunctionVariant::Baseline),
+                        )
+                        .inlined;
+                    if !is_inlined {
+                        let type_insts = mono_info
+                            .funs
+                            .get(&(fun_env.get_qualified_id(), FunctionVariant::Baseline))
+                            .unwrap_or(empty);
+                        for type_inst in type_insts {
+                            self.emit_uninterpreted_native_pure(fun_env, type_inst);
+                        }
+                    }
+                }
 
                 if self.targets.is_axiom_fun(&fun_env.get_qualified_id()) {
                     self.generate_axiom_function(fun_env);
@@ -559,7 +744,7 @@ impl<'env> BoogieTranslator<'env> {
                     &FunctionVariant::Verification(VerificationFlavor::Regular),
                 );
                 let do_verify = match self.asserts_mode {
-                    AssertsMode::Check => !self
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => !self
                         .targets
                         .ignore_aborts()
                         .contains(&fun_env.get_qualified_id()),
@@ -598,6 +783,9 @@ impl<'env> BoogieTranslator<'env> {
 
         match self.asserts_mode {
             AssertsMode::Check => {
+                if style == FunctionTranslationStyle::SpecNoAbortCheck {
+                    return;
+                }
                 if style.is_asserts_style() {
                     return;
                 }
@@ -634,6 +822,16 @@ impl<'env> BoogieTranslator<'env> {
                         .iter()
                         .any(|f| *f == self.env.asserts_qid())
                 {
+                    return;
+                }
+            }
+            AssertsMode::SpecNoAbortCheck => {
+                if FunctionTranslationStyle::Default == style
+                    && self.targets.is_verified_spec(&fun_env.get_qualified_id())
+                {
+                    return;
+                }
+                if style.is_asserts_style() {
                     return;
                 }
             }
@@ -904,15 +1102,25 @@ impl<'env> BoogieTranslator<'env> {
                             .update_abort_action(|_| None),
                     ),
                 },
-                FunctionTranslationStyle::Pure => {
-                    // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
-                    let mut bc = bc.update_abort_action(|_| None);
-                    if self.targets.prover_options().bv_int_encoding {
-                        // only in non-bitvector mode
-                        bc = bc.replace_cast_with_assign();
+                FunctionTranslationStyle::Pure => match bc {
+                    Call(_, _, op, _, _)
+                        if matches!(
+                            op,
+                            Operation::TraceLocal { .. }
+                                | Operation::TraceReturn { .. }
+                                | Operation::TraceMessage { .. }
+                                | Operation::TraceGhost { .. }
+                        ) => {} // Skip trace operations - they have no place in pure function translation
+                    _ => {
+                        // workaround: for pure functions, we just remove all casts via replacing with assigns (only in non-bitvector mode)
+                        let mut bc = bc.update_abort_action(|_| None);
+                        if self.targets.prover_options().bv_int_encoding {
+                            // only in non-bitvector mode
+                            bc = bc.replace_cast_with_assign();
+                        }
+                        builder.emit(bc);
                     }
-                    builder.emit(bc);
-                }
+                },
             }
         }
 
@@ -941,22 +1149,24 @@ impl<'env> BoogieTranslator<'env> {
         }
 
         let mut data = builder.data;
-        let reach_def = ReachingDefProcessor::new();
-        let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
         let mut dummy_targets = self.targets.new_dummy();
-        data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
-        data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
+        if data.code.len() > 0 {
+            let reach_def = ReachingDefProcessor::new();
+            data = reach_def.process(&mut dummy_targets, builder.fun_env, data, None);
+        }
+        if data.code.len() > 0 {
+            let live_vars = LiveVarAnalysisProcessor::new_with_options(false, false);
+            data = live_vars.process(&mut dummy_targets, builder.fun_env, data, None);
+        }
 
         let fun_target = FunctionTarget::new(builder.fun_env, &data);
         if matches!(style, FunctionTranslationStyle::Pure) {
-            if !self
-                .targets
-                .is_pure_fun(&fun_target.func_env.get_qualified_id())
-                && !self
-                    .targets
-                    .is_axiom_fun(&fun_target.func_env.get_qualified_id())
+            let qid = fun_target.func_env.get_qualified_id();
+            if !self.targets.is_pure_fun(&qid)
+                && !self.targets.is_pure_callee(&qid)
+                && !self.targets.is_axiom_fun(&qid)
             {
-                return; // Only emit if #[ext(pure)] is present
+                return; // Only emit if pure, pure callee, or axiom
             }
         }
         match style {
@@ -1043,15 +1253,27 @@ impl<'env> BoogieTranslator<'env> {
 
         let target = self.targets.get_target(fun_env, &variant);
 
+        let env = fun_env.module_env.env;
+        let ensures_function = Operation::apply_fun_qid(&env.ensures_qid(), vec![]);
+        let requires_function = Operation::apply_fun_qid(&env.requires_qid(), vec![]);
+        let asserts_function = Operation::apply_fun_qid(&env.asserts_qid(), vec![]);
+        let ensures_asserts_to_requires_subst = BTreeMap::from_iter(vec![
+            (ensures_function, requires_function.clone()),
+            (asserts_function, requires_function),
+        ]);
+
         let mut builder = FunctionDataBuilder::new(target.func_env, target.data.clone());
         let code = std::mem::take(&mut builder.data.code);
 
         for bc in code.into_iter() {
             match bc {
-                _ => builder.emit(bc.update_abort_action(|aa| match aa {
-                    Some(AbortAction::Check) => Some(AbortAction::Check),
-                    None => None,
-                })),
+                _ => builder.emit(
+                    bc.substitute_operations(&ensures_asserts_to_requires_subst)
+                        .update_abort_action(|aa| match aa {
+                            Some(AbortAction::Check) => Some(AbortAction::Check),
+                            None => None,
+                        }),
+                ),
             }
         }
 
@@ -1276,10 +1498,16 @@ impl<'env> StructTranslator<'env> {
             )
         });
         let dynamic_fields = dynamic_field_names_values.iter().map(|(name, value)| {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             format!(
                 "{}: (Table int {})",
                 boogie_dynamic_field_sel(self.parent.env, name, value),
-                boogie_type(env, value),
+                value_type,
             )
         });
         let all_fields = fields.chain(dynamic_fields).join(", ");
@@ -1326,12 +1554,18 @@ impl<'env> StructTranslator<'env> {
             );
         }
         for (pos, (name, value)) in dynamic_field_names_values.iter().enumerate() {
+            let value_type = boogie_type(env, value);
+            let value_type = if value_type.contains(' ') {
+                format!("({})", value_type)
+            } else {
+                value_type
+            };
             self.emit_function(
                 &format!(
                     "{}(s: {}, x: (Table int {})): {}",
                     boogie_dynamic_field_update(struct_env, self.type_inst, name, value),
                     struct_name,
-                    boogie_type(env, value),
+                    value_type,
                     struct_name
                 ),
                 || {
@@ -1491,27 +1725,17 @@ impl<'env> StructTranslator<'env> {
             return;
         }
 
-        let object_borrow_uid_fun_name = format!(
-            "$2_object_borrow_uid'{}'",
-            boogie_type_suffix(
+        self.parent.translate_object_borrow_uid(
+            &boogie_type_suffix(
                 self.parent.env,
                 &Type::Datatype(
                     self.struct_env.module_env.get_id(),
                     self.struct_env.get_id(),
-                    self.type_inst.to_vec()
-                )
-            )
+                    self.type_inst.to_vec(),
+                ),
+            ),
+            &boogie_struct_name(self.struct_env, self.type_inst),
         );
-        emitln!(
-            self.parent.writer,
-            "procedure {{:inline 1}} {}(obj: {}) returns (res: $2_object_UID) {{",
-            object_borrow_uid_fun_name,
-            boogie_struct_name(self.struct_env, self.type_inst),
-        );
-        self.parent.writer.indent();
-        emitln!(self.parent.writer, "res := obj->$id;");
-        self.parent.writer.unindent();
-        emitln!(self.parent.writer, "}");
     }
 
     fn translate_opaque(&self) {
@@ -2117,13 +2341,22 @@ impl<'env> FunctionTranslator<'env> {
         let writer = self.parent.writer;
         let options = self.parent.options;
         let fun_target = self.fun_target;
-        let (args, prerets) = self.generate_function_args_and_returns(false);
-
         let emit_pure_in_place = self.style == FunctionTranslationStyle::Pure;
+        let needs_pure_datatype =
+            emit_pure_in_place && self.fun_target.func_env.get_return_count() > 1;
+        let (args, prerets) = self.generate_function_args_and_returns(needs_pure_datatype);
 
         let attribs = match &fun_target.data.variant {
             FunctionVariant::Baseline => {
-                if emit_pure_in_place {
+                if emit_pure_in_place
+                    && self
+                        .parent
+                        .targets
+                        .is_uninterpreted(&self.fun_target.func_env.get_qualified_id())
+                {
+                    // Uninterpreted functions have no body, so no inline attribute
+                    "".to_string()
+                } else if emit_pure_in_place {
                     "{:inline} ".to_string()
                 } else {
                     "{:inline 1} ".to_string()
@@ -2180,6 +2413,16 @@ impl<'env> FunctionTranslator<'env> {
             emitln!(writer, "");
         }
 
+        // For SpecNoAbortCheck style in func_abort_check_only mode, we may need to declare the
+        // opaque return datatype if the function returns multiple values (or has mutable references).
+        if self.style == FunctionTranslationStyle::SpecNoAbortCheck
+            && self.should_use_temp_datatypes()
+            && options.func_abort_check_only
+        {
+            // Trigger datatype declaration by calling generate_function_args_and_returns with true
+            let _ = self.generate_function_args_and_returns(true);
+        }
+
         let prefix = if emit_pure_in_place {
             "function"
         } else {
@@ -2197,10 +2440,12 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn wrap_return_datatype_name(&self) -> String {
-        format!(
-            "{}_opaque_return_type",
-            self.function_variant_name(FunctionTranslationStyle::Opaque)
-        )
+        let style = if self.style == FunctionTranslationStyle::Pure {
+            FunctionTranslationStyle::Pure
+        } else {
+            FunctionTranslationStyle::Opaque
+        };
+        format!("{}_opaque_return_type", self.function_variant_name(style))
     }
 
     fn wrap_return_arg_in_tuple_datatype(&self, args: String) -> String {
@@ -2336,6 +2581,18 @@ impl<'env> FunctionTranslator<'env> {
         // Be sure to set back location to the whole function definition as a default.
         writer.set_location(&fun_target.get_loc().at_start());
 
+        // For pure functions marked as uninterpreted, emit uninterpreted (no body)
+        if emit_pure_in_place {
+            if self
+                .parent
+                .targets
+                .is_uninterpreted(&self.fun_target.func_env.get_qualified_id())
+            {
+                emitln!(writer, ";");
+                return;
+            }
+        }
+
         emitln!(writer, "{");
         writer.indent();
 
@@ -2418,7 +2675,74 @@ impl<'env> FunctionTranslator<'env> {
                 );
             }
 
-            self.create_quantifiers_temp_vars();
+            // declare save variables for mutable references in procedure-style opaque calls
+            {
+                let id = self.fun_target.func_env.get_qualified_id();
+                for bc in fun_target.get_bytecode() {
+                    if let Bytecode::Call(
+                        _,
+                        _,
+                        Operation::Function(callee_mid, callee_fid, _),
+                        srcs,
+                        _,
+                    ) = bc
+                    {
+                        let callee_qid = callee_mid.qualified(*callee_fid);
+                        let is_spec_call =
+                            self.parent.targets.get_fun_by_spec(&id) == Some(&callee_qid);
+                        let use_impl = self.style == FunctionTranslationStyle::Opaque
+                            && self.parent.targets.omits_opaque(&id);
+                        if is_spec_call && !use_impl && !self.should_use_opaque_as_function(false) {
+                            for &src in srcs.iter() {
+                                if self.get_local_type(src).is_mutable_reference() {
+                                    let ty = self.get_local_type(src);
+                                    let num_oper = global_state
+                                        .get_temp_index_oper(mid, fid, src, baseline_flag)
+                                        .unwrap_or(&Bottom);
+                                    emitln!(
+                                        writer,
+                                        "var $mut_save_{}: {};",
+                                        src,
+                                        self.boogie_type_for_fun(env, &ty, num_oper)
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Declare temp variables for calls to multi-return pure functions
+            {
+                let mut seen = BTreeSet::new();
+                for bc in fun_target.get_bytecode() {
+                    if let Bytecode::Call(_, _, Operation::Function(mid, fid, inst), _, _) = bc {
+                        let qid = mid.qualified(*fid);
+                        if self.parent.targets.is_pure_fun(&qid)
+                            || self.parent.targets.is_pure_callee(&qid)
+                        {
+                            let callee_env = env.get_function(qid);
+                            if callee_env.get_return_count() > 1 {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                if seen.insert(callee_name.clone()) {
+                                    let dt_name = format!("{}_opaque_return_type", callee_name);
+                                    emitln!(
+                                        writer,
+                                        "var $temp_pure_res_{}: {};",
+                                        callee_name,
+                                        dt_name,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Generate declarations for modifies condition.
             let mut mem_inst_seen = BTreeSet::new();
@@ -2513,12 +2837,14 @@ impl<'env> FunctionTranslator<'env> {
         if emit_pure_in_place {
             self.generate_pure_expression(code);
         } else {
-            // Use CFG recovery to generate structured if-then-else statements
-            match control_flow_reconstruction::reconstruct_control_flow(code) {
-                Some(block) => self.translate_structured_block(&mut last_tracked_loc, &block),
-                None => {
-                    for bytecode in code {
-                        self.translate_bytecode(&mut last_tracked_loc, bytecode);
+            if code.len() > 0 {
+                // Use CFG recovery to generate structured if-then-else statements
+                match control_flow_reconstruction::reconstruct_control_flow(code) {
+                    Some(block) => self.translate_structured_block(&mut last_tracked_loc, &block),
+                    None => {
+                        for bytecode in code {
+                            self.translate_bytecode(&mut last_tracked_loc, bytecode);
+                        }
                     }
                 }
             }
@@ -2605,26 +2931,47 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
-    fn create_quantifiers_temp_vars(&self) {
-        let mut has_find = false;
-        let mut has_quantifier_temp_vec = false;
-        for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
-                if qt.is_find_or_find_index() {
-                    has_find = true;
-                }
-                if qt.requires_sum() || qt.requires_filter_indices() {
-                    has_quantifier_temp_vec = true;
+    /// Check if the current spec's target function is referenced by any asserts_of declaration.
+    fn has_asserts_of_ref(&self) -> bool {
+        self.parent
+            .has_asserts_of_ref(&self.fun_target.func_env.get_qualified_id())
+    }
+
+    /// Resolve an `asserts_of(b"name")` call to its corresponding Boogie variable.
+    /// Scans the function bytecodes to find the Load constant that feeds the source operand.
+    /// All validation is done in spec_well_formed_analysis; this panics on invalid input.
+    fn resolve_asserts_of_to_boogie_var(
+        &self,
+        srcs: &[TempIndex],
+        fun_target: &FunctionTarget,
+    ) -> String {
+        use move_stackless_bytecode::stackless_bytecode::Constant;
+
+        // Find the byte string constant loaded into srcs[0]
+        let src_temp = srcs[0];
+        let mut name_opt = None;
+        for bc in fun_target.get_bytecode() {
+            if let Bytecode::Load(_, dest, Constant::ByteArray(bytes)) = bc {
+                if *dest == src_temp {
+                    name_opt = Some(String::from_utf8_lossy(bytes).to_string());
+                    break;
                 }
             }
         }
-        if has_find {
-            emitln!(self.parent.writer, "var $find_i: int;");
-            emitln!(self.parent.writer, "var $find_exists: bool;");
-        }
-        if has_quantifier_temp_vec {
-            emitln!(self.parent.writer, "var $quantifier_temp_vec: Vec int;");
-        }
+
+        let name = name_opt.expect("asserts_of() argument must be a byte string literal");
+        let target_func_qid = self
+            .parent
+            .env
+            .resolve_function(&name, &fun_target.func_env.module_env)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function not found", name));
+        let spec_qid = self
+            .parent
+            .targets
+            .get_spec_by_fun(&target_func_qid)
+            .unwrap_or_else(|| panic!("asserts_of(\"{}\"): function has no spec", name));
+        let spec_env = self.parent.env.get_function(*spec_qid);
+        BoogieTranslator::asserts_of_var_name(&spec_env)
     }
 
     fn should_use_temp_datatypes(&self) -> bool {
@@ -2658,7 +3005,8 @@ impl<'env> FunctionTranslator<'env> {
     }
 
     fn can_callee_be_function(&self, mid: &ModuleId, fid: &FunId) -> bool {
-        self.parent.targets.is_pure_fun(&mid.qualified(*fid))
+        let qid = mid.qualified(*fid);
+        self.parent.targets.is_pure_fun(&qid) || self.parent.targets.is_pure_callee(&qid)
     }
 
     fn format_constant(&self, constant: &Constant) -> String {
@@ -2698,6 +3046,7 @@ impl<'env> FunctionTranslator<'env> {
         // Collect straightline assignments and operations
         let mut bindings = Vec::new();
         let mut final_return_temp = None;
+        let mut final_return_expr: Option<String> = None;
 
         // Small helper for infix mapping (arity-checked)
         let op_symbol = |op: &Operation| -> Option<(&'static str, usize)> {
@@ -2711,13 +3060,12 @@ impl<'env> FunctionTranslator<'env> {
                 Le => Some(("<=", 2)),
                 Gt => Some((">", 2)),
                 Ge => Some((">=", 2)),
-                Eq => Some(("==", 2)),
-                Neq => Some(("!=", 2)),
+                // Eq and Neq are handled separately to use $IsEqual functions
                 And => Some(("&&", 2)),
                 Or => Some(("||", 2)),
                 Not => Some(("!", 1)),
-                BitAnd => Some(("$And", 2)),
-                BitOr => Some(("$Or", 2)),
+                BitAnd => Some(("$andInt", 2)),
+                BitOr => Some(("$orInt", 2)),
                 Shl => Some(("$shl", 2)),
                 Shr => Some(("$shr", 2)),
                 _ => None,
@@ -2761,7 +3109,12 @@ impl<'env> FunctionTranslator<'env> {
                                 let fun_name = boogie_function_name(
                                     &callee_env,
                                     inst,
-                                    if native_fn {
+                                    if native_fn
+                                        && !self
+                                            .parent
+                                            .targets
+                                            .is_uninterpreted(&mid.qualified(*fid))
+                                    {
                                         FunctionTranslationStyle::Default
                                     } else {
                                         FunctionTranslationStyle::Pure
@@ -2823,6 +3176,41 @@ impl<'env> FunctionTranslator<'env> {
                             let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
 
                             format!("{}({})", boogie_struct_name(&struct_env, inst), all_args)
+                        } else if matches!(op, Operation::Eq | Operation::Neq) {
+                            // Handle equality/inequality using $IsEqual functions to support
+                            // non-extensional types like vectors and tables
+                            if let [op1, op2] = srcs.as_slice() {
+                                let global_state = &self
+                                    .fun_target
+                                    .global_env()
+                                    .get_extension::<GlobalNumberOperationState>()
+                                    .expect("global number operation state");
+                                let num_oper = global_state
+                                    .get_temp_index_oper(
+                                        fun_target.func_env.module_env.get_id(),
+                                        fun_target.func_env.get_id(),
+                                        *op1,
+                                        fun_target.data.variant == FunctionVariant::Baseline,
+                                    )
+                                    .unwrap();
+                                let bv_flag = self.bv_flag(num_oper);
+                                let local_ty = self.get_local_type(*op1);
+                                let ty = local_ty.skip_reference();
+                                let eq_fun = boogie_equality_for_type(
+                                    fun_target.global_env(),
+                                    matches!(op, Operation::Eq),
+                                    ty,
+                                    bv_flag,
+                                );
+                                format!("{}({}, {})", eq_fun, fmt_temp(*op1), fmt_temp(*op2))
+                            } else {
+                                unreachable!(
+                                    "unexpected {} sources for operation {:?} in function {}",
+                                    srcs.len(),
+                                    op,
+                                    fun_target.func_env.get_full_name_str()
+                                );
+                            }
                         } else if let Some((sym, arity)) = op_symbol(op) {
                             if srcs.len() == arity {
                                 // Bitwise operations and shifts are functions, not operators
@@ -2834,22 +3222,11 @@ impl<'env> FunctionTranslator<'env> {
                                         | Operation::Shr
                                 );
                                 if is_func_op {
-                                    let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
-                                    // For bitwise operations, we need to add type suffix
-                                    if matches!(op, Operation::BitAnd | Operation::BitOr) {
-                                        let type_suffix = match &fun_target.get_local_type(*dest) {
-                                            Type::Primitive(PrimitiveType::U8) => "'Bv8'",
-                                            Type::Primitive(PrimitiveType::U16) => "'Bv16'",
-                                            Type::Primitive(PrimitiveType::U32) => "'Bv32'",
-                                            Type::Primitive(PrimitiveType::U64) => "'Bv64'",
-                                            Type::Primitive(PrimitiveType::U128) => "'Bv128'",
-                                            Type::Primitive(PrimitiveType::U256) => "'Bv256'",
-                                            _ => "",
-                                        };
-                                        format!("{}{}({})", sym, type_suffix, args)
-                                    } else {
-                                        format!("{}({})", sym, args)
-                                    }
+                                    format!(
+                                        "{}({})",
+                                        sym,
+                                        srcs.iter().map(|s| fmt_temp(*s)).join(", ")
+                                    )
                                 } else if arity == 1 {
                                     format!("({}{})", sym, fmt_temp(srcs[0]))
                                 } else {
@@ -2883,6 +3260,11 @@ impl<'env> FunctionTranslator<'env> {
                 Ret(_, srcs) => {
                     if let [src] = srcs.as_slice() {
                         final_return_temp = Some(*src);
+                    } else if srcs.len() > 1 {
+                        // Multi-return: wrap in tuple datatype
+                        let name = self.wrap_return_datatype_name();
+                        let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                        final_return_expr = Some(format!("{}({})", name, args));
                     }
                 }
                 Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
@@ -2900,6 +3282,8 @@ impl<'env> FunctionTranslator<'env> {
             // No bindings, just return the value
             if let Some(return_temp) = final_return_temp {
                 emitln!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emitln!(writer, "{}", expr);
             } else {
                 panic!("expected Some return value");
             }
@@ -2912,6 +3296,8 @@ impl<'env> FunctionTranslator<'env> {
             // Emit return value
             if let Some(return_temp) = final_return_temp {
                 emit!(writer, "{}", fmt_temp(return_temp));
+            } else if let Some(ref expr) = final_return_expr {
+                emit!(writer, "{}", expr);
             } else if let Some((last_dest, _)) = bindings.last() {
                 emit!(writer, "$t{}", last_dest);
             } else {
@@ -3102,34 +3488,32 @@ impl<'env> FunctionTranslator<'env> {
                     .parent
                     .get_quantifier_helper_name(QuantifierHelperType::RangeCount, fun_name);
                 format!(
-                    "$0_vec_$sum'u64'({}({}, {}{}), 0, {} - {})",
+                    "{}({}, {}{})",
                     count_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     extra_args,
-                    fmt_temp(srcs[1]),
-                    fmt_temp(srcs[0]),
                 )
             }
             QuantifierType::Count => {
-                let find_indices_quant_name = self
+                let count_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
+                    .get_quantifier_helper_name(QuantifierHelperType::Count, fun_name);
                 format!(
-                    "LenVec({}({}, 0, LenVec({}){}))",
-                    find_indices_quant_name,
+                    "{}({}, 0, LenVec({}){})",
+                    count_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[0]),
                     extra_args,
                 )
             }
             QuantifierType::CountRange => {
-                let find_indices_quant_name = self
+                let count_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::FindIndices, fun_name);
+                    .get_quantifier_helper_name(QuantifierHelperType::Count, fun_name);
                 format!(
-                    "LenVec({}({}, {}, {}{}))",
-                    find_indices_quant_name,
+                    "{}({}, {}, {}{})",
+                    count_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
@@ -3137,22 +3521,24 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::SumMap => {
-                let map_quant_name = self
+                let sum_map_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
                 format!(
-                    "$0_vec_$sum'u64'({0}({1}, 0, LenVec({1}){2}), 0, LenVec({1}))",
-                    map_quant_name,
+                    "{}({}, 0, LenVec({}){})",
+                    sum_map_quant_name,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[0]),
                     extra_args,
                 )
             }
             QuantifierType::SumMapRange => {
-                let map_quant_name = self
+                let sum_map_quant_name = self
                     .parent
-                    .get_quantifier_helper_name(QuantifierHelperType::Map, fun_name);
-                format!("(var $temp_map := {}({}, {}, {}{}); $0_vec_$sum'u64'($temp_map, 0, LenVec($temp_map)))",
-                    map_quant_name,
+                    .get_quantifier_helper_name(QuantifierHelperType::SumMap, fun_name);
+                format!(
+                    "{}({}, {}, {}{})",
+                    sum_map_quant_name,
                     fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
@@ -3526,7 +3912,7 @@ impl<'env> FunctionTranslator<'env> {
             }
             Ret(_, rets) => {
                 match self.parent.asserts_mode {
-                    AssertsMode::Check => {
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                         if FunctionTranslationStyle::Opaque == self.style
                             && !self
                                 .parent
@@ -3538,15 +3924,44 @@ impl<'env> FunctionTranslator<'env> {
                                 .ignore_aborts()
                                 .contains(&self.fun_target.func_env.get_qualified_id())
                         {
-                            emitln!(
-                                self.writer(),
-                                "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
-                                self.loc_str(&self.fun_target.get_loc()),
-                                self.fun_target.func_env.get_full_name_str()
-                            );
+                            if self.has_asserts_of_ref() {
+                                let var_name = BoogieTranslator::asserts_of_var_name(
+                                    &self.fun_target.func_env,
+                                );
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} {};",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str(),
+                                    var_name,
+                                );
+                            } else {
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:msg \"assert_failed{}: {} ignore_aborts\"}} false;",
+                                    self.loc_str(&self.fun_target.get_loc()),
+                                    self.fun_target.func_env.get_full_name_str()
+                                );
+                            }
                         }
                     }
                     AssertsMode::Assume => {
+                        if FunctionTranslationStyle::Opaque == self.style
+                            && !self
+                                .parent
+                                .targets
+                                .omits_opaque(&self.fun_target.func_env.get_qualified_id())
+                            && self
+                                .parent
+                                .targets
+                                .ignore_aborts()
+                                .contains(&self.fun_target.func_env.get_qualified_id())
+                            && self.has_asserts_of_ref()
+                        {
+                            let var_name =
+                                BoogieTranslator::asserts_of_var_name(&self.fun_target.func_env);
+                            emitln!(self.writer(), "assume {};", var_name);
+                        }
                         if !self
                             .parent
                             .targets
@@ -3768,7 +4183,7 @@ impl<'env> FunctionTranslator<'env> {
                         let mut args_str = srcs.iter().cloned().map(str_local).join(", ");
 
                         // Check if callee is marked as pure
-                        let callee_is_pure = self.can_callee_be_function(mid, fid);
+                        let callee_is_pure = self.parent.targets.is_pure_fun(&mid.qualified(*fid));
 
                         if is_spec_call && !use_impl && self.should_use_opaque_as_function(false) {
                             use_func = true;
@@ -3780,16 +4195,31 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         // Check if callee is marked as pure - if so, use as Boogie function (not procedure)
-                        if callee_is_pure
-                            && !use_func
-                            && (self.style == FunctionTranslationStyle::Default
-                                || self.style == FunctionTranslationStyle::Pure)
-                        {
+                        if callee_is_pure {
                             use_func = true;
+                            if callee_env.get_return_count() > 1 {
+                                use_func_datatypes = true;
+                            }
                         }
 
+                        let func_datatypes_var = if use_func_datatypes {
+                            if callee_is_pure {
+                                let inst = &self.inst_slice(inst);
+                                let callee_name = boogie_function_name(
+                                    &callee_env,
+                                    inst,
+                                    FunctionTranslationStyle::Pure,
+                                );
+                                format!("$temp_pure_res_{}", callee_name)
+                            } else {
+                                "$temp_opaque_res_var".to_string()
+                            }
+                        } else {
+                            String::new()
+                        };
+
                         let dest_str = if use_func_datatypes {
-                            "$temp_opaque_res_var".to_string()
+                            func_datatypes_var.clone()
                         } else {
                             dests
                                 .iter()
@@ -3833,12 +4263,28 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.ensures_qid() {
+                            let secondary = if let Some((sec_loc, sec_msg)) =
+                                fun_target.get_secondary_label(attr_id)
+                            {
+                                format!(" @{{{}:{}}}", self.loc_str(sec_loc), sec_msg)
+                            } else {
+                                String::new()
+                            };
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold\"}} {};",
+                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
                                 self.loc_str(&self.writer().get_loc()),
+                                secondary,
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.asserts_of_qid() {
+                            // asserts_of(b"name") translates to the per-spec Boogie variable.
+                            // Resolve the byte string argument to find the target function.
+                            let var_expr = self.resolve_asserts_of_to_boogie_var(srcs, fun_target);
+                            emitln!(self.writer(), "{} := {};", dest_str, var_expr);
                             processed = true;
                         }
 
@@ -3908,6 +4354,11 @@ impl<'env> FunctionTranslator<'env> {
                                 FunctionTranslationStyle::Default,
                             );
 
+                            // Native functions from native_fn_ids() use their base Boogie function name
+                            // (no $pure/$impl suffix) as they have hardcoded definitions in prelude
+                            let is_native_fn =
+                                env.should_be_used_as_func(&callee_env.get_qualified_id());
+
                             if is_spec_call {
                                 if self.style == FunctionTranslationStyle::Default
                                     && self.fun_target.data.variant
@@ -3916,13 +4367,12 @@ impl<'env> FunctionTranslator<'env> {
                                         )
                                 {
                                     // Check if callee has $pure variant available
-                                    let callee_has_pure =
-                                        self.parent.targets.is_pure_fun(&QualifiedId {
-                                            module_id: *mid,
-                                            id: *fid,
-                                        });
-
-                                    if callee_has_pure {
+                                    if is_native_fn {
+                                        // Native functions use base name (no suffix)
+                                    } else if self.parent.targets.is_pure_fun(&QualifiedId {
+                                        module_id: *mid,
+                                        id: *fid,
+                                    }) {
                                         fun_name = format!("{}{}", fun_name, "$pure");
                                     } else {
                                         // Fallback to $impl if no $pure available
@@ -3931,12 +4381,34 @@ impl<'env> FunctionTranslator<'env> {
                                 } else if self.style == FunctionTranslationStyle::SpecNoAbortCheck {
                                     fun_name = format!("{}{}", fun_name, "$opaque");
                                 } else if self.style == FunctionTranslationStyle::Opaque {
-                                    let suffix = if use_impl { "$impl" } else { "$opaque" };
-                                    fun_name = format!("{}{}", fun_name, suffix);
+                                    if !is_native_fn {
+                                        let suffix = if use_impl {
+                                            if self.parent.targets.is_pure_fun(&QualifiedId {
+                                                module_id: *mid,
+                                                id: *fid,
+                                            }) {
+                                                "$pure"
+                                            } else {
+                                                "$impl"
+                                            }
+                                        } else {
+                                            "$opaque"
+                                        };
+                                        fun_name = format!("{}{}", fun_name, suffix);
+                                    }
                                 }
-                            } else if !is_spec_call && use_func && callee_is_pure {
+                            } else if !is_spec_call && use_func && callee_is_pure && !is_native_fn {
                                 // For non-spec calls using function syntax to pure functions,
                                 // add $pure suffix (regardless of current style)
+                                // But not for native functions which use their base name
+                                fun_name = format!("{}{}", fun_name, "$pure");
+                            } else if is_native_fn
+                                && self
+                                    .parent
+                                    .targets
+                                    .is_uninterpreted(&callee_env.get_qualified_id())
+                            {
+                                // Uninterpreted native functions use $pure suffix
                                 fun_name = format!("{}{}", fun_name, "$pure");
                             };
 
@@ -4062,15 +4534,70 @@ impl<'env> FunctionTranslator<'env> {
                                 }
 
                                 let call_line = if use_func { "" } else { "call " };
+                                let has_mut_src = srcs
+                                    .iter()
+                                    .any(|&idx| self.get_local_type(idx).is_mutable_reference());
 
-                                emitln!(
-                                    self.writer(),
-                                    "{}{} := {}({});",
-                                    call_line,
-                                    dest_str,
-                                    fun_name,
-                                    args_str
-                                );
+                                // save mutable references before procedure-style opaque spec call
+                                if is_spec_call
+                                    && !use_impl
+                                    && !self.should_use_opaque_as_function(false)
+                                {
+                                    for &src in srcs.iter() {
+                                        if self.get_local_type(src).is_mutable_reference() {
+                                            emitln!(
+                                                self.writer(),
+                                                "$mut_save_{} := {};",
+                                                src,
+                                                str_local(src)
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // preserve mutation path for function-style spec calls with mutable reference results
+                                if is_spec_call
+                                    && !use_impl
+                                    && use_func
+                                    && !use_func_datatypes
+                                    && has_mut_src
+                                {
+                                    emitln!(
+                                        self.writer(),
+                                        "{} := $UpdateMutation({}, $Dereference({}({})));",
+                                        dest_str,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                } else {
+                                    emitln!(
+                                        self.writer(),
+                                        "{}{} := {}({});",
+                                        call_line,
+                                        dest_str,
+                                        fun_name,
+                                        args_str
+                                    );
+                                }
+
+                                // restore mutation paths after procedure-style opaque spec call
+                                if is_spec_call
+                                    && !use_impl
+                                    && !self.should_use_opaque_as_function(false)
+                                {
+                                    for &src in srcs.iter() {
+                                        if self.get_local_type(src).is_mutable_reference() {
+                                            emitln!(
+                                                self.writer(),
+                                                "{} := $UpdateMutation($mut_save_{}, $Dereference({}));",
+                                                str_local(src),
+                                                src,
+                                                str_local(src)
+                                            );
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -4096,8 +4623,9 @@ impl<'env> FunctionTranslator<'env> {
                             dests.iter().enumerate().for_each(|(idx, val)| {
                                 emitln!(
                                     self.writer(),
-                                    "{} := $temp_opaque_res_var -> $ret{};",
+                                    "{} := {} -> $ret{};",
                                     str_local(*val),
+                                    func_datatypes_var,
                                     idx
                                 )
                             });
@@ -4107,11 +4635,34 @@ impl<'env> FunctionTranslator<'env> {
                                 .for_each(|(idx, val)| {
                                     emitln!(
                                         self.writer(),
-                                        "{} := $temp_opaque_res_var -> $ret{};",
+                                        "{} := $UpdateMutation({}, $Dereference({} -> $ret{}));",
                                         str_local(*val),
+                                        str_local(*val),
+                                        func_datatypes_var,
                                         dests.len() + idx
                                     )
                                 });
+                        }
+
+                        // For uninterpreted functions, assume return values are valid
+                        // since Z3 has no information about the return type constraints.
+                        if self
+                            .parent
+                            .targets
+                            .is_uninterpreted(&callee_env.get_qualified_id())
+                            || callee_is_pure
+                        {
+                            for &dest in dests.iter() {
+                                let ty = self.get_local_type(dest);
+                                if !ty.is_mutable_reference() {
+                                    emitln!(
+                                        self.writer(),
+                                        "assume $IsValid'{}'({});",
+                                        boogie_type_suffix(env, &ty),
+                                        str_local(dest)
+                                    );
+                                }
+                            }
                         }
 
                         // Clear the last track location after function call, as the call inserted
@@ -5051,448 +5602,26 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                     Quantifier(qt, qid, inst, li) => {
-                        let fun_env = self.parent.env.get_function(*qid);
+                        let qfun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
-                        let fun_name =
-                            boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
-
-                        let loc_type =
-                            if qt.vector_based() || matches!(qt, QuantifierType::RangeMap) {
-                                self.get_local_type(dests[0]).instantiate(inst)
-                            } else {
-                                fun_env.get_parameter_types()[0]
-                                    .skip_reference()
-                                    .instantiate(inst)
-                            };
-                        let suffix = boogie_type_suffix(env, &loc_type);
-
-                        let cr_args = |local_name: &str| {
-                            if !qt.vector_based() {
-                                srcs.iter()
-                                    .skip(if qt.range_based() { 2 } else { 0 })
-                                    .enumerate()
-                                    .map(|(index, vidx)| {
-                                        if index == *li {
-                                            local_name.to_string()
-                                        } else {
-                                            format!("$t{}", vidx)
-                                        }
-                                    })
-                                    .join(", ")
-                            } else {
-                                srcs.iter()
-                                    .skip(if qt.range_based() { 3 } else { 1 })
-                                    .enumerate()
-                                    .map(|(index, vidx)| {
-                                        if index == *li {
-                                            format!("ReadVec($t{}, {})", srcs[0], local_name)
-                                        } else {
-                                            format!("$t{}", vidx)
-                                        }
-                                    })
-                                    .join(", ")
-                            }
-                        };
-
-                        // srcs[0] is the source vector for vector-based quantifiers
-                        // srcs[1] and srcs[2] are the range bounds for range-based quantifiers [start, end)
-
-                        match qt {
-                            QuantifierType::Forall => {
-                                let b_type = boogie_type(env, &loc_type);
-                                emitln!(
-                                    self.writer(),
-                                    "$t{} := (forall x: {} :: $IsValid'{}'(x) ==> {}({}));",
-                                    dests[0],
-                                    b_type,
-                                    suffix,
-                                    fun_name,
-                                    cr_args("x")
-                                );
-                            }
-                            QuantifierType::Exists => {
-                                let b_type = boogie_type(env, &loc_type);
-                                emitln!(
-                                    self.writer(),
-                                    "$t{} := (exists x: {} :: $IsValid'{}'(x) && {}({}));",
-                                    dests[0],
-                                    b_type,
-                                    suffix,
-                                    fun_name,
-                                    cr_args("x")
-                                );
-                            }
-                            QuantifierType::Map => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($t{}) == LenVec($t{});",
-                                    dests[0],
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == {}({}));", srcs[0], dests[0], fun_name, cr_args("i"));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'{}'($t{});",
-                                    suffix,
-                                    dests[0]
-                                );
-                            }
-                            QuantifierType::MapRange => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(
-                                    self.writer(),
-                                    "assume $t{} <= $t{} ==> LenVec($t{}) == ($t{} - $t{});",
-                                    srcs[1],
-                                    srcs[2],
-                                    dests[0],
-                                    srcs[2],
-                                    srcs[1]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($t{}, i - $t{}) == {}({}));", srcs[1], srcs[2], dests[0], srcs[1], fun_name, cr_args("i"));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'{}'($t{});",
-                                    suffix,
-                                    dests[0]
-                                );
-                            }
-                            QuantifierType::RangeMap => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($t{}) == (if $t{} <= $t{} then $t{} - $t{} else 0);",
-                                    dests[0],
-                                    srcs[0],
-                                    srcs[1],
-                                    srcs[1],
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i: int :: InRangeVec($t{}, i) ==> ReadVec($t{}, i) == {}({}));", dests[0], dests[0], fun_name, cr_args(&format!("i + $t{}", srcs[0])));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'{}'($t{});",
-                                    suffix,
-                                    dests[0]
-                                );
-                            }
-                            QuantifierType::Any => {
-                                emitln!(self.writer(), "$t{} := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
-                            }
-                            QuantifierType::AnyRange => {
-                                emitln!(
-                                    self.writer(),
-                                    "$t{} := (exists i:int :: $t{} <= i && i < $t{} && {}({}));",
-                                    dests[0],
-                                    srcs[1],
-                                    srcs[2],
-                                    fun_name,
-                                    cr_args("i")
-                                );
-                            }
-                            QuantifierType::All => {
-                                emitln!(self.writer(), "$t{} := (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], srcs[0], fun_name, cr_args("i"));
-                            }
-                            QuantifierType::AllRange => {
-                                emitln!(
-                                    self.writer(),
-                                    "$t{} := (forall i:int :: $t{} <= i && i < $t{} ==> {}({}));",
-                                    dests[0],
-                                    srcs[1],
-                                    srcs[2],
-                                    fun_name,
-                                    cr_args("i")
-                                );
-                            }
-                            QuantifierType::Find => {
-                                emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "if ($find_exists) {");
-                                emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(
-                                    self.writer(),
-                                    "    assume 0 <= $find_i && $find_i < LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "    assume {}({});",
-                                    fun_name,
-                                    cr_args("$find_i")
-                                );
-                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
-                                    dests[0],
-                                    suffix,
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "} else {");
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := {}(EmptyVec());",
-                                    dests[0],
-                                    suffix
-                                );
-                                emitln!(self.writer(), "}");
-                            }
-                            QuantifierType::FindRange => {
-                                emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "if ($find_exists) {");
-                                emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(
-                                    self.writer(),
-                                    "    assume $t{} <= $find_i && $find_i < $t{};",
-                                    srcs[1],
-                                    srcs[2]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "    assume {}({});",
-                                    fun_name,
-                                    cr_args("$find_i")
-                                );
-                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := {}(MakeVec1(ReadVec($t{}, $find_i)));",
-                                    dests[0],
-                                    suffix,
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "} else {");
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := {}(EmptyVec());",
-                                    dests[0],
-                                    suffix
-                                );
-                                emitln!(self.writer(), "}");
-                            }
-                            QuantifierType::FindIndex => {
-                                emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: 0 <= i && i < LenVec($t{}) && {}({}));", srcs[0], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "if ($find_exists) {");
-                                emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(
-                                    self.writer(),
-                                    "    assume 0 <= $find_i && $find_i < LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "    assume {}({});",
-                                    fun_name,
-                                    cr_args("$find_i")
-                                );
-                                emitln!(self.writer(), "    assume (forall j:int :: 0 <= j && j < $find_i ==> !{}({}));", fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "} else {");
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := $1_option_Option'u64'(EmptyVec());",
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "}");
-                            }
-                            QuantifierType::FindIndexRange => {
-                                emitln!(self.writer(), "havoc $find_exists;");
-                                emitln!(self.writer(), "$find_exists := (exists i:int :: $t{} <= i && i < $t{} && {}({}));", srcs[1], srcs[2], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "if ($find_exists) {");
-                                emitln!(self.writer(), "    havoc $find_i;");
-                                emitln!(
-                                    self.writer(),
-                                    "    assume $t{} <= $find_i && $find_i < $t{};",
-                                    srcs[1],
-                                    srcs[2]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "    assume {}({});",
-                                    fun_name,
-                                    cr_args("$find_i")
-                                );
-                                emitln!(self.writer(), "    assume (forall j:int :: $t{} <= j && j < $find_i ==> !{}({}));", srcs[1], fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := $1_option_Option'u64'(MakeVec1($find_i));",
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "} else {");
-                                emitln!(
-                                    self.writer(),
-                                    "    $t{} := $1_option_Option'u64'(EmptyVec());",
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "}");
-                            }
-                            QuantifierType::Count => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
-                            }
-                            QuantifierType::CountRange => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args("i"));
-                                emitln!(
-                                    self.writer(),
-                                    "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, $t{}, $t{});",
-                                    dests[0],
-                                    srcs[1],
-                                    srcs[2]
-                                );
-                            }
-                            QuantifierType::RangeCount => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == (if $t{} <= $t{} then $t{} - $t{} else 0);",
-                                    srcs[0],
-                                    srcs[1],
-                                    srcs[1],
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: InRangeVec($quantifier_temp_vec, i) ==> ReadVec($quantifier_temp_vec, i) == (if {}({}) then 1 else 0));", fun_name, cr_args(&format!("i + $t{}", srcs[0])));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'vec'u64''($quantifier_temp_vec);"
-                                );
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
-                            }
-                            QuantifierType::SumMap => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) == {}({}));", fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
-                            }
-                            QuantifierType::SumMapRange => {
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(self.writer(), "assume $t{} <= $t{} ==> LenVec($quantifier_temp_vec) == ($t{} - $t{});", srcs[1], srcs[2], srcs[2], srcs[1]);
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ReadVec($quantifier_temp_vec, i - $t{}) ==  {}({}));", srcs[1], srcs[2], srcs[1], fun_name, cr_args("i"));
-                                emitln!(self.writer(), "$t{} := $0_vec_$sum'u64'($quantifier_temp_vec, 0, LenVec($quantifier_temp_vec));", dests[0]);
-                            }
-                            QuantifierType::Filter => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    dests[0]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($t{}) <= LenVec($t{});",
-                                    dests[0],
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> 0 <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < LenVec($t{}));", srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: 0 <= j && j < LenVec($t{}) ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[0], fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'{}'($t{});",
-                                    suffix,
-                                    dests[0]
-                                );
-                            }
-                            QuantifierType::FilterRange => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(self.writer(), "havoc $quantifier_temp_vec;");
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($quantifier_temp_vec) == LenVec($t{});",
-                                    dests[0]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "assume $t{} <= $t{} ==> LenVec($t{}) <= ($t{} - $t{});",
-                                    srcs[1],
-                                    srcs[2],
-                                    dests[0],
-                                    srcs[2],
-                                    srcs[1]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "assume $t{} > $t{} ==> LenVec($t{}) == 0;",
-                                    srcs[1],
-                                    srcs[2],
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($quantifier_temp_vec) ==> ReadVec($quantifier_temp_vec, i) < ReadVec($quantifier_temp_vec, j));");
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($quantifier_temp_vec) ==> $t{} <= ReadVec($quantifier_temp_vec, i) && ReadVec($quantifier_temp_vec, i) < $t{});", srcs[1], srcs[2]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ReadVec($t{}, i) == ReadVec($t{}, ReadVec($quantifier_temp_vec, i)));", dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall j:int :: $t{} <= j && j < $t{} ==> ({}({}) <==> ContainsVec($quantifier_temp_vec, j)));", srcs[1], srcs[2], fun_name, cr_args("j"));
-                                emitln!(
-                                    self.writer(),
-                                    "assume $IsValid'{}'($t{});",
-                                    suffix,
-                                    dests[0]
-                                );
-                            }
-                            QuantifierType::FindIndices => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(
-                                    self.writer(),
-                                    "assume LenVec($t{}) <= LenVec($t{});",
-                                    dests[0],
-                                    srcs[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> 0 <= ReadVec($t{}, i) && ReadVec($t{}, i) < LenVec($t{}));", dests[0], dests[0], dests[0], srcs[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> ({}({}) <==> ContainsVec($t{}, i)));", srcs[0], fun_name, cr_args("i"), dests[0]);
-                            }
-                            QuantifierType::FindIndicesRange => {
-                                emitln!(self.writer(), "havoc $t{};", dests[0]);
-                                emitln!(
-                                    self.writer(),
-                                    "assume $t{} <= $t{} ==> LenVec($t{}) <= ($t{} - $t{});",
-                                    srcs[1],
-                                    srcs[2],
-                                    dests[0],
-                                    srcs[2],
-                                    srcs[1]
-                                );
-                                emitln!(
-                                    self.writer(),
-                                    "assume $t{} > $t{} ==> LenVec($t{}) == 0;",
-                                    srcs[1],
-                                    srcs[2],
-                                    dests[0]
-                                );
-                                emitln!(self.writer(), "assume (forall i:int, j:int :: 0 <= i && i < j && j < LenVec($t{}) ==> ReadVec($t{}, i) < ReadVec($t{}, j));", dests[0], dests[0], dests[0]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> $t{} <= ReadVec($t{}, i) && ReadVec($t{}, i) < $t{});", dests[0], srcs[1], dests[0], dests[0], srcs[2]);
-                                emitln!(self.writer(), "assume (forall i:int :: 0 <= i && i < LenVec($t{}) ==> {}({}));", dests[0], fun_name, cr_args(&format!("ReadVec($t{}, i)", dests[0])));
-                                emitln!(self.writer(), "assume (forall i:int :: $t{} <= i && i < $t{} ==> ({}({}) <==> ContainsVec($t{}, i)));", srcs[1], srcs[2], fun_name, cr_args("i"), dests[0]);
-                            }
-                        }
+                        let fmt_temp = |idx: TempIndex| -> String { format!("$t{}", idx) };
+                        let expr = self.generate_pure_quantifier_expr(
+                            qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
+                        );
+                        emitln!(self.writer(), "$t{} := {};", dests[0], expr);
+                        // assume well-formedness of the uninterpreted result
+                        let dest_ty = self.get_local_type(dests[0]).instantiate(inst);
+                        emitln!(
+                            self.writer(),
+                            "assume $IsValid'{}'($t{});",
+                            boogie_type_suffix(env, &dest_ty),
+                            dests[0]
+                        );
                     }
                 }
                 match aa {
                     Some(AbortAction::Check) => match self.parent.asserts_mode {
-                        AssertsMode::Check => {
+                        AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                             let message = if self.parent.options.func_abort_check_only {
                                 "function code should not abort"
                             } else {
@@ -5514,7 +5643,7 @@ impl<'env> FunctionTranslator<'env> {
             }
             Abort(_, src) => {
                 match self.parent.asserts_mode {
-                    AssertsMode::Check => {
+                    AssertsMode::Check | AssertsMode::SpecNoAbortCheck => {
                         let message = if self.parent.options.func_abort_check_only {
                             "function code should not abort"
                         } else {

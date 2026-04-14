@@ -4,17 +4,18 @@ use prover::prover::ensures;
 
 #[spec_only(axiom)]
 fun f_axiom(x: u64): bool {
-    foo() && x > 4 && x.to_int().sqrt().gt(2u64.to_int())
+    bar() && x > 4 && x.to_int().sqrt().gt(2u64.to_int())
 }
 
-public fun foo(): bool {
-  assert!(true);
-  true
+// This function has a real abort, so it can't be a pure callee.
+public fun bar(): bool {
+    assert!(1u8 > 2u8);
+    true
 }
 
 #[spec(prove)]
-public fun foo_spec(): bool {
-  let res = foo();
-  ensures(16u8.to_int().sqrt().gt(2u64.to_int()));
-  res
+public fun bar_spec(): bool {
+    let res = bar();
+    ensures(16u8.to_int().sqrt().gt(2u64.to_int()));
+    res
 }

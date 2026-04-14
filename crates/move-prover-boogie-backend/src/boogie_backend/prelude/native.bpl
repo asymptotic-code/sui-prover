@@ -88,8 +88,6 @@ axiom (forall v: Vec ({{T}}), e: {{T}}:: {$IndexOfVec{{S}}(v, e)}
 function {:inline} $RangeVec{{S}}(v: Vec ({{T}})): $Range {
     $Range(0, LenVec(v))
 }
-
-
 function {:inline} $EmptyVec{{S}}(): Vec ({{T}}) {
     EmptyVec()
 }
@@ -325,6 +323,10 @@ function {:inline} $1_vector_contains{{S}}(v: Vec ({{T}}), e: {{T}}): bool {
     $ContainsVec{{S}}(v, e)
 }
 
+function {:inline} $1_vector_singleton{{S}}(e: {{T}}): Vec ({{T}}) {
+    MakeVec1(e)
+}
+
 procedure {:inline 1}
 $1_vector_index_of{{S}}(v: Vec ({{T}}), e: {{T}}) returns (res1: bool, res2: int) {
     res2 := $IndexOfVec{{S}}(v, e);
@@ -370,6 +372,10 @@ function {:inline} $1_vector_$skip{{S}}(v: Vec ({{T}}), n: int): Vec ({{T}}) {
 
 function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: int): Vec ({{T}}) {
     SliceVec(v, start, end)
+}
+
+function {:inline} $0_vector_iter_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+    ConcatVec(v1, v2)
 }
 
 {%- if instance.is_number -%}
@@ -838,8 +844,6 @@ procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
 {%- endif %}
 
 {% endmacro table_module %}
-
-
 {# Dynamic fields
    =======
 #}
@@ -877,23 +881,31 @@ procedure {:inline 2} {{impl.fun_borrow}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
         v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+        assume $IsValid{{SV}}(v);
     }
 }
 function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}} {
     GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
 }
+
+// This axiom will be a problem if ever some IsValid predicate is unsatisfiable.
+// axiom (forall t: {{Type}}, k: {{K}} :: $IsValid{{SV}}(GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))));
+
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
 procedure {:inline 2} {{impl.fun_borrow_mut}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
+    var v: {{V}};
     enc_k := {{ENC}}(k);
     t := $Dereference(m);
     if (!ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
-        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), GetTable(t->$dynamic_fields{{S}}, enc_k));
+        v := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        assume $IsValid{{SV}}(v);
+        dst := $Mutation(m->l, ExtendVec(ExtendVec(m->p, 1), enc_k), v);
         m' := m;
     }
 }
@@ -909,14 +921,35 @@ procedure {:inline 2} {{impl.fun_remove}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{
         call $Abort($StdError(7/*INVALID_ARGUMENTS*/, 101/*ENOT_FOUND*/));
     } else {
         v := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        assume $IsValid{{SV}}(v);
         m' := $UpdateMutation(m, $Update'{{Type}}'_dynamic_fields{{S}}(t, RemoveTable(t->$dynamic_fields{{S}}, enc_k)));
     }
 }
 {%- endif %}
 
+{%- if impl.fun_remove_if_exists != "" %}
+// remove_if_exists: removes the dynamic field if it exists, otherwise no-op
+procedure {:inline 2} {{impl.fun_remove_if_exists}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: $1_option_Option'{{instance.1.suffix}}', m': $Mutation({{Type}})) {
+    var enc_k: int;
+    var t: {{Type}};
+    var val: {{V}};
+    enc_k := {{ENC}}(k);
+    t := $Dereference(m);
+    if (ContainsTable(t->$dynamic_fields{{S}}, enc_k)) {
+        val := GetTable(t->$dynamic_fields{{S}}, enc_k);
+        assume $IsValid{{SV}}(val);
+        m' := $UpdateMutation(m, $Update'{{Type}}'_dynamic_fields{{S}}(t, RemoveTable(t->$dynamic_fields{{S}}, enc_k)));
+        v := $1_option_Option{{SV}}(MakeVec1(val));
+    } else {
+        m' := m;
+        v := $1_option_Option{{SV}}(EmptyVec());
+    }
+}
+{%- endif %}
+
 {%- if impl.fun_exists_with_type != "" %}
-procedure {:inline 2} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}) returns (r: bool) {
-    r := ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+function {:inline} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}): bool {
+    ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
 }
 {%- endif %}
 
@@ -927,43 +960,261 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 
 {% endmacro dynamic_field_module %}
 
+{# =====================================================================
+   Quantifier helper macro
+   =====================================================================
+
+   Emits Boogie axiomatizations for the iterator combinators that appear
+   as `Operation::Quantifier` in the stackless bytecode. Seven helper
+   kinds are implemented, each corresponding to a `QuantifierHelperType`:
+
+     find_indices, filter, find_index, map, range_map, count, sum_map
+
+   Multiple `QuantifierType` variants map to the same helper kind (e.g.
+   `Map` and `MapRange` both use `QuantifierHelperType::Map`; `Find` and
+   `FindRange` use `FindIndex`; etc.).
+
+   Each Move predicate/closure (per type instantiation) gets one helper
+   function declared as an uninterpreted Boogie function plus a set of
+   axioms that constrain its result. The backend emits a single call
+   `$<Kind>QuantifierHelper_<FN>(v, start, end[, captured...])` at the
+   use site; Z3 handles the rest via the axioms here.
+
+   See `crates/move-stackless-bytecode/src/stackless_bytecode.rs` for
+   `QuantifierHelperType` and the mapping from `QuantifierType`. The
+   backend collects one `PureQuantifierHelperInfo` per unique
+   `(qht, function, li, type-instantiation)` in `mono_analysis.rs`,
+   then renders this macro once for each.
+
+   ---------------------------------------------------------------------
+   Axiomatization pattern
+   ---------------------------------------------------------------------
+
+   Every helper has:
+
+   1. A MAIN axiom (single trigger `{helper(QA)}`) stating the result's
+      shape: length bound, empty-range base case, per-element properties.
+      For find_indices and filter this also includes soundness (predicate
+      holds at each result element) and completeness (every matching
+      v-element is in the result, via ContainsVec). For map and range_map
+      the element-wise forall gives exact values directly.
+
+   2. An END-STEP axiom relating helper(v, start, end) to
+      helper(v, start, end-1): enables loop invariants that extend the
+      range on the right.
+
+   3. A START-STEP axiom relating helper(v, start, end) to
+      helper(v, start+1, end): enables suffix-invariant loop proofs
+      using the `concat` native.
+
+   Trigger strategy (prevents matching loops):
+
+   - Vector-valued helpers (find_indices, filter, map, range_map) use
+     COMPOUND triggers on both end-step and start-step. A fresh bound
+     variable (`prev_end` or `next_start`) in the pattern, with a guard
+     like `prev_end + 1 == end`, requires both the current and recursive
+     helper terms to be in the E-graph before firing. This prevents the
+     axiom from matching-looping on a single fresh call:
+
+       axiom (forall QP, prev_end: int ::
+           {helper(QA), helper(v, start, prev_end, ...)}
+           prev_end + 1 == end && start < end ==> body)
+
+     For concrete-value tests (e.g. `filter(v) == vector[...]`), the
+     step axioms can't fire because only one helper term exists. Tests
+     that need concrete unfolding supply a per-spec `extra_bpl` file
+     with a single-trigger variant of the end-step axiom.
+
+   - Scalar-valued helpers (count, sum_map, find_index) use SINGLE
+     triggers on both steps. Matching loops are less of a concern for
+     scalar results because Z3's anti-loop heuristics handle the
+     monotonically-decreasing chain efficiently.
+
+   Additional axioms:
+
+   - find_indices has a SEPARATE strict-ordering axiom triggered on
+     `{ReadVec(res, k), ReadVec(res, l)}` (only fires when Z3 reads
+     two elements for comparison).
+
+   - find_indices and filter have SEPARATE completeness axioms (via
+     ContainsVec) stating that every matching element is in the result.
+
+   - count and sum_map split their bounds/base, left-step, and
+     right-step into separate axioms for selective instantiation.
+
+   ---------------------------------------------------------------------
+   Template variables (set per instance by backend/lib.rs)
+   ---------------------------------------------------------------------
+
+     FN   — Boogie name of the Move predicate function (with suffix)
+     QP   — Boogie parameter list of the helper, e.g.
+              "v: Vec (int), start: int, end: int, $t2: int"
+            (for range_map: no `v`; just "start: int, end: int, ...")
+     QA   — matching positional argument list, e.g.
+              "v, start, end, $t2"
+     RT   — Boogie result element type. For map/range_map it's the
+            predicate's return type; for filter it's v's element type;
+            for find_indices it's int (u64); for count/sum_map the
+            whole helper returns int (RT unused).
+     EAB  — captured args BEFORE the bound var, comma-separated.
+            e.g. "$t0" for `f(a, x, b)` with bound var at position 1.
+     EAA  — captured args AFTER the bound var, each with leading ", ".
+            e.g. ", $t2".
+     CAT  — derived in template from EAB and EAA: the trailing captured
+            args for recursive helper calls (e.g. ", $t0, $t2").
+
+   ---------------------------------------------------------------------
+   Adding a new helper kind
+   ---------------------------------------------------------------------
+
+   1. Add a variant to `QuantifierHelperType` in stackless_bytecode.rs
+      and map the corresponding `QuantifierType` in
+      `into_quantifier_helper_type`.
+   2. Handle the variant in `get_quantifier_helper_name` and
+      `generate_pure_quantifier_expr` in bytecode_translator.rs.
+   3. Handle the result type in `QuantifierHelperInfo::new` in lib.rs.
+   4. Add a new `{% if instance.qht == "..." %}` block here with the
+      function declaration and axioms. Follow the pattern: main axiom
+      (shape + completeness), then compound-trigger end-step + start-step
+      for vector-valued helpers, or single-trigger bidirectional steps
+      for scalar-valued helpers. Test with both prefix-invariant and
+      suffix-invariant loop tests before committing.
+   5. If the helper is vector-valued and tests need concrete-value
+      unfolding, create per-spec `extra_bpl` files with a single-trigger
+      end-step axiom for the specific helper instance.
+#}
 {% macro quantifier_helpers_module(instance) %}
 {%- set QP = instance.quantifier_params -%}
 {%- set QA = instance.quantifier_args -%}
 {%- set FN = instance.name -%}
 {%- set RT = instance.result_type -%}
-{%- set EAB = instance.extra_args_before -%}
 {%- set EAA = instance.extra_args_after -%}
+{%- if instance.extra_args_before == "" -%}
+  {%- set EAB = "" -%}
+  {%- set CAT = EAA -%}
+{%- else -%}
+  {%- set EAB = instance.extra_args_before ~ ", " -%}
+  {%- set CAT = ", " ~ instance.extra_args_before ~ EAA -%}
+{%- endif -%}
 
 {%- if instance.qht == "find_indices" %}
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+{%- if instance.input_vec_is_equal_suffix != "" %}
+// congruence: $IsEqual inputs give equal results
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FindIndicesQuantifierHelper_{{FN}}({{QA}}) == $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) <= end - start &&
-        (forall i: int, j: int :: 0 <= i && i < j && j < LenVec(res) ==> ReadVec(res, i) < ReadVec(res, j)) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
+        LenVec(res) <= (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
+        // soundness: every element is a valid in-range index where FN holds
+        (forall i: int :: InRangeVec(res, i) ==> start <= ReadVec(res, i) && ReadVec(res, i) < end && {{FN}}({{EAB}}ReadVec(v, ReadVec(res, i)){{EAA}})) &&
+        // completeness: every matching index in [start, end) is in res
         (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, j))
     )
+);
+// strict ordering — separate trigger so it only fires when comparing elements
+axiom (forall {{QP}}, k: int, l: int ::
+    {ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k), ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)}
+    0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
+        ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
+);
+// end-step — compound trigger prevents matching loops
+axiom (forall {{QP}}, prev_end: int ::
+    {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
+            LenVec(res) == LenVec(prev) + 1 &&
+            (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+            ReadVec(res, LenVec(prev)) == prev_end
+         else
+            res == prev)
+    ))
+);
+// start-step — compound trigger, mirror of end-step
+axiom (forall {{QP}}, next_start: int ::
+    {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+            LenVec(res) == LenVec(tail) + 1 &&
+            ReadVec(res, 0) == start &&
+            (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+         else
+            res == tail)
+    ))
 );
 {%- endif %}
 
 {%- if instance.qht == "filter" %}
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+{%- if instance.input_vec_is_equal_suffix != "" %}
+// congruence
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FilterQuantifierHelper_{{FN}}({{QA}}) == $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) <= end - start &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})) &&
-        (forall i: int :: 0 <= i && i < LenVec(res) ==> ContainsVec(v, ReadVec(res, i))) &&
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
+        LenVec(res) <= (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
+        // soundness: every element satisfies FN
+        (forall i: int :: InRangeVec(res, i) ==> {{FN}}({{EAB}}ReadVec(res, i){{EAA}})) &&
+        // provenance: every element came from v
+        (forall i: int :: InRangeVec(res, i) ==> ContainsVec(v, ReadVec(res, i))) &&
+        // completeness: every matching v-element is in res
         (forall j: int :: start <= j && j < end && {{FN}}({{EAB}}ReadVec(v, j){{EAA}}) ==> ContainsVec(res, ReadVec(v, j)))
     )
+);
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then
+            LenVec(res) == LenVec(prev) + 1 &&
+            (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+            ReadVec(res, LenVec(prev)) == ReadVec(v, prev_end)
+         else
+            res == prev)
+    ))
+);
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then
+            LenVec(res) == LenVec(tail) + 1 &&
+            ReadVec(res, 0) == ReadVec(v, start) &&
+            (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+         else
+            res == tail)
+    ))
 );
 {%- endif %}
 
 {%- if instance.qht == "find_index" %}
 function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) == $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndexQuantifierHelper_{{FN}}({{QA}});
@@ -972,16 +1223,62 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
     )
 );
+// end-step
+axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
+            (if prev != -1 then prev
+             else if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then end - 1
+             else -1))
+);
+// start-step
+axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
+            (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then start
+             else $FindIndexQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}))
+);
 {%- endif %}
 
 {%- if instance.qht == "map" %}
 function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
 axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
-        LenVec(res) == end - start &&
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
+        LenVec(res) == (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: start <= i && i < end ==> ReadVec(res, i - start) == {{FN}}({{EAB}}ReadVec(v, i){{EAA}}))
     )
+);
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var res := $MapQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
+        LenVec(res) == LenVec(prev) + 1 &&
+        (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
+    ))
+);
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $MapQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}});
+        LenVec(res) == LenVec(tail) + 1 &&
+        ReadVec(res, 0) == {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) &&
+        (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+    ))
 );
 {%- endif %}
 
@@ -990,22 +1287,119 @@ function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+        $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
         LenVec(res) == (if start <= end then end - start else 0) &&
+        (start >= end ==> res == EmptyVec()) &&
         (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == {{FN}}({{EAB}}(i + start){{EAA}}))
     )
+);
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+    (var prev := $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}});
+        LenVec(res) == LenVec(prev) + 1 &&
+        (forall j: int :: InRangeVec(prev, j) ==> ReadVec(res, j) == ReadVec(prev, j)) &&
+        ReadVec(res, LenVec(prev)) == {{FN}}({{EAB}}prev_end{{EAA}})
+    ))
+);
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+    (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
+    (var tail := $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}});
+        LenVec(res) == LenVec(tail) + 1 &&
+        ReadVec(res, 0) == {{FN}}({{EAB}}start{{EAA}}) &&
+        (forall j: int :: InRangeVec(tail, j) ==> ReadVec(res, j + 1) == ReadVec(tail, j))
+    ))
+);
+{%- endif %}
+
+{%- if instance.qht == "count" %}
+function $CountQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $CountQuantifierHelper_{{FN}}({{QA}}) == $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+    0 <= $CountQuantifierHelper_{{FN}}({{QA}}) &&
+    $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
+    (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
+);
+// left step
+axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $CountQuantifierHelper_{{FN}}({{QA}}) ==
+            (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
+            + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+);
+// right step
+axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $CountQuantifierHelper_{{FN}}({{QA}}) ==
+            $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
+            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
+);
+{%- endif %}
+
+{%- if instance.qht == "sum_map" %}
+function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) == $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
+);
+// left step
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
+            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+);
+// right step
+axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
+            $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
+            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
 );
 {%- endif %}
 
 {%- if instance.qht == "range_count" %}
-function $RangeCountQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-axiom (forall {{QP}}:: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
-(
-    var res := $RangeCountQuantifierHelper_{{FN}}({{QA}});
-        (LenVec(res) == (if start <= end then end - start else 0)) &&
-        (forall i: int :: InRangeVec(res, i) ==> ReadVec(res, i) == (if {{FN}}({{EAB}}(i + start){{EAA}}) then 1 else 0)) &&
-        $IsValid'vec'u64''(res)
-    )
+function $RangeCountQuantifierHelper_{{FN}}({{QP}}): int;
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    0 <= $RangeCountQuantifierHelper_{{FN}}({{QA}}) &&
+    $RangeCountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
+    (start >= end ==> $RangeCountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
+// left step
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
+            (if {{FN}}({{EAB}}start{{EAA}}) then 1 else 0)
+            + $RangeCountQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+);
+// right step
+axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+    start < end ==>
+        $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
+            $RangeCountQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
+            + (if {{FN}}({{EAB}}end - 1{{EAA}}) then 1 else 0)
+);
+// split — compound trigger on the two sub-range counts
+axiom (forall {{QP}}, split_point: int ::
+    {$RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}), $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})}
+    start <= split_point && split_point <= end ==>
+        $RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}) + $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})
+            == $RangeCountQuantifierHelper_{{FN}}({{QA}}));
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}
@@ -1019,8 +1413,8 @@ axiom (forall {{QP}}:: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
 {%- if impl.fun_exists != "" %}
 function {{impl.fun_exists_inner}}{{DF_S}}(t: ({{Type}}), k: {{T}}): bool;
 
-procedure {:inline 2} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}) returns (r: bool) {
-    r := {{impl.fun_exists_inner}}{{DF_S}}(t, k);
+function {:inline} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}): bool {
+    {{impl.fun_exists_inner}}{{DF_S}}(t, k)
 }
 {%- endif %}
 
@@ -1063,8 +1457,6 @@ axiom (forall v: int :: {$1_bcs_serialize'address'(v)}
      ( var r := $1_bcs_serialize'address'(v); LenVec(r) == $serialized_address_len));
 {% endif %}
 {% endmacro hash_module %}
-
-
 {# Event Module
    ============
 #}

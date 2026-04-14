@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: unused variable
+   ┌─ tests/inputs/loop_invariant/issue-466.move:21:18
+   │
+21 │ fun f2_invariant(i: u64, length: u64, t: &T, __old_t: &T): bool {
+   │                  ^ Unused parameter 'i'. Consider removing or prefixing with an underscore: '_i'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning: unused variable
+   ┌─ tests/inputs/loop_invariant/issue-466.move:21:26
+   │
+21 │ fun f2_invariant(i: u64, length: u64, t: &T, __old_t: &T): bool {
+   │                          ^^^^^^ Unused parameter 'length'. Consider removing or prefixing with an underscore: '_length'
+   │
+   = This warning can be suppressed with '#[allow(unused_variable)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

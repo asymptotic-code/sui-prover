@@ -1,0 +1,31 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with bytecode transformation errors
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/well_foundedness_cycle.fail.move:16:10
+   │
+16 │     if (!df::exists_(uid, key)) {
+   │          ^^^^^^^^^^^^^^^^^^^^^
+
+error: function `foo::set_fee` uses a dynamic field whose value type contains `object::UID`, creating a well-foundedness cycle in the Boogie datatype. This is not yet supported by the prover.
+   ┌─ tests/inputs/dynamic_field/well_foundedness_cycle.fail.move:12:1
+   │  
+12 │ ╭ public fun set_fee(config: &mut GlobalConfig, amount: u64, ctx: &mut TxContext) {
+13 │ │     let uid = &mut config.id;
+14 │ │     let key = FeeKey {};
+15 │ │ 
+   · │
+27 │ │     *coin_fee = amount;
+28 │ │ }
+   │ ╰─^
+
+error: function `foo::set_fee_spec` uses a dynamic field whose value type contains `object::UID`, creating a well-foundedness cycle in the Boogie datatype. This is not yet supported by the prover.
+   ┌─ tests/inputs/dynamic_field/well_foundedness_cycle.fail.move:31:1
+   │  
+31 │ ╭ public fun set_fee_spec(config: &mut GlobalConfig, amount: u64, ctx: &mut TxContext) {
+32 │ │     set_fee(config, amount, ctx);
+33 │ │ }
+   │ ╰─^

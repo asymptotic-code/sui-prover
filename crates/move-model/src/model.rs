@@ -28,7 +28,7 @@ use anyhow::bail;
 use codespan::{ByteIndex, ByteOffset, ColumnOffset, FileId, Files, LineOffset, Location, Span};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label, Severity},
-    term::{emit, termcolor::WriteColor, Config},
+    term::{Config, emit, termcolor::WriteColor},
 };
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -41,13 +41,13 @@ use serde::{Deserialize, Serialize};
 
 pub use move_binary_format::file_format::{AbilitySet, Visibility as FunctionVisibility};
 use move_binary_format::{
+    CompiledModule,
     file_format::{
         AddressIdentifierIndex, Bytecode, Constant as VMConstant, ConstantPoolIndex,
         DatatypeHandleIndex, EnumDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex,
         FunctionHandleIndex, IdentifierIndex, ModuleHandle, SignatureIndex, SignatureToken,
         StructDefinitionIndex, StructFieldInformation, VariantJumpTable, Visibility,
     },
-    CompiledModule,
 };
 use move_bytecode_source_map::{mapping::SourceMapping, source_map::SourceMap};
 use move_command_line_common::files::FileHash;
@@ -1088,7 +1088,7 @@ impl GlobalEnv {
                 .make(module.identifier_at(variant.variant_name).as_str());
             let loc = match enum_smap {
                 None => Loc::default(),
-                Some(smap) => self.to_loc(&smap.variants[tag].0 .1),
+                Some(smap) => self.to_loc(&smap.variants[tag].0.1),
             };
             variant_data.insert(
                 VariantId(variant_name),
@@ -1157,6 +1157,40 @@ impl GlobalEnv {
         simple_name: Symbol,
     ) -> Option<FunctionEnv<'_>> {
         self.get_module(module_id).find_function(simple_name)
+    }
+
+    /// Resolve a potentially-qualified function name to a QualifiedId.
+    /// Supports: `function` (searched in `caller_module`),
+    /// `module::function`, and `package::module::function`.
+    pub fn resolve_function(
+        &self,
+        name: &str,
+        caller_module: &ModuleEnv,
+    ) -> Option<QualifiedId<FunId>> {
+        if !name.contains("::") {
+            let sym = self.symbol_pool().make(name);
+            return caller_module
+                .find_function(sym)
+                .map(|f| f.get_qualified_id());
+        }
+        for module in self.get_modules() {
+            for func in module.get_functions() {
+                // module::function
+                if func.get_full_name_str() == name {
+                    return Some(func.get_qualified_id());
+                }
+                // package::module::function
+                let fully_qualified = format!(
+                    "{}::{}",
+                    func.module_env.get_full_name_str(),
+                    func.get_name_str()
+                );
+                if fully_qualified == name {
+                    return Some(func.get_qualified_id());
+                }
+            }
+        }
+        None
     }
 
     /// Gets a StructEnv in this module by its `StructTag`
@@ -1505,6 +1539,8 @@ impl GlobalEnv {
         "vdf_spec",
         "zklogin_verified_id_spec",
         "zklogin_verified_issuer_spec",
+        "derived_object_spec",
+        "funds_accumulator_spec",
     ];
     const LOG_MODULE_NAME: &'static str = "log";
     const VECTOR_MODULE_NAME: &'static str = "vector";
@@ -1547,6 +1583,7 @@ impl GlobalEnv {
     const REQUIRES_FUNCTION_NAME: &'static str = "requires";
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
+    const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
@@ -1603,6 +1640,7 @@ impl GlobalEnv {
     const PROVER_VEC_SUM: &'static str = "sum";
     const PROVER_VEC_SUM_RANGE: &'static str = "sum_range";
     const PROVER_VEC_SLICE: &'static str = "slice";
+    const PROVER_VEC_CONCAT: &'static str = "concat";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1623,6 +1661,7 @@ impl GlobalEnv {
     const VECTOR_STACK_POPPER_FUNCTION_NAME: &'static str = "pop_back";
     const VECTOR_DESTRUCTION_DERBY_FUNCTION_NAME: &'static str = "destroy_empty";
     const VECTOR_SWITCHEROO_FUNCTION_NAME: &'static str = "swap";
+    const VECTOR_SINGLETON_FUNCTION_NAME: &'static str = "singleton";
 
     // vec_set struct name
     const VEC_SET_STRUCT_NAME: &'static str = "VecSet";
@@ -1635,6 +1674,7 @@ impl GlobalEnv {
 
     // vec_map struct name
     const VEC_MAP_STRUCT_NAME: &'static str = "VecMap";
+    const VEC_MAP_ENTRY_STRUCT_NAME: &'static str = "Entry";
 
     // table_vec struct name
     const TABLE_VEC_STRUCT_NAME: &'static str = "TableVec";
@@ -1869,6 +1909,11 @@ impl GlobalEnv {
         self.find_module_id(Self::PROVER_VECTOR_MODULE_NAME)
     }
 
+    pub fn has_prover_vector_module(&self) -> bool {
+        self.find_module_by_name(self.symbol_pool().make(Self::PROVER_VECTOR_MODULE_NAME))
+            .is_some()
+    }
+
     pub fn prover_begin_forall_lambda_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::PROVER_BEGIN_FORALL_LAMBDA)
     }
@@ -2097,16 +2142,40 @@ impl GlobalEnv {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_RANGE)
     }
 
+    pub fn prover_range_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_RANGE)
+    }
+
     pub fn prover_vec_sum_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
+    }
+
+    pub fn prover_vec_sum_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM)
     }
 
     pub fn prover_vec_sum_range_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM_RANGE)
     }
 
+    pub fn prover_vec_sum_range_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SUM_RANGE)
+    }
+
     pub fn prover_vec_slice_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
+    }
+
+    pub fn prover_vec_slice_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
+    }
+
+    pub fn prover_vec_concat_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    }
+
+    pub fn prover_vec_concat_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -2241,6 +2310,10 @@ impl GlobalEnv {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_FUNCTION_NAME)
     }
 
+    pub fn asserts_of_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_OF_FUNCTION_NAME)
+    }
+
     pub fn type_inv_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::TYPE_INV_FUNCTION_NAME)
     }
@@ -2359,6 +2432,13 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::VECTOR_SKIP_FUNCTION_NAME)
     }
 
+    pub fn vector_singleton_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::VECTOR_SINGLETON_FUNCTION_NAME,
+        )
+    }
+
     // vec_set struct name
     pub fn vec_set_qid(&self) -> Option<QualifiedId<DatatypeId>> {
         self.get_struct_qid_opt(Self::VEC_SET_MODULE_NAME, Self::VEC_SET_STRUCT_NAME)
@@ -2396,6 +2476,10 @@ impl GlobalEnv {
     // vec_map struct name
     pub fn vec_map_qid(&self) -> Option<QualifiedId<DatatypeId>> {
         self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_STRUCT_NAME)
+    }
+
+    pub fn vec_map_entry_qid(&self) -> Option<QualifiedId<DatatypeId>> {
+        self.get_struct_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::VEC_MAP_ENTRY_STRUCT_NAME)
     }
 
     // vec_map intrinsic functions
@@ -2684,13 +2768,6 @@ impl GlobalEnv {
         self.get_fun_qid_opt(
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
-        )
-    }
-
-    pub fn dynamic_object_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::DYNAMIC_OBJECT_MODULE_NAME,
-            Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
         )
     }
 
@@ -3075,13 +3152,6 @@ impl GlobalEnv {
         )
     }
 
-    // sui::object native function QIDs
-    pub fn sui_object_borrow_uid_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::OBJECT_MODULE_NAME,
-            Self::OBJECT_BORROW_UID_FUNCTION_NAME,
-        )
-    }
     pub fn sui_object_delete_impl_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(Self::OBJECT_MODULE_NAME, Self::OBJECT_DELETE_FUNCTION_NAME)
     }
@@ -3460,6 +3530,7 @@ impl GlobalEnv {
             self.requires_qid(),
             self.ensures_qid(),
             self.asserts_qid(),
+            self.asserts_of_qid(),
             self.invariant_begin_qid(),
             self.invariant_end_qid(),
             self.prover_val_qid(),
@@ -3467,47 +3538,50 @@ impl GlobalEnv {
         ]);
 
         // Prover vec iter module functions
-        qids.extend(vec![
-            self.prover_begin_forall_lambda_qid(),
-            self.prover_end_forall_lambda_qid(),
-            self.prover_begin_exists_lambda_qid(),
-            self.prover_end_exists_lambda_qid(),
-            self.prover_begin_map_lambda_qid(),
-            self.prover_begin_map_range_lambda_qid(),
-            self.prover_end_map_lambda_qid(),
-            self.prover_begin_filter_lambda_qid(),
-            self.prover_begin_filter_range_lambda_qid(),
-            self.prover_end_filter_lambda_qid(),
-            self.prover_begin_find_lambda_qid(),
-            self.prover_begin_find_range_lambda_qid(),
-            self.prover_end_find_lambda_qid(),
-            self.prover_begin_find_index_lambda_qid(),
-            self.prover_begin_find_index_range_lambda_qid(),
-            self.prover_end_find_index_lambda_qid(),
-            self.prover_begin_find_indices_lambda_qid(),
-            self.prover_begin_find_indices_range_lambda_qid(),
-            self.prover_end_find_indices_lambda_qid(),
-            self.prover_begin_count_lambda_qid(),
-            self.prover_begin_count_range_lambda_qid(),
-            self.prover_end_count_lambda_qid(),
-            self.prover_begin_any_lambda_qid(),
-            self.prover_begin_any_range_lambda_qid(),
-            self.prover_end_any_lambda_qid(),
-            self.prover_begin_all_lambda_qid(),
-            self.prover_begin_all_range_lambda_qid(),
-            self.prover_end_all_lambda_qid(),
-            self.prover_begin_sum_map_lambda_qid(),
-            self.prover_begin_sum_map_range_lambda_qid(),
-            self.prover_end_sum_map_lambda_qid(),
-            self.prover_begin_range_map_lambda_qid(),
-            self.prover_end_range_map_lambda_qid(),
-            self.prover_begin_range_count_lambda_qid(),
-            self.prover_end_range_count_lambda_qid(),
-            self.prover_range_qid(),
-            self.prover_vec_sum_qid(),
-            self.prover_vec_sum_range_qid(),
-            self.prover_vec_slice_qid(),
-        ]);
+        if self.has_prover_vector_module() {
+            qids.extend(vec![
+                self.prover_begin_forall_lambda_qid(),
+                self.prover_end_forall_lambda_qid(),
+                self.prover_begin_exists_lambda_qid(),
+                self.prover_end_exists_lambda_qid(),
+                self.prover_begin_map_lambda_qid(),
+                self.prover_begin_map_range_lambda_qid(),
+                self.prover_end_map_lambda_qid(),
+                self.prover_begin_filter_lambda_qid(),
+                self.prover_begin_filter_range_lambda_qid(),
+                self.prover_end_filter_lambda_qid(),
+                self.prover_begin_find_lambda_qid(),
+                self.prover_begin_find_range_lambda_qid(),
+                self.prover_end_find_lambda_qid(),
+                self.prover_begin_find_index_lambda_qid(),
+                self.prover_begin_find_index_range_lambda_qid(),
+                self.prover_end_find_index_lambda_qid(),
+                self.prover_begin_find_indices_lambda_qid(),
+                self.prover_begin_find_indices_range_lambda_qid(),
+                self.prover_end_find_indices_lambda_qid(),
+                self.prover_begin_count_lambda_qid(),
+                self.prover_begin_count_range_lambda_qid(),
+                self.prover_end_count_lambda_qid(),
+                self.prover_begin_any_lambda_qid(),
+                self.prover_begin_any_range_lambda_qid(),
+                self.prover_end_any_lambda_qid(),
+                self.prover_begin_all_lambda_qid(),
+                self.prover_begin_all_range_lambda_qid(),
+                self.prover_end_all_lambda_qid(),
+                self.prover_begin_sum_map_lambda_qid(),
+                self.prover_begin_sum_map_range_lambda_qid(),
+                self.prover_end_sum_map_lambda_qid(),
+                self.prover_begin_range_map_lambda_qid(),
+                self.prover_end_range_map_lambda_qid(),
+                self.prover_begin_range_count_lambda_qid(),
+                self.prover_end_range_count_lambda_qid(),
+                self.prover_range_qid(),
+                self.prover_vec_sum_qid(),
+                self.prover_vec_sum_range_qid(),
+                self.prover_vec_slice_qid(),
+                self.prover_vec_concat_qid(),
+            ]);
+        }
 
         // Ghost module functions
         qids.extend(vec![
@@ -3538,6 +3612,7 @@ impl GlobalEnv {
                 self.std_vector_pop_back_qid(),
                 self.std_vector_destroy_empty_qid(),
                 self.std_vector_swap_qid(),
+                self.vector_singleton_qid(),
                 // std::hash native functions
                 self.std_hash_sha2_256_qid(),
                 self.std_hash_sha3_256_qid(),
@@ -3606,7 +3681,7 @@ impl GlobalEnv {
                 // sui::types native functions
                 self.sui_types_is_one_time_witness_qid(),
                 // sui::object native functions
-                self.sui_object_borrow_uid_qid(),
+                self.object_borrow_uid_qid(),
                 self.sui_object_delete_impl_qid(),
                 self.sui_object_record_new_uid_qid(),
                 // sui::dynamic_field native functions
@@ -3696,6 +3771,9 @@ impl GlobalEnv {
     pub fn no_aborting_native_functions(&self) -> BTreeSet<QualifiedId<FunId>> {
         let mut qids = BTreeSet::new();
 
+        // Prover module functions
+        qids.insert(self.asserts_of_qid());
+
         // Ghost module functions
         qids.extend(vec![
             self.global_qid(),
@@ -3707,47 +3785,50 @@ impl GlobalEnv {
         ]);
 
         // Prover vec iter module functions
-        qids.extend(vec![
-            self.prover_begin_forall_lambda_qid(),
-            self.prover_end_forall_lambda_qid(),
-            self.prover_begin_exists_lambda_qid(),
-            self.prover_end_exists_lambda_qid(),
-            self.prover_begin_map_lambda_qid(),
-            self.prover_begin_map_range_lambda_qid(),
-            self.prover_end_map_lambda_qid(),
-            self.prover_begin_filter_lambda_qid(),
-            self.prover_begin_filter_range_lambda_qid(),
-            self.prover_end_filter_lambda_qid(),
-            self.prover_begin_find_lambda_qid(),
-            self.prover_begin_find_range_lambda_qid(),
-            self.prover_end_find_lambda_qid(),
-            self.prover_begin_find_index_lambda_qid(),
-            self.prover_begin_find_index_range_lambda_qid(),
-            self.prover_end_find_index_lambda_qid(),
-            self.prover_begin_find_indices_lambda_qid(),
-            self.prover_begin_find_indices_range_lambda_qid(),
-            self.prover_end_find_indices_lambda_qid(),
-            self.prover_begin_count_lambda_qid(),
-            self.prover_begin_count_range_lambda_qid(),
-            self.prover_end_count_lambda_qid(),
-            self.prover_begin_any_lambda_qid(),
-            self.prover_begin_any_range_lambda_qid(),
-            self.prover_end_any_lambda_qid(),
-            self.prover_begin_all_lambda_qid(),
-            self.prover_begin_all_range_lambda_qid(),
-            self.prover_end_all_lambda_qid(),
-            self.prover_begin_sum_map_lambda_qid(),
-            self.prover_begin_sum_map_range_lambda_qid(),
-            self.prover_end_sum_map_lambda_qid(),
-            self.prover_begin_range_map_lambda_qid(),
-            self.prover_end_range_map_lambda_qid(),
-            self.prover_begin_range_count_lambda_qid(),
-            self.prover_end_range_count_lambda_qid(),
-            self.prover_range_qid(),
-            self.prover_vec_sum_qid(),
-            self.prover_vec_sum_range_qid(),
-            self.prover_vec_slice_qid(),
-        ]);
+        if self.has_prover_vector_module() {
+            qids.extend(vec![
+                self.prover_begin_forall_lambda_qid(),
+                self.prover_end_forall_lambda_qid(),
+                self.prover_begin_exists_lambda_qid(),
+                self.prover_end_exists_lambda_qid(),
+                self.prover_begin_map_lambda_qid(),
+                self.prover_begin_map_range_lambda_qid(),
+                self.prover_end_map_lambda_qid(),
+                self.prover_begin_filter_lambda_qid(),
+                self.prover_begin_filter_range_lambda_qid(),
+                self.prover_end_filter_lambda_qid(),
+                self.prover_begin_find_lambda_qid(),
+                self.prover_begin_find_range_lambda_qid(),
+                self.prover_end_find_lambda_qid(),
+                self.prover_begin_find_index_lambda_qid(),
+                self.prover_begin_find_index_range_lambda_qid(),
+                self.prover_end_find_index_lambda_qid(),
+                self.prover_begin_find_indices_lambda_qid(),
+                self.prover_begin_find_indices_range_lambda_qid(),
+                self.prover_end_find_indices_lambda_qid(),
+                self.prover_begin_count_lambda_qid(),
+                self.prover_begin_count_range_lambda_qid(),
+                self.prover_end_count_lambda_qid(),
+                self.prover_begin_any_lambda_qid(),
+                self.prover_begin_any_range_lambda_qid(),
+                self.prover_end_any_lambda_qid(),
+                self.prover_begin_all_lambda_qid(),
+                self.prover_begin_all_range_lambda_qid(),
+                self.prover_end_all_lambda_qid(),
+                self.prover_begin_sum_map_lambda_qid(),
+                self.prover_begin_sum_map_range_lambda_qid(),
+                self.prover_end_sum_map_lambda_qid(),
+                self.prover_begin_range_map_lambda_qid(),
+                self.prover_end_range_map_lambda_qid(),
+                self.prover_begin_range_count_lambda_qid(),
+                self.prover_end_range_count_lambda_qid(),
+                self.prover_range_qid(),
+                self.prover_vec_sum_qid(),
+                self.prover_vec_sum_range_qid(),
+                self.prover_vec_slice_qid(),
+                self.prover_vec_concat_qid(),
+            ]);
+        }
 
         // Log module functions
         qids.extend(vec![
@@ -3765,6 +3846,7 @@ impl GlobalEnv {
                 self.vector_is_empty_qid(),
                 self.vector_contains_qid(),
                 self.vector_index_of_qid(),
+                self.vector_singleton_qid(),
                 // std::hash native functions
                 self.std_hash_sha2_256_qid(),
                 self.std_hash_sha3_256_qid(),
@@ -3829,6 +3911,12 @@ impl GlobalEnv {
                 self.object_table_is_empty_qid(),
                 self.object_table_length_qid(),
                 self.object_table_contains_qid(),
+                // sui::dynamic_field existence-check functions
+                self.dynamic_field_exists_qid(),
+                self.dynamic_field_exists_with_type_qid(),
+                // sui::dynamic_object_field existence-check functions
+                self.dynamic_object_field_exists_qid(),
+                self.dynamic_object_field_exists_with_type_qid(),
                 // sui::address native functions
                 self.sui_address_to_u256_qid(),
                 // sui::accumulator native functions
@@ -3861,7 +3949,7 @@ impl GlobalEnv {
                 // sui::types native functions
                 self.sui_types_is_one_time_witness_qid(),
                 // sui::object native functions
-                self.sui_object_borrow_uid_qid(),
+                self.object_borrow_uid_qid(),
                 self.sui_object_delete_impl_qid(),
                 self.sui_object_record_new_uid_qid(),
                 // sui::crypto::hash native functions
@@ -3906,6 +3994,7 @@ impl GlobalEnv {
             self.vector_swap_remove_qid(),
             self.vector_take_qid(),
             self.vector_skip_qid(),
+            self.vector_singleton_qid(),
             self.vec_set_get_idx_opt_qid(),
             self.vec_set_from_keys_qid(),
             self.vec_set_contains_qid(),
@@ -3950,7 +4039,6 @@ impl GlobalEnv {
             self.dynamic_object_field_borrow_mut_qid(),
             self.dynamic_object_field_remove_qid(),
             self.dynamic_object_field_exists_qid(),
-            self.dynamic_object_field_remove_if_exists_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
         ]
         .into_iter()
@@ -4024,15 +4112,17 @@ impl GlobalEnv {
             self.std_vector_push_back_qid(),
             self.vector_append_qid(),
             self.vector_reverse_qid(),
+            self.vector_singleton_qid(),
             // vec_set and vec_map native functions
             self.vec_set_contains_qid(),
             self.vec_map_contains_qid(),
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
-            Some(self.prover_vec_slice_qid()),
-            Some(self.prover_vec_sum_qid()),
-            Some(self.prover_vec_sum_range_qid()),
-            Some(self.prover_range_qid()),
+            self.prover_vec_slice_qid_opt(),
+            self.prover_vec_concat_qid_opt(),
+            self.prover_vec_sum_qid_opt(),
+            self.prover_vec_sum_range_qid_opt(),
+            self.prover_range_qid_opt(),
             // table and object_table native functions
             self.table_is_empty_qid(),
             self.table_length_qid(),
@@ -4040,6 +4130,23 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_length_qid(),
             self.object_table_contains_qid(),
+            // dynamic_field and dynamic_object_field existence-check functions
+            self.dynamic_field_exists_qid(),
+            self.dynamic_field_exists_with_type_qid(),
+            self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_exists_with_type_qid(),
+            self.object_borrow_uid_qid(),
+            // sui::tx_context native functions
+            self.sui_tx_context_sender_qid(),
+            self.sui_tx_context_epoch_qid(),
+            self.sui_tx_context_epoch_timestamp_ms_qid(),
+            self.sui_tx_context_reference_gas_price_qid(),
+            self.sui_tx_context_gas_price_qid(),
+            // std::type_name native functions
+            self.std_type_name_with_defining_ids_qid(),
+            self.std_type_name_with_original_ids_qid(),
+            self.std_type_name_defining_id_qid(),
+            self.std_type_name_original_id_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
@@ -6223,10 +6330,11 @@ impl<'env> FunctionEnv<'env> {
                         .module
                         .function_instantiation_at(*i)
                         .handle;
-                    vec![self
-                        .module_env
-                        .get_used_function(handle_idx)
-                        .get_qualified_id()]
+                    vec![
+                        self.module_env
+                            .get_used_function(handle_idx)
+                            .get_qualified_id(),
+                    ]
                 }
                 Bytecode::VecPack { .. } => vec![
                     self.module_env.env.get_fun_qid("vector", "empty"),

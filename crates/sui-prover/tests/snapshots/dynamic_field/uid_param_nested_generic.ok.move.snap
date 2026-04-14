@@ -1,0 +1,16 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_nested_generic.ok.move:16:10
+   │
+16 │         *df::borrow<K, V>(uid, key)
+   │          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_nested_generic.ok.move:11:5
+   │
+11 │     df::exists_with_type<K, V>(uid, key)
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, vec};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    vec,
+};
 
 use codespan_reporting::diagnostic::Severity;
 use move_model::{
@@ -13,7 +16,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     graph::{DomRelation, Graph},
-    stackless_bytecode::{Bytecode, Operation},
+    stackless_bytecode::{Bytecode, Constant, Operation},
     stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph},
 };
 
@@ -572,6 +575,68 @@ impl FunctionTargetProcessor for SpecWellFormedAnalysisProcessor {
                     &loc,
                     "Asserts are not checked while ignore_abort is enabled.",
                 );
+            }
+        }
+
+        // Detect prover::asserts_of(b"name") calls and register per-function ignore_aborts
+        let asserts_of_qid = env.asserts_of_qid();
+        let mut temp_to_bytes: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
+        for bc in code.iter() {
+            match bc {
+                Bytecode::Load(_, dest, Constant::ByteArray(bytes)) => {
+                    temp_to_bytes.insert(*dest, bytes.clone());
+                }
+                Bytecode::Call(_, _, Operation::Function(mid, fid, _), srcs, _)
+                    if mid.qualified(*fid) == asserts_of_qid =>
+                {
+                    if let Some(bytes) = srcs.first().and_then(|s| temp_to_bytes.get(s)) {
+                        let name = String::from_utf8_lossy(bytes).to_string();
+                        // Resolve the function name (supports qualified names)
+                        if let Some(target_func_qid) =
+                            env.resolve_function(&name, &func_env.module_env)
+                        {
+                            // Validate it has a spec with ignore_abort
+                            if let Some(spec_qid) = targets.get_spec_by_fun(&target_func_qid) {
+                                if targets.ignores_aborts(spec_qid) {
+                                    targets.add_asserts_of(func_env.get_qualified_id(), name);
+                                } else {
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "asserts_of(\"{}\"): {}'s spec does not have ignore_abort",
+                                            name, name
+                                        ),
+                                    );
+                                }
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!("asserts_of(\"{}\"): {} has no spec", name, name),
+                                );
+                            }
+                        } else {
+                            let msg = if name.contains("::") {
+                                format!("asserts_of(\"{}\"): function not found", name)
+                            } else {
+                                format!(
+                                    "asserts_of(\"{}\"): function not found in module {}. Use a qualified name like \"module::function\"",
+                                    name,
+                                    func_env.module_env.get_name().display(env.symbol_pool())
+                                )
+                            };
+                            env.diag(Severity::Error, &func_env.get_loc(), &msg);
+                        }
+                    } else {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "asserts_of() argument must be a byte string literal",
+                        );
+                    }
+                }
+                _ => {}
             }
         }
 

@@ -28,7 +28,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type,
+        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type, boogie_type_suffix,
         boogie_type_suffix_bv, FunctionTranslationStyle,
     },
     bytecode_translator::has_native_equality,
@@ -67,6 +67,14 @@ struct QuantifierHelperInfo {
     quantifier_params: String,
     quantifier_args: String,
     result_type: String,
+    /// e.g. "vec'u64'" — for `$IsValid'<suffix>'(helper(...))`.
+    result_is_valid_suffix: String,
+    /// e.g. "vec'u64'" — for `$IsEqual'<suffix>'(v1, v2)` in congruence axioms.
+    /// Empty for range_map (no input vector).
+    input_vec_is_equal_suffix: String,
+    /// e.g. "int" — Boogie type of input vector elements, for `v2` declaration
+    /// in congruence axioms. Empty for range_map.
+    input_elem_type: String,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -103,6 +111,7 @@ struct DynamicFieldInfo {
     fun_borrow: String,
     fun_borrow_mut: String,
     fun_remove: String,
+    fun_remove_if_exists: String,
     fun_exists_with_type: String,
     fun_exists: String,
     fun_exists_inner: String,
@@ -146,20 +155,23 @@ fn bv_helper() -> Vec<BvInfo> {
 }
 
 fn should_include_vec_sum(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let sum_func_env = env.get_function(env.prover_vec_sum_qid());
-    let sum_func_inlined = targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_func_inlined = env.prover_vec_sum_qid_opt().is_some_and(|qid| {
+        let sum_func_env = env.get_function(qid);
+        targets.has_target(&sum_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
-    let sum_range_func_env = env.get_function(env.prover_vec_sum_range_qid());
-    let sum_range_func_inlined = targets
-        .has_target(&sum_range_func_env, &FunctionVariant::Baseline)
-        && verification_analysis::get_info(
-            &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
-        )
-        .inlined;
+    let sum_range_func_inlined = env.prover_vec_sum_range_qid_opt().is_some_and(|qid| {
+        let sum_range_func_env = env.get_function(qid);
+        targets.has_target(&sum_range_func_env, &FunctionVariant::Baseline)
+            && verification_analysis::get_info(
+                &targets.get_target(&sum_range_func_env, &FunctionVariant::Baseline),
+            )
+            .inlined
+    });
 
     sum_func_inlined || sum_range_func_inlined
 }
@@ -170,6 +182,7 @@ pub fn add_prelude(
     targets: &FunctionTargetsHolder,
     options: &BoogieOptions,
     writer: &CodeWriter,
+    extra_bpl_contents: &[&str],
 ) -> anyhow::Result<()> {
     emit!(writer, "\n// ** Expanded prelude\n\n");
     let templ = |name: &'static str, cont: &[u8]| (name, String::from_utf8_lossy(cont).to_string());
@@ -225,12 +238,12 @@ pub fn add_prelude(
         .collect_vec();
     let mut table_instances = vec![];
     if let Some(table_qid) = env.table_qid() {
-        if mono_info.is_used_datatype(env, targets, &table_qid) {
+        if mono_info.is_used_datatype(env, targets, &table_qid, &[]) {
             table_instances.push(TableImpl::table(env, options, &mono_info, table_qid, false));
         }
     }
     if let Some(object_table_qid) = env.object_table_qid() {
-        if mono_info.is_used_datatype(env, targets, &object_table_qid) {
+        if mono_info.is_used_datatype(env, targets, &object_table_qid, &[]) {
             table_instances.push(TableImpl::object_table(
                 env,
                 options,
@@ -241,13 +254,16 @@ pub fn add_prelude(
         }
     }
     let mut dynamic_field_instances = vec![];
+    let uid_qid = env.uid_qid();
     for info in dynamic_field_analysis::get_env_info(env).dynamic_fields() {
         let (struct_qid, type_inst) = info.0.get_datatype().unwrap();
-        if mono_info.is_used_datatype(env, targets, &struct_qid)
-            && mono_info
-                .structs
-                .get(&struct_qid)
-                .is_some_and(|type_inst_set| type_inst_set.contains(type_inst))
+        let is_uid_type = uid_qid.as_ref().is_some_and(|uid| *uid == struct_qid);
+        if is_uid_type
+            || (mono_info.is_used_datatype(env, targets, &struct_qid, &[])
+                && mono_info
+                    .structs
+                    .get(&struct_qid)
+                    .is_some_and(|type_inst_set| type_inst_set.contains(type_inst)))
         {
             dynamic_field_instances.push(DynamicFieldInfo::dynamic_field(
                 env, options, info.0, info.1, false,
@@ -259,13 +275,10 @@ pub fn add_prelude(
     }
 
     context.insert("include_vec_sum", &should_include_vec_sum(env, targets));
-    context.insert(
-        "include_vector_iter_range",
-        &targets.has_target(
-            &env.get_function(env.prover_range_qid()),
-            &FunctionVariant::Baseline,
-        ),
-    );
+    let include_vector_iter_range = env
+        .prover_range_qid_opt()
+        .is_some_and(|qid| targets.has_target(&env.get_function(qid), &FunctionVariant::Baseline));
+    context.insert("include_vector_iter_range", &include_vector_iter_range);
 
     // let mut table_instances = mono_info
     //     .table_inst
@@ -302,7 +315,7 @@ pub fn add_prelude(
             .find_struct(env.symbol_pool().make("Option"))
             .unwrap();
         let option_instances =
-            if mono_info.is_used_datatype(env, targets, &option_env.get_qualified_id()) {
+            if mono_info.is_used_datatype(env, targets, &option_env.get_qualified_id(), &[]) {
                 mono_info
                     .structs
                     .get(&option_env.get_qualified_id())
@@ -320,18 +333,22 @@ pub fn add_prelude(
         let vec_set_struct_env = vec_set_module_env
             .find_struct(env.symbol_pool().make("VecSet"))
             .unwrap();
-        let vec_set_instances =
-            if mono_info.is_used_datatype(env, targets, &vec_set_struct_env.get_qualified_id()) {
-                mono_info
-                    .structs
-                    .get(&vec_set_struct_env.get_qualified_id())
-                    .unwrap_or(&BTreeSet::new())
-                    .iter()
-                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
-                    .collect_vec()
-            } else {
-                vec![]
-            };
+        let vec_set_instances = if mono_info.is_used_datatype(
+            env,
+            targets,
+            &vec_set_struct_env.get_qualified_id(),
+            &[],
+        ) {
+            mono_info
+                .structs
+                .get(&vec_set_struct_env.get_qualified_id())
+                .unwrap_or(&BTreeSet::new())
+                .iter()
+                .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                .collect_vec()
+        } else {
+            vec![]
+        };
         context.insert("vec_set_instances", &vec_set_instances);
     }
 
@@ -339,23 +356,27 @@ pub fn add_prelude(
         let vec_map_struct_env = vec_map_module_env
             .find_struct(env.symbol_pool().make("VecMap"))
             .unwrap();
-        let vec_map_instances =
-            if mono_info.is_used_datatype(env, targets, &vec_map_struct_env.get_qualified_id()) {
-                mono_info
-                    .structs
-                    .get(&vec_map_struct_env.get_qualified_id())
-                    .unwrap_or(&BTreeSet::new())
-                    .iter()
-                    .map(|tys| {
-                        (
-                            TypeInfo::new(env, options, &tys[0], false),
-                            TypeInfo::new(env, options, &tys[1], false),
-                        )
-                    })
-                    .collect_vec()
-            } else {
-                vec![]
-            };
+        let vec_map_instances = if mono_info.is_used_datatype(
+            env,
+            targets,
+            &vec_map_struct_env.get_qualified_id(),
+            &[],
+        ) {
+            mono_info
+                .structs
+                .get(&vec_map_struct_env.get_qualified_id())
+                .unwrap_or(&BTreeSet::new())
+                .iter()
+                .map(|tys| {
+                    (
+                        TypeInfo::new(env, options, &tys[0], false),
+                        TypeInfo::new(env, options, &tys[1], false),
+                    )
+                })
+                .collect_vec()
+        } else {
+            vec![]
+        };
         context.insert("vec_map_instances", &vec_map_instances);
     }
 
@@ -365,7 +386,7 @@ pub fn add_prelude(
             .find_struct(env.symbol_pool().make("TableVec"))
             .unwrap();
         let table_vec_instances =
-            if mono_info.is_used_datatype(env, targets, &table_vec_env.get_qualified_id()) {
+            if mono_info.is_used_datatype(env, targets, &table_vec_env.get_qualified_id(), &[]) {
                 mono_info
                     .structs
                     .get(&table_vec_env.get_qualified_id())
@@ -495,17 +516,43 @@ pub fn add_prelude(
 
     if let Some(path) = &options.prelude_extra {
         if let Ok(content) = fs::read_to_string(path) {
+            emitln!(writer, "\n// ** Extra BPL from prelude_extra option\n");
             emitln!(writer, &content);
+        }
+    }
+
+    let mut seen_bpl = BTreeSet::new();
+    for content in extra_bpl_contents {
+        if seen_bpl.insert(*content) {
+            emitln!(
+                writer,
+                "\n// ** Extra BPL from #[spec] or #[spec_only] attribute\n"
+            );
+            emitln!(writer, content);
         }
     }
 
     Ok(())
 }
 
+fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
+    triple_opt
+        .and_then(|fun_qid| {
+            let fun = env.get_function(fun_qid);
+            Some(format!(
+                "${}_{}_{}",
+                fun.module_env.get_name().addr().to_str_radix(16),
+                fun.module_env.get_name().name().display(fun.symbol_pool()),
+                fun.get_name_str(),
+            ))
+        })
+        .unwrap_or_default()
+}
+
 impl QuantifierHelperInfo {
     fn new(env: &GlobalEnv, info: &PureQuantifierHelperInfo) -> Self {
         let func_env = env.get_function(info.function);
-        let params_types = func_env.get_parameter_types();
+        let params_types = Type::instantiate_vec(func_env.get_parameter_types(), &info.inst);
 
         let mut quantifier_params = if info.qht.range_based() {
             "start: int, end: int".to_string()
@@ -521,20 +568,6 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
-
-        let dst_elem_boogie_type = if matches!(
-            info.qht,
-            QuantifierHelperType::FindIndex
-                | QuantifierHelperType::FindIndices
-                | QuantifierHelperType::RangeCount
-        ) {
-            &Type::Primitive(PrimitiveType::U64)
-        } else if matches!(info.qht, QuantifierHelperType::Filter) {
-            &params_types[info.li].skip_reference()
-        } else {
-            &func_env.get_return_type(0)
-        };
-
         if func_env.get_parameter_count() > 1 {
             quantifier_params = format!(
                 "{}, {}",
@@ -551,25 +584,61 @@ impl QuantifierHelperInfo {
                     })
                     .join(", ")
             );
-            quantifier_args = format!(
-                "{}, {}",
-                quantifier_args,
-                (0..func_env.get_parameter_count())
-                    .filter(|idx| *idx != info.li)
-                    .map(|val| format!("$t{}", val.to_string()))
-                    .join(", ")
-            );
+            let captured_list = (0..func_env.get_parameter_count())
+                .filter(|idx| *idx != info.li)
+                .map(|val| format!("$t{}", val.to_string()))
+                .join(", ");
+            quantifier_args = format!("{}, {}", quantifier_args, captured_list);
         }
+
+        // RT and $IsValid suffix are only used by vector-valued helpers
+        let (result_type, result_is_valid_suffix) = if matches!(
+            info.qht,
+            QuantifierHelperType::Map
+                | QuantifierHelperType::RangeMap
+                | QuantifierHelperType::Filter
+                | QuantifierHelperType::FindIndices
+        ) {
+            let vec_elem_type = match info.qht {
+                QuantifierHelperType::FindIndices => &Type::Primitive(PrimitiveType::U64),
+                QuantifierHelperType::Filter => &params_types[info.li].skip_reference(),
+                _ => &Type::instantiate(&func_env.get_return_type(0), &info.inst),
+            };
+            let vec_type = Type::Vector(Box::new(vec_elem_type.clone()));
+            (
+                boogie_type(env, vec_elem_type),
+                boogie_type_suffix(env, &vec_type),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+
+        let (input_vec_is_equal_suffix, input_elem_type) = if matches!(
+            info.qht,
+            QuantifierHelperType::RangeMap | QuantifierHelperType::RangeCount
+        ) {
+            (String::new(), String::new()) // no input vector
+        } else {
+            let elem_ty = params_types[info.li].skip_reference();
+            let vec_type = Type::Vector(Box::new(elem_ty.clone()));
+            (
+                boogie_type_suffix(env, &vec_type),
+                boogie_type(env, &elem_ty),
+            )
+        };
 
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
-            result_type: boogie_type(env, dst_elem_boogie_type),
+            result_type,
+            result_is_valid_suffix,
+            input_vec_is_equal_suffix,
+            input_elem_type,
             extra_args_before: (0..info.li)
-                .map(|i| format!("$t{}, ", i.to_string()))
-                .join(""),
+                .map(|i| format!("$t{}", i.to_string()))
+                .join(", "),
             extra_args_after: (info.li + 1..func_env.get_parameter_count())
                 .map(|i| format!(", $t{}", i.to_string()))
                 .join(""),
@@ -632,19 +701,19 @@ impl TableImpl {
                 })
                 .unwrap_or_default()
             {
-                Self::triple_opt_to_name(env, env.table_new_qid())
+                triple_opt_to_name(env, env.table_new_qid())
             } else {
                 "".to_string()
             },
-            fun_add: Self::triple_opt_to_name(env, env.table_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.table_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.table_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.table_remove_qid()),
-            fun_contains: Self::triple_opt_to_name(env, env.table_contains_qid()),
-            fun_length: Self::triple_opt_to_name(env, env.table_length_qid()),
-            fun_is_empty: Self::triple_opt_to_name(env, env.table_is_empty_qid()),
-            fun_destroy_empty: Self::triple_opt_to_name(env, env.table_destroy_empty_qid()),
-            fun_drop: Self::triple_opt_to_name(env, env.table_drop_qid()),
+            fun_add: triple_opt_to_name(env, env.table_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.table_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.table_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.table_remove_qid()),
+            fun_contains: triple_opt_to_name(env, env.table_contains_qid()),
+            fun_length: triple_opt_to_name(env, env.table_length_qid()),
+            fun_is_empty: triple_opt_to_name(env, env.table_is_empty_qid()),
+            fun_destroy_empty: triple_opt_to_name(env, env.table_destroy_empty_qid()),
+            fun_drop: triple_opt_to_name(env, env.table_drop_qid()),
             fun_value_id: "".to_string(),
         }
     }
@@ -689,35 +758,21 @@ impl TableImpl {
                 })
                 .unwrap_or_default()
             {
-                Self::triple_opt_to_name(env, env.object_table_new_qid())
+                triple_opt_to_name(env, env.object_table_new_qid())
             } else {
                 "".to_string()
             },
-            fun_add: Self::triple_opt_to_name(env, env.object_table_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.object_table_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.object_table_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.object_table_remove_qid()),
-            fun_contains: Self::triple_opt_to_name(env, env.object_table_contains_qid()),
-            fun_length: Self::triple_opt_to_name(env, env.object_table_length_qid()),
-            fun_is_empty: Self::triple_opt_to_name(env, env.object_table_is_empty_qid()),
-            fun_destroy_empty: Self::triple_opt_to_name(env, env.object_table_destroy_empty_qid()),
+            fun_add: triple_opt_to_name(env, env.object_table_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.object_table_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.object_table_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.object_table_remove_qid()),
+            fun_contains: triple_opt_to_name(env, env.object_table_contains_qid()),
+            fun_length: triple_opt_to_name(env, env.object_table_length_qid()),
+            fun_is_empty: triple_opt_to_name(env, env.object_table_is_empty_qid()),
+            fun_destroy_empty: triple_opt_to_name(env, env.object_table_destroy_empty_qid()),
             fun_drop: "".to_string(),
-            fun_value_id: Self::triple_opt_to_name(env, env.object_table_value_id_qid()),
+            fun_value_id: triple_opt_to_name(env, env.object_table_value_id_qid()),
         }
-    }
-
-    fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
-        triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
-            })
-            .unwrap_or_default()
     }
 }
 
@@ -751,15 +806,13 @@ impl DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
             key_insts,
-            fun_add: Self::triple_opt_to_name(env, env.dynamic_field_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
-            fun_remove: Self::triple_opt_to_name(env, env.dynamic_field_remove_qid()),
-            fun_exists_with_type: Self::triple_opt_to_name(
-                env,
-                env.dynamic_field_exists_with_type_qid(),
-            ),
-            fun_exists: Self::triple_opt_to_name(env, env.dynamic_field_exists_qid()),
+            fun_add: triple_opt_to_name(env, env.dynamic_field_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.dynamic_field_remove_qid()),
+            fun_remove_if_exists: triple_opt_to_name(env, env.dynamic_field_remove_if_exists_qid()),
+            fun_exists_with_type: triple_opt_to_name(env, env.dynamic_field_exists_with_type_qid()),
+            fun_exists: triple_opt_to_name(env, env.dynamic_field_exists_qid()),
             fun_exists_inner: env
                 .dynamic_field_exists_qid()
                 .map(|fun_qid| {
@@ -803,18 +856,16 @@ impl DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
             key_insts,
-            fun_add: Self::triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
-            fun_borrow: Self::triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
-            fun_borrow_mut: Self::triple_opt_to_name(
-                env,
-                env.dynamic_object_field_borrow_mut_qid(),
-            ),
-            fun_remove: Self::triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
-            fun_exists_with_type: Self::triple_opt_to_name(
+            fun_add: triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
+            fun_borrow: triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
+            fun_borrow_mut: triple_opt_to_name(env, env.dynamic_object_field_borrow_mut_qid()),
+            fun_remove: triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
+            fun_remove_if_exists: "".to_string(), // dynamic object field do not support remove_if_exists
+            fun_exists_with_type: triple_opt_to_name(
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
             ),
-            fun_exists: Self::triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
+            fun_exists: triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
             fun_exists_inner: env
                 .dynamic_object_field_exists_qid()
                 .map(|fun_qid| {
@@ -827,19 +878,5 @@ impl DynamicFieldInfo {
                 })
                 .unwrap_or_default(),
         }
-    }
-
-    fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
-        triple_opt
-            .map(|fun_qid| {
-                let fun = env.get_function(fun_qid);
-                format!(
-                    "${}_{}_{}",
-                    fun.module_env.get_name().addr().to_str_radix(16),
-                    fun.module_env.get_name().name().display(fun.symbol_pool()),
-                    fun.get_name_str(),
-                )
-            })
-            .unwrap_or_default()
     }
 }

@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with verification errors
+error: spec has run_on="cloud" but cloud is not configured. Use --cloud to enable cloud verification.
+   ┌─ tests/inputs/run_on_invalid_cloud.fail.move:9:1
+   │  
+ 9 │ ╭ public fun foo_spec_cloud() {
+10 │ │     foo();
+11 │ │ }
+   │ ╰─^

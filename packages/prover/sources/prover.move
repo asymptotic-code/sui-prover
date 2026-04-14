@@ -7,6 +7,8 @@ native public fun ensures(p: bool);
 #[spec_only]
 native public fun asserts(p: bool);
 #[spec_only]
+native public fun asserts_of(name: vector<u8>): bool;
+#[spec_only]
 public macro fun invariant($invariants: ||) {
     invariant_begin();
     $invariants();

@@ -105,12 +105,12 @@ fun vec_filter_even_in_range(v: &vector<u64>, start: u64, end: u64): &vector<u64
 }
 
 #[ext(pure)]
-fun vec_find_even_indices(v: &vector<u64>): vector<u64> {
+fun vec_find_even_indices(v: &vector<u64>): &vector<u64> {
     find_indices!<u64>(v, |x| is_even(x))
 }
 
 #[ext(pure)]
-fun vec_find_even_indices_in_range(v: &vector<u64>, start: u64, end: u64): vector<u64> {
+fun vec_find_even_indices_in_range(v: &vector<u64>, start: u64, end: u64): &vector<u64> {
     find_indices_range!<u64>(v, start, end, |x| is_even(x))
 }
 
@@ -223,29 +223,33 @@ fun test_find_range() {
 }
 
 // Test: filter
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even(&v) == vector[2, 4]); // filters to only even elements
 }
 
 // Test: filter_range
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even_in_range(&v, 1, 4) == vector[2, 4]); // filters range [1,4) to even elements
 }
 
 // Test: find_indices
-#[spec(prove)]
+// find_indices uses compound-trigger recursive axioms so exact-value
+// equality on concrete inputs isn't provable via unfolding alone; the
+// extra_bpl file nested_pure.ok.bpl supplies a single-trigger end-step
+// axiom for this helper instance so the exact result can be proved.
+#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
 fun test_find_indices() {
-    let v = vector[10, 20, 30, 40];
-    ensures(vec_find_even_indices(&v) == vector[1, 3]); // indices 1 and 3 have even elements (20, 40)
+    let v = vector[11, 20, 31, 40];
+    ensures(*vec_find_even_indices(&v) == vector[1, 3]);
 }
 
 // Test: find_indices_range
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
 fun test_find_indices_range() {
-    let v = vector[10, 20, 30, 40];
-    ensures(vec_find_even_indices_in_range(&v, 0, 2) == vector[1]); // index 1 has 20
+    let v = vector[11, 20, 31, 40];
+    ensures(*vec_find_even_indices_in_range(&v, 0, 2) == vector[1]);
 }

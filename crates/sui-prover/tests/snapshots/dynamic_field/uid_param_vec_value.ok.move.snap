@@ -1,0 +1,10 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_vec_value.ok.move:11:5
+   │
+11 │     df::add(uid, key, scores);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^

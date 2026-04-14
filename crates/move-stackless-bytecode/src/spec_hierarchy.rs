@@ -30,56 +30,57 @@ struct CallInfo {
     spec_id: Option<QualifiedId<FunId>>,
 }
 
-/// Generates and writes specification hierarchy trees to log files.
+/// Writes the hierarchy log file for a single spec using already-built targets.
 ///
-/// For each spec in the targets, creates a `.log.txt` file in the output directory
-/// showing the complete call hierarchy including:
-/// - All functions called by the spec's underlying implementation
-/// - Spec properties (prove, no_opaque) for functions that have specs
-/// - System functions are excluded (stdlib, Sui framework, etc.)
-/// - Tree structure with proper indentation using box-drawing characters
-///
-/// # Tree Traversal
-/// - Recurses into functions without specs to find nested specs
-/// - Stops recursing at opaque specs (specs without `no_opaque`)
-/// - Recurses into `no_opaque` specs since the prover uses their implementation
-/// - Prevents infinite recursion by tracking displayed functions
+/// This is designed to be called during verification, reusing the
+/// `FunctionTargetsHolder` that was already created with proper per-spec
+/// filtering (e.g. `FunctionHolderTarget::Function`).
 ///
 /// # Arguments
-/// * `env` - Global environment containing all function and module information
-/// * `targets` - Holder containing all specs and their relationships
+/// * `env` - Global environment
+/// * `targets` - Targets holder with spec mappings (already built for this spec's context)
+/// * `spec_id` - The spec to write the hierarchy for
 /// * `output_dir` - Directory where .log.txt files will be written
-pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, output_dir: &Path) {
+pub fn write_spec_hierarchy_log(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    spec_id: &QualifiedId<FunId>,
+    output_dir: &Path,
+) {
     let excluded_addresses = get_excluded_addresses();
+    let spec_env = env.get_function(*spec_id);
+    let spec_name = spec_env.get_full_name_str();
 
+    if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
+        let func_env = env.get_function(*fun_id);
+        let header = func_env.get_full_name_str();
+        write_spec_log_file(
+            env,
+            targets,
+            &func_env,
+            spec_name,
+            &header,
+            output_dir,
+            &excluded_addresses,
+        );
+    } else if targets.is_scenario_spec(spec_id) {
+        let header = format!("{} {}", spec_env.get_full_name_str(), SCENARIO_LABEL);
+        write_spec_log_file(
+            env,
+            targets,
+            &spec_env,
+            spec_name,
+            &header,
+            output_dir,
+            &excluded_addresses,
+        );
+    }
+}
+
+/// Writes hierarchy log files for all specs in the given targets.
+pub fn display_spec_hierarchy(env: &GlobalEnv, targets: &FunctionTargetsHolder, output_dir: &Path) {
     for spec_id in targets.specs() {
-        let spec_env = env.get_function(*spec_id);
-        let spec_name = spec_env.get_full_name_str();
-
-        if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
-            let func_env = env.get_function(*fun_id);
-            let header = func_env.get_full_name_str();
-            write_spec_log_file(
-                env,
-                targets,
-                &func_env,
-                spec_name,
-                &header,
-                output_dir,
-                &excluded_addresses,
-            );
-        } else if targets.is_scenario_spec(spec_id) {
-            let header = format!("{} {}", spec_env.get_full_name_str(), SCENARIO_LABEL);
-            write_spec_log_file(
-                env,
-                targets,
-                &spec_env,
-                spec_name,
-                &header,
-                output_dir,
-                &excluded_addresses,
-            );
-        }
+        write_spec_hierarchy_log(env, targets, spec_id, output_dir);
     }
 }
 
@@ -267,9 +268,10 @@ fn build_implementation_tree(
 
 /// Displays a spec-only call tree to the terminal during verification.
 ///
-/// Shows the specification hierarchy for a single spec, displaying only functions
-/// that have associated specs in the current verification context. This is called
-/// during verification when verbosity level is Debug or higher.
+/// Shows the specification hierarchy for a single spec, displaying:
+/// - First: specs called directly from the spec function itself
+/// - Then: the target function marked with 🎯
+/// - Under the target function: its dependencies
 ///
 /// # Limitations
 /// Unlike `display_spec_hierarchy`, this function only sees specs in the current
@@ -296,22 +298,98 @@ pub fn display_spec_tree_terminal(
 ) {
     let excluded_addresses = get_excluded_addresses();
 
-    let func_env = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
-        env.get_function(*fun_id)
+    // Get the underlying function being verified
+    let fun_id = if let Some(fun_id) = targets.get_fun_by_spec(spec_id) {
+        *fun_id
     } else {
         return;
     };
+    let func_env = env.get_function(fun_id);
+    let spec_env = env.get_function(*spec_id);
 
+    // Display spec function's dependencies (skipping the target function itself)
     let mut displayed = BTreeSet::new();
     build_spec_only_tree(
         env,
         targets,
-        &func_env,
+        &spec_env,
         "",
         &excluded_addresses,
         &mut displayed,
         spec_id,
+        Some(&fun_id),
     );
+
+    // Display the target function with 🎯
+    let (branch, next_prefix) = get_tree_branch(true, "");
+    println!("{} 🎯{}", branch, func_env.get_full_name_str());
+
+    // Display the target function's dependencies
+    displayed.clear();
+    build_spec_only_tree(
+        env,
+        targets,
+        &func_env,
+        &next_prefix,
+        &excluded_addresses,
+        &mut displayed,
+        spec_id,
+        None,
+    );
+}
+
+/// Counts specs that will be displayed at the current tree level.
+/// This includes both direct specs and specs found by recursing through
+/// transparent (no-spec) functions, since those render at the same indentation.
+fn count_displayable_specs(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    filtered_calls: &[QualifiedId<FunId>],
+    excluded_addresses: &[BigUint],
+    visited: &mut BTreeSet<QualifiedId<FunId>>,
+    root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
+) -> usize {
+    let mut count = 0;
+    for called_id in filtered_calls {
+        let spec_id = targets.get_spec_by_fun(called_id);
+        let will_display = if let Some(sid) = spec_id {
+            *sid != *root_spec_id && !targets.omits_opaque(sid)
+        } else {
+            false
+        };
+        if will_display {
+            count += 1;
+        } else {
+            let should_recurse = spec_id.map_or(true, |sid| *sid != *root_spec_id);
+            if should_recurse && !visited.contains(called_id) {
+                visited.insert(*called_id);
+                let called_env = env.get_function(*called_id);
+                let child_calls: Vec<_> = called_env
+                    .get_called_functions()
+                    .into_iter()
+                    .filter(|cid| {
+                        if spec_target_fun_id == Some(cid) {
+                            return false;
+                        }
+                        let ce = env.get_function(*cid);
+                        !is_system_function(&ce, excluded_addresses)
+                            || targets.get_spec_by_fun(cid).is_some()
+                    })
+                    .collect();
+                count += count_displayable_specs(
+                    env,
+                    targets,
+                    &child_calls,
+                    excluded_addresses,
+                    visited,
+                    root_spec_id,
+                    spec_target_fun_id,
+                );
+            }
+        }
+    }
+    count
 }
 
 /// Recursively builds a spec-only tree for terminal output.
@@ -325,6 +403,7 @@ pub fn display_spec_tree_terminal(
 /// # Arguments
 /// * `root_spec_id` - The spec being displayed; excluded from the tree
 /// * `displayed` - Set tracking already displayed functions to prevent cycles
+/// * `spec_target_fun_id` - Optional function to skip (used to exclude target function when traversing spec)
 fn build_spec_only_tree(
     env: &GlobalEnv,
     targets: &FunctionTargetsHolder,
@@ -333,29 +412,62 @@ fn build_spec_only_tree(
     excluded_addresses: &[BigUint],
     displayed: &mut BTreeSet<QualifiedId<FunId>>,
     root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
 ) {
     let filtered_calls: Vec<_> = func_env
         .get_called_functions()
         .into_iter()
         .filter(|called_id| {
+            if spec_target_fun_id == Some(called_id) {
+                return false;
+            }
             let called_env = env.get_function(*called_id);
+            // keep system functions that have a spec registered in the current targets
             !is_system_function(&called_env, excluded_addresses)
+                || targets.get_spec_by_fun(called_id).is_some()
         })
         .collect();
 
-    let specs_to_display: Vec<_> = filtered_calls
-        .iter()
-        .filter(|called_id| {
-            if let Some(spec_id) = targets.get_spec_by_fun(called_id) {
-                *spec_id != *root_spec_id && !targets.omits_opaque(spec_id)
-            } else {
-                false
-            }
-        })
-        .collect();
+    let total_displayable = {
+        let mut visited = displayed.clone();
+        count_displayable_specs(
+            env,
+            targets,
+            &filtered_calls,
+            excluded_addresses,
+            &mut visited,
+            root_spec_id,
+            spec_target_fun_id,
+        )
+    };
 
     let mut spec_index = 0;
+    build_spec_only_tree_inner(
+        env,
+        targets,
+        &filtered_calls,
+        prefix,
+        excluded_addresses,
+        displayed,
+        root_spec_id,
+        spec_target_fun_id,
+        &mut spec_index,
+        total_displayable,
+    );
+}
 
+fn build_spec_only_tree_inner(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    filtered_calls: &[QualifiedId<FunId>],
+    prefix: &str,
+    excluded_addresses: &[BigUint],
+    displayed: &mut BTreeSet<QualifiedId<FunId>>,
+    root_spec_id: &QualifiedId<FunId>,
+    spec_target_fun_id: Option<&QualifiedId<FunId>>,
+    spec_index: &mut usize,
+    total_displayable: usize,
+) {
     for called_id in filtered_calls.iter() {
         let call_info = get_call_display_info(env, targets, called_id);
         let spec_id = targets.get_spec_by_fun(called_id);
@@ -367,13 +479,13 @@ fn build_spec_only_tree(
         };
 
         if will_display {
-            let is_last = spec_index == specs_to_display.len() - 1;
+            let is_last = *spec_index == total_displayable - 1;
             let (branch, next_prefix) = get_tree_branch(is_last, prefix);
 
             let props_str = format_spec_properties(targets, spec_id.unwrap());
             println!("{} {}{}", branch, call_info.display_name, props_str);
 
-            spec_index += 1;
+            *spec_index += 1;
 
             let should_recurse = targets.omits_opaque(spec_id.unwrap());
             if should_recurse && !displayed.contains(called_id) {
@@ -387,6 +499,7 @@ fn build_spec_only_tree(
                     excluded_addresses,
                     displayed,
                     root_spec_id,
+                    spec_target_fun_id,
                 );
             }
         } else {
@@ -394,14 +507,29 @@ fn build_spec_only_tree(
             if should_recurse && !displayed.contains(called_id) {
                 displayed.insert(*called_id);
                 let called_env = env.get_function(*called_id);
-                build_spec_only_tree(
+                let child_calls: Vec<_> = called_env
+                    .get_called_functions()
+                    .into_iter()
+                    .filter(|cid| {
+                        if spec_target_fun_id == Some(cid) {
+                            return false;
+                        }
+                        let ce = env.get_function(*cid);
+                        !is_system_function(&ce, excluded_addresses)
+                            || targets.get_spec_by_fun(cid).is_some()
+                    })
+                    .collect();
+                build_spec_only_tree_inner(
                     env,
                     targets,
-                    &called_env,
+                    &child_calls,
                     prefix,
                     excluded_addresses,
                     displayed,
                     root_spec_id,
+                    spec_target_fun_id,
+                    spec_index,
+                    total_displayable,
                 );
             }
         }

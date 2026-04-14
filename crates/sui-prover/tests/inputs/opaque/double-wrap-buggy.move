@@ -13,6 +13,6 @@ fun double_wrap_buggy(x: u64): u64 {
 #[spec(prove)]
 fun double_wrap_buggy_spec(x: u64): u64 {
     let result = double_wrap_buggy(x);
-    ensures(result == x.to_int().mul((2 as u8).to_int()).to_u64());
+    ensures(result == x.to_int().mul((2u8).to_int()).to_u64());
     result
 }

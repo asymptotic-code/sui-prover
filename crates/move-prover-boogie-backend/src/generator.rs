@@ -19,7 +19,7 @@ use futures::stream::{self, StreamExt};
 use log::{debug, info, warn, LevelFilter};
 use move_model::{
     code_writer::CodeWriter,
-    model::{FunId, GlobalEnv, ModuleId, QualifiedId},
+    model::{FunId, GlobalEnv, Loc, ModuleId, QualifiedId},
     ty::Type,
 };
 use move_stackless_bytecode::package_targets::PackageTargets;
@@ -34,14 +34,21 @@ use move_stackless_bytecode::{
 };
 use std::{fs, path::Path, time::Instant};
 
+/// Constant for the "local" run location value
+pub const RUN_ON_LOCAL: &str = "local";
+/// Constant for the "cloud" run location value
+pub const RUN_ON_CLOUD: &str = "cloud";
+
 pub struct FileOptions {
     pub file_name: String,
     pub code_writer: CodeWriter,
     pub types: BiBTreeMap<Type, String>,
     pub boogie_options: Option<String>,
     pub timeout: Option<u64>,
+    pub run_on: Option<String>,
     pub targets: FunctionTargetsHolder,
     pub qid: Option<QualifiedId<FunId>>,
+    pub loc: Loc,
 }
 
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
@@ -82,7 +89,12 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     // TODO: delete duplicate diagnostics reporting
     env.report_diag(error_writer, options.prover.report_severity);
 
-    let targets = PackageTargets::new(&env, options.filter.clone(), !options.prover.ci);
+    let targets = PackageTargets::new(
+        &env,
+        options.filter.clone(),
+        !options.prover.ci,
+        options.backend.prelude_extra.as_deref(),
+    );
 
     // Until this point, prover and docgen have same code. Here we part ways.
     if options.run_docgen {
@@ -173,7 +185,7 @@ async fn run_prover_spec_no_abort_check<W: WriteColor>(
                 error_writer,
                 targets,
                 mid,
-                AssertsMode::Check,
+                AssertsMode::SpecNoAbortCheck,
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -195,6 +207,10 @@ async fn run_prover_abort_check<W: WriteColor>(
     opt: &Options,
     package_targets: &PackageTargets,
 ) -> anyhow::Result<bool> {
+    if opt.prover.skip_fun_no_abort {
+        return Ok(false);
+    }
+
     let mut options = opt.clone();
     options.backend.func_abort_check_only = true;
 
@@ -224,7 +240,26 @@ async fn run_prover_abort_check<W: WriteColor>(
     let file_name = "funs_abort_check";
     println!("🔄 {file_name}");
 
-    let (code_writer, types) = generate_boogie(env, &options, &targets, AssertsMode::Check)?;
+    let mut extra_bpl_contents: Vec<&str> = Vec::new();
+    let mut seen_modules = std::collections::BTreeSet::new();
+    for qid in package_targets.target_no_abort_check_functions() {
+        if let Some(content) = package_targets.get_function_extra_bpl(qid) {
+            extra_bpl_contents.push(content.as_str());
+        }
+        if seen_modules.insert(qid.module_id) {
+            if let Some(content) = package_targets.get_module_extra_bpl(&qid.module_id) {
+                extra_bpl_contents.push(content.as_str());
+            }
+        }
+    }
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &targets,
+        AssertsMode::Check,
+        &extra_bpl_contents,
+    )?;
     check_errors(
         env,
         &options,
@@ -241,6 +276,8 @@ async fn run_prover_abort_check<W: WriteColor>(
         file_name.to_owned(),
         None,
         None,
+        None,
+        env.internal_loc(),
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -252,7 +289,9 @@ async fn run_prover_abort_check<W: WriteColor>(
         return Ok(true);
     }
 
-    print!("\x1B[1A\x1B[2K");
+    if !options.backend.trace {
+        print!("\x1B[1A\x1B[2K");
+    }
     if elapsed.as_secs() > 1 {
         println!("✅ {} ({}s)", file_name, elapsed.as_secs());
     } else {
@@ -280,6 +319,8 @@ fn generate_function_bpl<W: WriteColor>(
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
+
     check_errors(
         env,
         &options,
@@ -287,7 +328,21 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
+    let mut extra_bpl_contents: Vec<&str> = Vec::new();
+    if let Some(content) = package_targets.get_function_extra_bpl(qid) {
+        extra_bpl_contents.push(content.as_str());
+    }
+    if let Some(content) = package_targets.get_module_extra_bpl(&qid.module_id) {
+        extra_bpl_contents.push(content.as_str());
+    }
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &mut targets,
+        asserts_mode,
+        &extra_bpl_contents,
+    )?;
 
     check_errors(
         env,
@@ -296,12 +351,25 @@ fn generate_function_bpl<W: WriteColor>(
         "exiting with condition generation errors",
     )?;
 
+    let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
+    // When --trace is active, ensure vcsSplitOnEveryAssert and vcsCores:1
+    // are present so the trace display can show per-assertion progress.
+    if options.backend.trace {
+        let extra = "vcsSplitOnEveryAssert vcsCores:1";
+        boogie_options = Some(match boogie_options {
+            Some(existing) => format!("{} {}", existing, extra),
+            None => extra.to_string(),
+        });
+    }
+
     Ok(FileOptions {
         file_name,
         code_writer,
         types,
-        boogie_options: targets.get_spec_boogie_options(qid).cloned(),
+        boogie_options,
         timeout: targets.get_spec_timeout(qid).cloned(),
+        run_on: targets.get_spec_run_on(qid).cloned(),
+        loc: env.get_function(*qid).get_loc(),
         targets,
         qid: Some(*qid),
     })
@@ -322,9 +390,15 @@ fn generate_module_bpl<W: WriteColor>(
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
     );
-    let target_type = FunctionHolderTarget::Module(*mid);
+    let target_type = if asserts_mode == AssertsMode::SpecNoAbortCheck {
+        FunctionHolderTarget::SpecNoAbortCheck(*mid)
+    } else {
+        FunctionHolderTarget::Module(*mid)
+    };
 
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
+
+    write_spec_hierarchy_logs(env, &targets, &options, asserts_mode);
 
     check_errors(
         env,
@@ -333,7 +407,19 @@ fn generate_module_bpl<W: WriteColor>(
         "exiting with bytecode transformation errors",
     )?;
 
-    let (code_writer, types) = generate_boogie(env, &options, &mut targets, asserts_mode)?;
+    let extra_bpl_contents: Vec<&str> = package_targets
+        .get_module_extra_bpl(mid)
+        .into_iter()
+        .map(|s| s.as_str())
+        .collect();
+
+    let (code_writer, types) = generate_boogie(
+        env,
+        &options,
+        &mut targets,
+        asserts_mode,
+        &extra_bpl_contents,
+    )?;
 
     check_errors(
         env,
@@ -348,6 +434,8 @@ fn generate_module_bpl<W: WriteColor>(
         types,
         boogie_options: None,
         timeout: None,
+        run_on: None,
+        loc: env.get_module(*mid).get_loc(),
         targets,
         qid: None,
     })
@@ -371,6 +459,8 @@ async fn verify_bpl<W: WriteColor>(
         file.file_name.clone(),
         file.timeout,
         file.boogie_options,
+        file.run_on,
+        file.loc,
     )
     .await?;
     let elapsed = start_time.elapsed();
@@ -381,7 +471,7 @@ async fn verify_bpl<W: WriteColor>(
     if is_error {
         println!("❌ {} ({:.1}s)", file.file_name, elapsed.as_secs_f64());
     } else {
-        if options.remote.is_none() {
+        if options.remote.is_none() && !options.backend.trace {
             print!("\x1B[1A\x1B[2K");
         }
         if elapsed.as_secs() > 1 {
@@ -442,6 +532,22 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             qid,
+                            AssertsMode::Check,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+            result.extend(
+                targets
+                    .target_specs()
+                    .iter()
+                    .map(|qid| {
+                        generate_function_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            qid,
                             AssertsMode::Assume,
                         )
                     })
@@ -458,7 +564,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             qid,
-                            AssertsMode::Check,
+                            AssertsMode::SpecNoAbortCheck,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -479,6 +585,22 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             mid,
+                            AssertsMode::Check,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+            result.extend(
+                targets
+                    .target_modules()
+                    .iter()
+                    .map(|mid| {
+                        generate_module_bpl(
+                            env,
+                            options,
+                            error_writer,
+                            targets,
+                            mid,
                             AssertsMode::Assume,
                         )
                     })
@@ -495,7 +617,7 @@ pub async fn run_prover<W: WriteColor>(
                             error_writer,
                             targets,
                             mid,
-                            AssertsMode::Check,
+                            AssertsMode::SpecNoAbortCheck,
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -529,19 +651,35 @@ async fn verify_batch<W: WriteColor>(
 ) -> anyhow::Result<bool> {
     let mut has_errors = false;
     if options.remote.is_some() {
-        let results = stream::iter(files)
-            .map(|file| async move {
-                let mut local_error_writer = Buffer::no_color();
-                let is_error = verify_bpl(env, &mut local_error_writer, options, file).await;
-                (local_error_writer, is_error)
-            })
-            .buffer_unordered(options.remote.as_ref().unwrap().concurrency)
-            .collect::<Vec<_>>()
-            .await;
+        // Separate files into remote and local batches. Files with run_on="local"
+        // use blocking subprocess execution which would starve the tokio runtime
+        // if run inside buffer_unordered, so they must be run sequentially.
+        let (local_files, remote_files): (Vec<_>, Vec<_>) = files
+            .into_iter()
+            .partition(|f| f.run_on.as_deref() == Some(RUN_ON_LOCAL));
 
-        for (local_error_writer, is_error) in results {
-            error_writer.write_all(&local_error_writer.into_inner())?;
-            if is_error? {
+        if !remote_files.is_empty() {
+            let results = stream::iter(remote_files)
+                .map(|file| async move {
+                    let mut local_error_writer = Buffer::no_color();
+                    let is_error = verify_bpl(env, &mut local_error_writer, options, file).await;
+                    (local_error_writer, is_error)
+                })
+                .buffer_unordered(options.remote.as_ref().unwrap().concurrency)
+                .collect::<Vec<_>>()
+                .await;
+
+            for (local_error_writer, is_error) in results {
+                error_writer.write_all(&local_error_writer.into_inner())?;
+                if is_error? {
+                    has_errors = true;
+                }
+            }
+        }
+
+        for file in local_files {
+            let is_error = verify_bpl(env, error_writer, options, file).await?;
+            if is_error {
                 has_errors = true;
             }
         }
@@ -577,10 +715,11 @@ pub fn generate_boogie(
     options: &Options,
     targets: &FunctionTargetsHolder,
     asserts_mode: AssertsMode,
+    extra_bpl_contents: &[&str],
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
-    add_prelude(env, targets, &options.backend, &writer)?;
+    add_prelude(env, targets, &options.backend, &writer, extra_bpl_contents)?;
     let mut translator = BoogieTranslator::new(
         env,
         &options.backend,
@@ -602,6 +741,8 @@ pub async fn verify_boogie(
     target_name: String,
     timeout: Option<u64>,
     boogie_options: Option<String>,
+    run_on: Option<String>,
+    loc: Loc,
 ) -> anyhow::Result<()> {
     let file_name = format!("{}/{}.bpl", options.output_path, target_name);
 
@@ -617,7 +758,36 @@ pub async fn verify_boogie(
             options: &options.backend,
             types: &types,
         };
-        if options.remote.is_some() {
+        // Determine run location based on per-spec run_on attribute and global config
+        let use_remote = match run_on.as_deref() {
+            Some(RUN_ON_LOCAL) => false,
+            Some(RUN_ON_CLOUD) => {
+                if options.remote.is_none() {
+                    env.diag(
+                        Severity::Error,
+                        &loc,
+                        "spec has run_on=\"cloud\" but cloud is not configured. \
+                         Use --cloud to enable cloud verification.",
+                    );
+                    return Ok(());
+                }
+                true
+            }
+            Some(other) => {
+                env.diag(
+                    Severity::Error,
+                    &loc,
+                    &format!(
+                        "invalid run_on value \"{}\". Expected \"{}\" or \"{}\".",
+                        other, RUN_ON_LOCAL, RUN_ON_CLOUD
+                    ),
+                );
+                return Ok(());
+            }
+            None => options.remote.is_some(),
+        };
+
+        if use_remote {
             boogie
                 .call_remote_boogie_and_verify_output(
                     &file_name,
@@ -632,6 +802,20 @@ pub async fn verify_boogie(
     }
 
     Ok(())
+}
+
+/// Write spec hierarchy log files for all specs in the given targets.
+/// Only writes during `AssertsMode::Check` to avoid duplicate writes.
+fn write_spec_hierarchy_logs(
+    env: &GlobalEnv,
+    targets: &FunctionTargetsHolder,
+    options: &Options,
+    asserts_mode: AssertsMode,
+) {
+    if asserts_mode == AssertsMode::Check {
+        let output_dir = Path::new(&options.output_path);
+        spec_hierarchy::display_spec_hierarchy(env, targets, output_dir);
+    }
 }
 
 /// Create bytecode and process it.
@@ -664,6 +848,7 @@ pub fn create_and_process_bytecode(
             targets.add_target(&func_env);
         }
     }
+    targets.resolve_loop_invariants(env);
 
     // Populate initial number operation state for each function and struct based on the pragma
     create_init_num_operation_state(env, &options.prover);
@@ -729,6 +914,7 @@ fn run_escape(env: &GlobalEnv, targets: &PackageTargets, options: &Options, now:
             targets.add_target(&func_env);
         }
     }
+    targets.resolve_loop_invariants(env);
     println!(
         "Analyzing {} modules, {} declared functions, {} declared structs, {} total bytecodes",
         env.get_module_count(),

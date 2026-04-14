@@ -1,0 +1,26 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with model building errors
+error: built-in operation not supported
+   ┌─ tests/inputs/quantifiers/sum_map_suffix_loop.ok.move:25:17
+   │
+25 │             && (s.to_int() + sum_map_range!(v, i, v.length(), |j| odd_to_int(j)))
+   │                 ^^^^^^^^^^ Invalid argument to '+'
+   │
+   ┌─ /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_NORMALIZED/crates/sui-framework/packages/move-stdlib/sources/integer.move:13:37
+   │
+13 │ native public fun from_u64(x: u64): Integer;
+   │                                     ------- Found: 'std::integer::Integer'. But expected: 'u8', 'u16', 'u32', 'u64', 'u128', 'u256'
+
+error: built-in operation not supported
+   ┌─ tests/inputs/quantifiers/sum_map_suffix_loop.ok.move:25:30
+   │
+25 │             && (s.to_int() + sum_map_range!(v, i, v.length(), |j| odd_to_int(j)))
+   │                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Invalid argument to '+'
+   │
+   ┌─ /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_NORMALIZED/crates/sui-framework/packages/move-stdlib/sources/integer.move:13:37
+   │
+13 │ native public fun from_u64(x: u64): Integer;
+   │                                     ------- Found: 'std::integer::Integer'. But expected: 'u8', 'u16', 'u32', 'u64', 'u128', 'u256'

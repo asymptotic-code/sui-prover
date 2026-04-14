@@ -1,11 +1,10 @@
 ---
 source: crates/sui-prover/tests/integration.rs
-assertion_line: 267
 expression: output
 ---
 exiting with bytecode transformation errors
-error: Function 'simple_axiom::foo' can't be used in pure functions. Try marking it with #[ext(pure)] attribute.
-  ┌─ tests/inputs/axioms/calling_proc.fail.move:7:5
-  │
-7 │     foo() && x > 4 && x.to_int().sqrt().gt(2u64.to_int())
-  │     ^^^^^
+error: Function 'simple_axiom::bar' called from a pure function cannot abort
+   ┌─ tests/inputs/axioms/calling_proc.fail.move:12:5
+   │
+12 │     assert!(1u8 > 2u8);
+   │     ^^^^^^^^^^^^^^^^^^

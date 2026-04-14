@@ -1,0 +1,19 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 292
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/loop_invariant/base_case_fail.move:8:1
+   │  
+ 8 │ ╭ fun loop_inv_0(i: u64, n: u64): bool {
+ 9 │ │     // This invariant is wrong at entry: i starts at 0, but we claim i > 0.
+10 │ │     i > 0 && i <= n
+11 │ │ }
+   │ ╰─^
+   · │
+16 │       while (i < n) {
+   │              - loop invariant does not hold on loop entry
+   │  
+   =     at tests/inputs/loop_invariant/base_case_fail.move:14: foo_spec

@@ -108,7 +108,7 @@ impl FunctionTargetProcessor for AxiomFunctionAnalysisProcessor {
         }
 
         if let Some((loc, reason)) =
-            PureFunctionAnalysisProcessor::check_bytecode(fun_env, &data, targets)
+            PureFunctionAnalysisProcessor::check_bytecode(fun_env, &data, targets, false)
         {
             fun_env
                 .module_env

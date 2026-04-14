@@ -382,9 +382,12 @@ impl<'env, 'translator, 'module_translator> ExpTranslator<'env, 'translator, 'mo
             .expect("symbol table empty")
             .insert(name, entry)
         {
-            let display = name.display(self.symbol_pool());
-            self.error(loc, &format!("duplicate declaration of `{}`", display));
-            self.error(&old.loc, &format!("previous declaration of `{}`", display));
+            // allow multiple `_` wildcard bindings without error.
+            if name.display(self.symbol_pool()).to_string() != "_" {
+                let display = name.display(self.symbol_pool());
+                self.error(loc, &format!("duplicate declaration of `{}`", display));
+                self.error(&old.loc, &format!("previous declaration of `{}`", display));
+            }
         }
     }
 
@@ -481,7 +484,7 @@ impl ExpTranslator<'_, '_, '_> {
                             return check_zero_args(self, Type::new_prim(PrimitiveType::U128));
                         }
                         "u256" => {
-                            return check_zero_args(self, Type::new_prim(PrimitiveType::U256))
+                            return check_zero_args(self, Type::new_prim(PrimitiveType::U256));
                         }
                         "num" => return check_zero_args(self, Type::new_prim(PrimitiveType::Num)),
                         "range" => {

@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: Invalid quantifier macro pattern: expected a lambda function, but found an inlined expression
+   ┌─ tests/inputs/quantifiers/partial_pattern_exists.fail.move:8:1
+   │  
+ 8 │ ╭ fun test_3_spec() {
+ 9 │ │     let b = end_exists_lambda();
+10 │ │     ensures(b);
+11 │ │ }
+   │ ╰─^

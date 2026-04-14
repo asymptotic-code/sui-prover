@@ -61,7 +61,18 @@ impl MonoInfo {
         env: &GlobalEnv,
         targets: &FunctionTargetsHolder,
         dt_qid: &QualifiedId<DatatypeId>,
+        type_inst: &[Type],
     ) -> bool {
+        // A struct with dynamic fields must not be opaque
+        let struct_type = Type::Datatype(dt_qid.module_id, dt_qid.id, type_inst.to_vec());
+        if dynamic_field_analysis::get_env_info(env)
+            .dynamic_field_names_values(&struct_type)
+            .next()
+            .is_some()
+        {
+            return true;
+        }
+
         if env
             .get_extension::<WriteBackDatatypeInfo>()
             .unwrap()
@@ -72,12 +83,43 @@ impl MonoInfo {
         }
 
         if dt_qid == &env.option_qid().unwrap() {
-            return self.is_used_datatype_helper(env, targets, dt_qid)
-                || self.is_used_datatype_helper(env, targets, &env.vec_set_qid().unwrap())
-                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap());
+            // NOTE: cover all option usages is too complex, so we just return true.
+            return true;
+        } else if dt_qid == &env.vec_map_entry_qid().unwrap()
+            || dt_qid == &env.vec_map_qid().unwrap()
+        {
+            self.is_used_datatype_helper(env, targets, &env.vec_map_entry_qid().unwrap())
+                || self.is_used_datatype_helper(env, targets, &env.vec_map_qid().unwrap())
+                || self.is_generated_module(env, targets, &vec![env.vec_map_module_id()])
+        } else if dt_qid == &env.vec_set_qid().unwrap() {
+            self.is_used_datatype_helper(env, targets, dt_qid)
+                || self.is_generated_module(env, targets, &vec![env.vec_set_module_id()])
         } else {
-            return self.is_used_datatype_helper(env, targets, dt_qid);
+            self.is_used_datatype_helper(env, targets, dt_qid)
         }
+    }
+
+    // NOTE: module is generated fully if any function inside is generated, in that case we need to generate proper datatype
+    fn is_generated_module(
+        &self,
+        env: &GlobalEnv,
+        targets: &FunctionTargetsHolder,
+        mids: &Vec<ModuleId>,
+    ) -> bool {
+        for module in env.get_modules() {
+            for fun in module.get_functions() {
+                let fun_qid = fun.get_qualified_id();
+                if mids.contains(&fun_qid.module_id) {
+                    if let Some(target) = targets.get_target_opt(&fun, &FunctionVariant::Baseline) {
+                        let info = verification_analysis::get_info(&target);
+                        if info.accessible() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     fn is_used_datatype_helper(
@@ -89,10 +131,14 @@ impl MonoInfo {
         self.funs
             .keys()
             .filter(|(fun_qid, _)| {
-                verification_analysis::get_info(
-                    &targets.get_target(&env.get_function(*fun_qid), &FunctionVariant::Baseline),
-                )
-                .inlined
+                if let Some(target) =
+                    targets.get_target_opt(&env.get_function(*fun_qid), &FunctionVariant::Baseline)
+                {
+                    let info = verification_analysis::get_info(&target);
+                    info.accessible()
+                } else {
+                    false
+                }
             })
             .map(|(fun_qid, _)| fun_qid.module_id)
             .contains(&dt_qid.module_id)
@@ -546,19 +592,29 @@ impl Analyzer<'_> {
                     {
                         self.push_todo_fun(callee_env.get_qualified_id(), actuals.clone());
                     } else {
-                        if spec_qid != &target.func_env.get_qualified_id() {
-                            self.info
-                                .funs
-                                .entry((callee_env.get_qualified_id(), FunctionVariant::Baseline))
-                                .or_default()
-                                .insert(actuals.clone());
+                        let callee_qid = callee_env.get_qualified_id();
+                        if self.targets.is_pure_fun(&callee_qid)
+                            || self.targets.is_pure_callee(&callee_qid)
+                        {
+                            // Pure functions get inlined $pure bodies in Boogie,
+                            // so we need to analyze their bytecode for type instantiations.
+                            self.push_todo_fun(callee_qid, actuals.clone());
+                        } else {
+                            if spec_qid != &target.func_env.get_qualified_id() {
+                                self.info
+                                    .funs
+                                    .entry((callee_qid, FunctionVariant::Baseline))
+                                    .or_default()
+                                    .insert(actuals.clone());
+                            }
+
+                            self.analyze_fun_types(
+                                &self
+                                    .targets
+                                    .get_target(&callee_env, &FunctionVariant::Baseline),
+                                Some(actuals.clone()),
+                            );
                         }
-                        self.analyze_fun_types(
-                            &self
-                                .targets
-                                .get_target(&callee_env, &FunctionVariant::Baseline),
-                            Some(actuals.clone()),
-                        );
                     }
                 };
 
@@ -616,24 +672,15 @@ impl Analyzer<'_> {
                     );
                 }
 
-                if self
-                    .targets
-                    .is_pure_fun(&target.func_env.get_qualified_id())
-                    || self
-                        .targets
-                        .is_axiom_fun(&target.func_env.get_qualified_id())
-                {
-                    // collect quantifier helper info for pure functions
-                    if let Some(qht) = qt.into_quantifier_helper_type() {
-                        self.info
-                            .quantifier_helpers
-                            .insert(PureQuantifierHelperInfo {
-                                qht,
-                                function: *callee_id,
-                                li: *li,
-                                inst: actuals,
-                            });
-                    }
+                if let Some(qht) = qt.into_quantifier_helper_type() {
+                    self.info
+                        .quantifier_helpers
+                        .insert(PureQuantifierHelperInfo {
+                            qht,
+                            function: *callee_id,
+                            li: *li,
+                            inst: actuals,
+                        });
                 }
             }
             Call(_, _, WriteBack(_, edge), ..) => {

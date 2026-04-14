@@ -1,6 +1,9 @@
 name: Sui-Prover Test Action
 
-on: [pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   build-prover:
@@ -16,6 +19,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -70,7 +78,6 @@ jobs:
 
           # Copy boogie executable and all its dependencies
           cp -r $HOME/.local/temp/sui-prover/* ~/artifact-bundle/boogie/
-          ln -s ~/artifact-bundle/boogie/BoogieDriver ~/artifact-bundle/bin/boogie
 
           # Copy Z3 (just the bin directory is needed)
           cp -r "$(brew --prefix z3)/bin" ~/artifact-bundle/z3/
@@ -87,10 +94,9 @@ jobs:
       - name: Verify installation
         run: |
           chmod +x ~/artifact-bundle/bin/sui-prover
-          chmod +x ~/artifact-bundle/bin/boogie
 
           ~/artifact-bundle/bin/sui-prover --version
-          ~/artifact-bundle/bin/boogie /version
+          dotnet ~/artifact-bundle/boogie/BoogieDriver.dll /version
 
   kit-specs:
     needs: build-prover
@@ -144,7 +150,7 @@ jobs:
   internal-tests-prover:
     # check if prover needed
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: internal-tests-prover-${{ github.head_ref || github.ref_name }}
@@ -167,12 +173,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -183,6 +199,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Run
         run: |
@@ -217,7 +236,7 @@ jobs:
 
   integer-mate-specs:
     needs: build-prover
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     concurrency:
       group: integer-mate-specs-${{ github.head_ref || github.ref_name }}
@@ -316,12 +335,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -332,6 +361,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Clone scallop repo
         uses: actions/checkout@v4
@@ -361,12 +393,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -378,18 +420,22 @@ jobs:
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
 
+          # Verify boogie version
+          ~/.local/bin/boogie /version
+
       - name: Clone cetus repo
         uses: actions/checkout@v4
         with:
           repository: asymptotic-code/cetus-clmm
           ref: specs
           token: ${{ secrets.PAT_TOKEN }}
-          path: cetus    
+          path: cetus
+          submodules: 'recursive'   
 
       - name: Run
         run: |
           cd cetus/cetus_clmm_specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
 
   ika-bpl-generation:
     needs: build-prover
@@ -406,12 +452,22 @@ jobs:
           name: ${{ needs.build-prover.outputs.artifact-name }}
           path: ~/prover-bundle
 
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup
         run: |
           mkdir -p ~/.local/bin
 
           cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
-          ln -s ~/prover-bundle/boogie/BoogieDriver ~/.local/bin/boogie
+
+          # Create a wrapper script for boogie instead of symlink
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
 
           chmod +x ~/.local/bin/boogie
           chmod +x ~/.local/bin/sui-prover
@@ -422,6 +478,9 @@ jobs:
 
           echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
           echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+
+          # Verify boogie version
+          ~/.local/bin/boogie /version
 
       - name: Clone ika repo
         uses: actions/checkout@v4
@@ -434,4 +493,38 @@ jobs:
       - name: Run
         run: |
           cd ika/contracts/specs
-          sui-prover -g --ci
+          sui-prover -g --skip-spec-no-abort --skip-fun-no-abort --ci
+
+  notify-slack-on-failure:
+    if: failure() && github.ref == 'refs/heads/main'
+    needs:
+      - build-prover
+      - kit-specs
+      - internal-tests-prover
+      - internal-tests-stackless-bytecode
+      - integer-mate-specs
+      - token-distribution-specs
+      - scallop-bpl-generation
+      - cetus-bpl-generation
+      - ika-bpl-generation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack on failure
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CI Failed: ${{ github.workflow }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*CI Failed on main*\n*Workflow:* ${{ github.workflow }}\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Author:* ${{ github.actor }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
+

@@ -1,7 +1,7 @@
 use crate::build_model::build_model;
 use crate::llm_explain::explain_err;
 use crate::remote_config::RemoteConfig;
-use clap::{Args, ValueEnum};
+use clap::Args;
 use codespan_reporting::term::termcolor::Buffer;
 use log::LevelFilter;
 use move_compiler::editions::{Edition, Flavor};
@@ -10,15 +10,10 @@ use move_core_types::account_address::AccountAddress;
 use move_model::model::GlobalEnv;
 use move_package::{BuildConfig as MoveBuildConfig, LintFlag};
 use move_prover_boogie_backend::boogie_backend::options::BoogieFileMode;
-use move_prover_boogie_backend::generator::create_and_process_bytecode;
 use move_prover_boogie_backend::generator::run_boogie_gen;
-use move_prover_boogie_backend::generator_options::Options;
 use move_stackless_bytecode::function_stats;
-use move_stackless_bytecode::function_target_pipeline::FunctionHolderTarget;
 use move_stackless_bytecode::package_targets::PackageTargets;
-use move_stackless_bytecode::spec_hierarchy;
 use move_stackless_bytecode::target_filter::TargetFilterOptions;
-use std::fmt::{Display, Formatter};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -99,10 +94,6 @@ pub struct GeneralConfig {
     #[clap(name = "boogie-file-mode", long, short = 'm', global = true,  default_value_t = BoogieFileMode::Function)]
     pub boogie_file_mode: BoogieFileMode,
 
-    /// Lean running mode
-    #[clap(name = "backend", long, global = true, default_value_t = BackendOptions::Boogie)]
-    pub backend: BackendOptions,
-
     /// Dump bytecode to file
     #[clap(name = "dump-bytecode", long, short = 'd', global = true)]
     pub dump_bytecode: bool,
@@ -115,6 +106,10 @@ pub struct GeneralConfig {
     #[clap(name = "skip-spec-no-abort", long, global = true)]
     pub skip_spec_no_abort: bool,
 
+    /// Skip checking external functions that do not abort
+    #[clap(name = "skip-fun-no-abort", long, global = true)]
+    pub skip_fun_no_abort: bool,
+
     /// Dump control-flow graphs to file
     #[clap(name = "stats", long, global = false)]
     pub stats: bool,
@@ -122,6 +117,10 @@ pub struct GeneralConfig {
     /// Whether to enable CI mode for continuous integration environments
     #[clap(name = "ci", long, global = false)]
     pub ci: bool,
+
+    /// Stream Boogie trace output in real time (passes -trace -traceverify to Boogie)
+    #[clap(name = "trace", long, global = true)]
+    pub trace: bool,
 }
 
 #[derive(Args, Default)]
@@ -161,22 +160,6 @@ pub struct BuildConfig {
     pub additional_named_addresses: BTreeMap<String, AccountAddress>,
 }
 
-#[derive(ValueEnum, Default, Clone)]
-pub enum BackendOptions {
-    #[default]
-    Boogie,
-    Lean,
-}
-
-impl Display for BackendOptions {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BackendOptions::Boogie => write!(f, "boogie"),
-            BackendOptions::Lean => write!(f, "lean"),
-        }
-    }
-}
-
 pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: usize = 45;
 
 pub async fn execute(
@@ -188,7 +171,7 @@ pub async fn execute(
     filter: TargetFilterOptions,
 ) -> anyhow::Result<()> {
     let model = build_model(path, Some(build_config))?;
-    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci);
+    let package_targets = PackageTargets::new(&model, filter.clone(), !general_config.ci, None);
 
     general_config.skip_spec_no_abort = general_config.skip_spec_no_abort
         || package_targets.has_focus_specs()
@@ -197,29 +180,9 @@ pub async fn execute(
     if general_config.stats {
         function_stats::display_function_stats(&model, &package_targets);
         return Ok(());
-    } else if general_config.dump_bytecode {
-        let mut options = move_prover_boogie_backend::generator_options::Options::default();
-        options.filter = filter.clone();
-        let (targets, _) = create_and_process_bytecode(
-            &options,
-            &model,
-            &package_targets,
-            FunctionHolderTarget::All,
-        );
-
-        let output_dir = std::path::Path::new(&options.output_path);
-        if !output_dir.exists() {
-            std::fs::create_dir_all(output_dir)?;
-        }
-
-        spec_hierarchy::display_spec_hierarchy(&model, &targets, output_dir);
     }
 
-    if matches!(general_config.backend, BackendOptions::Boogie) {
-        execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
-    } else {
-        execute_backend_lean(model, &general_config).await
-    }
+    execute_backend_boogie(model, &general_config, remote_config, boogie_config, filter).await
 }
 
 async fn execute_backend_boogie(
@@ -256,9 +219,11 @@ async fn execute_backend_boogie(
         general_config.enable_conditional_merge_insertion;
     options.remote = remote_config.to_config()?;
     options.prover.skip_spec_no_abort = general_config.skip_spec_no_abort;
+    options.prover.skip_fun_no_abort = general_config.skip_fun_no_abort;
     options.backend.force_timeout = general_config.force_timeout;
     options.backend.ci = general_config.ci;
     options.prover.ci = general_config.ci;
+    options.backend.trace = general_config.trace;
 
     if general_config.explain {
         let mut error_writer = Buffer::no_color();
@@ -284,32 +249,5 @@ async fn execute_backend_boogie(
         println!("{}", result_str)
     }
 
-    Ok(())
-}
-
-async fn execute_backend_lean(
-    model: GlobalEnv,
-    _general_config: &GeneralConfig,
-) -> anyhow::Result<()> {
-    // Run bytecode transformation pipeline
-    let package_targets = PackageTargets::new(&model, Default::default(), true);
-    let (targets, _) = create_and_process_bytecode(
-        &Options::default(),
-        &model,
-        &package_targets,
-        FunctionHolderTarget::All,
-    );
-
-    // Determine output directory (use current working directory + output)
-    let output_dir = std::env::current_dir()?.join("output");
-
-    // Run Lean backend
-    println!("Generating Lean code...");
-    move_prover_lean_backend::run_backend(&model, &targets, &output_dir).await?;
-
-    println!(
-        "✓ Lean code generated successfully in {}",
-        output_dir.display()
-    );
     Ok(())
 }

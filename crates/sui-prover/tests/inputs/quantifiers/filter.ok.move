@@ -18,7 +18,7 @@ fun x_is_even(x: &u64): bool {
 }
 
 // Simple test: verify that all elements in result satisfy predicate
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter.ok.bpl")]
 fun test_filter_elements_satisfy_predicate() {
     let v = vector[10, 20, 10, 30];
     let tens = filter!<u64>(&v, |x| x_is_10(x));
@@ -30,7 +30,7 @@ fun test_filter_elements_satisfy_predicate() {
 }
 
 // Test that result length is bounded by source length
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter.ok.bpl")]
 fun test_filter_length_bounded() {
     let v = vector[10, 20, 10, 30, 10];
     let tens = filter!<u64>(&v, |x| x_is_10(x));
@@ -39,7 +39,7 @@ fun test_filter_length_bounded() {
 }
 
 // Test filter with empty source
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter.ok.bpl")]
 fun test_filter_empty_source() {
     let empty: vector<u64> = vector[];
     let result = filter!<u64>(&empty, |x| x_is_10(x));
@@ -49,7 +49,7 @@ fun test_filter_empty_source() {
 }
 
 // Test filter_range length is bounded
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter.ok.bpl")]
 fun test_filter_range_length_bounded() {
     let v = vector[10, 20, 10, 30, 10, 40];
     let result = filter_range!<u64>(&v, 1, 4, |x| x_is_10(x));

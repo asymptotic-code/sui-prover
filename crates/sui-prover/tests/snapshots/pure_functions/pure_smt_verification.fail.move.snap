@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 287
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/pure_functions/pure_smt_verification.fail.move:34:5
+   │
+34 │     ensures(result == 6);
+   │     ^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/pure_functions/pure_smt_verification.fail.move:32: test_pure_call_spec

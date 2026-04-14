@@ -3,9 +3,8 @@ name = "move-model"
 version = "0.1.0"
 authors = ["Diem Association <opensource@diem.com>"]
 publish = false
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
-
 [lints]
 workspace = true
 
@@ -27,7 +26,6 @@ internment.workspace = true
 itertools.workspace = true
 log.workspace = true
 num.workspace = true
-once_cell.workspace = true
 regex.workspace = true
 anyhow.workspace = true
 serde.workspace = true

@@ -1,0 +1,16 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_multi_ops.ok.move:14:5
+   │
+14 │     df::add<NameKey, bool>(uid, NameKey {}, true);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: UID object type not found, dynamic fields will be placed under UID
+   ┌─ tests/inputs/dynamic_field/uid_param_multi_ops.ok.move:15:5
+   │
+15 │     df::add<CountKey, u64>(uid, CountKey {}, count);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

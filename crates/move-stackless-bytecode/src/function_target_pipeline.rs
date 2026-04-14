@@ -31,6 +31,7 @@ use crate::{
 pub enum FunctionHolderTarget {
     All,
     FunctionsAbortCheck,
+    SpecNoAbortCheck(ModuleId),
     Function(QualifiedId<FunId>),
     Module(ModuleId),
 }
@@ -43,8 +44,12 @@ pub struct FunctionTargetsHolder {
     package_targets: PackageTargets,
     function_specs: BiBTreeMap<QualifiedId<FunId>, QualifiedId<FunId>>,
     datatype_invs: BiBTreeMap<QualifiedId<DatatypeId>, QualifiedId<FunId>>,
+    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
     target: FunctionHolderTarget,
     prover_options: ProverOptions,
+    /// Maps: spec function → set of function names whose ignore_abort this spec accepts.
+    /// Populated by spec_well_formed_analysis, consumed by bytecode_translator.
+    asserts_of: BTreeMap<QualifiedId<FunId>, BTreeSet<String>>,
 }
 
 /// Describes a function verification flavor.
@@ -185,9 +190,11 @@ impl FunctionTargetsHolder {
             targets: BTreeMap::new(),
             function_specs: BiBTreeMap::new(),
             datatype_invs: BiBTreeMap::new(),
+            loop_invariants: BTreeMap::new(),
             prover_options,
             target,
             package_targets: package_targets.clone(),
+            asserts_of: BTreeMap::new(),
         }
     }
 
@@ -205,6 +212,10 @@ impl FunctionTargetsHolder {
 
     pub fn func_abort_check_mode(&self) -> bool {
         matches!(self.target, FunctionHolderTarget::FunctionsAbortCheck)
+    }
+
+    pub fn spec_no_abort_check_mode(&self) -> bool {
+        matches!(self.target, FunctionHolderTarget::SpecNoAbortCheck(..))
     }
 
     /// Get an iterator for all functions this holder.
@@ -235,6 +246,9 @@ impl FunctionTargetsHolder {
             FunctionHolderTarget::FunctionsAbortCheck => {
                 self.package_targets.abort_check_functions().contains(id)
             }
+            FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                id.module_id == mid && self.package_targets.no_verify_specs().contains(id)
+            }
             FunctionHolderTarget::Function(qid) => id == &qid,
             FunctionHolderTarget::Module(mid) => id.module_id == mid,
         }
@@ -262,6 +276,25 @@ impl FunctionTargetsHolder {
         self.package_targets.ignore_aborts().contains(id)
     }
 
+    pub fn asserts_of(&self) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<String>> {
+        &self.asserts_of
+    }
+
+    /// Returns the set of function names referenced by any asserts_of declaration.
+    pub fn asserts_of_targets(&self) -> BTreeSet<String> {
+        self.asserts_of
+            .values()
+            .flat_map(|names| names.iter().cloned())
+            .collect()
+    }
+
+    pub fn add_asserts_of(&mut self, spec_qid: QualifiedId<FunId>, name: String) {
+        self.asserts_of
+            .entry(spec_qid)
+            .or_insert_with(BTreeSet::new)
+            .insert(name);
+    }
+
     pub fn is_abort_check_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.abort_check_functions().contains(id)
     }
@@ -280,8 +313,22 @@ impl FunctionTargetsHolder {
                 .does_not_abort
     }
 
+    pub fn target_no_abort_check_functions(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets
+            .target_no_abort_check_functions()
+            .contains(id)
+    }
+
     pub fn is_pure_fun(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.pure_functions().contains(id)
+    }
+
+    pub fn is_pure_callee(&self, id: &QualifiedId<FunId>) -> bool {
+        self.package_targets.pure_callees().contains(id)
+    }
+
+    pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
+        self.package_targets.add_pure_callee(id);
     }
 
     pub fn is_axiom_fun(&self, id: &QualifiedId<FunId>) -> bool {
@@ -344,18 +391,145 @@ impl FunctionTargetsHolder {
         self.package_targets.spec_timeouts().get(id)
     }
 
+    pub fn get_spec_run_on(&self, id: &QualifiedId<FunId>) -> Option<&String> {
+        self.package_targets.spec_run_on().get(id)
+    }
+
+    /// Resolve loop invariant candidates into the final map.
+    /// When multiple invariant functions target the same (target_func, label),
+    /// prefer the one from the same module as the spec selected by this holder.
+    pub fn resolve_loop_invariants(&mut self, env: &GlobalEnv) {
+        for (target_id, entries) in self.package_targets.loop_invariant_candidates() {
+            // group by label, checking for duplicate inv_funcs
+            let mut by_label: BTreeMap<usize, Vec<QualifiedId<FunId>>> = BTreeMap::new();
+            let mut func_to_label: BTreeMap<QualifiedId<FunId>, usize> = BTreeMap::new();
+            let mut has_error = false;
+
+            for (inv_id, label) in entries {
+                if let Some(&existing_label) = func_to_label.get(inv_id) {
+                    if existing_label != *label {
+                        env.diag(
+                            Severity::Error,
+                            &env.get_function(*inv_id).get_loc(),
+                            &format!(
+                                "Loop invariant function {} targets multiple labels ({} and {}) in {}",
+                                env.get_function(*inv_id).get_full_name_str(),
+                                existing_label,
+                                label,
+                                env.get_function(*target_id).get_full_name_str()
+                            ),
+                        );
+                        has_error = true;
+                    }
+                    continue;
+                }
+                func_to_label.insert(*inv_id, *label);
+                by_label.entry(*label).or_default().push(*inv_id);
+            }
+
+            if has_error {
+                continue;
+            }
+
+            // find the spec module for this target function;
+            // if the target itself is a spec, use its own module
+            let spec_module = self
+                .get_spec_by_fun(target_id)
+                .map(|spec_id| spec_id.module_id)
+                .unwrap_or(target_id.module_id);
+
+            let mut resolved: BiBTreeMap<QualifiedId<FunId>, usize> = BiBTreeMap::new();
+
+            for (label, inv_ids) in by_label {
+                let winner = if inv_ids.len() == 1 {
+                    inv_ids[0]
+                } else {
+                    // prefer the invariant from the same module as the spec
+                    let in_spec_module: Vec<_> = inv_ids
+                        .iter()
+                        .filter(|id| id.module_id == spec_module)
+                        .copied()
+                        .collect();
+
+                    if in_spec_module.len() == 1 {
+                        in_spec_module[0]
+                    } else {
+                        let labels = inv_ids
+                            .iter()
+                            .map(|id| {
+                                let f = env.get_function(*id);
+                                (f.get_loc(), f.get_full_name_str())
+                            })
+                            .collect::<Vec<_>>();
+                        env.diag_with_labels(
+                            Severity::Error,
+                            &env.get_function(*target_id).get_loc(),
+                            &format!(
+                                "Ambiguous loop invariants for label {} in {}",
+                                label,
+                                env.get_function(*target_id).get_full_name_str(),
+                            ),
+                            labels,
+                        );
+                        continue;
+                    }
+                };
+
+                resolved.insert(winner, label);
+            }
+
+            if !resolved.is_empty() {
+                self.loop_invariants.insert(*target_id, resolved);
+            }
+        }
+    }
+
     pub fn get_loop_invariants(
         &self,
         id: &QualifiedId<FunId>,
     ) -> Option<&BiBTreeMap<QualifiedId<FunId>, usize>> {
-        self.package_targets.loop_invariants().get(id)
+        self.loop_invariants.get(id)
+    }
+
+    pub fn get_uninterpreted_functions(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+    ) -> Option<&BTreeSet<QualifiedId<FunId>>> {
+        self.package_targets.get_uninterpreted_functions(spec_id)
+    }
+
+    pub fn is_uninterpreted_for_spec(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+        callee_id: &QualifiedId<FunId>,
+    ) -> bool {
+        self.package_targets
+            .is_uninterpreted_for_spec(spec_id, callee_id)
+    }
+
+    // Checks if a function is marked as uninterpreted by all verified specs.
+    pub fn is_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        let verified_specs: Vec<_> = self
+            .specs()
+            .filter(|spec_id| self.is_verified_spec(spec_id))
+            .collect();
+
+        // If no verified specs, function is not uninterpreted
+        if verified_specs.is_empty() {
+            return false;
+        }
+
+        // Check if ALL verified specs mark this function as uninterpreted
+        verified_specs.iter().all(|spec_id| {
+            self.package_targets
+                .is_uninterpreted_for_spec(spec_id, func_id)
+        })
     }
 
     pub fn get_loop_inv_with_targets(
         &self,
     ) -> BiBTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
-        self.package_targets
-            .loop_invariants()
+        self.loop_invariants
             .iter()
             .map(|(target_fun_id, invs)| {
                 (
@@ -430,13 +604,15 @@ impl FunctionTargetsHolder {
                     ),
                     qid.module_id,
                 ),
-                FunctionHolderTarget::Module(mid) => (
-                    self.package_targets.is_belongs_to_module_explicit_specs(
-                        &env.get_module(mid),
-                        spec_env.get_qualified_id(),
-                    ),
-                    mid,
-                ),
+                FunctionHolderTarget::Module(mid) | FunctionHolderTarget::SpecNoAbortCheck(mid) => {
+                    (
+                        self.package_targets.is_belongs_to_module_explicit_specs(
+                            &env.get_module(mid),
+                            spec_env.get_qualified_id(),
+                        ),
+                        mid,
+                    )
+                }
                 FunctionHolderTarget::FunctionsAbortCheck | FunctionHolderTarget::All => {
                     unreachable!()
                 }
@@ -454,6 +630,12 @@ impl FunctionTargetsHolder {
 
         if let Some(qid) = self.function_specs.get_by_right(&target_id) {
             if !self.package_targets.is_system_spec(qid) {
+                if self
+                    .package_targets
+                    .is_system_spec(&spec_env.get_qualified_id())
+                {
+                    return;
+                }
                 env.diag(
                     Severity::Error,
                     &spec_env.get_loc(),
@@ -720,15 +902,19 @@ impl FunctionTargetPipeline {
             let src_idx = nodes.get(&fun_id).unwrap();
             let fun_env = env.get_function(fun_id);
             for callee in fun_env.get_called_functions() {
-                let dst_qid = targets
-                    .get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
-                    .unwrap_or(&callee);
-
-                // Check if the callee exists in targets before trying to access it
-                if let Some(dst_idx) = nodes.get(dst_qid) {
+                // add edge to original callee if it exists in targets
+                if let Some(dst_idx) = nodes.get(&callee) {
                     graph.add_edge(*src_idx, *dst_idx, ());
                 }
-                // If the callee doesn't exist in targets (was removed), skip this edge
+
+                // add edge to spec callee if it's different and exists in targets
+                if let Some(spec_qid) =
+                    targets.get_callee_spec_qid(&fun_env.get_qualified_id(), &callee)
+                {
+                    if let Some(dst_idx) = nodes.get(spec_qid) {
+                        graph.add_edge(*src_idx, *dst_idx, ());
+                    }
+                }
             }
         }
         graph

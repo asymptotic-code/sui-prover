@@ -1,5 +1,4 @@
 use crate::target_filter::TargetFilterOptions;
-use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
@@ -13,7 +12,14 @@ use move_model::{
     ast::ModuleName,
     model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
+
+/// Valid values for the `run_on` attribute in `#[spec(prove, run_on="...")]`.
+pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud"];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
@@ -27,6 +33,7 @@ pub struct PackageTargets {
     no_verify_specs: BTreeSet<QualifiedId<FunId>>,
     abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     pure_functions: BTreeSet<QualifiedId<FunId>>,
+    pure_callees: BTreeSet<QualifiedId<FunId>>,
     axiom_functions: BTreeSet<QualifiedId<FunId>>,
     target_no_abort_check_functions: BTreeSet<QualifiedId<FunId>>,
     skipped_specs: BTreeMap<QualifiedId<FunId>, String>,
@@ -34,12 +41,21 @@ pub struct PackageTargets {
     omit_opaque_specs: BTreeSet<QualifiedId<FunId>>,
     focus_specs: BTreeSet<QualifiedId<FunId>>,
     scenario_specs: BTreeSet<QualifiedId<FunId>>,
+    globally_uninterpreted_functions: BTreeSet<QualifiedId<FunId>>,
+    // functions that should be uninterpreted when verifying a specific spec function.
+    spec_uninterpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
+    spec_interpreted_functions: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     spec_boogie_options: BTreeMap<QualifiedId<FunId>, String>,
     spec_timeouts: BTreeMap<QualifiedId<FunId>, u64>,
-    loop_invariants: BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>>,
+    spec_run_on: BTreeMap<QualifiedId<FunId>, String>,
+    loop_invariant_candidates: BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>>,
     module_external_attributes: BTreeMap<ModuleId, BTreeSet<ModuleExternalSpecAttribute>>,
     function_external_attributes:
         BTreeMap<QualifiedId<FunId>, BTreeSet<ModuleExternalSpecAttribute>>,
+    module_extra_bpl: BTreeMap<ModuleId, String>,
+    function_extra_bpl: BTreeMap<QualifiedId<FunId>, String>,
+    /// True when the default/prelude extra BPL file (e.g. prelude_extra option) exists.
+    prelude_extra_exists: bool,
     all_specs: BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>>,
     all_datatypes_invs: BTreeMap<QualifiedId<DatatypeId>, BTreeSet<QualifiedId<FunId>>>,
     system_specs: BTreeSet<QualifiedId<FunId>>,
@@ -48,11 +64,18 @@ pub struct PackageTargets {
 }
 
 impl PackageTargets {
-    pub fn new(env: &GlobalEnv, filter: TargetFilterOptions, allow_focus_attr: bool) -> Self {
+    pub fn new(
+        env: &GlobalEnv,
+        filter: TargetFilterOptions,
+        allow_focus_attr: bool,
+        prelude_extra_path: Option<&Path>,
+    ) -> Self {
+        let prelude_extra_exists = prelude_extra_path.map(|p| p.exists()).unwrap_or(false);
         let mut s = Self {
             target_specs: BTreeSet::new(),
             abort_check_functions: BTreeSet::new(),
             pure_functions: BTreeSet::new(),
+            pure_callees: BTreeSet::new(),
             axiom_functions: BTreeSet::new(),
             target_no_abort_check_functions: BTreeSet::new(),
             skipped_specs: BTreeMap::new(),
@@ -61,11 +84,18 @@ impl PackageTargets {
             omit_opaque_specs: BTreeSet::new(),
             focus_specs: BTreeSet::new(),
             scenario_specs: BTreeSet::new(),
+            globally_uninterpreted_functions: BTreeSet::new(),
+            spec_uninterpreted_functions: BTreeMap::new(),
+            spec_interpreted_functions: BTreeMap::new(),
             spec_boogie_options: BTreeMap::new(),
             spec_timeouts: BTreeMap::new(),
-            loop_invariants: BTreeMap::new(),
+            spec_run_on: BTreeMap::new(),
+            loop_invariant_candidates: BTreeMap::new(),
             module_external_attributes: BTreeMap::new(),
             function_external_attributes: BTreeMap::new(),
+            module_extra_bpl: BTreeMap::new(),
+            function_extra_bpl: BTreeMap::new(),
+            prelude_extra_exists,
             all_specs: BTreeMap::new(),
             all_datatypes_invs: BTreeMap::new(),
             system_specs: BTreeSet::new(),
@@ -178,53 +208,10 @@ impl PackageTargets {
         if let Some(target_func_env) =
             module_env.find_function(func_env.symbol_pool().make(fun_name.as_str()))
         {
-            if let Some(existing) = self
-                .loop_invariants
-                .get_mut(&target_func_env.get_qualified_id())
-            {
-                match existing.insert(func_env.get_qualified_id(), label) {
-                    bimap::Overwritten::Neither => {}
-                    bimap::Overwritten::Left(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} in {}",
-                                func_env.get_full_name_str(),
-                                fun_name
-                            ),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Right(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Duplicated Loop Invariant Label {} in {}", label, fun_name),
-                        );
-                        return;
-                    }
-                    bimap::Overwritten::Both(..) | bimap::Overwritten::Pair(..) => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!(
-                                "Duplicated Loop Invariant Function {} and Label {} in {}",
-                                func_env.get_full_name_str(),
-                                label,
-                                fun_name
-                            ),
-                        );
-                    }
-                }
-            } else {
-                self.loop_invariants
-                    .insert(target_func_env.get_qualified_id(), {
-                        let mut map = BiBTreeMap::new();
-                        map.insert(func_env.get_qualified_id(), label);
-                        map
-                    });
-            }
+            self.loop_invariant_candidates
+                .entry(target_func_env.get_qualified_id())
+                .or_default()
+                .push((func_env.get_qualified_id(), label));
         } else {
             env.diag(
                 Severity::Error,
@@ -278,6 +265,8 @@ impl PackageTargets {
     }
 
     fn collect_targets(&mut self, env: &GlobalEnv) {
+        // Phase 1: Collect all attributes except uninterpreted
+        // This ensures pure_functions is populated before we validate uninterpreted targets
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
                 self.check_spec_scope(&func_env);
@@ -285,6 +274,14 @@ impl PackageTargets {
                 self.check_abort_check_scope(&func_env);
             }
             self.handle_module_explicit_spec_attributes(&module_env);
+        }
+
+        // Phase 2: Process uninterpreted attributes with validation
+        // Now pure_functions is complete, so we can validate uninterpreted targets
+        for module_env in env.get_modules() {
+            for func_env in module_env.get_functions() {
+                self.check_uninterpreted_scope(&func_env);
+            }
         }
 
         if !self.focus_specs.is_empty() {
@@ -304,6 +301,7 @@ impl PackageTargets {
             explicit_spec_modules: _,
             explicit_specs: _,
             axiom,
+            extra_bpl,
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -317,6 +315,16 @@ impl PackageTargets {
 
             if *axiom {
                 self.axiom_functions.insert(func_env.get_qualified_id());
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                env,
+                &func_env.get_loc(),
+                func_env.module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.function_extra_bpl
+                    .insert(func_env.get_qualified_id(), content);
             }
 
             if let Some(loop_inv) = loop_inv {
@@ -378,8 +386,12 @@ impl PackageTargets {
             ignore_abort,
             boogie_opt,
             timeout,
+            run_on,
             explicit_spec_modules,
             explicit_specs,
+            extra_bpl,
+            uninterpreted: _,
+            ..
         })) = func_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::Spec)
@@ -406,6 +418,33 @@ impl PackageTargets {
             if let Some(timeout) = timeout {
                 self.spec_timeouts
                     .insert(func_env.get_qualified_id(), *timeout);
+            }
+
+            if let Some(run_on_value) = run_on {
+                if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
+                    self.spec_run_on
+                        .insert(func_env.get_qualified_id(), run_on_value.clone());
+                } else {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "invalid run_on value \"{}\". Valid values are: {}",
+                            run_on_value,
+                            VALID_RUN_ON_VALUES.join(", ")
+                        ),
+                    );
+                }
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                env,
+                &func_env.get_loc(),
+                func_env.module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.function_extra_bpl
+                    .insert(func_env.get_qualified_id(), content);
             }
 
             if *no_opaque {
@@ -512,10 +551,17 @@ impl PackageTargets {
             .get_(&AttributeKind_::External)
             .map(|attr| &attr.value)
         {
-            if attrs
+            let has_no_abort = attrs
                 .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort")
-            {
+                .any(|attr| attr.2.value.name().value.as_str() == "no_abort");
+            let has_pure = attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "pure");
+            let has_uninterpreted = attrs
+                .into_iter()
+                .any(|attr| attr.2.value.name().value.as_str() == "uninterpreted");
+
+            if has_no_abort {
                 self.abort_check_functions
                     .insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
@@ -523,14 +569,171 @@ impl PackageTargets {
                         .insert(func_env.get_qualified_id());
                 }
             }
-            if attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure")
-            {
+            if has_pure {
                 self.pure_functions.insert(func_env.get_qualified_id());
                 if self.is_target(func_env) {
                     self.target_no_abort_check_functions
                         .insert(func_env.get_qualified_id());
+                }
+            }
+            if has_uninterpreted {
+                if !has_pure {
+                    let env = func_env.module_env.env;
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        &format!(
+                            "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
+                            func_env.get_full_name_str(),
+                        ),
+                    );
+                } else {
+                    self.globally_uninterpreted_functions
+                        .insert(func_env.get_qualified_id());
+                }
+            }
+        }
+    }
+
+    fn check_uninterpreted_scope(&mut self, func_env: &FunctionEnv) {
+        let env = func_env.module_env.env;
+        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
+            focus: _,
+            prove: _,
+            skip: _,
+            target: _,
+            no_opaque: _,
+            ignore_abort: _,
+            boogie_opt: _,
+            timeout: _,
+            explicit_spec_modules: _,
+            explicit_specs: _,
+            extra_bpl: _,
+            uninterpreted,
+            interpreted,
+            ..
+        })) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::Spec)
+            .map(|attr| &attr.value)
+        {
+            for module_access in uninterpreted {
+                match Self::parse_module_access(module_access, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        if let Some(target_module_env) = env.find_module(&module_name) {
+                            if let Some(target_func_env) =
+                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
+                            {
+                                // Validate that the target is a pure function or a known native function
+                                if !self
+                                    .pure_functions
+                                    .contains(&target_func_env.get_qualified_id())
+                                    && !env
+                                        .should_be_used_as_func(&target_func_env.get_qualified_id())
+                                {
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "uninterpreted target '{}' must be marked with #[ext(pure)]",
+                                            target_func_env.get_full_name_str(),
+                                        ),
+                                    );
+                                    continue;
+                                }
+
+                                self.spec_uninterpreted_functions
+                                    .entry(func_env.get_qualified_id())
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert(target_func_env.get_qualified_id());
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!(
+                                        "uninterpreted target function '{}' not found in module '{}'",
+                                        fun_name,
+                                        target_module_env.get_full_name_str(),
+                                    ),
+                                );
+                            }
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "uninterpreted target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
+                            );
+                        }
+                    }
+                    None => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Error parsing uninterpreted target path",
+                        );
+                    }
+                }
+            }
+
+            for module_access in interpreted {
+                match Self::parse_module_access(module_access, &func_env.module_env) {
+                    Some((module_name, fun_name)) => {
+                        if let Some(target_module_env) = env.find_module(&module_name) {
+                            if let Some(target_func_env) =
+                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
+                            {
+                                // Validate that the target is globally uninterpreted
+                                if !self
+                                    .globally_uninterpreted_functions
+                                    .contains(&target_func_env.get_qualified_id())
+                                {
+                                    env.diag(
+                                        Severity::Error,
+                                        &func_env.get_loc(),
+                                        &format!(
+                                            "interpreted target '{}' must be marked with #[ext(uninterpreted)]",
+                                            target_func_env.get_full_name_str(),
+                                        ),
+                                    );
+                                    continue;
+                                }
+
+                                self.spec_interpreted_functions
+                                    .entry(func_env.get_qualified_id())
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert(target_func_env.get_qualified_id());
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!(
+                                        "interpreted target function '{}' not found in module '{}'",
+                                        fun_name,
+                                        target_module_env.get_full_name_str(),
+                                    ),
+                                );
+                            }
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "interpreted target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
+                            );
+                        }
+                    }
+                    None => {
+                        env.diag(
+                            Severity::Error,
+                            &func_env.get_loc(),
+                            "Error parsing interpreted target path",
+                        );
+                    }
                 }
             }
         }
@@ -659,6 +862,69 @@ impl PackageTargets {
         Some(result)
     }
 
+    fn validate_and_read_extra_bpl(
+        env: &GlobalEnv,
+        loc: &move_model::model::Loc,
+        source_path: &std::ffi::OsStr,
+        extra_bpl: &Vec<String>,
+    ) -> Option<String> {
+        let mut contents = Vec::new();
+        for path_str in extra_bpl {
+            let extra_path = Path::new(path_str);
+
+            if extra_path.extension().map_or(true, |ext| ext != "bpl") {
+                env.diag(
+                    Severity::Error,
+                    loc,
+                    &format!("extra_bpl path must have .bpl extension: '{}'", path_str),
+                );
+                continue;
+            }
+
+            let resolved_path = if extra_path.is_absolute() {
+                extra_path.to_path_buf()
+            } else {
+                Path::new(source_path)
+                    .parent()
+                    .map(|p| p.join(extra_path))
+                    .unwrap_or_else(|| extra_path.to_path_buf())
+            };
+
+            if !resolved_path.exists() {
+                env.diag(
+                    Severity::Error,
+                    loc,
+                    &format!(
+                        "extra_bpl path does not exist: '{}' (resolved to '{}')",
+                        path_str,
+                        resolved_path.display()
+                    ),
+                );
+                continue;
+            }
+
+            match fs::read_to_string(&resolved_path) {
+                Ok(content) => contents.push(content),
+                Err(err) => {
+                    env.diag(
+                        Severity::Error,
+                        loc,
+                        &format!(
+                            "failed to read extra_bpl file '{}': {}",
+                            resolved_path.display(),
+                            err
+                        ),
+                    );
+                }
+            }
+        }
+        if contents.is_empty() {
+            None
+        } else {
+            Some(contents.join("\n"))
+        }
+    }
+
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
@@ -666,6 +932,7 @@ impl PackageTargets {
             axiom: _,
             explicit_spec_modules,
             explicit_specs,
+            extra_bpl,
         })) = module_env
             .get_toplevel_attributes()
             .get_(&AttributeKind_::SpecOnly)
@@ -678,6 +945,15 @@ impl PackageTargets {
             ) {
                 self.module_external_attributes
                     .insert(module_env.get_id(), attrs);
+            }
+
+            if let Some(content) = Self::validate_and_read_extra_bpl(
+                module_env.env,
+                &module_env.get_loc(),
+                module_env.get_source_path(),
+                extra_bpl,
+            ) {
+                self.module_extra_bpl.insert(module_env.get_id(), content);
             }
         }
     }
@@ -763,6 +1039,14 @@ impl PackageTargets {
         &self.pure_functions
     }
 
+    pub fn pure_callees(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.pure_callees
+    }
+
+    pub fn add_pure_callee(&mut self, id: QualifiedId<FunId>) {
+        self.pure_callees.insert(id);
+    }
+
     pub fn axiom_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
         &self.axiom_functions
     }
@@ -791,9 +1075,66 @@ impl PackageTargets {
         &self.spec_timeouts
     }
 
-    pub fn loop_invariants(
+    pub fn spec_run_on(&self) -> &BTreeMap<QualifiedId<FunId>, String> {
+        &self.spec_run_on
+    }
+
+    pub fn loop_invariant_candidates(
         &self,
-    ) -> &BTreeMap<QualifiedId<FunId>, BiBTreeMap<QualifiedId<FunId>, usize>> {
-        &self.loop_invariants
+    ) -> &BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>> {
+        &self.loop_invariant_candidates
+    }
+
+    pub fn get_module_extra_bpl(&self, module_id: &ModuleId) -> Option<&String> {
+        self.module_extra_bpl.get(module_id)
+    }
+
+    pub fn get_function_extra_bpl(&self, func_id: &QualifiedId<FunId>) -> Option<&String> {
+        self.function_extra_bpl.get(func_id)
+    }
+
+    pub fn prelude_extra_exists(&self) -> bool {
+        self.prelude_extra_exists
+    }
+
+    pub fn get_uninterpreted_functions(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+    ) -> Option<&BTreeSet<QualifiedId<FunId>>> {
+        self.spec_uninterpreted_functions.get(spec_id)
+    }
+
+    pub fn is_uninterpreted_for_spec(
+        &self,
+        spec_id: &QualifiedId<FunId>,
+        callee_id: &QualifiedId<FunId>,
+    ) -> bool {
+        if self
+            .spec_interpreted_functions
+            .get(spec_id)
+            .map_or(false, |set| set.contains(callee_id))
+        {
+            return false;
+        }
+        if self.globally_uninterpreted_functions.contains(callee_id) {
+            return true;
+        }
+        self.spec_uninterpreted_functions
+            .get(spec_id)
+            .map_or(false, |set| set.contains(callee_id))
+    }
+
+    pub fn is_globally_uninterpreted(&self, func_id: &QualifiedId<FunId>) -> bool {
+        self.globally_uninterpreted_functions.contains(func_id)
+    }
+
+    pub fn globally_uninterpreted_functions(&self) -> &BTreeSet<QualifiedId<FunId>> {
+        &self.globally_uninterpreted_functions
+    }
+
+    pub fn spec_uninterpreted_functions(
+        &self,
+    ) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
+        &self.spec_uninterpreted_functions
     }
 }

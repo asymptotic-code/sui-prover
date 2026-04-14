@@ -151,6 +151,7 @@ impl StacklessControlFlowGraph {
     }
 
     fn collect_blocks(code: &[Bytecode], ignore_return_abort: bool) -> Map<BlockId, Block> {
+        assert!(code.len() > 0);
         // First go through and collect basic block offsets.
         // Need to do this first in order to handle backwards edges.
         let label_offsets = Bytecode::label_offsets(code);

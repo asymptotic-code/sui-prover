@@ -6,7 +6,7 @@ exiting with verification errors
 error: prover::ensures does not hold
    ┌─ tests/inputs/dynamic_object_field/exists_.fail.move:27:5
    │
-27 │     ensures(dynamic_object_field::exists_(&x.id, 11));
-   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 │     ensures(dynamic_object_field::exists_(&x.id, ELIDEDu64));
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
    =     at tests/inputs/dynamic_object_field/exists_.fail.move:21: foo_spec

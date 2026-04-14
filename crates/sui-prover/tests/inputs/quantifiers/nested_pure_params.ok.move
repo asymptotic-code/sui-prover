@@ -153,12 +153,12 @@ fun vec_filter_in_range(v: &vector<u64>): &vector<u64> {
 }
 
 #[ext(pure)]
-fun vec_find_divisible_indices(v: &vector<u64>, divisor: u64): vector<u64> {
+fun vec_find_divisible_indices(v: &vector<u64>, divisor: u64): &vector<u64> {
     find_indices!<u64>(v, |x| is_divisible_by(x, divisor))
 }
 
 #[ext(pure)]
-fun vec_find_divisible_indices_in_range(v: &vector<u64>, start: u64, end: u64, divisor: u64): vector<u64> {
+fun vec_find_divisible_indices_in_range(v: &vector<u64>, start: u64, end: u64, divisor: u64): &vector<u64> {
     find_indices_range!<u64>(v, start, end, |x| is_divisible_by(x, divisor))
 }
 
@@ -312,7 +312,7 @@ fun test_find_range() {
 }
 
 // Test: filter with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -320,7 +320,7 @@ fun test_filter() {
 }
 
 // Test: filter_range with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -328,24 +328,26 @@ fun test_filter_range() {
 }
 
 // Test: filter with multiple context parameters
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_filter_in_range.bpl")]
 fun test_filter_range_check() {
     let v = vector[1, 5, 10, 15];
     ensures(*vec_filter_in_range(&v) == vector[5, 10, 15]); // filters to elements in [5,15]
 }
 
-// Test: find_indices with divisor from context
-#[spec(prove)]
+// Test: find_indices with divisor from context. The per-spec extra_bpl
+// supplies a single-trigger end-step axiom for this helper instance so
+// the exact concrete result can be proved.
+#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
 fun test_find_indices() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vec_find_divisible_indices(&v, divisor) == vector[1, 3]); // indices 1 and 3 have elements divisible by 20 (20, 40)
+    ensures(*vec_find_divisible_indices(&v, divisor) == vector[1, 3]);
 }
 
 // Test: find_indices_range with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
 fun test_find_indices_range() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
-    ensures(vec_find_divisible_indices_in_range(&v, 0, 2, divisor) == vector[1]); // index 1 has 20
+    ensures(*vec_find_divisible_indices_in_range(&v, 0, 2, divisor) == vector[1]);
 }
