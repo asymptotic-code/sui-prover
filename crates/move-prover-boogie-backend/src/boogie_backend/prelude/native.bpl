@@ -410,9 +410,22 @@ axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+// left-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
+  next_start == start + 1 && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'(v->v[start], $0_vec_$sum{{S}}(v, next_start, end)));
+
+// right-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
+  prev_end + 1 == end && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, start, prev_end), v->v[prev_end]));
 
 {%- else -%}
 
@@ -440,9 +453,22 @@ axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
 
 // equal vectors have equal sums over the same range
 axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+  {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
+
+// left-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
+  next_start == start + 1 && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == v->v[start] + $0_vec_$sum{{S}}(v, next_start, end));
+
+// right-step — compound trigger
+axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+  {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
+  prev_end + 1 == end && start < end ==>
+    $0_vec_$sum{{S}}(v, start, end) == $0_vec_$sum{{S}}(v, start, prev_end) + v->v[prev_end]);
 
 {%- endif %}
 
@@ -1371,6 +1397,12 @@ axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
             $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
             + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
 );
+// split — compound trigger on the two sub-range sums
+axiom (forall {{QP}}, split_point: int ::
+    {$SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
+    0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
+        $SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
+            == $SumMapQuantifierHelper_{{FN}}({{QA}}));
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}
