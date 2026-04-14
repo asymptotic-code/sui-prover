@@ -7,7 +7,6 @@
 //! each function as well as collect information on how these invariants should be handled (i.e.,
 //! checked after bytecode, checked at function exit, or deferred to caller).
 
-use crate::quantifier_iterator_analysis::QuantifierPattern;
 use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
@@ -583,14 +582,6 @@ impl VerificationAnalysisProcessor {
                 }
             }
             Self::mark_inlined(&callee_env, targets);
-            if let Some(qt) = QuantifierPattern::type_from_qid(callee, env) {
-                if qt.requires_sum() {
-                    if let Some(qid) = env.prover_vec_sum_qid_opt() {
-                        let sum_fun_env = env.get_function(qid);
-                        Self::mark_inlined(&sum_fun_env, targets);
-                    }
-                }
-            }
         }
     }
 

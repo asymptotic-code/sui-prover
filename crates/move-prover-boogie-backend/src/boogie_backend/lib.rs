@@ -619,10 +619,7 @@ impl QuantifierHelperInfo {
             (String::new(), String::new())
         };
 
-        let (input_vec_is_equal_suffix, input_elem_type) = if matches!(
-            info.qht,
-            QuantifierHelperType::RangeMap | QuantifierHelperType::RangeCount
-        ) {
+        let (input_vec_is_equal_suffix, input_elem_type) = if info.qht.range_based() {
             (String::new(), String::new()) // no input vector
         } else {
             let elem_ty = params_types[info.li].skip_reference();

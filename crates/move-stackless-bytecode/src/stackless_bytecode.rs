@@ -241,21 +241,6 @@ impl QuantifierType {
         )
     }
 
-    pub fn requires_sum(&self) -> bool {
-        matches!(
-            self,
-            QuantifierType::SumMap
-                | QuantifierType::SumMapRange
-                | QuantifierType::Count
-                | QuantifierType::CountRange
-                | QuantifierType::RangeCount
-        )
-    }
-
-    pub fn requires_filter_indices(&self) -> bool {
-        matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
-    }
-
     pub fn into_quantifier_helper_type(&self) -> Option<QuantifierHelperType> {
         match self {
             QuantifierType::Map | QuantifierType::MapRange => Some(QuantifierHelperType::Map),
