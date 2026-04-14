@@ -38,3 +38,17 @@ fun test_count() {
     ensures(count_range!<u64>(&v, 1, 2, |x| x_is_10(x)) == 0); // Range [1, 2) is just [20], so no 10s
 }
 
+// Empty vector: count on an empty source is always 0, and empty ranges on any
+// source are also 0.
+#[spec(prove)]
+fun test_count_empty() {
+    let empty: vector<u64> = vector[];
+    ensures(count!<u64>(&empty, |x| x_is_10(x)) == 0);
+    ensures(count_range!<u64>(&empty, 0, 0, |x| x_is_10(x)) == 0);
+
+    let v = vector[10, 20, 10, 30];
+    ensures(count_range!<u64>(&v, 0, 0, |x| x_is_10(x)) == 0);
+    ensures(count_range!<u64>(&v, 2, 2, |x| x_is_10(x)) == 0);
+    ensures(count_range!<u64>(&v, 4, 4, |x| x_is_10(x)) == 0);
+}
+

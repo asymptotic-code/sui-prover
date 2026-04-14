@@ -30,9 +30,18 @@ fun test_any_all() {
     ensures(any!<u64>(&v, |x| x_is_10(x)));           // true: has 10s
     ensures(any!<u64>(&v, |x| x_is_positive(x)));     // true: all are positive
     ensures(!any!<u64>(&v, |x| x_is_greater_than_100(x))); // false: none > 100
-    
+
     // Test ALL - should return true if all elements satisfy predicate
     ensures(all!<u64>(&v, |x| x_is_positive(x)));     // true: all are positive
     ensures(!all!<u64>(&v, |x| x_is_10(x)));          // false: not all are 10
     ensures(!all!<u64>(&v, |x| x_is_greater_than_100(x))); // false: none > 100
+}
+
+// Empty-vector edge cases: any over an empty vector is false; all is
+// vacuously true.
+#[spec(prove)]
+fun test_any_all_empty() {
+    let empty: vector<u64> = vector[];
+    ensures(!any!<u64>(&empty, |x| x_is_10(x)));
+    ensures(all!<u64>(&empty, |x| x_is_10(x)));
 }

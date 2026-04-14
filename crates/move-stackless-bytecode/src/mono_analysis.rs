@@ -666,24 +666,15 @@ impl Analyzer<'_> {
                     .insert(actuals.clone());
                 self.push_todo_fun(*callee_id, actuals.clone());
 
-                if self
-                    .targets
-                    .is_pure_fun(&target.func_env.get_qualified_id())
-                    || self
-                        .targets
-                        .is_axiom_fun(&target.func_env.get_qualified_id())
-                {
-                    // collect quantifier helper info for pure functions
-                    if let Some(qht) = qt.into_quantifier_helper_type() {
-                        self.info
-                            .quantifier_helpers
-                            .insert(PureQuantifierHelperInfo {
-                                qht,
-                                function: *callee_id,
-                                li: *li,
-                                inst: actuals,
-                            });
-                    }
+                if let Some(qht) = qt.into_quantifier_helper_type() {
+                    self.info
+                        .quantifier_helpers
+                        .insert(PureQuantifierHelperInfo {
+                            qht,
+                            function: *callee_id,
+                            li: *li,
+                            inst: actuals,
+                        });
                 }
             }
             Call(_, _, WriteBack(_, edge), ..) => {

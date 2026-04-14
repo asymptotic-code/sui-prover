@@ -18,7 +18,7 @@ fun x_is_even(x: &u64): bool {
 }
 
 // This should fail - wrong count
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_x_is_10.bpl")]
 fun test_wrong_count() {
     let v = vector[10, 20, 10, 30];
     let tens = filter!<u64>(&v, |x| x_is_10(x));
@@ -28,7 +28,7 @@ fun test_wrong_count() {
 }
 
 // This should fail - wrong element value
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_x_is_10.bpl")]
 fun test_wrong_element() {
     let v = vector[10, 20, 10, 30];
     let tens = filter!<u64>(&v, |x| x_is_10(x));
@@ -38,7 +38,7 @@ fun test_wrong_element() {
 }
 
 // This should fail - claiming wrong order
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_x_is_even.bpl")]
 fun test_wrong_order() {
     let v = vector[10, 20, 30, 40];
     let evens = filter!<u64>(&v, |x| x_is_even(x));
@@ -48,7 +48,7 @@ fun test_wrong_order() {
 }
 
 // This should fail - asserting element not in result
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_x_is_10.bpl")]
 fun test_element_not_matching_predicate() {
     let v = vector[10, 20, 10, 30];
     let tens = filter!<u64>(&v, |x| x_is_10(x));
@@ -58,7 +58,7 @@ fun test_element_not_matching_predicate() {
 }
 
 // This should fail - wrong predicate result assumption
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"filter_x_is_even.bpl")]
 fun test_wrong_predicate() {
     let v = vector[10, 20, 30, 40];
     let evens = filter!<u64>(&v, |x| x_is_even(x));

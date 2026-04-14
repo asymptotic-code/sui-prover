@@ -28,7 +28,7 @@ use move_stackless_bytecode::{
 
 use crate::boogie_backend::{
     boogie_helpers::{
-        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type,
+        boogie_bv_type, boogie_function_name, boogie_module_name, boogie_type, boogie_type_suffix,
         boogie_type_suffix_bv, FunctionTranslationStyle,
     },
     bytecode_translator::has_native_equality,
@@ -67,6 +67,14 @@ struct QuantifierHelperInfo {
     quantifier_params: String,
     quantifier_args: String,
     result_type: String,
+    /// e.g. "vec'u64'" — for `$IsValid'<suffix>'(helper(...))`.
+    result_is_valid_suffix: String,
+    /// e.g. "vec'u64'" — for `$IsEqual'<suffix>'(v1, v2)` in congruence axioms.
+    /// Empty for range_map (no input vector).
+    input_vec_is_equal_suffix: String,
+    /// e.g. "int" — Boogie type of input vector elements, for `v2` declaration
+    /// in congruence axioms. Empty for range_map.
+    input_elem_type: String,
     extra_args_before: String,
     extra_args_after: String,
 }
@@ -560,15 +568,6 @@ impl QuantifierHelperInfo {
         } else {
             "v, start, end".to_string()
         };
-
-        let dst_elem_boogie_type = if matches!(info.qht, QuantifierHelperType::FindIndices) {
-            &Type::Primitive(PrimitiveType::U64)
-        } else if matches!(info.qht, QuantifierHelperType::Filter) {
-            &params_types[info.li].skip_reference()
-        } else {
-            &Type::instantiate(&func_env.get_return_type(0), &info.inst)
-        };
-
         if func_env.get_parameter_count() > 1 {
             quantifier_params = format!(
                 "{}, {}",
@@ -585,25 +584,59 @@ impl QuantifierHelperInfo {
                     })
                     .join(", ")
             );
-            quantifier_args = format!(
-                "{}, {}",
-                quantifier_args,
-                (0..func_env.get_parameter_count())
-                    .filter(|idx| *idx != info.li)
-                    .map(|val| format!("$t{}", val.to_string()))
-                    .join(", ")
-            );
+            let captured_list = (0..func_env.get_parameter_count())
+                .filter(|idx| *idx != info.li)
+                .map(|val| format!("$t{}", val.to_string()))
+                .join(", ");
+            quantifier_args = format!("{}, {}", quantifier_args, captured_list);
         }
+
+        // RT and $IsValid suffix are only used by vector-valued helpers
+        let (result_type, result_is_valid_suffix) = if matches!(
+            info.qht,
+            QuantifierHelperType::Map
+                | QuantifierHelperType::RangeMap
+                | QuantifierHelperType::Filter
+                | QuantifierHelperType::FindIndices
+        ) {
+            let vec_elem_type = match info.qht {
+                QuantifierHelperType::FindIndices => &Type::Primitive(PrimitiveType::U64),
+                QuantifierHelperType::Filter => &params_types[info.li].skip_reference(),
+                _ => &Type::instantiate(&func_env.get_return_type(0), &info.inst),
+            };
+            let vec_type = Type::Vector(Box::new(vec_elem_type.clone()));
+            (
+                boogie_type(env, vec_elem_type),
+                boogie_type_suffix(env, &vec_type),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+
+        let (input_vec_is_equal_suffix, input_elem_type) =
+            if matches!(info.qht, QuantifierHelperType::RangeMap) {
+                (String::new(), String::new()) // no input vector
+            } else {
+                let elem_ty = params_types[info.li].skip_reference();
+                let vec_type = Type::Vector(Box::new(elem_ty.clone()));
+                (
+                    boogie_type_suffix(env, &vec_type),
+                    boogie_type(env, &elem_ty),
+                )
+            };
 
         Self {
             qht: info.qht.str().to_string(),
             name: boogie_function_name(&func_env, &info.inst, FunctionTranslationStyle::Pure),
             quantifier_params,
             quantifier_args,
-            result_type: boogie_type(env, dst_elem_boogie_type),
+            result_type,
+            result_is_valid_suffix,
+            input_vec_is_equal_suffix,
+            input_elem_type,
             extra_args_before: (0..info.li)
-                .map(|i| format!("$t{}, ", i.to_string()))
-                .join(""),
+                .map(|i| format!("$t{}", i.to_string()))
+                .join(", "),
             extra_args_after: (info.li + 1..func_env.get_parameter_count())
                 .map(|i| format!(", $t{}", i.to_string()))
                 .join(""),
