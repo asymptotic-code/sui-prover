@@ -1374,6 +1374,12 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
             $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
             + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
 );
+// split — compound trigger on the two sub-range counts
+axiom (forall {{QP}}, split_point: int ::
+    {$CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
+    0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
+        $CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
+            == $CountQuantifierHelper_{{FN}}({{QA}}));
 {%- endif %}
 
 {%- if instance.qht == "sum_map" %}

@@ -77,9 +77,9 @@ struct QuantifierHelperInfo {
     /// e.g. "int" — Boogie type of input vector elements, for `v2` declaration
     /// in congruence axioms. Empty for range_map.
     input_elem_type: String,
-    /// True for SumMap when FN's Move return type is a fixed-width unsigned int
-    /// (U8..U256). Used to gate the bounding axiom, which is only sound when
-    /// mapped values are non-negative.
+    /// True iff FN's Move return type is a fixed-width unsigned int (U8..U256).
+    /// Used by helpers (e.g. sum_map bounding) to gate axioms that depend on
+    /// non-negativity of mapped values.
     result_is_unsigned: bool,
     extra_args_before: String,
     extra_args_after: String,
@@ -631,12 +631,12 @@ impl QuantifierHelperInfo {
                 )
             };
 
-        // bounding axiom for sum_map is sound only when FN returns a fixed-width
-        // unsigned int (U8..U256); Num / other types can be negative.
-        let result_is_unsigned = matches!(info.qht, QuantifierHelperType::SumMap)
-            && Type::instantiate(&func_env.get_return_type(0), &info.inst)
-                .get_bit_width()
-                .is_some();
+        // True when FN's Move return type is a fixed-width unsigned int
+        // (U8..U256). Used by helpers (e.g. sum_map bounding) to gate axioms
+        // that depend on non-negativity of mapped values.
+        let result_is_unsigned = Type::instantiate(&func_env.get_return_type(0), &info.inst)
+            .get_bit_width()
+            .is_some();
 
         Self {
             qht: info.qht.str().to_string(),
