@@ -649,7 +649,7 @@ axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v
     (var i := $IndexOfVecMap{{S}}(v, k);
      if (!$ContainsVecMap{{S}}(v, k)) then i == -1
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
-        (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, i)->$key, k))));
+        (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, j)->$key, k))));
 
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
 axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
@@ -1707,7 +1707,7 @@ const $serialized_address_len: int;
 axiom (forall v: int :: {$1_bcs_serialize'address'(v)}
      ( var r := $1_bcs_serialize'address'(v); LenVec(r) == $serialized_address_len));
 {% endif %}
-{% endmacro hash_module %}
+{% endmacro bcs_module %}
 {# Event Module
    ============
 #}
