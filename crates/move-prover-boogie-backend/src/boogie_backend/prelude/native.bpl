@@ -557,15 +557,6 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
-// prover::vec_set_ext::at_or_unknown — total indexed access; ReadVec returns
-// an uninterpreted value for out-of-range indices.
-procedure {:inline 1} $0_vec_set_ext_at_or_unknown{{S}}(s: $2_vec_set_VecSet{{S}}, i: int) returns (res: {{T}}) {
-    res := ReadVec(s->$contents, i);
-}
-function {:inline} $0_vec_set_ext_at_or_unknown{{S}}$pure(s: $2_vec_set_VecSet{{S}}, i: int): {{T}} {
-    ReadVec(s->$contents, i)
-}
-
 {% endmacro vec_set_module %}
 
 {# TableVec
@@ -717,9 +708,9 @@ function {:inline} $0_vec_map_ext_get_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap
     ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
 }
 
-// prover::vec_map_ext::entry_at_or_unknown — total indexed entry access;
-// ReadVec returns an uninterpreted Entry for out-of-range indices.
-procedure {:inline 1} $0_vec_map_ext_entry_at_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
+// prover::vec_map_ext::get_entry_by_idx_or_unknown — total indexed entry
+// access; ReadVec returns an uninterpreted Entry for out-of-range indices.
+procedure {:inline 1} $0_vec_map_ext_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
     var entry: $2_vec_map_Entry{{S}};
     entry := ReadVec(vm->$contents, idx);
     res0 := entry->$key;

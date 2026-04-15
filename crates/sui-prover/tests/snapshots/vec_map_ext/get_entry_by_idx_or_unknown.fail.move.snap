@@ -4,9 +4,9 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
-   ┌─ tests/inputs/vec_map_ext/entry_at_or_unknown.fail.move:18:5
+   ┌─ tests/inputs/vec_map_ext/get_entry_by_idx_or_unknown.fail.move:18:5
    │
 18 │     ensures(*v == 0);
    │     ^^^^^^^^^^^^^^^^
    │
-   =     at tests/inputs/vec_map_ext/entry_at_or_unknown.fail.move:15: test_out_of_range_not_specific
+   =     at tests/inputs/vec_map_ext/get_entry_by_idx_or_unknown.fail.move:15: test_out_of_range_not_specific

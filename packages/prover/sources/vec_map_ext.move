@@ -14,6 +14,6 @@ public native fun get_or_unknown<K: copy, V>(m: &VecMap<K, V>, k: &K): &V;
 /// index `i` if in range, else an uninterpreted but deterministic pair.
 /// Unlike `vec_map::get_entry_by_idx`, this never aborts.
 ///
-/// Method syntax: `use fun prover::vec_map_ext::entry_at_or_unknown as VecMap.entry_at_or_unknown;`
+/// Method syntax: `use fun prover::vec_map_ext::get_entry_by_idx_or_unknown as VecMap.get_entry_by_idx_or_unknown;`
 #[spec_only]
-public native fun entry_at_or_unknown<K: copy, V>(m: &VecMap<K, V>, i: u64): (&K, &V);
+public native fun get_entry_by_idx_or_unknown<K: copy, V>(m: &VecMap<K, V>, i: u64): (&K, &V);
