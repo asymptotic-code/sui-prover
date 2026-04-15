@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/vec_set_ext/at_or_unknown.fail.move:17:5
+   │
+17 │     ensures(*at_or_unknown(s, i) == 0);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/vec_set_ext/at_or_unknown.fail.move:15: test_out_of_range_not_specific

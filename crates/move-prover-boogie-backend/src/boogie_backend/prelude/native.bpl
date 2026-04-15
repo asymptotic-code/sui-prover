@@ -557,6 +557,15 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
+// prover::vec_set_ext::at_or_unknown — total indexed access; ReadVec returns
+// an uninterpreted value for out-of-range indices.
+procedure {:inline 1} $0_vec_set_ext_at_or_unknown{{S}}(s: $2_vec_set_VecSet{{S}}, i: int) returns (res: {{T}}) {
+    res := ReadVec(s->$contents, i);
+}
+function {:inline} $0_vec_set_ext_at_or_unknown{{S}}$pure(s: $2_vec_set_VecSet{{S}}, i: int): {{T}} {
+    ReadVec(s->$contents, i)
+}
+
 {% endmacro vec_set_module %}
 
 {# TableVec
@@ -694,8 +703,18 @@ function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
     (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
      if idx >= 0 then
          $1_option_Option'u64'(MakeVec1(idx))
-     else 
+     else
          $1_option_Option'u64'(EmptyVec()))
+}
+
+// prover::vec_map_ext::get_or_unknown — total lookup; for missing keys the
+// result is ReadVec at IndexOfVecMap's -1, which the vector theory leaves
+// uninterpreted.
+procedure {:inline 1} $0_vec_map_ext_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
+    res := ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value;
+}
+function {:inline} $0_vec_map_ext_get_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
+    ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
 }
 
 {% endmacro vec_map_module %}
