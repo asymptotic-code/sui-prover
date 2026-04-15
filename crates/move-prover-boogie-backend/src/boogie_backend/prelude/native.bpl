@@ -717,6 +717,15 @@ function {:inline} $0_vec_map_ext_get_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap
     ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
 }
 
+// prover::vec_map_ext::entry_at_or_unknown — total indexed entry access;
+// ReadVec returns an uninterpreted Entry for out-of-range indices.
+procedure {:inline 1} $0_vec_map_ext_entry_at_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
+    var entry: $2_vec_map_Entry{{S}};
+    entry := ReadVec(vm->$contents, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+}
+
 {% endmacro vec_map_module %}
 
 {# Tables
