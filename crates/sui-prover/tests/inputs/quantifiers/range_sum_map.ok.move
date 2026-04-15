@@ -21,7 +21,7 @@ fun double(x: u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"range_sum_map.ok.bpl")]
 fun test_range_sum_map() {
     // Sum of i for i in [0, 4) = 0 + 1 + 2 + 3 = 6
     ensures(range_sum_map!<u64>(0, 4, |x| identity(x)) == 6u64.to_int());

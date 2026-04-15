@@ -143,14 +143,14 @@ fun test_all_range() {
 }
 
 // Test: count
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_count.bpl")]
 fun test_count() {
     let v = vector[1, 2, 3, 4];
     ensures(vec_count_even(&v) == 2);
 }
 
 // Test: count_range
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_count.bpl")]
 fun test_count_range() {
     let v = vector[1, 2, 3, 4];
     ensures(vec_count_even_in_range(&v, 0, 3) == 1); // range [0,3) has only 2

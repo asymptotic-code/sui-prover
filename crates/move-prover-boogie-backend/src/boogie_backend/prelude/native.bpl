@@ -1370,21 +1370,23 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
     )
 );
-// end-step
-axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
-    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
             (if prev != -1 then prev
-             else if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then end - 1
+             else if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then prev_end
              else -1))
 );
-// start-step
-axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then start
-             else $FindIndexQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}))
+             else $FindIndexQuantifierHelper_{{FN}}(v, next_start, end{{CAT}}))
 );
 {%- endif %}
 
@@ -1477,19 +1479,21 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
-// left step
-axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
-            + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+            + $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
-            $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
+            $CountQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})
+            + (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
 axiom (forall {{QP}}, split_point: int ::
@@ -1510,19 +1514,21 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifi
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
-// left step
-axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
-            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+            + $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
-            $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+            $SumMapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})
+            + {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
 );
 // split — compound trigger on the two sub-range sums
 axiom (forall {{QP}}, split_point: int ::
@@ -1552,19 +1558,21 @@ axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
     $RangeCountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $RangeCountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
-// left step
-axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}start{{EAA}}) then 1 else 0)
-            + $RangeCountQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+            + $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
-            $RangeCountQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}end - 1{{EAA}}) then 1 else 0)
+            $RangeCountQuantifierHelper_{{FN}}(start, prev_end{{CAT}})
+            + (if {{FN}}({{EAB}}prev_end{{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
 axiom (forall {{QP}}, split_point: int ::
@@ -1579,19 +1587,21 @@ function $RangeSumMapQuantifierHelper_{{FN}}({{QP}}): int;
 axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
-// left step
-axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}start{{EAA}})
-            + $RangeSumMapQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+            + $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
-            $RangeSumMapQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}end - 1{{EAA}})
+            $RangeSumMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})
+            + {{FN}}({{EAB}}prev_end{{EAA}})
 );
 // split — compound trigger on the two sub-range sums
 axiom (forall {{QP}}, split_point: int ::
