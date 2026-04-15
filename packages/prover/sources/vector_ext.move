@@ -9,3 +9,8 @@ module prover::vector_ext;
 /// module: `use fun prover::vector_ext::borrow_or_unknown as vector.borrow_or_unknown;`
 #[spec_only]
 public native fun borrow_or_unknown<T>(v: &vector<T>, i: u64): &T;
+
+/// Spec-only concatenation: returns `v1 ++ v2`. A non-aborting total
+/// function useful in suffix/prefix-invariant proofs.
+#[spec_only]
+public native fun concat<T>(v1: &vector<T>, v2: &vector<T>): &vector<T>;

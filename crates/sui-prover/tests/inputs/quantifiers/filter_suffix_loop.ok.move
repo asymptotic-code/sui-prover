@@ -8,7 +8,8 @@
 module 0x42::filter_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
-use prover::vector_iter::{filter, filter_range, concat};
+use prover::vector_iter::{filter, filter_range};
+use prover::vector_ext::concat;
 
 #[ext(pure)]
 fun is_odd(x: &u64): bool {

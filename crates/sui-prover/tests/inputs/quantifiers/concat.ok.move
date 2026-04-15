@@ -1,4 +1,4 @@
-// Tests for the prover::vector_iter::concat native. Also demonstrates using
+// Tests for the prover::vector_ext::concat native. Also demonstrates using
 // concat in a loop invariant to express the relationship between the already-
 // processed prefix and the unprocessed suffix of a source vector.
 
@@ -9,7 +9,9 @@ module 0x42::quantifiers_concat_ok;
 use prover::prover::{ensures, requires, invariant};
 
 #[spec_only]
-use prover::vector_iter::{concat, slice};
+use prover::vector_iter::slice;
+#[spec_only]
+use prover::vector_ext::concat;
 
 // Concrete values: concat of two literal vectors.
 #[spec(prove)]

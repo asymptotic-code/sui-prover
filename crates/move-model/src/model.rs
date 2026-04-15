@@ -1507,6 +1507,7 @@ impl GlobalEnv {
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
     pub const PROVER_VECTOR_MODULE_NAME: &'static str = "vector_iter";
+    pub const PROVER_VECTOR_EXT_MODULE_NAME: &'static str = "vector_ext";
     pub const SPECS_MODULES_NAMES: &'static [&'static str] = &[
         Self::PROVER_MODULE_NAME,
         Self::SPEC_MODULE_NAME,
@@ -2193,11 +2194,11 @@ impl GlobalEnv {
     }
 
     pub fn prover_vec_concat_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+        self.get_fun_qid(Self::PROVER_VECTOR_EXT_MODULE_NAME, Self::PROVER_VEC_CONCAT)
     }
 
     pub fn prover_vec_concat_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+        self.get_fun_qid_opt(Self::PROVER_VECTOR_EXT_MODULE_NAME, Self::PROVER_VEC_CONCAT)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {

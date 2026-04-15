@@ -374,7 +374,7 @@ function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: in
     SliceVec(v, start, end)
 }
 
-function {:inline} $0_vector_iter_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+function {:inline} $0_vector_ext_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
     ConcatVec(v1, v2)
 }
 

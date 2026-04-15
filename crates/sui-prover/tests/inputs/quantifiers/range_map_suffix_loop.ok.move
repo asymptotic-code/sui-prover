@@ -8,7 +8,8 @@
 module 0x42::range_map_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
-use prover::vector_iter::{range_map, concat};
+use prover::vector_iter::range_map;
+use prover::vector_ext::concat;
 
 #[ext(pure)]
 fun double(x: u64): u64 {
