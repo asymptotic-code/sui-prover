@@ -99,6 +99,7 @@ struct TableImpl {
     fun_add: String,
     fun_borrow: String,
     fun_borrow_mut: String,
+    fun_borrow_or_unknown: String,
     fun_remove: String,
     fun_contains: String,
     fun_length: String,
@@ -116,6 +117,7 @@ struct DynamicFieldInfo {
     fun_add: String,
     fun_borrow: String,
     fun_borrow_mut: String,
+    fun_borrow_or_unknown: String,
     fun_remove: String,
     fun_remove_if_exists: String,
     fun_exists_with_type: String,
@@ -720,6 +722,7 @@ impl TableImpl {
             fun_add: triple_opt_to_name(env, env.table_add_qid()),
             fun_borrow: triple_opt_to_name(env, env.table_borrow_qid()),
             fun_borrow_mut: triple_opt_to_name(env, env.table_borrow_mut_qid()),
+            fun_borrow_or_unknown: triple_opt_to_name(env, env.table_ext_borrow_or_unknown_qid()),
             fun_remove: triple_opt_to_name(env, env.table_remove_qid()),
             fun_contains: triple_opt_to_name(env, env.table_contains_qid()),
             fun_length: triple_opt_to_name(env, env.table_length_qid()),
@@ -777,6 +780,10 @@ impl TableImpl {
             fun_add: triple_opt_to_name(env, env.object_table_add_qid()),
             fun_borrow: triple_opt_to_name(env, env.object_table_borrow_qid()),
             fun_borrow_mut: triple_opt_to_name(env, env.object_table_borrow_mut_qid()),
+            fun_borrow_or_unknown: triple_opt_to_name(
+                env,
+                env.object_table_ext_borrow_or_unknown_qid(),
+            ),
             fun_remove: triple_opt_to_name(env, env.object_table_remove_qid()),
             fun_contains: triple_opt_to_name(env, env.object_table_contains_qid()),
             fun_length: triple_opt_to_name(env, env.object_table_length_qid()),
@@ -821,6 +828,10 @@ impl DynamicFieldInfo {
             fun_add: triple_opt_to_name(env, env.dynamic_field_add_qid()),
             fun_borrow: triple_opt_to_name(env, env.dynamic_field_borrow_qid()),
             fun_borrow_mut: triple_opt_to_name(env, env.dynamic_field_borrow_mut_qid()),
+            fun_borrow_or_unknown: triple_opt_to_name(
+                env,
+                env.dynamic_field_ext_borrow_or_unknown_qid(),
+            ),
             fun_remove: triple_opt_to_name(env, env.dynamic_field_remove_qid()),
             fun_remove_if_exists: triple_opt_to_name(env, env.dynamic_field_remove_if_exists_qid()),
             fun_exists_with_type: triple_opt_to_name(env, env.dynamic_field_exists_with_type_qid()),
@@ -871,6 +882,10 @@ impl DynamicFieldInfo {
             fun_add: triple_opt_to_name(env, env.dynamic_object_field_add_qid()),
             fun_borrow: triple_opt_to_name(env, env.dynamic_object_field_borrow_qid()),
             fun_borrow_mut: triple_opt_to_name(env, env.dynamic_object_field_borrow_mut_qid()),
+            fun_borrow_or_unknown: triple_opt_to_name(
+                env,
+                env.dynamic_object_field_ext_borrow_or_unknown_qid(),
+            ),
             fun_remove: triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
             fun_remove_if_exists: "".to_string(), // dynamic object field do not support remove_if_exists
             fun_exists_with_type: triple_opt_to_name(

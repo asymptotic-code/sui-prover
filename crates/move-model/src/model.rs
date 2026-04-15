@@ -1553,6 +1553,10 @@ impl GlobalEnv {
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
+    const TABLE_EXT_MODULE_NAME: &'static str = "table_ext";
+    const OBJECT_TABLE_EXT_MODULE_NAME: &'static str = "object_table_ext";
+    const DYNAMIC_FIELD_EXT_MODULE_NAME: &'static str = "dynamic_field_ext";
+    const DYNAMIC_OBJECT_FIELD_EXT_MODULE_NAME: &'static str = "dynamic_object_field_ext";
 
     const STD_BCS_MODULE_NAME: &'static str = "bcs";
     const STD_DEBUG_MODULE_NAME: &'static str = "debug";
@@ -1705,6 +1709,8 @@ impl GlobalEnv {
     const TABLE_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
     const TABLE_REMOVE_FUNCTION_NAME: &'static str = "remove";
     const TABLE_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    // extension function names (prover::{table,object_table,dynamic_field,dynamic_object_field}_ext)
+    const BORROW_OR_UNKNOWN_FUNCTION_NAME: &'static str = "borrow_or_unknown";
     const TABLE_LENGTH_FUNCTION_NAME: &'static str = "length";
     const TABLE_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
@@ -2791,6 +2797,35 @@ impl GlobalEnv {
         self.get_fun_qid_opt(
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
+        )
+    }
+
+    // prover::{table,object_table,dynamic_field,dynamic_object_field}_ext::borrow_or_unknown
+    pub fn table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::TABLE_EXT_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_EXT_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_EXT_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_FIELD_EXT_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
@@ -4060,6 +4095,10 @@ impl GlobalEnv {
             self.dynamic_object_field_remove_qid(),
             self.dynamic_object_field_exists_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
+            self.table_ext_borrow_or_unknown_qid(),
+            self.object_table_ext_borrow_or_unknown_qid(),
+            self.dynamic_field_ext_borrow_or_unknown_qid(),
+            self.dynamic_object_field_ext_borrow_or_unknown_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)

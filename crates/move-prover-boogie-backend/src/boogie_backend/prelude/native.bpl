@@ -840,6 +840,17 @@ function {:inline} {{impl.fun_borrow}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{
 }
 {%- endif %}
 
+{%- if impl.fun_borrow_or_unknown != "" %}
+// prover::{table,object_table}_ext::borrow_or_unknown — total lookup;
+// GetTable returns an uninterpreted value for missing keys.
+procedure {:inline 1} {{impl.fun_borrow_or_unknown}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) returns (v: {{V}}) {
+    v := GetTable(t->$contents, {{ENC}}(k));
+}
+function {:inline} {{impl.fun_borrow_or_unknown}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
+    GetTable(t->$contents, {{ENC}}(k))
+}
+{%- endif %}
+
 {%- if impl.fun_borrow_mut != "" %}
 procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}{{S}}), k: {{K}})
 returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}}{{S}})) {
@@ -950,6 +961,18 @@ function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}
 // This axiom will be a problem if ever some IsValid predicate is unsatisfiable.
 // axiom (forall t: {{Type}}, k: {{K}} :: $IsValid{{SV}}(GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))));
 
+{%- endif %}
+
+{%- if impl.fun_borrow_or_unknown != "" %}
+// prover::{dynamic_field,dynamic_object_field}_ext::borrow_or_unknown —
+// total lookup; GetTable returns an uninterpreted value for missing keys.
+procedure {:inline 1} {{impl.fun_borrow_or_unknown}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
+    v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
+    assume $IsValid{{SV}}(v);
+}
+function {:inline} {{impl.fun_borrow_or_unknown}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}} {
+    GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
+}
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
