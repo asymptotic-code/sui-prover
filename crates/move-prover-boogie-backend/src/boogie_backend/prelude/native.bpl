@@ -222,7 +222,7 @@ procedure {:inline 1} $1_vector_rotate_slice{{S}}(m: $Mutation (Vec ({{T}})), le
     n := left + (right - rot);
 }
 
-procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), i: int, e: {{T}}) returns (m': $Mutation (Vec ({{T}}))) {
+procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), e: {{T}}, i: int) returns (m': $Mutation (Vec ({{T}}))) {
     var left_vec: Vec ({{T}});
     var right_vec: Vec ({{T}});
     var v: Vec ({{T}});
@@ -374,18 +374,48 @@ function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: in
     SliceVec(v, start, end)
 }
 
-function {:inline} $0_vector_ext_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+// prover::vector_ext::append_pure — functional concatenation.
+function {:inline} $0_vector_ext_append_pure{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
     ConcatVec(v1, v2)
 }
 
-// Total borrow: for in-range indices this is ReadVec(v, i); for out-of-range
-// indices the underlying vector theory returns an uninterpreted (but
-// deterministic) value — exactly the "unknown" semantics. Never aborts.
+// prover::vector_ext::borrow_or_unknown — total borrow. Out-of-range
+// returns an uninterpreted (but deterministic) value. Never aborts.
 procedure {:inline 1} $0_vector_ext_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int) returns (dst: {{T}}) {
     dst := ReadVec(v, i);
 }
 function {:inline} $0_vector_ext_borrow_or_unknown{{S}}$pure(v: Vec ({{T}}), i: int): {{T}} {
     ReadVec(v, i)
+}
+
+// prover::vector_ext::push_back_pure
+function {:inline} $0_vector_ext_push_back_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+    ExtendVec(v, e)
+}
+
+// prover::vector_ext::pop_back_pure — drop last; unchanged if empty.
+function {:inline} $0_vector_ext_pop_back_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+    (if LenVec(v) == 0 then v else SliceVec(v, 0, LenVec(v) - 1))
+}
+
+// prover::vector_ext::push_front_pure
+function {:inline} $0_vector_ext_push_front_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+    InsertAtVec(v, 0, e)
+}
+
+// prover::vector_ext::pop_front_pure — drop first; unchanged if empty.
+function {:inline} $0_vector_ext_pop_front_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+    (if LenVec(v) == 0 then v else RemoveAtVec(v, 0))
+}
+
+// prover::vector_ext::insert_pure — insert at i; unchanged if i > length.
+function {:inline} $0_vector_ext_insert_pure{{S}}(v: Vec ({{T}}), e: {{T}}, i: int): Vec ({{T}}) {
+    (if i > LenVec(v) then v else InsertAtVec(v, i, e))
+}
+
+// prover::vector_ext::remove_pure — remove at i; unchanged if i out of range.
+function {:inline} $0_vector_ext_remove_pure{{S}}(v: Vec ({{T}}), i: int): Vec ({{T}}) {
+    (if InRangeVec(v, i) then RemoveAtVec(v, i) else v)
 }
 
 {%- if instance.is_number -%}

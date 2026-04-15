@@ -1,7 +1,7 @@
 // Loop test with a suffix invariant for `filter`, expressed via concat. The
 // invariant
 //
-//   concat(r, filter_range(v, i, n, p)) == filter(v, p)
+//   append_pure(r, filter_range(v, i, n, p)) == filter(v, p)
 //
 // needs the start-step direction of filter's recursive axiom to verify.
 
@@ -9,7 +9,7 @@ module 0x42::filter_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
 use prover::vector_iter::{filter, filter_range};
-use prover::vector_ext::concat;
+use prover::vector_ext::append_pure;
 
 #[ext(pure)]
 fun is_odd(x: &u64): bool {
@@ -22,7 +22,7 @@ fun filter_odds(v: &vector<u64>): vector<u64> {
     let mut r = vector[];
     invariant!(|| ensures(
         i <= n
-            && concat(&r, filter_range!(v, i, n, |x| is_odd(x))) == *filter!(v, |x| is_odd(x))
+            && append_pure(&r, filter_range!(v, i, n, |x| is_odd(x))) == *filter!(v, |x| is_odd(x))
     ));
     while (i < n) {
         if (is_odd(vector::borrow(v, i))) {

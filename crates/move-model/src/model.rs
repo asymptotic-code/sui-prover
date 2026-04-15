@@ -1647,7 +1647,13 @@ impl GlobalEnv {
     const PROVER_VEC_SUM: &'static str = "sum";
     const PROVER_VEC_SUM_RANGE: &'static str = "sum_range";
     const PROVER_VEC_SLICE: &'static str = "slice";
-    const PROVER_VEC_CONCAT: &'static str = "concat";
+    const PROVER_VEC_APPEND_PURE: &'static str = "append_pure";
+    const PROVER_VEC_PUSH_BACK_PURE: &'static str = "push_back_pure";
+    const PROVER_VEC_POP_BACK_PURE: &'static str = "pop_back_pure";
+    const PROVER_VEC_PUSH_FRONT_PURE: &'static str = "push_front_pure";
+    const PROVER_VEC_POP_FRONT_PURE: &'static str = "pop_front_pure";
+    const PROVER_VEC_INSERT_PURE: &'static str = "insert_pure";
+    const PROVER_VEC_REMOVE_PURE: &'static str = "remove_pure";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -2195,12 +2201,60 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
     }
 
-    pub fn prover_vec_concat_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(Self::PROVER_VECTOR_EXT_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    pub fn prover_vec_append_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_APPEND_PURE,
+        )
     }
 
-    pub fn prover_vec_concat_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::PROVER_VECTOR_EXT_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    pub fn prover_vec_append_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_APPEND_PURE,
+        )
+    }
+
+    pub fn prover_vec_push_back_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_PUSH_BACK_PURE,
+        )
+    }
+
+    pub fn prover_vec_pop_back_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_POP_BACK_PURE,
+        )
+    }
+
+    pub fn prover_vec_push_front_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_PUSH_FRONT_PURE,
+        )
+    }
+
+    pub fn prover_vec_pop_front_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_POP_FRONT_PURE,
+        )
+    }
+
+    pub fn prover_vec_insert_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_INSERT_PURE,
+        )
+    }
+
+    pub fn prover_vec_remove_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::PROVER_VEC_REMOVE_PURE,
+        )
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -3657,7 +3711,13 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
-                self.prover_vec_concat_qid(),
+                self.prover_vec_append_pure_qid(),
+                self.prover_vec_push_back_pure_qid(),
+                self.prover_vec_pop_back_pure_qid(),
+                self.prover_vec_push_front_pure_qid(),
+                self.prover_vec_pop_front_pure_qid(),
+                self.prover_vec_insert_pure_qid(),
+                self.prover_vec_remove_pure_qid(),
             ]);
         }
 
@@ -3906,7 +3966,13 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
-                self.prover_vec_concat_qid(),
+                self.prover_vec_append_pure_qid(),
+                self.prover_vec_push_back_pure_qid(),
+                self.prover_vec_pop_back_pure_qid(),
+                self.prover_vec_push_front_pure_qid(),
+                self.prover_vec_pop_front_pure_qid(),
+                self.prover_vec_insert_pure_qid(),
+                self.prover_vec_remove_pure_qid(),
             ]);
         }
 
@@ -4207,7 +4273,13 @@ impl GlobalEnv {
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
             self.prover_vec_slice_qid_opt(),
-            self.prover_vec_concat_qid_opt(),
+            self.prover_vec_append_pure_qid_opt(),
+            if self.has_prover_vector_module() { Some(self.prover_vec_push_back_pure_qid()) } else { None },
+            if self.has_prover_vector_module() { Some(self.prover_vec_pop_back_pure_qid()) } else { None },
+            if self.has_prover_vector_module() { Some(self.prover_vec_push_front_pure_qid()) } else { None },
+            if self.has_prover_vector_module() { Some(self.prover_vec_pop_front_pure_qid()) } else { None },
+            if self.has_prover_vector_module() { Some(self.prover_vec_insert_pure_qid()) } else { None },
+            if self.has_prover_vector_module() { Some(self.prover_vec_remove_pure_qid()) } else { None },
             self.prover_vec_sum_qid_opt(),
             self.prover_vec_sum_range_qid_opt(),
             self.prover_range_qid_opt(),
