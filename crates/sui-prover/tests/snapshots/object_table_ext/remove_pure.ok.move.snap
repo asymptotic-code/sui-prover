@@ -1,0 +1,16 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with model building errors
+error: ability constraint not satisfied
+   ┌─ tests/inputs/object_table_ext/remove_pure.ok.move:20:9
+   │
+12 │ public struct Foo has key, store {
+   │               --- To satisfy the constraint, the 'drop' ability would need to be added here
+   ·
+17 │ fun test_remove_matches(t: &mut ObjectTable<u64, Foo>, k: u64) {
+   │                                                  --- The type '0x42::object_table_ext_remove_pure_ok::Foo' does not have the ability 'drop'
+   ·
+20 │     let _ = t.remove(k);
+   │         ^ Cannot ignore values without the 'drop' ability. The value must be used

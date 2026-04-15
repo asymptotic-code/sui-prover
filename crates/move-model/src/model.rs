@@ -1712,6 +1712,8 @@ impl GlobalEnv {
     const TABLE_CONTAINS_FUNCTION_NAME: &'static str = "contains";
     // extension function names (prover::{table,object_table,dynamic_field,dynamic_object_field}_ext)
     const BORROW_OR_UNKNOWN_FUNCTION_NAME: &'static str = "borrow_or_unknown";
+    const ADD_PURE_FUNCTION_NAME: &'static str = "add_pure";
+    const REMOVE_PURE_FUNCTION_NAME: &'static str = "remove_pure";
     const TABLE_LENGTH_FUNCTION_NAME: &'static str = "length";
     const TABLE_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
@@ -2827,6 +2829,28 @@ impl GlobalEnv {
         self.get_fun_qid_opt(
             Self::DYNAMIC_OBJECT_FIELD_EXT_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_EXT_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
+    }
+
+    pub fn table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_EXT_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
+    }
+
+    pub fn object_table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_EXT_MODULE_NAME,
+            Self::ADD_PURE_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_EXT_MODULE_NAME,
+            Self::REMOVE_PURE_FUNCTION_NAME,
         )
     }
 
@@ -4100,6 +4124,10 @@ impl GlobalEnv {
             self.object_table_ext_borrow_or_unknown_qid(),
             self.dynamic_field_ext_borrow_or_unknown_qid(),
             self.dynamic_object_field_ext_borrow_or_unknown_qid(),
+            self.table_ext_add_pure_qid(),
+            self.table_ext_remove_pure_qid(),
+            self.object_table_ext_add_pure_qid(),
+            self.object_table_ext_remove_pure_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)

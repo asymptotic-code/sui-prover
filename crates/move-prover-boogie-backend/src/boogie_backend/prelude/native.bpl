@@ -557,6 +557,30 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
+// prover::vec_set_ext::insert_pure — functional insert by appending.
+procedure {:inline 1} $0_vec_set_ext_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}) returns (res: $2_vec_set_VecSet{{S}}) {
+    res := $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k));
+}
+function {:inline} $0_vec_set_ext_insert_pure{{S}}$pure(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+    $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k))
+}
+
+// prover::vec_set_ext::remove_pure — functional remove; unchanged if absent.
+procedure {:inline 1} $0_vec_set_ext_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}) returns (res: $2_vec_set_VecSet{{S}}) {
+    var idx: int;
+    idx := $IndexOfVec{{S}}(s->$contents, k);
+    if (idx < 0) {
+        res := s;
+    } else {
+        res := $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx));
+    }
+}
+function {:inline} $0_vec_set_ext_remove_pure{{S}}$pure(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+    (var idx := $IndexOfVec{{S}}(s->$contents, k);
+     if idx < 0 then s
+     else $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx)))
+}
+
 {% endmacro vec_set_module %}
 
 {# TableVec
@@ -717,6 +741,41 @@ procedure {:inline 1} $0_vec_map_ext_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec
     res1 := entry->$value;
 }
 
+// prover::vec_map_ext::get_idx_or_unknown — total index lookup.
+// For contained keys: same index as get_idx. For missing keys:
+// IndexOfVecMap returns -1 (a u64-invalid sentinel); spec callers should
+// guard with `contains` to get a meaningful result.
+procedure {:inline 1} $0_vec_map_ext_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: int) {
+    res := $IndexOfVecMap{{S}}(vm->$contents, key);
+}
+function {:inline} $0_vec_map_ext_get_idx_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
+    $IndexOfVecMap{{S}}(vm->$contents, key)
+}
+
+// prover::vec_map_ext::insert_pure — functional insert by appending.
+procedure {:inline 1} $0_vec_map_ext_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}) returns (res: $2_vec_map_VecMap{{S}}) {
+    res := $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)));
+}
+function {:inline} $0_vec_map_ext_insert_pure{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
+    $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)))
+}
+
+// prover::vec_map_ext::remove_pure — functional remove; unchanged if absent.
+procedure {:inline 1} $0_vec_map_ext_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: $2_vec_map_VecMap{{S}}) {
+    var idx: int;
+    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+    if (idx < 0) {
+        res := vm;
+    } else {
+        res := $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx));
+    }
+}
+function {:inline} $0_vec_map_ext_remove_pure{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
+    (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+     if idx < 0 then vm
+     else $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx)))
+}
+
 {% endmacro vec_map_module %}
 
 {# Tables
@@ -848,6 +907,27 @@ procedure {:inline 1} {{impl.fun_borrow_or_unknown}}{{S}}(t: {{Type}}{{S}}, k: {
 }
 function {:inline} {{impl.fun_borrow_or_unknown}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
     GetTable(t->$contents, {{ENC}}(k))
+}
+{%- endif %}
+
+{%- if impl.fun_add_pure != "" %}
+// prover::{table,object_table}_ext::add_pure — functional add.
+procedure {:inline 1} {{impl.fun_add_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}) returns (res: {{Type}}{{S}}) {
+    res := $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, {{ENC}}(k), v));
+}
+function {:inline} {{impl.fun_add_pure}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}): {{Type}}{{S}} {
+    $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, {{ENC}}(k), v))
+}
+{%- endif %}
+
+{%- if impl.fun_remove_pure != "" %}
+// prover::{table,object_table}_ext::remove_pure — functional remove.
+// For missing keys the table is returned unchanged.
+procedure {:inline 1} {{impl.fun_remove_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) returns (res: {{Type}}{{S}}) {
+    res := $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, {{ENC}}(k)));
+}
+function {:inline} {{impl.fun_remove_pure}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{Type}}{{S}} {
+    $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, {{ENC}}(k)))
 }
 {%- endif %}
 
