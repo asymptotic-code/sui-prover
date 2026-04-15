@@ -381,10 +381,7 @@ function {:inline} $0_vector_ext_append_pure{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}
 
 // prover::vector_ext::borrow_or_unknown — total borrow. Out-of-range
 // returns an uninterpreted (but deterministic) value. Never aborts.
-procedure {:inline 1} $0_vector_ext_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int) returns (dst: {{T}}) {
-    dst := ReadVec(v, i);
-}
-function {:inline} $0_vector_ext_borrow_or_unknown{{S}}$pure(v: Vec ({{T}}), i: int): {{T}} {
+function {:inline} $0_vector_ext_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int): {{T}} {
     ReadVec(v, i)
 }
 
@@ -588,24 +585,12 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
 }
 
 // prover::vec_set_ext::insert_pure — functional insert by appending.
-procedure {:inline 1} $0_vec_set_ext_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}) returns (res: $2_vec_set_VecSet{{S}}) {
-    res := $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k));
-}
-function {:inline} $0_vec_set_ext_insert_pure{{S}}$pure(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+function {:inline} $0_vec_set_ext_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
     $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k))
 }
 
 // prover::vec_set_ext::remove_pure — functional remove; unchanged if absent.
-procedure {:inline 1} $0_vec_set_ext_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}) returns (res: $2_vec_set_VecSet{{S}}) {
-    var idx: int;
-    idx := $IndexOfVec{{S}}(s->$contents, k);
-    if (idx < 0) {
-        res := s;
-    } else {
-        res := $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx));
-    }
-}
-function {:inline} $0_vec_set_ext_remove_pure{{S}}$pure(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+function {:inline} $0_vec_set_ext_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
     (var idx := $IndexOfVec{{S}}(s->$contents, k);
      if idx < 0 then s
      else $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx)))
@@ -755,15 +740,13 @@ function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
 // prover::vec_map_ext::get_or_unknown — total lookup; for missing keys the
 // result is ReadVec at IndexOfVecMap's -1, which the vector theory leaves
 // uninterpreted.
-procedure {:inline 1} $0_vec_map_ext_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: {{V}}) {
-    res := ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value;
-}
-function {:inline} $0_vec_map_ext_get_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
+function {:inline} $0_vec_map_ext_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
     ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
 }
 
 // prover::vec_map_ext::get_entry_by_idx_or_unknown — total indexed entry
 // access; ReadVec returns an uninterpreted Entry for out-of-range indices.
+// Procedure (not function) because Boogie functions cannot return tuples.
 procedure {:inline 1} $0_vec_map_ext_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
     var entry: $2_vec_map_Entry{{S}};
     entry := ReadVec(vm->$contents, idx);
@@ -775,32 +758,17 @@ procedure {:inline 1} $0_vec_map_ext_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec
 // For contained keys: same index as get_idx. For missing keys:
 // IndexOfVecMap returns -1 (a u64-invalid sentinel); spec callers should
 // guard with `contains` to get a meaningful result.
-procedure {:inline 1} $0_vec_map_ext_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: int) {
-    res := $IndexOfVecMap{{S}}(vm->$contents, key);
-}
-function {:inline} $0_vec_map_ext_get_idx_or_unknown{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
+function {:inline} $0_vec_map_ext_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
     $IndexOfVecMap{{S}}(vm->$contents, key)
 }
 
 // prover::vec_map_ext::insert_pure — functional insert by appending.
-procedure {:inline 1} $0_vec_map_ext_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}) returns (res: $2_vec_map_VecMap{{S}}) {
-    res := $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)));
-}
-function {:inline} $0_vec_map_ext_insert_pure{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
+function {:inline} $0_vec_map_ext_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
     $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)))
 }
 
 // prover::vec_map_ext::remove_pure — functional remove; unchanged if absent.
-procedure {:inline 1} $0_vec_map_ext_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}) returns (res: $2_vec_map_VecMap{{S}}) {
-    var idx: int;
-    idx := $IndexOfVecMap{{S}}(vm->$contents, key);
-    if (idx < 0) {
-        res := vm;
-    } else {
-        res := $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx));
-    }
-}
-function {:inline} $0_vec_map_ext_remove_pure{{S}}$pure(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
+function {:inline} $0_vec_map_ext_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
     (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
      if idx < 0 then vm
      else $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx)))
@@ -932,20 +900,14 @@ function {:inline} {{impl.fun_borrow}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{
 {%- if impl.fun_borrow_or_unknown != "" %}
 // prover::{table,object_table}_ext::borrow_or_unknown — total lookup;
 // GetTable returns an uninterpreted value for missing keys.
-procedure {:inline 1} {{impl.fun_borrow_or_unknown}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) returns (v: {{V}}) {
-    v := GetTable(t->$contents, {{ENC}}(k));
-}
-function {:inline} {{impl.fun_borrow_or_unknown}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
+function {:inline} {{impl.fun_borrow_or_unknown}}{{S}}(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
     GetTable(t->$contents, {{ENC}}(k))
 }
 {%- endif %}
 
 {%- if impl.fun_add_pure != "" %}
 // prover::{table,object_table}_ext::add_pure — functional add.
-procedure {:inline 1} {{impl.fun_add_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}) returns (res: {{Type}}{{S}}) {
-    res := $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, {{ENC}}(k), v));
-}
-function {:inline} {{impl.fun_add_pure}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}): {{Type}}{{S}} {
+function {:inline} {{impl.fun_add_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}): {{Type}}{{S}} {
     $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, {{ENC}}(k), v))
 }
 {%- endif %}
@@ -953,10 +915,7 @@ function {:inline} {{impl.fun_add_pure}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}, v
 {%- if impl.fun_remove_pure != "" %}
 // prover::{table,object_table}_ext::remove_pure — functional remove.
 // For missing keys the table is returned unchanged.
-procedure {:inline 1} {{impl.fun_remove_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}) returns (res: {{Type}}{{S}}) {
-    res := $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, {{ENC}}(k)));
-}
-function {:inline} {{impl.fun_remove_pure}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{Type}}{{S}} {
+function {:inline} {{impl.fun_remove_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}): {{Type}}{{S}} {
     $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, {{ENC}}(k)))
 }
 {%- endif %}
@@ -1076,11 +1035,7 @@ function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}
 {%- if impl.fun_borrow_or_unknown != "" %}
 // prover::{dynamic_field,dynamic_object_field}_ext::borrow_or_unknown —
 // total lookup; GetTable returns an uninterpreted value for missing keys.
-procedure {:inline 1} {{impl.fun_borrow_or_unknown}}{{DF_S}}(t: {{Type}}, k: {{K}}) returns (v: {{V}}) {
-    v := GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k));
-    assume $IsValid{{SV}}(v);
-}
-function {:inline} {{impl.fun_borrow_or_unknown}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}} {
+function {:inline} {{impl.fun_borrow_or_unknown}}{{DF_S}}(t: {{Type}}, k: {{K}}): {{V}} {
     GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
 }
 {%- endif %}
