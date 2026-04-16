@@ -100,6 +100,7 @@ pub struct FunctionTranslator<'env> {
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
     allow_path_isolation_pending: bool,
+    isolate_paths_pending: bool,
 }
 
 pub struct StructTranslator<'env> {
@@ -2162,6 +2163,7 @@ impl<'env> FunctionTranslator<'env> {
             type_inst,
             style,
             allow_path_isolation_pending: false,
+            isolate_paths_pending: false,
         }
     }
 
@@ -3744,6 +3746,13 @@ impl<'env> FunctionTranslator<'env> {
             self.writer().set_location(&loc);
             self.track_loc(last_tracked_loc, &loc);
 
+            let path_iso = if self.allow_path_isolation_pending {
+                self.allow_path_isolation_pending = false;
+                " {:allow_path_isolation}"
+            } else {
+                ""
+            };
+
             if i == 0 {
                 emitln!(
                     self.writer(),
@@ -3751,9 +3760,9 @@ impl<'env> FunctionTranslator<'env> {
                     branch_bc.display(self.fun_target, &BTreeMap::default()),
                     loc.display(self.fun_target.global_env())
                 );
-                emitln!(self.writer(), "if ($t{}) {{", cond_idx);
+                emitln!(self.writer(), "if{} ($t{}) {{", path_iso, cond_idx);
             } else {
-                emitln!(self.writer(), "}} else if ($t{}) {{", cond_idx);
+                emitln!(self.writer(), "}} else if{} ($t{}) {{", path_iso, cond_idx);
             }
 
             self.writer().indent();
@@ -4296,9 +4305,15 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 String::new()
                             };
+                            let isolate = if self.isolate_paths_pending {
+                                "{:isolate \"paths\"} "
+                            } else {
+                                ""
+                            };
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
+                                "assert {}{{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
+                                isolate,
                                 self.loc_str(&self.writer().get_loc()),
                                 secondary,
                                 args_str,
@@ -4327,16 +4342,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.isolate_paths_qid() {
-                            if self.style == FunctionTranslationStyle::Default {
-                                emitln!(
-                                    self.writer(),
-                                    "assert {{:isolate \"paths\"}} {{:msg \"assert_failed{}: prover::boogie_isolate_paths does not hold\"}} {};",
-                                    self.loc_str(&self.writer().get_loc()),
-                                    args_str,
-                                );
-                            } else {
-                                emitln!(self.writer(), "assume {};", args_str);
-                            }
+                            self.isolate_paths_pending = true;
                             processed = true;
                         }
 
