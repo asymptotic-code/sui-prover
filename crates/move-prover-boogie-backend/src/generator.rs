@@ -51,6 +51,18 @@ pub struct FileOptions {
     pub loc: Loc,
 }
 
+/// Returns `true` if any function in `targets` transitively invokes
+/// `prover::split_here`. Used to gate Boogie's `-vcsMaxSplits` flag.
+fn spec_uses_split_here(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
+    let split_here = env.split_here_qid();
+    targets.get_funs().into_iter().any(|fid| {
+        env.get_function(fid)
+            .get_called_functions()
+            .into_iter()
+            .any(|callee| callee == split_here)
+    })
+}
+
 pub fn create_init_num_operation_state(env: &GlobalEnv, prover_options: &ProverOptions) {
     let mut global_state = GlobalNumberOperationState::new_with_options(prover_options.clone());
     for module_env in env.get_modules() {
@@ -356,6 +368,17 @@ fn generate_function_bpl<W: WriteColor>(
     // are present so the trace display can show per-assertion progress.
     if options.backend.trace {
         let extra = "vcsSplitOnEveryAssert vcsCores:1";
+        boogie_options = Some(match boogie_options {
+            Some(existing) => format!("{} {}", existing, extra),
+            None => extra.to_string(),
+        });
+    }
+    // Raise vcsMaxSplits when this spec's bytecode reaches
+    // `prover::split_here`. Boogie's default `vcsMaxSplits=1` silently
+    // suppresses `{:split_here}` annotations; we pay the overhead only for
+    // specs that actually use them.
+    if spec_uses_split_here(env, &targets) {
+        let extra = "vcsMaxSplits:100";
         boogie_options = Some(match boogie_options {
             Some(existing) => format!("{} {}", existing, extra),
             None => extra.to_string(),

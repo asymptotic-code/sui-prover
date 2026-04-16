@@ -4303,6 +4303,11 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
+                        if callee_env.get_qualified_id() == self.parent.env.split_here_qid() {
+                            emitln!(self.writer(), "assert {:split_here} true;");
+                            processed = true;
+                        }
+
                         if callee_env.get_qualified_id() == self.parent.env.type_inv_qid() {
                             if self.style.is_asserts_style() {
                                 emitln!(self.writer(), "{} := true;", dest_str);
