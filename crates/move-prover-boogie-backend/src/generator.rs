@@ -52,14 +52,10 @@ pub struct FileOptions {
 }
 
 /// Returns `true` if any function in `targets` calls a Boogie VC-splitting
-/// native (`boogie_split_here`, `boogie_allow_path_isolation`,
-/// `boogie_isolate_paths`). Used to gate Boogie's `-vcsMaxSplits` flag.
+/// native (`boogie_split_here`, `boogie_allow_path_isolation`).
+/// Used to gate Boogie's `-vcsMaxSplits` flag.
 fn spec_uses_vc_splitting(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let split_qids = [
-        env.split_here_qid(),
-        env.allow_path_isolation_qid(),
-        env.isolate_paths_qid(),
-    ];
+    let split_qids = [env.split_here_qid(), env.allow_path_isolation_qid()];
     targets.get_funs().into_iter().any(|fid| {
         env.get_function(fid)
             .get_called_functions()
@@ -276,6 +272,7 @@ async fn run_prover_abort_check<W: WriteColor>(
         &targets,
         AssertsMode::Check,
         &extra_bpl_contents,
+        false,
     )?;
     check_errors(
         env,
@@ -353,12 +350,39 @@ fn generate_function_bpl<W: WriteColor>(
         extra_bpl_contents.push(content.as_str());
     }
 
+    let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
+    let isolate_paths = boogie_options
+        .as_ref()
+        .map(|s| s.contains("isolate_paths"))
+        .unwrap_or(false);
+    if isolate_paths {
+        boogie_options = boogie_options.map(|s| {
+            let cleaned = s
+                .split_whitespace()
+                .filter(|w| *w != "isolate_paths")
+                .collect::<Vec<_>>()
+                .join(" ");
+            if cleaned.is_empty() {
+                return String::new();
+            }
+            cleaned
+        });
+        if boogie_options
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(false)
+        {
+            boogie_options = None;
+        }
+    }
+
     let (code_writer, types) = generate_boogie(
         env,
         &options,
         &mut targets,
         asserts_mode,
         &extra_bpl_contents,
+        isolate_paths,
     )?;
 
     check_errors(
@@ -367,8 +391,6 @@ fn generate_function_bpl<W: WriteColor>(
         error_writer,
         "exiting with condition generation errors",
     )?;
-
-    let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
     // When --trace is active, ensure vcsSplitOnEveryAssert and vcsCores:1
     // are present so the trace display can show per-assertion progress.
     if options.backend.trace {
@@ -382,7 +404,7 @@ fn generate_function_bpl<W: WriteColor>(
     // `prover::boogie_split_here`. Boogie's default `vcsMaxSplits=1` silently
     // suppresses `{:split_here}` annotations; we pay the overhead only for
     // specs that actually use them.
-    if spec_uses_vc_splitting(env, &targets) {
+    if isolate_paths || spec_uses_vc_splitting(env, &targets) {
         let extra = "vcsMaxSplits:100";
         boogie_options = Some(match boogie_options {
             Some(existing) => format!("{} {}", existing, extra),
@@ -447,6 +469,7 @@ fn generate_module_bpl<W: WriteColor>(
         &mut targets,
         asserts_mode,
         &extra_bpl_contents,
+        false,
     )?;
 
     check_errors(
@@ -744,6 +767,7 @@ pub fn generate_boogie(
     targets: &FunctionTargetsHolder,
     asserts_mode: AssertsMode,
     extra_bpl_contents: &[&str],
+    isolate_paths: bool,
 ) -> anyhow::Result<(CodeWriter, BiBTreeMap<Type, String>)> {
     let writer = CodeWriter::new(env.internal_loc());
     let types = RefCell::new(BiBTreeMap::new());
@@ -756,6 +780,7 @@ pub fn generate_boogie(
         &types,
         asserts_mode,
     );
+    translator.isolate_paths = isolate_paths;
     translator.translate();
     Ok((writer, types.into_inner()))
 }

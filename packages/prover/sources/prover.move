@@ -24,12 +24,6 @@ native public fun boogie_split_here();
 #[spec_only]
 native public fun boogie_allow_path_isolation();
 
-/// Marks the next `ensures` / `asserts` / `requires` for path isolation.
-/// The assertion gets one VC per control-flow path, where only branches
-/// marked with `boogie_allow_path_isolation()` multiply the path count.
-/// Call immediately before the assertion you want isolated.
-#[spec_only]
-native public fun boogie_isolate_paths();
 #[spec_only]
 public macro fun invariant($invariants: ||) {
     invariant_begin();

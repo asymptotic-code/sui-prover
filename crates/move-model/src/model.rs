@@ -1585,7 +1585,6 @@ impl GlobalEnv {
     const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
     const SPLIT_HERE_FUNCTION_NAME: &'static str = "boogie_split_here";
     const ALLOW_PATH_ISOLATION_FUNCTION_NAME: &'static str = "boogie_allow_path_isolation";
-    const ISOLATE_PATHS_FUNCTION_NAME: &'static str = "boogie_isolate_paths";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
@@ -2383,10 +2382,6 @@ impl GlobalEnv {
             Self::PROVER_MODULE_NAME,
             Self::ALLOW_PATH_ISOLATION_FUNCTION_NAME,
         )
-    }
-
-    pub fn isolate_paths_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ISOLATE_PATHS_FUNCTION_NAME)
     }
 
     pub fn type_inv_qid(&self) -> QualifiedId<FunId> {
@@ -3703,7 +3698,6 @@ impl GlobalEnv {
             self.asserts_of_qid(),
             self.split_here_qid(),
             self.allow_path_isolation_qid(),
-            self.isolate_paths_qid(),
             self.invariant_begin_qid(),
             self.invariant_end_qid(),
             self.prover_val_qid(),
@@ -3981,7 +3975,6 @@ impl GlobalEnv {
         qids.insert(self.asserts_of_qid());
         qids.insert(self.split_here_qid());
         qids.insert(self.allow_path_isolation_qid());
-        qids.insert(self.isolate_paths_qid());
 
         // Ghost module functions
         qids.extend(vec![

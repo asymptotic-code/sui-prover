@@ -85,6 +85,7 @@ pub struct BoogieTranslator<'env> {
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     asserts_mode: AssertsMode,
+    pub isolate_paths: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -134,6 +135,7 @@ impl<'env> BoogieTranslator<'env> {
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
             asserts_mode,
+            isolate_paths: false,
         }
     }
 
@@ -2163,7 +2165,7 @@ impl<'env> FunctionTranslator<'env> {
             type_inst,
             style,
             allow_path_isolation_pending: false,
-            isolate_paths_pending: false,
+            isolate_paths_pending: parent.isolate_paths,
         }
     }
 
@@ -4338,11 +4340,6 @@ impl<'env> FunctionTranslator<'env> {
                             == self.parent.env.allow_path_isolation_qid()
                         {
                             self.allow_path_isolation_pending = true;
-                            processed = true;
-                        }
-
-                        if callee_env.get_qualified_id() == self.parent.env.isolate_paths_qid() {
-                            self.isolate_paths_pending = true;
                             processed = true;
                         }
 
