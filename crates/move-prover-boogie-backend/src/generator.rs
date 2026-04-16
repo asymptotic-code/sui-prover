@@ -51,15 +51,20 @@ pub struct FileOptions {
     pub loc: Loc,
 }
 
-/// Returns `true` if any function in `targets` transitively invokes
-/// `prover::boogie_split_here`. Used to gate Boogie's `-vcsMaxSplits` flag.
-fn spec_uses_split_here(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let split_here = env.split_here_qid();
+/// Returns `true` if any function in `targets` calls a Boogie VC-splitting
+/// native (`boogie_split_here`, `boogie_allow_path_isolation`,
+/// `boogie_isolate_paths`). Used to gate Boogie's `-vcsMaxSplits` flag.
+fn spec_uses_vc_splitting(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
+    let split_qids = [
+        env.split_here_qid(),
+        env.allow_path_isolation_qid(),
+        env.isolate_paths_qid(),
+    ];
     targets.get_funs().into_iter().any(|fid| {
         env.get_function(fid)
             .get_called_functions()
             .into_iter()
-            .any(|callee| callee == split_here)
+            .any(|callee| split_qids.contains(&callee))
     })
 }
 
@@ -377,7 +382,7 @@ fn generate_function_bpl<W: WriteColor>(
     // `prover::boogie_split_here`. Boogie's default `vcsMaxSplits=1` silently
     // suppresses `{:split_here}` annotations; we pay the overhead only for
     // specs that actually use them.
-    if spec_uses_split_here(env, &targets) {
+    if spec_uses_vc_splitting(env, &targets) {
         let extra = "vcsMaxSplits:100";
         boogie_options = Some(match boogie_options {
             Some(existing) => format!("{} {}", existing, extra),

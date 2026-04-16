@@ -99,6 +99,7 @@ pub struct FunctionTranslator<'env> {
     fun_target: &'env FunctionTarget<'env>,
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
+    allow_path_isolation_pending: bool,
 }
 
 pub struct StructTranslator<'env> {
@@ -2160,6 +2161,7 @@ impl<'env> FunctionTranslator<'env> {
             fun_target,
             type_inst,
             style,
+            allow_path_isolation_pending: false,
         }
     }
 
@@ -3898,13 +3900,22 @@ impl<'env> FunctionTranslator<'env> {
                 self.writer().indent();
             }
             Jump(_, target) => emitln!(self.writer(), "goto L{};", target.as_usize()),
-            Branch(_, then_target, else_target, idx) => emitln!(
-                self.writer(),
-                "if ({}) {{ goto L{}; }} else {{ goto L{}; }}",
-                str_local(*idx),
-                then_target.as_usize(),
-                else_target.as_usize(),
-            ),
+            Branch(_, then_target, else_target, idx) => {
+                let attr = if self.allow_path_isolation_pending {
+                    self.allow_path_isolation_pending = false;
+                    " {:allow_path_isolation}"
+                } else {
+                    ""
+                };
+                emitln!(
+                    self.writer(),
+                    "if{} ({}) {{ goto L{}; }} else {{ goto L{}; }}",
+                    attr,
+                    str_local(*idx),
+                    then_target.as_usize(),
+                    else_target.as_usize(),
+                );
+            }
             VariantSwitch(_, idx, labels) => {
                 // emit if then else for each variant
                 for (i, target) in labels.iter().enumerate() {
@@ -4305,6 +4316,27 @@ impl<'env> FunctionTranslator<'env> {
 
                         if callee_env.get_qualified_id() == self.parent.env.split_here_qid() {
                             emitln!(self.writer(), "assume {:split_here} true;");
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id()
+                            == self.parent.env.allow_path_isolation_qid()
+                        {
+                            self.allow_path_isolation_pending = true;
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.isolate_paths_qid() {
+                            if self.style == FunctionTranslationStyle::Default {
+                                emitln!(
+                                    self.writer(),
+                                    "assert {{:isolate \"paths\"}} {{:msg \"assert_failed{}: prover::boogie_isolate_paths does not hold\"}} {};",
+                                    self.loc_str(&self.writer().get_loc()),
+                                    args_str,
+                                );
+                            } else {
+                                emitln!(self.writer(), "assume {};", args_str);
+                            }
                             processed = true;
                         }
 

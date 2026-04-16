@@ -16,6 +16,20 @@ native public fun asserts_of(name: vector<u8>): bool;
 /// whole; splitting often turns a timeout into a few seconds per piece.
 #[spec_only]
 native public fun boogie_split_here();
+
+/// Marks the next `if` branch as a path-isolation site. Used together with
+/// `boogie_isolate_paths(p)`: when an assertion is isolated by paths, only
+/// branches annotated with this function multiply the path count. Call
+/// immediately before the `if` you want Boogie to split on.
+#[spec_only]
+native public fun boogie_allow_path_isolation();
+
+/// Emits `assert {:isolate "paths"} p;`. The assertion gets one VC per
+/// control-flow path, where only branches previously marked with
+/// `boogie_allow_path_isolation()` create separate paths. Other branches
+/// stay joined in a single VC.
+#[spec_only]
+native public fun boogie_isolate_paths(p: bool);
 #[spec_only]
 public macro fun invariant($invariants: ||) {
     invariant_begin();
