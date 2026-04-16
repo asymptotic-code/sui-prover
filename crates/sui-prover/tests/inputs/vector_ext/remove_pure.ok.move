@@ -5,7 +5,7 @@ module 0x42::vector_ext_remove_pure_ok;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vector_ext::remove_pure;
+use std::vector::remove_pure;
 
 #[spec(prove)]
 fun test_remove_matches(v: &mut vector<u64>, i: u64) {

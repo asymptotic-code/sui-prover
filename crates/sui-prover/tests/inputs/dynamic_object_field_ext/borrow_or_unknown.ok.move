@@ -7,7 +7,7 @@ use sui::dynamic_object_field;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::dynamic_object_field_ext::borrow_or_unknown;
+use sui::dynamic_object_field::borrow_or_unknown;
 
 public struct Parent has key {
     id: UID,

@@ -7,7 +7,7 @@ use sui::vec_set;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vec_set_ext::remove_pure;
+use sui::vec_set::remove_pure;
 
 #[spec(prove)]
 fun test_remove_matches(s: &mut vec_set::VecSet<u64>, k: u64) {

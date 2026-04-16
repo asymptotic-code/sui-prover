@@ -8,11 +8,7 @@ module 0x42::vector_ext_borrow_or_unknown_ok;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vector_ext::borrow_or_unknown;
-
-// Local method-syntax alias for vector.
-#[spec_only]
-use fun prover::vector_ext::borrow_or_unknown as vector.borrow_or_unknown;
+use std::vector::borrow_or_unknown;
 
 // In-range: borrow_or_unknown agrees with vector::borrow.
 #[spec(prove)]

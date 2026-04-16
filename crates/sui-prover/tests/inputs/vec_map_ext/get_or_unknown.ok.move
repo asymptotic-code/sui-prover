@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vec_map_ext::get_or_unknown;
+use sui::vec_map::get_or_unknown;
 
 // Contained key: get_or_unknown agrees with vec_map::get.
 #[spec(prove)]
@@ -15,10 +15,6 @@ fun test_contained_matches_get(m: &vec_map::VecMap<u64, u8>, k: u64) {
     requires(m.contains(&k));
     ensures(get_or_unknown(m, &k) == m.get(&k));
 }
-
-// Method syntax via local use fun.
-#[spec_only]
-use fun prover::vec_map_ext::get_or_unknown as vec_map::VecMap.get_or_unknown;
 
 #[spec(prove)]
 fun test_method_syntax(m: &vec_map::VecMap<u64, u8>, k: u64) {

@@ -5,7 +5,7 @@ module 0x42::vector_ext_append_pure_ok;
 use prover::prover::{ensures, clone};
 
 #[spec_only]
-use prover::vector_ext::append_pure;
+use std::vector::append_pure;
 
 #[spec(prove)]
 fun test_append_matches(v1: &mut vector<u64>, v2: vector<u64>) {

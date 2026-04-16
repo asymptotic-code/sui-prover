@@ -5,7 +5,7 @@ module 0x42::vector_ext_push_front_pure_ok;
 use prover::prover::{ensures, clone};
 
 #[spec_only]
-use prover::vector_ext::push_front_pure;
+use std::vector::push_front_pure;
 
 // New first element equals the pushed element.
 #[spec(prove)]

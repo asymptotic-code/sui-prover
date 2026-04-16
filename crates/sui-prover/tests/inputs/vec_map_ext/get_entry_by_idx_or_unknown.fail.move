@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vec_map_ext::get_entry_by_idx_or_unknown;
+use sui::vec_map::get_entry_by_idx_or_unknown;
 
 // For an out-of-range index, get_entry_by_idx_or_unknown returns an
 // uninterpreted pair — claiming a specific value must fail to verify.

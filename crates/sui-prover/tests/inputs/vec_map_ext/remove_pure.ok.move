@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vec_map_ext::remove_pure;
+use sui::vec_map::remove_pure;
 
 // After remove of a contained key, the functional model equals the result.
 #[spec(prove)]

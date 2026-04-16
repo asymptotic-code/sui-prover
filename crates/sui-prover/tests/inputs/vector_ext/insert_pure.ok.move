@@ -5,7 +5,7 @@ module 0x42::vector_ext_insert_pure_ok;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vector_ext::insert_pure;
+use std::vector::insert_pure;
 
 #[spec(prove)]
 fun test_insert_matches(v: &mut vector<u64>, e: u64, i: u64) {

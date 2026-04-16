@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vec_map_ext::get_or_unknown;
+use sui::vec_map::get_or_unknown;
 
 // For an absent key, get_or_unknown returns an uninterpreted value —
 // claiming a specific value must fail to verify.

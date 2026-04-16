@@ -7,7 +7,7 @@ use sui::dynamic_field;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::dynamic_field_ext::borrow_or_unknown;
+use sui::dynamic_field::borrow_or_unknown;
 
 public struct Foo has key {
     id: UID,

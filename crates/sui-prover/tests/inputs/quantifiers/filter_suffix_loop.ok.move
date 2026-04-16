@@ -9,7 +9,7 @@ module 0x42::filter_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
 use prover::vector_iter::{filter, filter_range};
-use prover::vector_ext::append_pure;
+use std::vector::append_pure;
 
 #[ext(pure)]
 fun is_odd(x: &u64): bool {

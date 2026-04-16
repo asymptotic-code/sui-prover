@@ -5,7 +5,7 @@ module 0x42::vector_ext_pop_front_pure_ok;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vector_ext::pop_front_pure;
+use std::vector::pop_front_pure;
 
 // Length of pop_front on a non-empty vector is length - 1.
 #[spec(prove)]

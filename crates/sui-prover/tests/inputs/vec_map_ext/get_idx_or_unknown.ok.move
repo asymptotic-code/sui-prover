@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::vec_map_ext::get_idx_or_unknown;
+use sui::vec_map::get_idx_or_unknown;
 
 // Contained key: get_idx_or_unknown agrees with vec_map::get_idx.
 #[spec(prove)]

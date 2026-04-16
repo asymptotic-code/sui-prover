@@ -5,7 +5,7 @@ module 0x42::vector_ext_pop_back_pure_ok;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vector_ext::pop_back_pure;
+use std::vector::pop_back_pure;
 
 #[spec(prove)]
 fun test_pop_back_matches(v: &mut vector<u64>) {

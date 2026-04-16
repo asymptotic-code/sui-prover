@@ -7,7 +7,7 @@ use sui::table::Table;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::table_ext::borrow_or_unknown;
+use sui::table::borrow_or_unknown;
 
 // For an absent key, borrow_or_unknown returns an uninterpreted value —
 // claiming a specific value must fail to verify.

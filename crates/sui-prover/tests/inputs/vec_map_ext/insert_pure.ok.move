@@ -7,7 +7,7 @@ use sui::vec_map;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vec_map_ext::insert_pure;
+use sui::vec_map::insert_pure;
 
 // After insert, the functional model equals the mutable result.
 #[spec(prove)]

@@ -7,7 +7,7 @@ use sui::object_table::ObjectTable;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::object_table_ext::add_pure;
+use sui::object_table::add_pure;
 
 public struct Foo has key, store {
     id: UID,

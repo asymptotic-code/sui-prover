@@ -374,44 +374,44 @@ function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: in
     SliceVec(v, start, end)
 }
 
-// prover::vector_ext::append_pure — functional concatenation.
-function {:inline} $0_vector_ext_append_pure{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+// std::vector::append_pure — functional concatenation.
+function {:inline} $1_vector_append_pure{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
     ConcatVec(v1, v2)
 }
 
-// prover::vector_ext::borrow_or_unknown — total borrow. Out-of-range
+// std::vector::borrow_or_unknown — total borrow. Out-of-range
 // returns an uninterpreted (but deterministic) value. Never aborts.
-function {:inline} $0_vector_ext_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int): {{T}} {
+function {:inline} $1_vector_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int): {{T}} {
     ReadVec(v, i)
 }
 
-// prover::vector_ext::push_back_pure
-function {:inline} $0_vector_ext_push_back_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+// std::vector::push_back_pure
+function {:inline} $1_vector_push_back_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
     ExtendVec(v, e)
 }
 
-// prover::vector_ext::pop_back_pure — drop last; unchanged if empty.
-function {:inline} $0_vector_ext_pop_back_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+// std::vector::pop_back_pure — drop last; unchanged if empty.
+function {:inline} $1_vector_pop_back_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
     (if LenVec(v) == 0 then v else SliceVec(v, 0, LenVec(v) - 1))
 }
 
-// prover::vector_ext::push_front_pure
-function {:inline} $0_vector_ext_push_front_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+// std::vector::push_front_pure
+function {:inline} $1_vector_push_front_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
     InsertAtVec(v, 0, e)
 }
 
-// prover::vector_ext::pop_front_pure — drop first; unchanged if empty.
-function {:inline} $0_vector_ext_pop_front_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+// std::vector::pop_front_pure — drop first; unchanged if empty.
+function {:inline} $1_vector_pop_front_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
     (if LenVec(v) == 0 then v else RemoveAtVec(v, 0))
 }
 
-// prover::vector_ext::insert_pure — insert at i; unchanged if i > length.
-function {:inline} $0_vector_ext_insert_pure{{S}}(v: Vec ({{T}}), e: {{T}}, i: int): Vec ({{T}}) {
+// std::vector::insert_pure — insert at i; unchanged if i > length.
+function {:inline} $1_vector_insert_pure{{S}}(v: Vec ({{T}}), e: {{T}}, i: int): Vec ({{T}}) {
     (if i > LenVec(v) then v else InsertAtVec(v, i, e))
 }
 
-// prover::vector_ext::remove_pure — remove at i; unchanged if i out of range.
-function {:inline} $0_vector_ext_remove_pure{{S}}(v: Vec ({{T}}), i: int): Vec ({{T}}) {
+// std::vector::remove_pure — remove at i; unchanged if i out of range.
+function {:inline} $1_vector_remove_pure{{S}}(v: Vec ({{T}}), i: int): Vec ({{T}}) {
     (if InRangeVec(v, i) then RemoveAtVec(v, i) else v)
 }
 
@@ -584,13 +584,13 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
-// prover::vec_set_ext::insert_pure — functional insert by appending.
-function {:inline} $0_vec_set_ext_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+// sui::vec_set::insert_pure — functional insert by appending.
+function {:inline} $2_vec_set_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
     $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k))
 }
 
-// prover::vec_set_ext::remove_pure — functional remove; unchanged if absent.
-function {:inline} $0_vec_set_ext_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+// sui::vec_set::remove_pure — functional remove; unchanged if absent.
+function {:inline} $2_vec_set_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
     (var idx := $IndexOfVec{{S}}(s->$contents, k);
      if idx < 0 then s
      else $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx)))
@@ -737,38 +737,38 @@ function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
          $1_option_Option'u64'(EmptyVec()))
 }
 
-// prover::vec_map_ext::get_or_unknown — total lookup; for missing keys the
+// sui::vec_map::get_or_unknown — total lookup; for missing keys the
 // result is ReadVec at IndexOfVecMap's -1, which the vector theory leaves
 // uninterpreted.
-function {:inline} $0_vec_map_ext_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
+function {:inline} $2_vec_map_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
     ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
 }
 
-// prover::vec_map_ext::get_entry_by_idx_or_unknown — total indexed entry
+// sui::vec_map::get_entry_by_idx_or_unknown — total indexed entry
 // access; ReadVec returns an uninterpreted Entry for out-of-range indices.
 // Procedure (not function) because Boogie functions cannot return tuples.
-procedure {:inline 1} $0_vec_map_ext_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
+procedure {:inline 1} $2_vec_map_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
     var entry: $2_vec_map_Entry{{S}};
     entry := ReadVec(vm->$contents, idx);
     res0 := entry->$key;
     res1 := entry->$value;
 }
 
-// prover::vec_map_ext::get_idx_or_unknown — total index lookup.
+// sui::vec_map::get_idx_or_unknown — total index lookup.
 // For contained keys: same index as get_idx. For missing keys:
 // IndexOfVecMap returns -1 (a u64-invalid sentinel); spec callers should
 // guard with `contains` to get a meaningful result.
-function {:inline} $0_vec_map_ext_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
+function {:inline} $2_vec_map_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
     $IndexOfVecMap{{S}}(vm->$contents, key)
 }
 
-// prover::vec_map_ext::insert_pure — functional insert by appending.
-function {:inline} $0_vec_map_ext_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
+// sui::vec_map::insert_pure — functional insert by appending.
+function {:inline} $2_vec_map_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
     $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)))
 }
 
-// prover::vec_map_ext::remove_pure — functional remove; unchanged if absent.
-function {:inline} $0_vec_map_ext_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
+// sui::vec_map::remove_pure — functional remove; unchanged if absent.
+function {:inline} $2_vec_map_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
     (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
      if idx < 0 then vm
      else $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx)))

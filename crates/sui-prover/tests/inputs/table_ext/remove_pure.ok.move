@@ -7,7 +7,7 @@ use sui::table::Table;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::table_ext::remove_pure;
+use sui::table::remove_pure;
 
 #[spec(prove)]
 fun test_remove_matches(t: &mut Table<u64, u8>, k: u64) {

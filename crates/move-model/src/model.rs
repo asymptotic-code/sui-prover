@@ -1507,7 +1507,6 @@ impl GlobalEnv {
     pub const PROVER_MODULE_NAME: &'static str = "prover";
     pub const SPEC_MODULE_NAME: &'static str = "ghost";
     pub const PROVER_VECTOR_MODULE_NAME: &'static str = "vector_iter";
-    pub const PROVER_VECTOR_EXT_MODULE_NAME: &'static str = "vector_ext";
     pub const SPECS_MODULES_NAMES: &'static [&'static str] = &[
         Self::PROVER_MODULE_NAME,
         Self::SPEC_MODULE_NAME,
@@ -1554,13 +1553,6 @@ impl GlobalEnv {
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
-    const TABLE_EXT_MODULE_NAME: &'static str = "table_ext";
-    const OBJECT_TABLE_EXT_MODULE_NAME: &'static str = "object_table_ext";
-    const DYNAMIC_FIELD_EXT_MODULE_NAME: &'static str = "dynamic_field_ext";
-    const DYNAMIC_OBJECT_FIELD_EXT_MODULE_NAME: &'static str = "dynamic_object_field_ext";
-    const VEC_SET_EXT_MODULE_NAME: &'static str = "vec_set_ext";
-    const VEC_MAP_EXT_MODULE_NAME: &'static str = "vec_map_ext";
-
     const STD_BCS_MODULE_NAME: &'static str = "bcs";
     const STD_DEBUG_MODULE_NAME: &'static str = "debug";
     const STD_HASH_MODULE_NAME: &'static str = "hash";
@@ -2208,59 +2200,35 @@ impl GlobalEnv {
     }
 
     pub fn prover_vec_append_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_APPEND_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_APPEND_PURE)
     }
 
     pub fn prover_vec_append_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_APPEND_PURE,
-        )
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_APPEND_PURE)
     }
 
     pub fn prover_vec_push_back_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_PUSH_BACK_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_PUSH_BACK_PURE)
     }
 
     pub fn prover_vec_pop_back_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_POP_BACK_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_POP_BACK_PURE)
     }
 
     pub fn prover_vec_push_front_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_PUSH_FRONT_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_PUSH_FRONT_PURE)
     }
 
     pub fn prover_vec_pop_front_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_POP_FRONT_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_POP_FRONT_PURE)
     }
 
     pub fn prover_vec_insert_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_INSERT_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_INSERT_PURE)
     }
 
     pub fn prover_vec_remove_pure_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
-            Self::PROVER_VEC_REMOVE_PURE,
-        )
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_REMOVE_PURE)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -2866,50 +2834,47 @@ impl GlobalEnv {
     // prover::{table,object_table,dynamic_field,dynamic_object_field}_ext::borrow_or_unknown
     pub fn table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::TABLE_EXT_MODULE_NAME,
+            Self::TABLE_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn object_table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::OBJECT_TABLE_EXT_MODULE_NAME,
+            Self::OBJECT_TABLE_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn dynamic_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::DYNAMIC_FIELD_EXT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn dynamic_object_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::DYNAMIC_OBJECT_FIELD_EXT_MODULE_NAME,
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::TABLE_EXT_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
     }
 
     pub fn table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::TABLE_EXT_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
     }
 
     pub fn object_table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::OBJECT_TABLE_EXT_MODULE_NAME,
-            Self::ADD_PURE_FUNCTION_NAME,
-        )
+        self.get_fun_qid_opt(Self::OBJECT_TABLE_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
     }
 
     pub fn object_table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::OBJECT_TABLE_EXT_MODULE_NAME,
+            Self::OBJECT_TABLE_MODULE_NAME,
             Self::REMOVE_PURE_FUNCTION_NAME,
         )
     }
@@ -2917,60 +2882,48 @@ impl GlobalEnv {
     // prover::vector_ext::borrow_or_unknown
     pub fn prover_vec_borrow_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::PROVER_VECTOR_EXT_MODULE_NAME,
+            Self::VECTOR_MODULE_NAME,
             Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     // prover::vec_set_ext functions
     pub fn vec_set_ext_insert_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::VEC_SET_EXT_MODULE_NAME,
-            Self::INSERT_PURE_FUNCTION_NAME,
-        )
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::INSERT_PURE_FUNCTION_NAME)
     }
 
     pub fn vec_set_ext_remove_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::VEC_SET_EXT_MODULE_NAME,
-            Self::REMOVE_PURE_FUNCTION_NAME,
-        )
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
     }
 
     // prover::vec_map_ext functions
     pub fn vec_map_ext_get_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::VEC_MAP_EXT_MODULE_NAME,
+            Self::VEC_MAP_MODULE_NAME,
             Self::GET_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn vec_map_ext_get_idx_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::VEC_MAP_EXT_MODULE_NAME,
+            Self::VEC_MAP_MODULE_NAME,
             Self::GET_IDX_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn vec_map_ext_get_entry_by_idx_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
-            Self::VEC_MAP_EXT_MODULE_NAME,
+            Self::VEC_MAP_MODULE_NAME,
             Self::GET_ENTRY_BY_IDX_OR_UNKNOWN_FUNCTION_NAME,
         )
     }
 
     pub fn vec_map_ext_insert_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::VEC_MAP_EXT_MODULE_NAME,
-            Self::INSERT_PURE_FUNCTION_NAME,
-        )
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::INSERT_PURE_FUNCTION_NAME)
     }
 
     pub fn vec_map_ext_remove_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
-            Self::VEC_MAP_EXT_MODULE_NAME,
-            Self::REMOVE_PURE_FUNCTION_NAME,
-        )
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
     }
 
     // std::vector native function QIDs

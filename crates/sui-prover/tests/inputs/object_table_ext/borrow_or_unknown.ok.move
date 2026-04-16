@@ -7,7 +7,7 @@ use sui::object_table::ObjectTable;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::object_table_ext::borrow_or_unknown;
+use sui::object_table::borrow_or_unknown;
 
 public struct Foo has key, store {
     id: UID,

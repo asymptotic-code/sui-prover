@@ -7,7 +7,7 @@ use sui::table::Table;
 use prover::prover::{ensures, requires};
 
 #[spec_only]
-use prover::table_ext::borrow_or_unknown;
+use sui::table::borrow_or_unknown;
 
 // Contained key: borrow_or_unknown agrees with table::borrow.
 #[spec(prove)]

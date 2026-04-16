@@ -7,7 +7,7 @@ use sui::vec_set;
 use prover::prover::{ensures, requires, clone};
 
 #[spec_only]
-use prover::vec_set_ext::insert_pure;
+use sui::vec_set::insert_pure;
 
 #[spec(prove)]
 fun test_insert_matches(s: &mut vec_set::VecSet<u64>, k: u64) {

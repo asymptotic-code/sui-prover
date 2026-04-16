@@ -1,4 +1,4 @@
-// Tests for the prover::vector_ext::append_pure native. Also demonstrates using
+// Tests for the std::vector::append_pure native. Also demonstrates using
 // concat in a loop invariant to express the relationship between the already-
 // processed prefix and the unprocessed suffix of a source vector.
 
@@ -11,7 +11,7 @@ use prover::prover::{ensures, requires, invariant};
 #[spec_only]
 use prover::vector_iter::slice;
 #[spec_only]
-use prover::vector_ext::append_pure;
+use std::vector::append_pure;
 
 // Concrete values: concat of two literal vectors.
 #[spec(prove)]

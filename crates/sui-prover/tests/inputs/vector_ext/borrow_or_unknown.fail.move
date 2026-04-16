@@ -9,7 +9,7 @@ module 0x42::vector_ext_borrow_or_unknown_fail;
 use prover::prover::ensures;
 
 #[spec_only]
-use prover::vector_ext::borrow_or_unknown;
+use std::vector::borrow_or_unknown;
 
 #[spec(prove)]
 fun test_out_of_range_not_specific() {
