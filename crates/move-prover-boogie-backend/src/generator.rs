@@ -55,7 +55,11 @@ pub struct FileOptions {
 /// native (`boogie_split_here`, `boogie_allow_path_isolation`).
 /// Used to gate Boogie's `-vcsMaxSplits` flag.
 fn spec_uses_vc_splitting(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
-    let split_qids = [env.split_here_qid(), env.allow_path_isolation_qid()];
+    let split_qids = [
+        env.split_here_qid(),
+        env.focus_qid(),
+        env.allow_path_isolation_qid(),
+    ];
     targets.get_funs().into_iter().any(|fid| {
         env.get_function(fid)
             .get_called_functions()
@@ -353,13 +357,13 @@ fn generate_function_bpl<W: WriteColor>(
     let mut boogie_options = targets.get_spec_boogie_options(qid).cloned();
     let isolate_paths = boogie_options
         .as_ref()
-        .map(|s| s.contains("isolate_paths"))
+        .map(|s| s.contains("{:isolate_paths}"))
         .unwrap_or(false);
     if isolate_paths {
         boogie_options = boogie_options.map(|s| {
             let cleaned = s
                 .split_whitespace()
-                .filter(|w| *w != "isolate_paths")
+                .filter(|w| *w != "{:isolate_paths}")
                 .collect::<Vec<_>>()
                 .join(" ");
             if cleaned.is_empty() {

@@ -4336,6 +4336,11 @@ impl<'env> FunctionTranslator<'env> {
                             processed = true;
                         }
 
+                        if callee_env.get_qualified_id() == self.parent.env.focus_qid() {
+                            emitln!(self.writer(), "assert {:focus} true;");
+                            processed = true;
+                        }
+
                         if callee_env.get_qualified_id()
                             == self.parent.env.allow_path_isolation_qid()
                         {

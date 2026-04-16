@@ -17,6 +17,12 @@ native public fun asserts_of(name: vector<u8>): bool;
 #[spec_only]
 native public fun boogie_split_here();
 
+/// Emits `assert {:focus} true;`. Splits verification into two VCs: one
+/// with only paths through this point, one with paths that don't reach it.
+/// Useful to isolate a specific code path for separate verification.
+#[spec_only]
+native public fun boogie_focus();
+
 /// Marks the next `if` branch as a path-isolation site. Used together with
 /// `boogie_isolate_paths(p)`: when an assertion is isolated by paths, only
 /// branches annotated with this function multiply the path count. Call
