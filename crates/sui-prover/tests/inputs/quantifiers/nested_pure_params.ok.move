@@ -204,7 +204,7 @@ fun test_all_range() {
 }
 
 // Test: count with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl")]
 fun test_count() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -212,7 +212,7 @@ fun test_count() {
 }
 
 // Test: count_range with divisor from context
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl")]
 fun test_count_range() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;

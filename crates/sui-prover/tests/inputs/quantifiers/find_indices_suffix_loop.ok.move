@@ -1,7 +1,7 @@
 // Loop test with a suffix invariant for `find_indices`, expressed via concat.
 // The invariant
 //
-//   concat(r, find_indices_range(v, i, n, p)) == find_indices(v, p)
+//   append_pure(r, find_indices_range(v, i, n, p)) == find_indices(v, p)
 //
 // needs the start-step direction of find_indices's recursive axiom to verify
 // the loop body. find_indices uses compound-trigger recursive axioms so this
@@ -10,7 +10,8 @@
 module 0x42::find_indices_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
-use prover::vector_iter::{find_indices, find_indices_range, concat};
+use prover::vector_iter::{find_indices, find_indices_range};
+use std::vector::append_pure;
 
 #[ext(pure)]
 fun is_odd(x: &u64): bool {
@@ -23,7 +24,7 @@ fun find_odd_indices(v: &vector<u64>): vector<u64> {
     let mut r = vector[];
     invariant!(|| ensures(
         i <= n
-            && concat(&r, find_indices_range!(v, i, n, |x| is_odd(x)))
+            && append_pure(&r, find_indices_range!(v, i, n, |x| is_odd(x)))
                 == *find_indices!(v, |x| is_odd(x))
     ));
     while (i < n) {

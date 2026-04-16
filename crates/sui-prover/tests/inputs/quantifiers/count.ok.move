@@ -22,7 +22,7 @@ fun x_is_greater_than_100(x: &u64): bool {
     *x > 100
 }
 
-#[spec(prove)]
+#[spec(prove, extra_bpl = b"count.ok.bpl")]
 fun test_count() {
     let v = vector[10, 20, 10, 30];
 

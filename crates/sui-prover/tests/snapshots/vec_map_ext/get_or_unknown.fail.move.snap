@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/vec_map_ext/get_or_unknown.fail.move:17:5
+   │
+17 │     ensures(*get_or_unknown(m, &k) == 0);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/vec_map_ext/get_or_unknown.fail.move:15: test_absent_not_specific

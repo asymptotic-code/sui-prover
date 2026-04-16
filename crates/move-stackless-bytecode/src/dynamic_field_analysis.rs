@@ -214,9 +214,11 @@ fn collect_df_qids(env: &GlobalEnv) -> DfQids {
         // dynamic field operations
         env.dynamic_field_borrow_qid(),
         env.dynamic_field_exists_with_type_qid(),
+        env.dynamic_field_ext_borrow_or_unknown_qid(),
         // dynamic object field operations
         env.dynamic_object_field_borrow_qid(),
         env.dynamic_object_field_exists_with_type_qid(),
+        env.dynamic_object_field_ext_borrow_or_unknown_qid(),
     ]
     .into_iter()
     .flatten()

@@ -222,7 +222,7 @@ procedure {:inline 1} $1_vector_rotate_slice{{S}}(m: $Mutation (Vec ({{T}})), le
     n := left + (right - rot);
 }
 
-procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), i: int, e: {{T}}) returns (m': $Mutation (Vec ({{T}}))) {
+procedure {:inline 1} $1_vector_insert{{S}}(m: $Mutation (Vec ({{T}})), e: {{T}}, i: int) returns (m': $Mutation (Vec ({{T}}))) {
     var left_vec: Vec ({{T}});
     var right_vec: Vec ({{T}});
     var v: Vec ({{T}});
@@ -374,8 +374,45 @@ function {:inline} $0_vector_iter_slice{{S}}(v: Vec ({{T}}), start: int, end: in
     SliceVec(v, start, end)
 }
 
-function {:inline} $0_vector_iter_concat{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
+// std::vector::append_pure — functional concatenation.
+function {:inline} $1_vector_append_pure{{S}}(v1: Vec ({{T}}), v2: Vec ({{T}})): Vec ({{T}}) {
     ConcatVec(v1, v2)
+}
+
+// std::vector::borrow_or_unknown — total borrow. Out-of-range
+// returns an uninterpreted (but deterministic) value. Never aborts.
+function {:inline} $1_vector_borrow_or_unknown{{S}}(v: Vec ({{T}}), i: int): {{T}} {
+    ReadVec(v, i)
+}
+
+// std::vector::push_back_pure
+function {:inline} $1_vector_push_back_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+    ExtendVec(v, e)
+}
+
+// std::vector::pop_back_pure — drop last; unchanged if empty.
+function {:inline} $1_vector_pop_back_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+    (if LenVec(v) == 0 then v else SliceVec(v, 0, LenVec(v) - 1))
+}
+
+// std::vector::push_front_pure
+function {:inline} $1_vector_push_front_pure{{S}}(v: Vec ({{T}}), e: {{T}}): Vec ({{T}}) {
+    InsertAtVec(v, 0, e)
+}
+
+// std::vector::pop_front_pure — drop first; unchanged if empty.
+function {:inline} $1_vector_pop_front_pure{{S}}(v: Vec ({{T}})): Vec ({{T}}) {
+    (if LenVec(v) == 0 then v else RemoveAtVec(v, 0))
+}
+
+// std::vector::insert_pure — insert at i; unchanged if i > length.
+function {:inline} $1_vector_insert_pure{{S}}(v: Vec ({{T}}), e: {{T}}, i: int): Vec ({{T}}) {
+    (if i > LenVec(v) then v else InsertAtVec(v, i, e))
+}
+
+// std::vector::remove_pure — remove at i; unchanged if i out of range.
+function {:inline} $1_vector_remove_pure{{S}}(v: Vec ({{T}}), i: int): Vec ({{T}}) {
+    (if InRangeVec(v, i) then RemoveAtVec(v, i) else v)
 }
 
 {%- if instance.is_number -%}
@@ -547,6 +584,18 @@ procedure {:inline 1} $2_vec_set_remove{{S}}(
     m' := $UpdateMutation(m, $2_vec_set_VecSet{{S}}(RemoveAtVec(v, idx)));
 }
 
+// sui::vec_set::insert_pure — functional insert by appending.
+function {:inline} $2_vec_set_insert_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+    $2_vec_set_VecSet{{S}}(ExtendVec(s->$contents, k))
+}
+
+// sui::vec_set::remove_pure — functional remove; unchanged if absent.
+function {:inline} $2_vec_set_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T}}): $2_vec_set_VecSet{{S}} {
+    (var idx := $IndexOfVec{{S}}(s->$contents, k);
+     if idx < 0 then s
+     else $2_vec_set_VecSet{{S}}(RemoveAtVec(s->$contents, idx)))
+}
+
 {% endmacro vec_set_module %}
 
 {# TableVec
@@ -684,8 +733,45 @@ function {:inline} $2_vec_map_get_idx_opt{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
     (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
      if idx >= 0 then
          $1_option_Option'u64'(MakeVec1(idx))
-     else 
+     else
          $1_option_Option'u64'(EmptyVec()))
+}
+
+// sui::vec_map::get_or_unknown — total lookup; for missing keys the
+// result is ReadVec at IndexOfVecMap's -1, which the vector theory leaves
+// uninterpreted.
+function {:inline} $2_vec_map_get_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): {{V}} {
+    ReadVec(vm->$contents, $IndexOfVecMap{{S}}(vm->$contents, key))->$value
+}
+
+// sui::vec_map::get_entry_by_idx_or_unknown — total indexed entry
+// access; ReadVec returns an uninterpreted Entry for out-of-range indices.
+// Procedure (not function) because Boogie functions cannot return tuples.
+procedure {:inline 1} $2_vec_map_get_entry_by_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, idx: int) returns (res0: {{K}}, res1: {{V}}) {
+    var entry: $2_vec_map_Entry{{S}};
+    entry := ReadVec(vm->$contents, idx);
+    res0 := entry->$key;
+    res1 := entry->$value;
+}
+
+// sui::vec_map::get_idx_or_unknown — total index lookup.
+// For contained keys: same index as get_idx. For missing keys:
+// IndexOfVecMap returns -1 (a u64-invalid sentinel); spec callers should
+// guard with `contains` to get a meaningful result.
+function {:inline} $2_vec_map_get_idx_or_unknown{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): int {
+    $IndexOfVecMap{{S}}(vm->$contents, key)
+}
+
+// sui::vec_map::insert_pure — functional insert by appending.
+function {:inline} $2_vec_map_insert_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}, val: {{V}}): $2_vec_map_VecMap{{S}} {
+    $2_vec_map_VecMap{{S}}(ExtendVec(vm->$contents, $2_vec_map_Entry{{S}}(key, val)))
+}
+
+// sui::vec_map::remove_pure — functional remove; unchanged if absent.
+function {:inline} $2_vec_map_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: {{K}}): $2_vec_map_VecMap{{S}} {
+    (var idx := $IndexOfVecMap{{S}}(vm->$contents, key);
+     if idx < 0 then vm
+     else $2_vec_map_VecMap{{S}}(RemoveAtVec(vm->$contents, idx)))
 }
 
 {% endmacro vec_map_module %}
@@ -811,6 +897,29 @@ function {:inline} {{impl.fun_borrow}}{{S}}$pure(t: {{Type}}{{S}}, k: {{K}}): {{
 }
 {%- endif %}
 
+{%- if impl.fun_borrow_or_unknown != "" %}
+// prover::{table,object_table}_ext::borrow_or_unknown — total lookup;
+// GetTable returns an uninterpreted value for missing keys.
+function {:inline} {{impl.fun_borrow_or_unknown}}{{S}}(t: {{Type}}{{S}}, k: {{K}}): {{V}} {
+    GetTable(t->$contents, {{ENC}}(k))
+}
+{%- endif %}
+
+{%- if impl.fun_add_pure != "" %}
+// prover::{table,object_table}_ext::add_pure — functional add.
+function {:inline} {{impl.fun_add_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}, v: {{V}}): {{Type}}{{S}} {
+    $Update'{{Type}}{{S}}'_contents(t, AddTable(t->$contents, {{ENC}}(k), v))
+}
+{%- endif %}
+
+{%- if impl.fun_remove_pure != "" %}
+// prover::{table,object_table}_ext::remove_pure — functional remove.
+// For missing keys the table is returned unchanged.
+function {:inline} {{impl.fun_remove_pure}}{{S}}(t: {{Type}}{{S}}, k: {{K}}): {{Type}}{{S}} {
+    $Update'{{Type}}{{S}}'_contents(t, RemoveTable(t->$contents, {{ENC}}(k)))
+}
+{%- endif %}
+
 {%- if impl.fun_borrow_mut != "" %}
 procedure {:inline 2} {{impl.fun_borrow_mut}}{{S}}(m: $Mutation ({{Type}}{{S}}), k: {{K}})
 returns (dst: $Mutation ({{V}}), m': $Mutation ({{Type}}{{S}})) {
@@ -921,6 +1030,14 @@ function {:inline} {{impl.fun_borrow}}{{DF_S}}$pure(t: {{Type}}, k: {{K}}): {{V}
 // This axiom will be a problem if ever some IsValid predicate is unsatisfiable.
 // axiom (forall t: {{Type}}, k: {{K}} :: $IsValid{{SV}}(GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))));
 
+{%- endif %}
+
+{%- if impl.fun_borrow_or_unknown != "" %}
+// prover::{dynamic_field,dynamic_object_field}_ext::borrow_or_unknown —
+// total lookup; GetTable returns an uninterpreted value for missing keys.
+function {:inline} {{impl.fun_borrow_or_unknown}}{{DF_S}}(t: {{Type}}, k: {{K}}): {{V}} {
+    GetTable(t->$dynamic_fields{{S}}, {{ENC}}(k))
+}
 {%- endif %}
 
 {%- if impl.fun_borrow_mut != "" %}
@@ -1253,21 +1370,23 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
             (forall j: int :: start <= j && j < res ==> !{{FN}}({{EAB}}ReadVec(v, j){{EAA}}))
     )
 );
-// end-step
-axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
-    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}});
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+    (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
             (if prev != -1 then prev
-             else if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then end - 1
+             else if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then prev_end
              else -1))
 );
-// start-step
-axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then start
-             else $FindIndexQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}}))
+             else $FindIndexQuantifierHelper_{{FN}}(v, next_start, end{{CAT}}))
 );
 {%- endif %}
 
@@ -1360,19 +1479,21 @@ axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
-// left step
-axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}ReadVec(v, start){{EAA}}) then 1 else 0)
-            + $CountQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+            + $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
-            $CountQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}}) then 1 else 0)
+            $CountQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})
+            + (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
 axiom (forall {{QP}}, split_point: int ::
@@ -1393,19 +1514,21 @@ axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifi
 axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
-// left step
-axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}ReadVec(v, start){{EAA}})
-            + $SumMapQuantifierHelper_{{FN}}(v, start + 1, end{{CAT}})
+            + $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
-            $SumMapQuantifierHelper_{{FN}}(v, start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}ReadVec(v, end - 1){{EAA}})
+            $SumMapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})
+            + {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
 );
 // split — compound trigger on the two sub-range sums
 axiom (forall {{QP}}, split_point: int ::
@@ -1435,19 +1558,21 @@ axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
     $RangeCountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $RangeCountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
-// left step
-axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
             (if {{FN}}({{EAB}}start{{EAA}}) then 1 else 0)
-            + $RangeCountQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+            + $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
-            $RangeCountQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
-            + (if {{FN}}({{EAB}}end - 1{{EAA}}) then 1 else 0)
+            $RangeCountQuantifierHelper_{{FN}}(start, prev_end{{CAT}})
+            + (if {{FN}}({{EAB}}prev_end{{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
 axiom (forall {{QP}}, split_point: int ::
@@ -1462,19 +1587,21 @@ function $RangeSumMapQuantifierHelper_{{FN}}({{QP}}): int;
 axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
-// left step
-axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// start-step — compound trigger
+axiom (forall {{QP}}, next_start: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
             {{FN}}({{EAB}}start{{EAA}})
-            + $RangeSumMapQuantifierHelper_{{FN}}(start + 1, end{{CAT}})
+            + $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
-// right step
-axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
-    start < end ==>
+// end-step — compound trigger
+axiom (forall {{QP}}, prev_end: int ::
+    {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
-            $RangeSumMapQuantifierHelper_{{FN}}(start, end - 1{{CAT}})
-            + {{FN}}({{EAB}}end - 1{{EAA}})
+            $RangeSumMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})
+            + {{FN}}({{EAB}}prev_end{{EAA}})
 );
 // split — compound trigger on the two sub-range sums
 axiom (forall {{QP}}, split_point: int ::

@@ -1,14 +1,15 @@
 // Loop test with a suffix invariant for `range_map`, expressed via concat.
 // The invariant
 //
-//   concat(&r, range_map!(i, n, |k| f(k))) == range_map!(0, n, |k| f(k))
+//   append_pure(&r, range_map!(i, n, |k| f(k))) == range_map!(0, n, |k| f(k))
 //
 // needs range_map's start-step axiom to verify the loop body.
 
 module 0x42::range_map_suffix_loop_ok;
 
 use prover::prover::{ensures, invariant};
-use prover::vector_iter::{range_map, concat};
+use prover::vector_iter::range_map;
+use std::vector::append_pure;
 
 #[ext(pure)]
 fun double(x: u64): u64 {
@@ -24,7 +25,7 @@ fun doubles_up_to(n: u64): vector<u64> {
     let mut r = vector[];
     invariant!(|| ensures(
         i <= n
-            && concat(&r, range_map!<u64>(i, n, |k| double(k)))
+            && append_pure(&r, range_map!<u64>(i, n, |k| double(k)))
                 == *range_map!<u64>(0, n, |k| double(k))
     ));
     while (i < n) {

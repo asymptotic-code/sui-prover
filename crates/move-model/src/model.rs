@@ -1553,7 +1553,6 @@ impl GlobalEnv {
     const OBJECT_TABLE_MODULE_NAME: &'static str = "object_table";
     const DYNAMIC_FIELD_MODULE_NAME: &'static str = "dynamic_field";
     const DYNAMIC_OBJECT_MODULE_NAME: &'static str = "dynamic_object_field";
-
     const STD_BCS_MODULE_NAME: &'static str = "bcs";
     const STD_DEBUG_MODULE_NAME: &'static str = "debug";
     const STD_HASH_MODULE_NAME: &'static str = "hash";
@@ -1642,7 +1641,13 @@ impl GlobalEnv {
     const PROVER_VEC_SUM: &'static str = "sum";
     const PROVER_VEC_SUM_RANGE: &'static str = "sum_range";
     const PROVER_VEC_SLICE: &'static str = "slice";
-    const PROVER_VEC_CONCAT: &'static str = "concat";
+    const PROVER_VEC_APPEND_PURE: &'static str = "append_pure";
+    const PROVER_VEC_PUSH_BACK_PURE: &'static str = "push_back_pure";
+    const PROVER_VEC_POP_BACK_PURE: &'static str = "pop_back_pure";
+    const PROVER_VEC_PUSH_FRONT_PURE: &'static str = "push_front_pure";
+    const PROVER_VEC_POP_FRONT_PURE: &'static str = "pop_front_pure";
+    const PROVER_VEC_INSERT_PURE: &'static str = "insert_pure";
+    const PROVER_VEC_REMOVE_PURE: &'static str = "remove_pure";
 
     // vector function names
     const VECTOR_REVERSE_FUNCTION_NAME: &'static str = "reverse";
@@ -1705,6 +1710,14 @@ impl GlobalEnv {
     const TABLE_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
     const TABLE_REMOVE_FUNCTION_NAME: &'static str = "remove";
     const TABLE_CONTAINS_FUNCTION_NAME: &'static str = "contains";
+    // extension function names (prover::{table,object_table,dynamic_field,dynamic_object_field}_ext)
+    const BORROW_OR_UNKNOWN_FUNCTION_NAME: &'static str = "borrow_or_unknown";
+    const ADD_PURE_FUNCTION_NAME: &'static str = "add_pure";
+    const REMOVE_PURE_FUNCTION_NAME: &'static str = "remove_pure";
+    const INSERT_PURE_FUNCTION_NAME: &'static str = "insert_pure";
+    const GET_OR_UNKNOWN_FUNCTION_NAME: &'static str = "get_or_unknown";
+    const GET_IDX_OR_UNKNOWN_FUNCTION_NAME: &'static str = "get_idx_or_unknown";
+    const GET_ENTRY_BY_IDX_OR_UNKNOWN_FUNCTION_NAME: &'static str = "get_entry_by_idx_or_unknown";
     const TABLE_LENGTH_FUNCTION_NAME: &'static str = "length";
     const TABLE_IS_EMPTY_FUNCTION_NAME: &'static str = "is_empty";
     const TABLE_DESTROY_EMPTY_FUNCTION_NAME: &'static str = "destroy_empty";
@@ -2186,12 +2199,36 @@ impl GlobalEnv {
         self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_SLICE)
     }
 
-    pub fn prover_vec_concat_qid(&self) -> QualifiedId<FunId> {
-        self.get_fun_qid(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    pub fn prover_vec_append_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_APPEND_PURE)
     }
 
-    pub fn prover_vec_concat_qid_opt(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(Self::PROVER_VECTOR_MODULE_NAME, Self::PROVER_VEC_CONCAT)
+    pub fn prover_vec_append_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_APPEND_PURE)
+    }
+
+    pub fn prover_vec_push_back_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_PUSH_BACK_PURE)
+    }
+
+    pub fn prover_vec_pop_back_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_POP_BACK_PURE)
+    }
+
+    pub fn prover_vec_push_front_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_PUSH_FRONT_PURE)
+    }
+
+    pub fn prover_vec_pop_front_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_POP_FRONT_PURE)
+    }
+
+    pub fn prover_vec_insert_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_INSERT_PURE)
+    }
+
+    pub fn prover_vec_remove_pure_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::VECTOR_MODULE_NAME, Self::PROVER_VEC_REMOVE_PURE)
     }
 
     pub fn vector_module_id(&self) -> ModuleId {
@@ -2792,6 +2829,101 @@ impl GlobalEnv {
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME,
         )
+    }
+
+    // prover::{table,object_table,dynamic_field,dynamic_object_field}_ext::borrow_or_unknown
+    pub fn table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::TABLE_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn object_table_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn dynamic_object_field_ext_borrow_or_unknown_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
+    }
+
+    pub fn table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::TABLE_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
+    }
+
+    pub fn object_table_ext_add_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::OBJECT_TABLE_MODULE_NAME, Self::ADD_PURE_FUNCTION_NAME)
+    }
+
+    pub fn object_table_ext_remove_pure_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::OBJECT_TABLE_MODULE_NAME,
+            Self::REMOVE_PURE_FUNCTION_NAME,
+        )
+    }
+
+    // prover::vector_ext::borrow_or_unknown
+    pub fn prover_vec_borrow_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VECTOR_MODULE_NAME,
+            Self::BORROW_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    // prover::vec_set_ext functions
+    pub fn vec_set_ext_insert_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::INSERT_PURE_FUNCTION_NAME)
+    }
+
+    pub fn vec_set_ext_remove_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_SET_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
+    }
+
+    // prover::vec_map_ext functions
+    pub fn vec_map_ext_get_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::GET_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_ext_get_idx_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::GET_IDX_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_ext_get_entry_by_idx_or_unknown_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(
+            Self::VEC_MAP_MODULE_NAME,
+            Self::GET_ENTRY_BY_IDX_OR_UNKNOWN_FUNCTION_NAME,
+        )
+    }
+
+    pub fn vec_map_ext_insert_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::INSERT_PURE_FUNCTION_NAME)
+    }
+
+    pub fn vec_map_ext_remove_pure_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::VEC_MAP_MODULE_NAME, Self::REMOVE_PURE_FUNCTION_NAME)
     }
 
     // std::vector native function QIDs
@@ -3597,9 +3729,40 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
-                self.prover_vec_concat_qid(),
+                self.prover_vec_append_pure_qid(),
+                self.prover_vec_push_back_pure_qid(),
+                self.prover_vec_pop_back_pure_qid(),
+                self.prover_vec_push_front_pure_qid(),
+                self.prover_vec_pop_front_pure_qid(),
+                self.prover_vec_insert_pure_qid(),
+                self.prover_vec_remove_pure_qid(),
             ]);
         }
+
+        // prover ext modules
+        qids.extend(
+            vec![
+                self.prover_vec_borrow_or_unknown_qid_opt(),
+                self.vec_set_ext_insert_pure_qid_opt(),
+                self.vec_set_ext_remove_pure_qid_opt(),
+                self.vec_map_ext_get_or_unknown_qid_opt(),
+                self.vec_map_ext_get_idx_or_unknown_qid_opt(),
+                self.vec_map_ext_get_entry_by_idx_or_unknown_qid_opt(),
+                self.vec_map_ext_insert_pure_qid_opt(),
+                self.vec_map_ext_remove_pure_qid_opt(),
+                self.table_ext_borrow_or_unknown_qid(),
+                self.table_ext_add_pure_qid(),
+                self.table_ext_remove_pure_qid(),
+                self.object_table_ext_borrow_or_unknown_qid(),
+                self.object_table_ext_add_pure_qid(),
+                self.object_table_ext_remove_pure_qid(),
+                self.dynamic_field_ext_borrow_or_unknown_qid(),
+                self.dynamic_object_field_ext_borrow_or_unknown_qid(),
+            ]
+            .into_iter()
+            .filter_map(|x| x)
+            .collect::<Vec<_>>(),
+        );
 
         // Ghost module functions
         qids.extend(vec![
@@ -3846,9 +4009,40 @@ impl GlobalEnv {
                 self.prover_vec_sum_qid(),
                 self.prover_vec_sum_range_qid(),
                 self.prover_vec_slice_qid(),
-                self.prover_vec_concat_qid(),
+                self.prover_vec_append_pure_qid(),
+                self.prover_vec_push_back_pure_qid(),
+                self.prover_vec_pop_back_pure_qid(),
+                self.prover_vec_push_front_pure_qid(),
+                self.prover_vec_pop_front_pure_qid(),
+                self.prover_vec_insert_pure_qid(),
+                self.prover_vec_remove_pure_qid(),
             ]);
         }
+
+        // prover ext modules — all are total / non-aborting
+        qids.extend(
+            vec![
+                self.prover_vec_borrow_or_unknown_qid_opt(),
+                self.vec_set_ext_insert_pure_qid_opt(),
+                self.vec_set_ext_remove_pure_qid_opt(),
+                self.vec_map_ext_get_or_unknown_qid_opt(),
+                self.vec_map_ext_get_idx_or_unknown_qid_opt(),
+                self.vec_map_ext_get_entry_by_idx_or_unknown_qid_opt(),
+                self.vec_map_ext_insert_pure_qid_opt(),
+                self.vec_map_ext_remove_pure_qid_opt(),
+                self.table_ext_borrow_or_unknown_qid(),
+                self.table_ext_add_pure_qid(),
+                self.table_ext_remove_pure_qid(),
+                self.object_table_ext_borrow_or_unknown_qid(),
+                self.object_table_ext_add_pure_qid(),
+                self.object_table_ext_remove_pure_qid(),
+                self.dynamic_field_ext_borrow_or_unknown_qid(),
+                self.dynamic_object_field_ext_borrow_or_unknown_qid(),
+            ]
+            .into_iter()
+            .filter_map(|x| x)
+            .collect::<Vec<_>>(),
+        );
 
         // Log module functions
         qids.extend(vec![
@@ -4060,6 +4254,14 @@ impl GlobalEnv {
             self.dynamic_object_field_remove_qid(),
             self.dynamic_object_field_exists_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
+            self.table_ext_borrow_or_unknown_qid(),
+            self.object_table_ext_borrow_or_unknown_qid(),
+            self.dynamic_field_ext_borrow_or_unknown_qid(),
+            self.dynamic_object_field_ext_borrow_or_unknown_qid(),
+            self.table_ext_add_pure_qid(),
+            self.table_ext_remove_pure_qid(),
+            self.object_table_ext_add_pure_qid(),
+            self.object_table_ext_remove_pure_qid(),
         ]
         .into_iter()
         .filter_map(|x| x)
@@ -4139,10 +4341,48 @@ impl GlobalEnv {
             self.vec_map_get_idx_opt_qid(),
             self.vec_map_keys_qid(),
             self.prover_vec_slice_qid_opt(),
-            self.prover_vec_concat_qid_opt(),
+            self.prover_vec_append_pure_qid_opt(),
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_push_back_pure_qid())
+            } else {
+                None
+            },
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_pop_back_pure_qid())
+            } else {
+                None
+            },
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_push_front_pure_qid())
+            } else {
+                None
+            },
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_pop_front_pure_qid())
+            } else {
+                None
+            },
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_insert_pure_qid())
+            } else {
+                None
+            },
+            if self.has_prover_vector_module() {
+                Some(self.prover_vec_remove_pure_qid())
+            } else {
+                None
+            },
+            self.prover_vec_borrow_or_unknown_qid_opt(),
             self.prover_vec_sum_qid_opt(),
             self.prover_vec_sum_range_qid_opt(),
             self.prover_range_qid_opt(),
+            // vec_set_ext and vec_map_ext native functions
+            self.vec_set_ext_insert_pure_qid_opt(),
+            self.vec_set_ext_remove_pure_qid_opt(),
+            self.vec_map_ext_get_or_unknown_qid_opt(),
+            self.vec_map_ext_get_idx_or_unknown_qid_opt(),
+            self.vec_map_ext_insert_pure_qid_opt(),
+            self.vec_map_ext_remove_pure_qid_opt(),
             // table and object_table native functions
             self.table_is_empty_qid(),
             self.table_length_qid(),
@@ -4150,11 +4390,20 @@ impl GlobalEnv {
             self.object_table_is_empty_qid(),
             self.object_table_length_qid(),
             self.object_table_contains_qid(),
+            // table_ext and object_table_ext native functions
+            self.table_ext_borrow_or_unknown_qid(),
+            self.table_ext_add_pure_qid(),
+            self.table_ext_remove_pure_qid(),
+            self.object_table_ext_borrow_or_unknown_qid(),
+            self.object_table_ext_add_pure_qid(),
+            self.object_table_ext_remove_pure_qid(),
             // dynamic_field and dynamic_object_field existence-check functions
             self.dynamic_field_exists_qid(),
             self.dynamic_field_exists_with_type_qid(),
             self.dynamic_object_field_exists_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
+            self.dynamic_field_ext_borrow_or_unknown_qid(),
+            self.dynamic_object_field_ext_borrow_or_unknown_qid(),
             self.object_borrow_uid_qid(),
             // sui::tx_context native functions
             self.sui_tx_context_sender_qid(),

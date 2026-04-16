@@ -84,8 +84,6 @@ public native fun sum_range<T>(v: &vector<T>, start: u64, end: u64): Integer;
 #[spec_only]
 public native fun slice<T>(v: &vector<T>, start: u64, end: u64): &vector<T>;
 
-#[spec_only]
-public native fun concat<T>(v1: &vector<T>, v2: &vector<T>): &vector<T>;
 
 // advanced macros patterns over vectors
 #[spec_only]

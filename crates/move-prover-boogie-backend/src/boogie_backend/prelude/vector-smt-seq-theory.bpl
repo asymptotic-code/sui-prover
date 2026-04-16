@@ -53,6 +53,10 @@ function {:inline} RemoveAtVec<T>(v: Vec T, i: int): Vec T {
     ConcatVec(SliceVec(v, 0, i), SliceVec(v, i + 1, LenVec(v)))
 }
 
+function {:inline} InsertAtVec<T>(v: Vec T, i: int, e: T): Vec T {
+    ConcatVec3(SliceVec(v, 0, i), MakeVec1(e), SliceVec(v, i, LenVec(v)))
+}
+
 function {:builtin "seq.++"} ConcatVec<T>(v1: Vec T, v2: Vec T): Vec T;
 /*private*/ function {:builtin "seq.++"} ConcatVec3<T>(v1: Vec T, v2: Vec T, v3: Vec T): Vec T;
 /*private*/ function {:builtin "seq.++"} ConcatVec4<T>(v1: Vec T, v2: Vec T, v3: Vec T, v4: Vec T): Vec T;
