@@ -10,12 +10,12 @@ native public fun asserts(p: bool);
 native public fun asserts_of(name: vector<u8>): bool;
 
 /// Forces Boogie to split the verification condition at this point. The
-/// bytecode translator emits `assert {:split_here} true;`, which causes
+/// bytecode translator emits `assume {:split_here} true;`, which causes
 /// Boogie to create two smaller VCs (before and after the split) instead
 /// of one large one. Useful when a spec's VC is too heavy for Z3 to solve
 /// whole; splitting often turns a timeout into a few seconds per piece.
 #[spec_only]
-native public fun split_here();
+native public fun boogie_split_here();
 #[spec_only]
 public macro fun invariant($invariants: ||) {
     invariant_begin();

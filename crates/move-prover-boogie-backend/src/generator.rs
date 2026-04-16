@@ -52,7 +52,7 @@ pub struct FileOptions {
 }
 
 /// Returns `true` if any function in `targets` transitively invokes
-/// `prover::split_here`. Used to gate Boogie's `-vcsMaxSplits` flag.
+/// `prover::boogie_split_here`. Used to gate Boogie's `-vcsMaxSplits` flag.
 fn spec_uses_split_here(env: &GlobalEnv, targets: &FunctionTargetsHolder) -> bool {
     let split_here = env.split_here_qid();
     targets.get_funs().into_iter().any(|fid| {
@@ -374,7 +374,7 @@ fn generate_function_bpl<W: WriteColor>(
         });
     }
     // Raise vcsMaxSplits when this spec's bytecode reaches
-    // `prover::split_here`. Boogie's default `vcsMaxSplits=1` silently
+    // `prover::boogie_split_here`. Boogie's default `vcsMaxSplits=1` silently
     // suppresses `{:split_here}` annotations; we pay the overhead only for
     // specs that actually use them.
     if spec_uses_split_here(env, &targets) {

@@ -1583,7 +1583,7 @@ impl GlobalEnv {
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
     const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
-    const SPLIT_HERE_FUNCTION_NAME: &'static str = "split_here";
+    const SPLIT_HERE_FUNCTION_NAME: &'static str = "boogie_split_here";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
