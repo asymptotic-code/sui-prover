@@ -8,6 +8,20 @@ native public fun ensures(p: bool);
 native public fun asserts(p: bool);
 #[spec_only]
 native public fun asserts_of(name: vector<u8>): bool;
+
+/// Emits `assume {:split_here} true;` — cuts the VC at this point.
+#[spec_only]
+native public fun boogie_split_here();
+
+/// Emits `assume {:focus} true;` — splits into "through here" vs "not through here" VCs.
+#[spec_only]
+native public fun boogie_focus();
+
+/// Annotates the next `if` with `{:allow_path_isolation}`.
+/// Use with `boogie_opt = b"{:isolate_paths}"` on the spec.
+#[spec_only]
+native public fun boogie_allow_path_isolation();
+
 #[spec_only]
 public macro fun invariant($invariants: ||) {
     invariant_begin();

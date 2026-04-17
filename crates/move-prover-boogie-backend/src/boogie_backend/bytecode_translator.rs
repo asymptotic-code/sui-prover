@@ -85,6 +85,7 @@ pub struct BoogieTranslator<'env> {
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     asserts_mode: AssertsMode,
+    pub isolate_paths: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -99,6 +100,8 @@ pub struct FunctionTranslator<'env> {
     fun_target: &'env FunctionTarget<'env>,
     type_inst: &'env [Type],
     style: FunctionTranslationStyle,
+    allow_path_isolation_pending: bool,
+    isolate_paths_pending: bool,
 }
 
 pub struct StructTranslator<'env> {
@@ -132,6 +135,7 @@ impl<'env> BoogieTranslator<'env> {
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
             asserts_mode,
+            isolate_paths: false,
         }
     }
 
@@ -2160,6 +2164,8 @@ impl<'env> FunctionTranslator<'env> {
             fun_target,
             type_inst,
             style,
+            allow_path_isolation_pending: false,
+            isolate_paths_pending: parent.isolate_paths,
         }
     }
 
@@ -3742,6 +3748,13 @@ impl<'env> FunctionTranslator<'env> {
             self.writer().set_location(&loc);
             self.track_loc(last_tracked_loc, &loc);
 
+            let path_iso = if self.allow_path_isolation_pending {
+                self.allow_path_isolation_pending = false;
+                " {:allow_path_isolation}"
+            } else {
+                ""
+            };
+
             if i == 0 {
                 emitln!(
                     self.writer(),
@@ -3749,9 +3762,9 @@ impl<'env> FunctionTranslator<'env> {
                     branch_bc.display(self.fun_target, &BTreeMap::default()),
                     loc.display(self.fun_target.global_env())
                 );
-                emitln!(self.writer(), "if ($t{}) {{", cond_idx);
+                emitln!(self.writer(), "if{} ($t{}) {{", path_iso, cond_idx);
             } else {
-                emitln!(self.writer(), "}} else if ($t{}) {{", cond_idx);
+                emitln!(self.writer(), "}} else if{} ($t{}) {{", path_iso, cond_idx);
             }
 
             self.writer().indent();
@@ -3898,13 +3911,22 @@ impl<'env> FunctionTranslator<'env> {
                 self.writer().indent();
             }
             Jump(_, target) => emitln!(self.writer(), "goto L{};", target.as_usize()),
-            Branch(_, then_target, else_target, idx) => emitln!(
-                self.writer(),
-                "if ({}) {{ goto L{}; }} else {{ goto L{}; }}",
-                str_local(*idx),
-                then_target.as_usize(),
-                else_target.as_usize(),
-            ),
+            Branch(_, then_target, else_target, idx) => {
+                let path_iso = if self.allow_path_isolation_pending {
+                    self.allow_path_isolation_pending = false;
+                    " {:allow_path_isolation}"
+                } else {
+                    ""
+                };
+                emitln!(
+                    self.writer(),
+                    "if{} ({}) {{ goto L{}; }} else {{ goto L{}; }}",
+                    path_iso,
+                    str_local(*idx),
+                    then_target.as_usize(),
+                    else_target.as_usize(),
+                );
+            }
             VariantSwitch(_, idx, labels) => {
                 // emit if then else for each variant
                 for (i, target) in labels.iter().enumerate() {
@@ -4285,9 +4307,15 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 String::new()
                             };
+                            let isolate = if self.isolate_paths_pending {
+                                "{:isolate \"paths\"} "
+                            } else {
+                                ""
+                            };
                             emitln!(
                                 self.writer(),
-                                "assert {{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
+                                "assert {}{{:msg \"assert_failed{}: prover::ensures does not hold{}\"}} {};",
+                                isolate,
                                 self.loc_str(&self.writer().get_loc()),
                                 secondary,
                                 args_str,
@@ -4300,6 +4328,23 @@ impl<'env> FunctionTranslator<'env> {
                             // Resolve the byte string argument to find the target function.
                             let var_expr = self.resolve_asserts_of_to_boogie_var(srcs, fun_target);
                             emitln!(self.writer(), "{} := {};", dest_str, var_expr);
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.split_here_qid() {
+                            emitln!(self.writer(), "assume {:split_here} true;");
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id() == self.parent.env.focus_qid() {
+                            emitln!(self.writer(), "assume {:focus} true;");
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id()
+                            == self.parent.env.allow_path_isolation_qid()
+                        {
+                            self.allow_path_isolation_pending = true;
                             processed = true;
                         }
 

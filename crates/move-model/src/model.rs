@@ -1583,6 +1583,9 @@ impl GlobalEnv {
     const ENSURES_FUNCTION_NAME: &'static str = "ensures";
     const ASSERTS_FUNCTION_NAME: &'static str = "asserts";
     const ASSERTS_OF_FUNCTION_NAME: &'static str = "asserts_of";
+    const SPLIT_HERE_FUNCTION_NAME: &'static str = "boogie_split_here";
+    const FOCUS_FUNCTION_NAME: &'static str = "boogie_focus";
+    const ALLOW_PATH_ISOLATION_FUNCTION_NAME: &'static str = "boogie_allow_path_isolation";
     const TYPE_INV_FUNCTION_NAME: &'static str = "type_inv";
     const GLOBAL_FUNCTION_NAME: &'static str = "global";
     const GLOBAL_SET_FUNCTION_NAME: &'static str = "global_set";
@@ -2365,6 +2368,25 @@ impl GlobalEnv {
 
     pub fn asserts_of_qid(&self) -> QualifiedId<FunId> {
         self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::ASSERTS_OF_FUNCTION_NAME)
+    }
+
+    pub fn split_here_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::SPLIT_HERE_FUNCTION_NAME)
+    }
+
+    pub fn split_here_qid_opt(&self) -> Option<QualifiedId<FunId>> {
+        self.get_fun_qid_opt(Self::PROVER_MODULE_NAME, Self::SPLIT_HERE_FUNCTION_NAME)
+    }
+
+    pub fn focus_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(Self::PROVER_MODULE_NAME, Self::FOCUS_FUNCTION_NAME)
+    }
+
+    pub fn allow_path_isolation_qid(&self) -> QualifiedId<FunId> {
+        self.get_fun_qid(
+            Self::PROVER_MODULE_NAME,
+            Self::ALLOW_PATH_ISOLATION_FUNCTION_NAME,
+        )
     }
 
     pub fn type_inv_qid(&self) -> QualifiedId<FunId> {
@@ -3679,6 +3701,9 @@ impl GlobalEnv {
             self.ensures_qid(),
             self.asserts_qid(),
             self.asserts_of_qid(),
+            self.split_here_qid(),
+            self.focus_qid(),
+            self.allow_path_isolation_qid(),
             self.invariant_begin_qid(),
             self.invariant_end_qid(),
             self.prover_val_qid(),
@@ -3954,6 +3979,9 @@ impl GlobalEnv {
 
         // Prover module functions
         qids.insert(self.asserts_of_qid());
+        qids.insert(self.split_here_qid());
+        qids.insert(self.focus_qid());
+        qids.insert(self.allow_path_isolation_qid());
 
         // Ghost module functions
         qids.extend(vec![
