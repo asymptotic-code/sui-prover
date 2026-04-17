@@ -4337,7 +4337,7 @@ impl<'env> FunctionTranslator<'env> {
                         }
 
                         if callee_env.get_qualified_id() == self.parent.env.focus_qid() {
-                            emitln!(self.writer(), "assert {:focus} true;");
+                            emitln!(self.writer(), "assume {:focus} true;");
                             processed = true;
                         }
 
