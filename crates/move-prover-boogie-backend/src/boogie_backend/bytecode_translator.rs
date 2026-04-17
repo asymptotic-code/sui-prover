@@ -3912,7 +3912,7 @@ impl<'env> FunctionTranslator<'env> {
             }
             Jump(_, target) => emitln!(self.writer(), "goto L{};", target.as_usize()),
             Branch(_, then_target, else_target, idx) => {
-                let attr = if self.allow_path_isolation_pending {
+                let path_iso = if self.allow_path_isolation_pending {
                     self.allow_path_isolation_pending = false;
                     " {:allow_path_isolation}"
                 } else {
@@ -3921,7 +3921,7 @@ impl<'env> FunctionTranslator<'env> {
                 emitln!(
                     self.writer(),
                     "if{} ({}) {{ goto L{}; }} else {{ goto L{}; }}",
-                    attr,
+                    path_iso,
                     str_local(*idx),
                     then_target.as_usize(),
                     else_target.as_usize(),

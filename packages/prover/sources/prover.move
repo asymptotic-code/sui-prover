@@ -9,24 +9,16 @@ native public fun asserts(p: bool);
 #[spec_only]
 native public fun asserts_of(name: vector<u8>): bool;
 
-/// Forces Boogie to split the verification condition at this point. The
-/// bytecode translator emits `assume {:split_here} true;`, which causes
-/// Boogie to create two smaller VCs (before and after the split) instead
-/// of one large one. Useful when a spec's VC is too heavy for Z3 to solve
-/// whole; splitting often turns a timeout into a few seconds per piece.
+/// Emits `assume {:split_here} true;` — cuts the VC at this point.
 #[spec_only]
 native public fun boogie_split_here();
 
-/// Emits `assert {:focus} true;`. Splits verification into two VCs: one
-/// with only paths through this point, one with paths that don't reach it.
-/// Useful to isolate a specific code path for separate verification.
+/// Emits `assume {:focus} true;` — splits into "through here" vs "not through here" VCs.
 #[spec_only]
 native public fun boogie_focus();
 
-/// Marks the next `if` branch as a path-isolation site. Used together with
-/// `boogie_isolate_paths(p)`: when an assertion is isolated by paths, only
-/// branches annotated with this function multiply the path count. Call
-/// immediately before the `if` you want Boogie to split on.
+/// Annotates the next `if` with `{:allow_path_isolation}`.
+/// Use with `boogie_opt = b"{:isolate_paths}"` on the spec.
 #[spec_only]
 native public fun boogie_allow_path_isolation();
 
