@@ -73,6 +73,9 @@ fun fresh_spec<T>(): T {
 native fun type_inv<T>(x: &T): bool;
 
 #[spec_only]
+public native fun add_quantifier_pool<T>(pool_name: vector<u8>, term: T);
+
+#[spec_only]
 public native fun begin_forall_lambda<T>(): &T;
 #[spec_only]
 public native fun end_forall_lambda(): bool;
