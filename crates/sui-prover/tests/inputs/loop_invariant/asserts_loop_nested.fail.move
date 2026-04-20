@@ -2,14 +2,18 @@ module 0x42::asserts_loop_nested_fail;
 
 use prover::prover::{ensures, asserts, invariant};
 
-// Nested loops where both bodies have per-iteration assertions tied
-// to function-level asserts. The Assume direction fails for the inner
-// loop's asserts because the prover does not propagate the inner
-// invariant's contradiction at loop exit (`j == m && j <= 200` with
-// `m > 200`) outward to conclude that the surrounding function aborts.
+// Same nested-loop body as `asserts_loop_nested.move` but using bounded
+// asserts (`n <= 100 && (n == 0 || m <= 200)`) instead of the
+// forall-with-guard formulation.
 //
-// The same pattern works when the loops are sequential rather than
-// nested — see `asserts_loop_sequential.move`.
+// The Check direction works. The Assume direction fails: the prover
+// cannot connect a single conjunctive assertion at the spec entry to
+// the per-iteration abort behaviour spread across two nested loops.
+//
+// The fix is to express the asserts as `forall k, outer_safe(k, n, m)`
+// and accumulate `forall k, k >= i || outer_safe(k, n, m)` in the
+// outer loop invariant — the same vacuous-at-zero / collapses-at-exit
+// pattern that works for `positive_check` and `increment_all`.
 
 fun nested(n: u64, m: u64) {
     let mut i: u64 = 0;

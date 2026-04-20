@@ -4,9 +4,9 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
-   ┌─ tests/inputs/loop_invariant/asserts_loop_nested.fail.move:37:5
+   ┌─ tests/inputs/loop_invariant/asserts_loop_nested.fail.move:41:5
    │
-37 │     asserts(n <= 100 && (n == 0 || m <= 200));
+41 │     asserts(n <= 100 && (n == 0 || m <= 200));
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    │
-   =     at tests/inputs/loop_invariant/asserts_loop_nested.fail.move:36: nested_spec
+   =     at tests/inputs/loop_invariant/asserts_loop_nested.fail.move:40: nested_spec
