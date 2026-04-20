@@ -3503,115 +3503,6 @@ impl<'env> FunctionTranslator<'env> {
         }
     }
 
-    /// Emit a sound pool-based quantifier in a procedure body.
-    /// Instead of `$t := (forall {:pool} x :: P(x))` (unsound with empty pool),
-    /// emits assume-based axioms that constrain $t through pool terms:
-    ///   - forall: `assume (forall {:pool} x :: !P(x) ==> !$t)` (counterexample forces false)
-    ///   - exists: `assume (forall {:pool} x :: P(x) ==> $t)` (witness forces true)
-    fn emit_pooled_quantifier<F>(
-        &mut self,
-        qt: &QuantifierType,
-        fun_env: &FunctionEnv,
-        inst: &[Type],
-        srcs: &[TempIndex],
-        dests: &[TempIndex],
-        li: usize,
-        fmt_temp: &F,
-        pool_attr: &str,
-    ) where
-        F: Fn(usize) -> String,
-    {
-        let env = self.fun_target.global_env();
-        let fun_name = &boogie_function_name(fun_env, inst, FunctionTranslationStyle::Pure);
-        let pool_str = format!("{} ", pool_attr);
-        let dest = format!("$t{}", dests[0]);
-
-        let cr_args = |local_name: &str| -> String {
-            if !qt.vector_based() {
-                srcs.iter()
-                    .enumerate()
-                    .map(|(index, vidx)| {
-                        if index == li {
-                            local_name.to_string()
-                        } else {
-                            fmt_temp(*vidx)
-                        }
-                    })
-                    .join(", ")
-            } else {
-                srcs.iter()
-                    .skip(if qt.range_based() { 3 } else { 1 })
-                    .enumerate()
-                    .map(|(index, vidx)| {
-                        if index == li {
-                            format!("ReadVec({}, {})", fmt_temp(srcs[0]), local_name)
-                        } else {
-                            fmt_temp(*vidx)
-                        }
-                    })
-                    .join(", ")
-            }
-        };
-
-        match qt {
-            QuantifierType::Forall => {
-                let loc_type = fun_env.get_parameter_types()[0]
-                    .skip_reference()
-                    .instantiate(inst);
-                let b_type = boogie_type(env, &loc_type);
-                let suffix = boogie_type_suffix(env, &loc_type);
-                let pred = format!("{}({})", fun_name, cr_args("x"));
-                let guard = format!("$IsValid'{}'(x)", suffix);
-                // counterexample: !P(x) ==> !helper
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}x: {} :: {} && !{} ==> !{});",
-                    pool_str,
-                    b_type,
-                    guard,
-                    pred,
-                    dest
-                );
-                // positive: helper ==> P(x)
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}x: {} :: {} && {} ==> {});",
-                    pool_str,
-                    b_type,
-                    dest,
-                    guard,
-                    pred
-                );
-            }
-            QuantifierType::Exists => {
-                let loc_type = fun_env.get_parameter_types()[0]
-                    .skip_reference()
-                    .instantiate(inst);
-                let b_type = boogie_type(env, &loc_type);
-                let suffix = boogie_type_suffix(env, &loc_type);
-                let pred = format!("{}({})", fun_name, cr_args("x"));
-                let guard = format!("$IsValid'{}'(x)", suffix);
-                // witness: P(x) ==> helper
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}x: {} :: {} && {} ==> {});",
-                    pool_str,
-                    b_type,
-                    guard,
-                    pred,
-                    dest
-                );
-            }
-            _ => {
-                // All, Any, Map, Filter, etc. — use helper functions with
-                // top-level axioms that already carry {:pool}
-                let expr = self
-                    .generate_pure_quantifier_expr(qt, fun_env, inst, srcs, dests, li, fmt_temp);
-                emitln!(self.writer(), "{} := {};", dest, expr);
-            }
-        }
-    }
-
     fn generate_pure_quantifier_expr<F>(
         &self,
         qt: &QuantifierType,
@@ -6015,24 +5906,10 @@ impl<'env> FunctionTranslator<'env> {
                         let qfun_env = self.parent.env.get_function(*qid);
                         let inst = &self.inst_slice(inst);
                         let fmt_temp = |idx: TempIndex| -> String { format!("$t{}", idx) };
-                        let pool_names = self.collect_pool_names();
-                        let fun_name =
-                            boogie_function_name(&qfun_env, inst, FunctionTranslationStyle::Pure);
-                        let pool_attr =
-                            Self::pool_annotation(&pool_names, &qt.display(), &fun_name);
-
-                        if pool_attr.is_empty() {
-                            // No pool: emit inline quantifier as before
-                            let expr = self.generate_pure_quantifier_expr(
-                                qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
-                            );
-                            emitln!(self.writer(), "$t{} := {};", dests[0], expr);
-                        } else {
-                            // Pool active: emit sound wrapper using assume
-                            self.emit_pooled_quantifier(
-                                qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp, &pool_attr,
-                            );
-                        }
+                        let expr = self.generate_pure_quantifier_expr(
+                            qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
+                        );
+                        emitln!(self.writer(), "$t{} := {};", dests[0], expr);
                         // assume well-formedness of the uninterpreted result
                         let dest_ty = self.get_local_type(dests[0]).instantiate(inst);
                         emitln!(
