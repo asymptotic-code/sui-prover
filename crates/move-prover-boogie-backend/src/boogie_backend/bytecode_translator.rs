@@ -13,6 +13,7 @@ use std::{
 
 use bimap::btree::BiBTreeMap;
 use codespan::LineIndex;
+use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
 #[allow(unused_imports)]
 use log::{debug, info, log, warn, Level};
@@ -85,6 +86,7 @@ pub struct BoogieTranslator<'env> {
     targets: &'env FunctionTargetsHolder,
     types: &'env RefCell<BiBTreeMap<Type, String>>,
     asserts_mode: AssertsMode,
+    emitted_helpers: RefCell<BTreeSet<String>>,
     pub isolate_paths: bool,
 }
 
@@ -135,6 +137,7 @@ impl<'env> BoogieTranslator<'env> {
             types,
             spec_translator: SpecTranslator::new(writer, env, options),
             asserts_mode,
+            emitted_helpers: RefCell::new(BTreeSet::new()),
             isolate_paths: false,
         }
     }
@@ -164,6 +167,8 @@ impl<'env> BoogieTranslator<'env> {
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
             QuantifierHelperType::Count => format!("$CountQuantifierHelper_{}", function_name),
             QuantifierHelperType::SumMap => format!("$SumMapQuantifierHelper_{}", function_name),
+            QuantifierHelperType::All => format!("$AllQuantifierHelper_{}", function_name),
+            QuantifierHelperType::Any => format!("$AnyQuantifierHelper_{}", function_name),
         }
     }
 
@@ -2235,6 +2240,7 @@ impl<'env> FunctionTranslator<'env> {
             fun_target.data.variant,
             fun_target.get_loc().display(env)
         );
+        self.emit_forall_exists_helpers();
         self.generate_function_sig();
 
         if self.fun_target.func_env.get_qualified_id() == self.parent.env.global_qid() {
@@ -2940,6 +2946,181 @@ impl<'env> FunctionTranslator<'env> {
         self.parent.writer
     }
 
+    /// Collect pool names from add_quantifier_pool calls in the current function's bytecodes.
+    fn collect_pool_names(&self) -> BTreeSet<String> {
+        let pool_qid = self.parent.env.prover_add_quantifier_pool_qid();
+        super::lib::extract_pool_names_from_bytecode(pool_qid, self.fun_target.get_bytecode())
+    }
+
+    /// Strips the `$pure` suffix from a Boogie function name for use in pool identifiers.
+    fn strip_pure_suffix(name: &str) -> &str {
+        name.strip_suffix("$pure").unwrap_or(name)
+    }
+
+    /// Returns the `{:pool "kind-fun_name"}` annotation if any pool name is a substring of
+    /// `fun_name`, or an empty string if no match. The pool name is prefixed with the quantifier
+    /// kind for granular pool naming (e.g., `forall-$0x42_mod_f'u64'`).
+    fn pool_annotation(pool_names: &BTreeSet<String>, kind: &str, fun_name: &str) -> String {
+        let pool_id = Self::strip_pure_suffix(fun_name);
+        for pool_name in pool_names {
+            if pool_id.contains(pool_name.as_str()) {
+                return format!("{{:pool \"{}-{}\"}}", kind, pool_id);
+            }
+        }
+        String::new()
+    }
+
+    /// Collect all (quantifier_kind, pool_id) pairs from Quantifier operations.
+    /// The pool_id is the Boogie function name with the `$pure` suffix stripped.
+    fn collect_quantifier_pool_ids(&self) -> BTreeSet<(String, String)> {
+        let mut ids = BTreeSet::new();
+        for bc in self.fun_target.get_bytecode() {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, _), _, _) = bc {
+                let fun_env = self.parent.env.get_function(*qid);
+                let inst = &self.inst_slice(inst);
+                let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
+                let pool_id = Self::strip_pure_suffix(&fun_name).to_string();
+                ids.insert((qt.display().to_string(), pool_id));
+            }
+        }
+        ids
+    }
+
+    /// Emit helper function declarations + soundness axioms for any
+    /// Forall/Exists quantifiers in this function's bytecode. Called
+    /// before generate_function_sig so the declarations appear at the
+    /// top level in Boogie (outside the procedure).
+    fn emit_forall_exists_helpers(&self) {
+        let env = self.fun_target.global_env();
+        for bc in self.fun_target.get_bytecode() {
+            if let Bytecode::Call(_, _, Operation::Quantifier(qt, qid, inst, li), srcs, _) = bc {
+                if !matches!(qt, QuantifierType::Forall | QuantifierType::Exists) {
+                    continue;
+                }
+                let fun_env = env.get_function(*qid);
+                let inst = &self.inst_slice(inst);
+                let fun_name = boogie_function_name(&fun_env, inst, FunctionTranslationStyle::Pure);
+                let helper_name = format!(
+                    "${}Helper_{}",
+                    if matches!(qt, QuantifierType::Forall) {
+                        "Forall"
+                    } else {
+                        "Exists"
+                    },
+                    fun_name
+                );
+                if !self
+                    .parent
+                    .emitted_helpers
+                    .borrow_mut()
+                    .insert(helper_name.clone())
+                {
+                    continue; // already emitted
+                }
+
+                let loc_type = fun_env.get_parameter_types()[0]
+                    .skip_reference()
+                    .instantiate(inst);
+                let b_type = boogie_type(env, &loc_type);
+                let suffix = boogie_type_suffix(env, &loc_type);
+
+                // Build captured-variable parameter list
+                let params: Vec<String> = srcs
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != *li)
+                    .map(|(_, idx)| {
+                        let ty = self.get_local_type(*idx);
+                        format!("c{}: {}", idx, boogie_type(env, &ty))
+                    })
+                    .collect();
+                let args: Vec<String> = srcs
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != *li)
+                    .map(|(_, idx)| format!("c{}", idx))
+                    .collect();
+                let param_str = params.join(", ");
+                let arg_str = args.join(", ");
+
+                // Build pred call: fun_name(x, captured...)
+                let pred_args: String = srcs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, idx)| {
+                        if i == *li {
+                            "x".to_string()
+                        } else {
+                            format!("c{}", idx)
+                        }
+                    })
+                    .join(", ");
+                let pred_call = format!("{}({})", fun_name, pred_args);
+
+                // Emit function declaration
+                emitln!(
+                    self.writer(),
+                    "function {}({}): bool;",
+                    helper_name,
+                    param_str
+                );
+
+                // Emit soundness axiom: helper(...) <==> (forall/exists x :: ...)
+                let helper_call = format!("{}({})", helper_name, arg_str);
+                if params.is_empty() {
+                    if matches!(qt, QuantifierType::Forall) {
+                        emitln!(
+                            self.writer(),
+                            "axiom ({} <==> (forall x: {} :: $IsValid'{}'(x) ==> {}));",
+                            helper_call,
+                            b_type,
+                            suffix,
+                            pred_call,
+                        );
+                    } else {
+                        emitln!(
+                            self.writer(),
+                            "axiom ({} <==> (exists x: {} :: $IsValid'{}'(x) && {}));",
+                            helper_call,
+                            b_type,
+                            suffix,
+                            pred_call,
+                        );
+                    }
+                } else {
+                    // With captured args: wrap in outer forall over captured params
+                    if matches!(qt, QuantifierType::Forall) {
+                        emitln!(
+                            self.writer(),
+                            "axiom (forall {} :: {{{}({})}} {}({}) <==> (forall x: {} :: $IsValid'{}'(x) ==> {}));",
+                            param_str,
+                            helper_name,
+                            arg_str,
+                            helper_name,
+                            arg_str,
+                            b_type,
+                            suffix,
+                            pred_call,
+                        );
+                    } else {
+                        emitln!(
+                            self.writer(),
+                            "axiom (forall {} :: {{{}({})}} {}({}) <==> (exists x: {} :: $IsValid'{}'(x) && {}));",
+                            param_str,
+                            helper_name,
+                            arg_str,
+                            helper_name,
+                            arg_str,
+                            b_type,
+                            suffix,
+                            pred_call,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// Check if the current spec's target function is referenced by any asserts_of declaration.
     fn has_asserts_of_ref(&self) -> bool {
         self.parent
@@ -3156,6 +3337,7 @@ impl<'env> FunctionTranslator<'env> {
                         } else if let Quantifier(qt, qid, inst, li) = op {
                             let qfun_env = fun_target.global_env().get_function(*qid);
                             let inst = &self.inst_slice(inst);
+                            let pool_names = self.collect_pool_names();
                             self.generate_pure_quantifier_expr(
                                 qt, &qfun_env, inst, srcs, dests, *li, &fmt_temp,
                             )
@@ -3388,65 +3570,71 @@ impl<'env> FunctionTranslator<'env> {
 
         match qt {
             QuantifierType::Forall => {
-                let loc_type = fun_env.get_parameter_types()[0]
-                    .skip_reference()
-                    .instantiate(inst);
-                let b_type = boogie_type(env, &loc_type);
-                let suffix = boogie_type_suffix(env, &loc_type);
-                format!(
-                    "(forall x: {} :: $IsValid'{}'(x) ==> {}({}))",
-                    b_type,
-                    suffix,
-                    fun_name,
-                    cr_args("x")
-                )
+                let helper_name = format!("$ForallHelper_{}", fun_name);
+                let captured: String = srcs
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != li)
+                    .map(|(_, idx)| fmt_temp(*idx))
+                    .join(", ");
+                format!("{}({})", helper_name, captured)
             }
             QuantifierType::Exists => {
-                let loc_type = fun_env.get_parameter_types()[0]
-                    .skip_reference()
-                    .instantiate(inst);
-                let b_type = boogie_type(env, &loc_type);
-                let suffix = boogie_type_suffix(env, &loc_type);
-                format!(
-                    "(exists x: {} :: $IsValid'{}'(x) && {}({}))",
-                    b_type,
-                    suffix,
-                    fun_name,
-                    cr_args("x")
-                )
+                let helper_name = format!("$ExistsHelper_{}", fun_name);
+                let captured: String = srcs
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != li)
+                    .map(|(_, idx)| fmt_temp(*idx))
+                    .join(", ");
+                format!("{}({})", helper_name, captured)
             }
             QuantifierType::Any => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::Any, fun_name);
                 format!(
-                    "(exists i:int :: 0 <= i && i < LenVec({}) && {}({}))",
+                    "{0}({1}, 0, LenVec({1}){2})",
+                    helper,
                     fmt_temp(srcs[0]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::AnyRange => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::Any, fun_name);
                 format!(
-                    "(exists i:int :: {} <= i && i < {} && {}({}))",
+                    "{}({}, {}, {}{})",
+                    helper,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::All => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::All, fun_name);
                 format!(
-                    "(forall i:int :: 0 <= i && i < LenVec({}) ==> {}({}))",
+                    "{0}({1}, 0, LenVec({1}){2})",
+                    helper,
                     fmt_temp(srcs[0]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::AllRange => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::All, fun_name);
                 format!(
-                    "(forall i:int :: {} <= i && i < {} ==> {}({}))",
+                    "{}({}, {}, {}{})",
+                    helper,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::Map => {
@@ -4320,6 +4508,59 @@ impl<'env> FunctionTranslator<'env> {
                                 secondary,
                                 args_str,
                             );
+                            processed = true;
+                        }
+
+                        if callee_env.get_qualified_id()
+                            == self.parent.env.prover_add_quantifier_pool_qid()
+                        {
+                            // Extract pool name from the ByteArray constant loaded into srcs[0]
+                            let user_pool_name = self
+                                .fun_target
+                                .get_bytecode()
+                                .iter()
+                                .find_map(|bc| {
+                                    if let Bytecode::Load(_, dest, Constant::ByteArray(val)) = bc {
+                                        if *dest == srcs[0] {
+                                            return Some(
+                                                String::from_utf8(val.clone()).unwrap_or_else(
+                                                    |_| format!("pool_{}", srcs[0]),
+                                                ),
+                                            );
+                                        }
+                                    }
+                                    None
+                                })
+                                .unwrap_or_else(|| format!("pool_{}", srcs[0]));
+                            // Find all quantifier functions whose Boogie names contain
+                            // the user's pool name, and emit {:add_to_pool} for each
+                            let quantifier_pool_ids = self.collect_quantifier_pool_ids();
+                            let matching_ids: Vec<_> = quantifier_pool_ids
+                                .iter()
+                                .filter(|(_, name)| name.contains(&user_pool_name))
+                                .collect();
+                            for (kind, boogie_name) in &matching_ids {
+                                for src_idx in &srcs[1..] {
+                                    let term_str = str_local(*src_idx);
+                                    emitln!(
+                                        self.writer(),
+                                        "assume {{:add_to_pool \"{}-{}\", {}}} true;",
+                                        kind,
+                                        boogie_name,
+                                        term_str,
+                                    );
+                                }
+                            }
+                            if matching_ids.is_empty() {
+                                env.diag(
+                                    Severity::Warning,
+                                    &self.fun_target.get_loc(),
+                                    &format!(
+                                        "add_quantifier_pool: no quantifier found matching pool name \"{}\"",
+                                        user_pool_name
+                                    ),
+                                );
+                            }
                             processed = true;
                         }
 

@@ -24,6 +24,7 @@ function $IsValid'$1_option_Option{{S}}'(opt: $1_option_Option{{S}}): bool {
 {% macro vector_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 {%- if options.native_equality -%}
 {# Whole vector has native equality #}
 function {:inline} $IsEqual'vec{{S}}'(v1: Vec ({{T}}), v2: Vec ({{T}})): bool {
@@ -78,7 +79,7 @@ function {:inline} $ContainsVec{{S}}(v: Vec ({{T}}), e: {{T}}): bool {
 }
 
 function $IndexOfVec{{S}}(v: Vec ({{T}}), e: {{T}}): int;
-axiom (forall v: Vec ({{T}}), e: {{T}}:: {$IndexOfVec{{S}}(v, e)}
+axiom (forall {{VPOOL}}v: Vec ({{T}}), e: {{T}}:: {$IndexOfVec{{S}}(v, e)}
     (var i := $IndexOfVec{{S}}(v, e);
      if (!$ContainsVec{{S}}(v, e)) then i == -1
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{S}}(ReadVec(v, i), e) &&
@@ -424,44 +425,44 @@ function $0_vec_$sum{{S}}(v: Vec ({{T}}), start: int, end: int): {{T}};
 {# Different axioms for bit vectors #}
 
 // the sum over an empty range is zero
-axiom (forall v: Vec ({{T}}), start: int, end: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int ::
       { $0_vec_$sum{{S}}(v, start, end)}
    (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0bv{{instance.bit_width}}));
 
 // the sum of a range can be split in two
-axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
   0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
     $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d)) == $0_vec_$sum{{S}}(v, a, d)) ;
 
 // the sum over a singleton range is the vector element there
-axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v) ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
 {%- if instance.is_unsigned %}
 // for vectors nested ranges have sums bounded by the larger (unsigned elements)
-axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $Le'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, b, c), $0_vec_$sum{{S}}(v, a, d)));
 {%- endif %}
 
 // equal vectors have equal sums over the same range
-axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+axiom (forall {{VPOOL}}u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
   {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
 
 // left-step — compound trigger
-axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int, next_start: int ::
   {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
   next_start == start + 1 && start < end ==>
     $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'(v->v[start], $0_vec_$sum{{S}}(v, next_start, end)));
 
 // right-step — compound trigger
-axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int, prev_end: int ::
   {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
   prev_end + 1 == end && start < end ==>
     $0_vec_$sum{{S}}(v, start, end) == $Add'Bv{{instance.bit_width}}'($0_vec_$sum{{S}}(v, start, prev_end), v->v[prev_end]));
@@ -469,44 +470,44 @@ axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
 {%- else -%}
 
 // the sum over an empty range is zero
-axiom (forall v: Vec ({{T}}), start: int, end: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int ::
       { $0_vec_$sum{{S}}(v, start, end)}
    (start >= end ==> $0_vec_$sum{{S}}(v, start, end) == 0));
 
 // the sum of a range can be split in two
-axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, b), $0_vec_$sum{{S}}(v, c, d) }
   0 <= a && a <= b && b == c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, a, b) + $0_vec_$sum{{S}}(v, c, d) ==  $0_vec_$sum{{S}}(v, a, d)) ;
 
 // the sum over a singleton range is the vector element there
-axiom (forall v: Vec ({{T}}), a: int, x: int, y: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, x: int, y: int ::
   { $0_vec_$sum{{S}}(v, x, y), v->v[a] } // in a proof involving 0_vec_sum(v,...) and v[a]
   0 <= a && a < LenVec(v)  ==> $0_vec_$sum{{S}}(v, a, a+1) == v->v[a]);
 
 {%- if instance.is_unsigned %}
 // for vectors nested ranges have sums bounded by the larger (unsigned elements)
-axiom (forall v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), a: int, b: int, c: int, d: int ::
   { $0_vec_$sum{{S}}(v, a, d), $0_vec_$sum{{S}}(v, b, c) }
   $IsValid'vec{{S}}'(v) && 0 <= a && a <= b && b <= c && c <= d && d <= LenVec(v)  ==>
     $0_vec_$sum{{S}}(v, b, c) <= $0_vec_$sum{{S}}(v, a, d));
 {%- endif %}
 
 // equal vectors have equal sums over the same range
-axiom (forall u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
+axiom (forall {{VPOOL}}u: Vec({{T}}), v: Vec({{T}}), from: int, to: int ::
   {$0_vec_$sum{{S}}(u, from, to), $0_vec_$sum{{S}}(v, from, to)}
   $IsEqual'vec{{S}}'(u, v) &&
    0 <= from && from <= to && to <= LenVec(u) ==>
    $0_vec_$sum{{S}}(u, from, to) == $0_vec_$sum{{S}}(v, from, to));
 
 // left-step — compound trigger
-axiom (forall v: Vec ({{T}}), start: int, end: int, next_start: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int, next_start: int ::
   {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, next_start, end)}
   next_start == start + 1 && start < end ==>
     $0_vec_$sum{{S}}(v, start, end) == v->v[start] + $0_vec_$sum{{S}}(v, next_start, end));
 
 // right-step — compound trigger
-axiom (forall v: Vec ({{T}}), start: int, end: int, prev_end: int ::
+axiom (forall {{VPOOL}}v: Vec ({{T}}), start: int, end: int, prev_end: int ::
   {$0_vec_$sum{{S}}(v, start, end), $0_vec_$sum{{S}}(v, start, prev_end)}
   prev_end + 1 == end && start < end ==>
     $0_vec_$sum{{S}}(v, start, end) == $0_vec_$sum{{S}}(v, start, prev_end) + v->v[prev_end]);
@@ -533,6 +534,7 @@ function {:inline} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end
 {% macro vec_set_module(instance) %}
 {%- set T = instance.name -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec_set' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
     s: $2_vec_set_VecSet{{S}},
@@ -606,6 +608,7 @@ function {:inline} $2_vec_set_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T
 {%- set T = instance.name -%}
 {%- set T_S = instance.suffix -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table_vec' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bool {
     $IsValid'$2_table_Table'u64_{{T_S}}''(s->$contents) &&
@@ -624,26 +627,27 @@ function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bo
 {%- set K_S = "'" ~ key_instance.suffix ~ "'" -%}
 {%- set V_S = "'" ~ value_instance.suffix ~ "'" -%}
 {%- set S = "'" ~ key_instance.suffix ~ "_" ~ value_instance.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec_map' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function {:inline} $ContainsVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): bool {
     (exists i: int :: $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k))
 }
 
 function $IndexOfVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): int;
-axiom (forall v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v, k)}
+axiom (forall {{VPOOL}}v: Vec ($2_vec_map_Entry{{S}}), k: {{K}} :: {$IndexOfVecMap{{S}}(v, k)}
     (var i := $IndexOfVecMap{{S}}(v, k);
      if (!$ContainsVecMap{{S}}(v, k)) then i == -1
      else $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k) &&
         (forall j: int :: $IsValid'u64'(j) && j >= 0 && j < i ==> !$IsEqual{{K_S}}(ReadVec(v, j)->$key, k))));
 
 function $VecMapKeys{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{K}});
-axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
+axiom (forall {{VPOOL}}v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapKeys{{S}}(v)}
     (var keys := $VecMapKeys{{S}}(v);
      LenVec(keys) == LenVec(v) &&
      (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{K_S}}(ReadVec(keys, i), ReadVec(v, i)->$key))));
 
 function $VecMapValues{{S}}(v: Vec ($2_vec_map_Entry{{S}})): Vec ({{V}});
-axiom (forall v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapValues{{S}}(v)}
+axiom (forall {{VPOOL}}v: Vec ($2_vec_map_Entry{{S}}) :: {$VecMapValues{{S}}(v)}
     (var values := $VecMapValues{{S}}(v);
      LenVec(values) == LenVec(v) &&
      (forall i: int :: InRangeVec(v, i) ==> $IsEqual{{V_S}}(ReadVec(values, i), ReadVec(v, i)->$value))));
@@ -663,7 +667,7 @@ function $DisjointVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}})): bool {
 }
 
 function $VecMapFromKeysValues{{S}}(keys: Vec ({{K}}), values: Vec ({{V}})): Vec ($2_vec_map_Entry{{S}});
-axiom (forall keys: Vec ({{K}}), values: Vec ({{V}}) :: {$VecMapFromKeysValues{{S}}(keys, values)}
+axiom (forall {{VPOOL}}keys: Vec ({{K}}), values: Vec ({{V}}) :: {$VecMapFromKeysValues{{S}}(keys, values)}
     (var entries := $VecMapFromKeysValues{{S}}(keys, values);
      LenVec(entries) == LenVec(keys) &&
      (forall i: int :: InRangeVec(keys, i) ==>
@@ -783,10 +787,11 @@ function {:inline} $2_vec_map_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
 {% macro table_key_encoding(instance) %}
 {%- set K = instance.name -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table_key' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function $EncodeKey{{S}}(k: {{K}}): int;
 axiom (
-  forall k1, k2: {{K}} :: {$EncodeKey{{S}}(k1), $EncodeKey{{S}}(k2)}
+  forall {{VPOOL}}k1, k2: {{K}} :: {$EncodeKey{{S}}(k1), $EncodeKey{{S}}(k2)}
     $IsEqual{{S}}(k1, k2) <==> $EncodeKey{{S}}(k1) == $EncodeKey{{S}}(k2)
 );
 {% endmacro table_key_encoding %}
@@ -796,6 +801,7 @@ axiom (
 {%- set Self = "Table int (" ~ V ~ ")" -%}
 {%- set S = "'" ~ "Table" ~ "'" ~ "int" ~ "_" ~ instance.suffix ~ "'" ~ "'" -%}
 {%- set SV = "'" ~ instance.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table' ~ SV ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 {%- if options.native_equality -%}
 function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
@@ -826,6 +832,7 @@ function $IsValid'{{S}}'(t: {{Self}}): bool {
 {%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 datatype {{Type}}{{S}} {
     {{Type}}{{S}}($id: $2_object_UID, $contents: {{Self}})
@@ -997,6 +1004,7 @@ procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set DF_S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "df' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 {%- if impl.fun_add != "" %}
 procedure {:inline 2} {{impl.fun_add}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
@@ -1101,7 +1109,7 @@ function {:inline} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}
 {%- endif %}
 
 {%- if impl.fun_exists != "" %}
-axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
+axiom (forall {{VPOOL}}t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
    ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k)) ==> {{impl.fun_exists_inner}}{{SK}}(t, k));
 {%- endif %}
 
@@ -1234,6 +1242,8 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 {%- set QP = instance.quantifier_params -%}
 {%- set QA = instance.quantifier_args -%}
 {%- set FN = instance.name -%}
+{%- set PID = instance.pool_id -%}
+{%- if instance.has_pool -%}{%- set POOL = '{:pool "' ~ instance.qht ~ '-' ~ PID ~ '"} ' -%}{%- else -%}{%- set POOL = '' -%}{%- endif -%}
 {%- set RT = instance.result_type -%}
 {%- set EAA = instance.extra_args_after -%}
 {%- if instance.extra_args_before == "" -%}
@@ -1248,12 +1258,12 @@ axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
 function $FindIndicesQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
 // congruence: $IsEqual inputs give equal results
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FindIndicesQuantifierHelper_{{FN}}({{QA}}) == $FindIndicesQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
@@ -1266,13 +1276,13 @@ axiom (forall {{QP}} :: {$FindIndicesQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // strict ordering — separate trigger so it only fires when comparing elements
-axiom (forall {{QP}}, k: int, l: int ::
+axiom (forall {{POOL}}{{QP}}, k: int, l: int ::
     {ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k), ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)}
     0 <= k && k < l && l < LenVec($FindIndicesQuantifierHelper_{{FN}}({{QA}})) ==>
         ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), k) < ReadVec($FindIndicesQuantifierHelper_{{FN}}({{QA}}), l)
 );
 // end-step — compound trigger prevents matching loops
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1286,7 +1296,7 @@ axiom (forall {{QP}}, prev_end: int ::
     ))
 );
 // start-step — compound trigger, mirror of end-step
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$FindIndicesQuantifierHelper_{{FN}}({{QA}}), $FindIndicesQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
     (var res := $FindIndicesQuantifierHelper_{{FN}}({{QA}});
@@ -1305,12 +1315,12 @@ axiom (forall {{QP}}, next_start: int ::
 function $FilterQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
 // congruence
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FilterQuantifierHelper_{{FN}}({{QA}}) == $FilterQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FilterQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
@@ -1325,7 +1335,7 @@ axiom (forall {{QP}} :: {$FilterQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
@@ -1339,7 +1349,7 @@ axiom (forall {{QP}}, prev_end: int ::
     ))
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$FilterQuantifierHelper_{{FN}}({{QA}}), $FilterQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
     (var res := $FilterQuantifierHelper_{{FN}}({{QA}});
@@ -1357,12 +1367,12 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "find_index" %}
 function $FindIndexQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) == $FindIndexQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $FindIndexQuantifierHelper_{{FN}}({{QA}});
         if (forall i: int :: start <= i && i < end ==> !{{FN}}({{EAB}}ReadVec(v, i){{EAA}})) then res == -1
@@ -1371,7 +1381,7 @@ axiom (forall {{QP}} :: {$FindIndexQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
     (var prev := $FindIndexQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}});
@@ -1381,7 +1391,7 @@ axiom (forall {{QP}}, prev_end: int ::
              else -1))
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$FindIndexQuantifierHelper_{{FN}}({{QA}}), $FindIndexQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
         $FindIndexQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1393,12 +1403,12 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "map" %}
 function $MapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
 {%- if instance.input_vec_is_equal_suffix != "" %}
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $MapQuantifierHelper_{{FN}}({{QA}}) == $MapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $MapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
@@ -1408,7 +1418,7 @@ axiom (forall {{QP}}:: {$MapQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1419,7 +1429,7 @@ axiom (forall {{QP}}, prev_end: int ::
     ))
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$MapQuantifierHelper_{{FN}}({{QA}}), $MapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
     (var res := $MapQuantifierHelper_{{FN}}({{QA}});
@@ -1433,7 +1443,7 @@ axiom (forall {{QP}}, next_start: int ::
 
 {%- if instance.qht == "range_map" %}
 function $RangeMapQuantifierHelper_{{FN}}({{QP}}): Vec ({{RT}});
-axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
 (
     var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
         $IsValid'{{instance.result_is_valid_suffix}}'(res) &&
@@ -1443,7 +1453,7 @@ axiom (forall {{QP}}:: {$RangeMapQuantifierHelper_{{FN}}({{QA}})}
     )
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
@@ -1454,7 +1464,7 @@ axiom (forall {{QP}}, prev_end: int ::
     ))
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$RangeMapQuantifierHelper_{{FN}}({{QA}}), $RangeMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
     (var res := $RangeMapQuantifierHelper_{{FN}}({{QA}});
@@ -1469,18 +1479,18 @@ axiom (forall {{QP}}, next_start: int ::
 {%- if instance.qht == "count" %}
 function $CountQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) == $CountQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$CountQuantifierHelper_{{FN}}({{QA}})}
     0 <= $CountQuantifierHelper_{{FN}}({{QA}}) &&
     $CountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $CountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1488,7 +1498,7 @@ axiom (forall {{QP}}, next_start: int ::
             + $CountQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$CountQuantifierHelper_{{FN}}({{QA}}), $CountQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
         $CountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1496,7 +1506,7 @@ axiom (forall {{QP}}, prev_end: int ::
             + (if {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
-axiom (forall {{QP}}, split_point: int ::
+axiom (forall {{POOL}}{{QP}}, split_point: int ::
     {$CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
     0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
         $CountQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $CountQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
@@ -1506,16 +1516,16 @@ axiom (forall {{QP}}, split_point: int ::
 {%- if instance.qht == "sum_map" %}
 function $SumMapQuantifierHelper_{{FN}}({{QP}}): int;
 {%- if instance.input_vec_is_equal_suffix != "" %}
-axiom (forall {{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
     $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) == $SumMapQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
 );
 {%- endif %}
-axiom (forall {{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$SumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $SumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1523,7 +1533,7 @@ axiom (forall {{QP}}, next_start: int ::
             + $SumMapQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$SumMapQuantifierHelper_{{FN}}({{QA}}), $SumMapQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
         $SumMapQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1531,19 +1541,19 @@ axiom (forall {{QP}}, prev_end: int ::
             + {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})
 );
 // split — compound trigger on the two sub-range sums
-axiom (forall {{QP}}, split_point: int ::
+axiom (forall {{POOL}}{{QP}}, split_point: int ::
     {$SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}), $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})}
     0 <= start && start <= split_point && split_point <= end && end <= LenVec(v) ==>
         $SumMapQuantifierHelper_{{FN}}(v, start, split_point{{CAT}}) + $SumMapQuantifierHelper_{{FN}}(v, split_point, end{{CAT}})
             == $SumMapQuantifierHelper_{{FN}}({{QA}}));
 // singleton — sum over [a, a+1] equals FN applied to v[a]
-axiom (forall {{QP}}, a: int ::
+axiom (forall {{POOL}}{{QP}}, a: int ::
     {$SumMapQuantifierHelper_{{FN}}({{QA}}), ReadVec(v, a)}
     0 <= a && a < LenVec(v) ==>
         $SumMapQuantifierHelper_{{FN}}(v, a, a+1{{CAT}}) == {{FN}}({{EAB}}ReadVec(v, a){{EAA}}));
 {%- if instance.result_is_unsigned %}
 // bounding — nested range sum <= outer (FN returns unsigned)
-axiom (forall {{QP}}, a: int, b: int ::
+axiom (forall {{POOL}}{{QP}}, a: int, b: int ::
     {$SumMapQuantifierHelper_{{FN}}(v, a, b{{CAT}}), $SumMapQuantifierHelper_{{FN}}({{QA}})}
     $IsValid'{{instance.input_vec_is_equal_suffix}}'(v) &&
     0 <= start && start <= a && a <= b && b <= end && end <= LenVec(v) ==>
@@ -1553,13 +1563,13 @@ axiom (forall {{QP}}, a: int, b: int ::
 
 {%- if instance.qht == "range_count" %}
 function $RangeCountQuantifierHelper_{{FN}}({{QP}}): int;
-axiom (forall {{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$RangeCountQuantifierHelper_{{FN}}({{QA}})}
     0 <= $RangeCountQuantifierHelper_{{FN}}({{QA}}) &&
     $RangeCountQuantifierHelper_{{FN}}({{QA}}) <= (if start <= end then end - start else 0) &&
     (start >= end ==> $RangeCountQuantifierHelper_{{FN}}({{QA}}) == 0)
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1567,7 +1577,7 @@ axiom (forall {{QP}}, next_start: int ::
             + $RangeCountQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$RangeCountQuantifierHelper_{{FN}}({{QA}}), $RangeCountQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
         $RangeCountQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1575,7 +1585,7 @@ axiom (forall {{QP}}, prev_end: int ::
             + (if {{FN}}({{EAB}}prev_end{{EAA}}) then 1 else 0)
 );
 // split — compound trigger on the two sub-range counts
-axiom (forall {{QP}}, split_point: int ::
+axiom (forall {{POOL}}{{QP}}, split_point: int ::
     {$RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}), $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})}
     start <= split_point && split_point <= end ==>
         $RangeCountQuantifierHelper_{{FN}}(start, split_point{{CAT}}) + $RangeCountQuantifierHelper_{{FN}}(split_point, end{{CAT}})
@@ -1584,11 +1594,11 @@ axiom (forall {{QP}}, split_point: int ::
 
 {%- if instance.qht == "range_sum_map" %}
 function $RangeSumMapQuantifierHelper_{{FN}}({{QP}}): int;
-axiom (forall {{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
+axiom (forall {{POOL}}{{QP}} :: {$RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
     start >= end ==> $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) == 0
 );
 // start-step — compound trigger
-axiom (forall {{QP}}, next_start: int ::
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
     {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})}
     next_start == start + 1 && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1596,7 +1606,7 @@ axiom (forall {{QP}}, next_start: int ::
             + $RangeSumMapQuantifierHelper_{{FN}}(next_start, end{{CAT}})
 );
 // end-step — compound trigger
-axiom (forall {{QP}}, prev_end: int ::
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
     {$RangeSumMapQuantifierHelper_{{FN}}({{QA}}), $RangeSumMapQuantifierHelper_{{FN}}(start, prev_end{{CAT}})}
     prev_end + 1 == end && start < end ==>
         $RangeSumMapQuantifierHelper_{{FN}}({{QA}}) ==
@@ -1604,18 +1614,76 @@ axiom (forall {{QP}}, prev_end: int ::
             + {{FN}}({{EAB}}prev_end{{EAA}})
 );
 // split — compound trigger on the two sub-range sums
-axiom (forall {{QP}}, split_point: int ::
+axiom (forall {{POOL}}{{QP}}, split_point: int ::
     {$RangeSumMapQuantifierHelper_{{FN}}(start, split_point{{CAT}}), $RangeSumMapQuantifierHelper_{{FN}}(split_point, end{{CAT}})}
     start <= split_point && split_point <= end ==>
         $RangeSumMapQuantifierHelper_{{FN}}(start, split_point{{CAT}}) + $RangeSumMapQuantifierHelper_{{FN}}(split_point, end{{CAT}})
             == $RangeSumMapQuantifierHelper_{{FN}}({{QA}}));
 {%- if instance.result_is_unsigned %}
 // bounding — nested range sum <= outer (FN returns unsigned)
-axiom (forall {{QP}}, a: int, b: int ::
+axiom (forall {{POOL}}{{QP}}, a: int, b: int ::
     {$RangeSumMapQuantifierHelper_{{FN}}(a, b{{CAT}}), $RangeSumMapQuantifierHelper_{{FN}}({{QA}})}
     start <= a && a <= b && b <= end ==>
         $RangeSumMapQuantifierHelper_{{FN}}(a, b{{CAT}}) <= $RangeSumMapQuantifierHelper_{{FN}}({{QA}}));
 {%- endif %}
+{%- endif %}
+
+{%- if instance.qht == "all" %}
+function $AllQuantifierHelper_{{FN}}({{QP}}): bool;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $AllQuantifierHelper_{{FN}}({{QA}}) == $AllQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+// soundness: connects helper to the full forall
+axiom (forall {{POOL}}{{QP}} :: {$AllQuantifierHelper_{{FN}}({{QA}})}
+    $AllQuantifierHelper_{{FN}}({{QA}}) <==>
+        (start >= end || (forall i: int :: start <= i && i < end ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})))
+);
+// start-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
+    {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+        ($AllQuantifierHelper_{{FN}}({{QA}}) ==
+            ({{FN}}({{EAB}}ReadVec(v, start){{EAA}}) && $AllQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})))
+);
+// end-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
+    {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+        ($AllQuantifierHelper_{{FN}}({{QA}}) ==
+            ($AllQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}}) && {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})))
+);
+{%- endif %}
+
+{%- if instance.qht == "any" %}
+function $AnyQuantifierHelper_{{FN}}({{QP}}): bool;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $AnyQuantifierHelper_{{FN}}({{QA}}) == $AnyQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+// soundness: connects helper to the full exists
+axiom (forall {{POOL}}{{QP}} :: {$AnyQuantifierHelper_{{FN}}({{QA}})}
+    $AnyQuantifierHelper_{{FN}}({{QA}}) <==>
+        (start < end && (exists i: int :: start <= i && i < end && {{FN}}({{EAB}}ReadVec(v, i){{EAA}})))
+);
+// start-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
+    {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+        ($AnyQuantifierHelper_{{FN}}({{QA}}) ==
+            ({{FN}}({{EAB}}ReadVec(v, start){{EAA}}) || $AnyQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})))
+);
+// end-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
+    {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+        ($AnyQuantifierHelper_{{FN}}({{QA}}) ==
+            ($AnyQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}}) || {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})))
+);
 {%- endif %}
 
 {% endmacro quantifier_helpers_module %}
@@ -1643,20 +1711,21 @@ function {:inline} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}): bool {
 {% macro bcs_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "bcs' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 // Serialize is modeled as an uninterpreted function, with an additional
 // axiom to say it's an injection.
 
 function $1_bcs_serialize{{S}}(v: {{T}}): Vec int;
 
-axiom (forall v1, v2: {{T}} :: {$1_bcs_serialize{{S}}(v1), $1_bcs_serialize{{S}}(v2)}
+axiom (forall {{VPOOL}}v1, v2: {{T}} :: {$1_bcs_serialize{{S}}(v1), $1_bcs_serialize{{S}}(v2)}
    $IsEqual{{S}}(v1, v2) <==> $IsEqual'vec'u8''($1_bcs_serialize{{S}}(v1), $1_bcs_serialize{{S}}(v2)));
 
 // This says that serialize returns a non-empty vec<u8>
 {% if options.serialize_bound == 0 %}
-axiom (forall v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
+axiom (forall {{VPOOL}}v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
      ( var r := $1_bcs_serialize{{S}}(v); $IsValid'vec'u8''(r) && LenVec(r) > 0 ));
 {% else %}
-axiom (forall v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
+axiom (forall {{VPOOL}}v: {{T}} :: {$1_bcs_serialize{{S}}(v)}
      ( var r := $1_bcs_serialize{{S}}(v); $IsValid'vec'u8''(r) && LenVec(r) > 0 &&
                             LenVec(r) <= {{options.serialize_bound}} ));
 {% endif %}
@@ -1669,7 +1738,7 @@ function {:inline} $1_bcs_to_bytes{{S}}(v: {{T}}): Vec int {
 // Serialized addresses should have the same length.
 const $serialized_address_len: int;
 // Serialized addresses should have the same length
-axiom (forall v: int :: {$1_bcs_serialize'address'(v)}
+axiom (forall {{VPOOL}}v: int :: {$1_bcs_serialize'address'(v)}
      ( var r := $1_bcs_serialize'address'(v); LenVec(r) == $serialized_address_len));
 {% endif %}
 {% endmacro bcs_module %}
@@ -1680,6 +1749,7 @@ axiom (forall v: int :: {$1_bcs_serialize'address'(v)}
 {% macro event_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "event' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 // Map type specific handle to universal one.
 type $1_event_EventHandle{{S}} = $1_event_EventHandle;
@@ -1694,7 +1764,7 @@ function $IsValid'$1_event_EventHandle{{S}}'(h: $1_event_EventHandle{{S}}): bool
 
 // Embed event `{{T}}` into universal $EventRep
 function {:constructor} $ToEventRep{{S}}(e: {{T}}): $EventRep;
-axiom (forall v1, v2: {{T}} :: {$ToEventRep{{S}}(v1), $ToEventRep{{S}}(v2)}
+axiom (forall {{VPOOL}}v1, v2: {{T}} :: {$ToEventRep{{S}}(v1), $ToEventRep{{S}}(v2)}
     $IsEqual{{S}}(v1, v2) <==> $ToEventRep{{S}}(v1) == $ToEventRep{{S}}(v2));
 
 // Creates a new event handle. This ensures each time it is called that a unique new abstract event handler is

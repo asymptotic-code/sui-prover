@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/pool_basic.fail.move:17:5
+   │
+17 │     ensures(!result);
+   │     ^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/pool_basic.fail.move:16: test_not_all_gt_10_no_pool

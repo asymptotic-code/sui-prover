@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/pool_wrong_name.fail.move:22:5
+   │
+22 │     ensures(!result);
+   │     ^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/pool_wrong_name.fail.move:20: test_wrong_pool_name

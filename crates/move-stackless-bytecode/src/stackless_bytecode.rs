@@ -153,6 +153,8 @@ pub enum QuantifierHelperType {
     Filter,
     Count,
     SumMap,
+    All,
+    Any,
 }
 
 impl QuantifierHelperType {
@@ -167,6 +169,8 @@ impl QuantifierHelperType {
             QuantifierHelperType::Filter => "filter",
             QuantifierHelperType::Count => "count",
             QuantifierHelperType::SumMap => "sum_map",
+            QuantifierHelperType::All => "all",
+            QuantifierHelperType::Any => "any",
         }
     }
 
@@ -239,16 +243,6 @@ impl QuantifierType {
         )
     }
 
-    pub fn is_find_or_find_index(&self) -> bool {
-        matches!(
-            self,
-            QuantifierType::Find
-                | QuantifierType::FindRange
-                | QuantifierType::FindIndex
-                | QuantifierType::FindIndexRange
-        )
-    }
-
     pub fn into_quantifier_helper_type(&self) -> Option<QuantifierHelperType> {
         match self {
             QuantifierType::Map | QuantifierType::MapRange => Some(QuantifierHelperType::Map),
@@ -269,6 +263,8 @@ impl QuantifierType {
             QuantifierType::RangeMap => Some(QuantifierHelperType::RangeMap),
             QuantifierType::RangeCount => Some(QuantifierHelperType::RangeCount),
             QuantifierType::RangeSumMap => Some(QuantifierHelperType::RangeSumMap),
+            QuantifierType::All | QuantifierType::AllRange => Some(QuantifierHelperType::All),
+            QuantifierType::Any | QuantifierType::AnyRange => Some(QuantifierHelperType::Any),
             _ => None,
         }
     }

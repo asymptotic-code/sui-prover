@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 297
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/quantifiers/pool_incomplete.fail.move:28:5
+   │
+28 │     ensures(not_all_positive && not_all_less);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/quantifiers/pool_incomplete.fail.move:24: test_incomplete_pool
