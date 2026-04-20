@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/loop_invariant/asserts_in_loop_assume.fail.move:27:5
+   │
+27 │     asserts(n <= 100);
+   │     ^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/loop_invariant/asserts_in_loop_assume.fail.move:26: bounded_loop_spec
