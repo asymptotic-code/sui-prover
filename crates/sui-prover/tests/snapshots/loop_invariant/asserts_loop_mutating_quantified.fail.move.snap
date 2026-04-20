@@ -4,12 +4,12 @@ expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
-   ┌─ tests/inputs/loop_invariant/asserts_loop_mutating_quantified.fail.move:48:9
+   ┌─ tests/inputs/loop_invariant/asserts_loop_mutating_quantified.fail.move:42:9
    │
-48 │         ensures(forall!(|j| safe_at(*j, old_v)));
+42 │         ensures(forall!(|j| safe_at(*j, old_v)));
    │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-49 │     });
-50 │     while (i < n) {
+43 │     });
+44 │     while (i < n) {
    │            - loop invariant does not hold on loop entry
    │
-   =     at tests/inputs/loop_invariant/asserts_loop_mutating_quantified.fail.move:58: increment_all_spec
+   =     at tests/inputs/loop_invariant/asserts_loop_mutating_quantified.fail.move:52: increment_all_spec

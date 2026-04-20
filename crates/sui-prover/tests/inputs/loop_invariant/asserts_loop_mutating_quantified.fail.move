@@ -2,22 +2,16 @@ module 0x42::asserts_loop_mutating_quantified_fail;
 
 use prover::prover::{ensures, asserts, invariant, clone, forall};
 
-// The body mutates each vector element in place by adding 1. The
-// function-level asserts says no element of the original vector is
-// `u64::max` (so `+ 1` cannot overflow).
+// Same body as `asserts_loop_mutating_quantified.move` but the invariant
+// uses the un-guarded `forall j, safe_at(j, old_v)` instead of the
+// `j < i`-guarded variant. This invariant is exactly the spec's asserts
+// (initially `v == old_v`), so under Assume mode (asserts negated) it
+// cannot hold on loop entry — nothing abort-able runs before the loop
+// to discharge the obligation.
 //
-// The Check direction works: with the asserts assumed and the
-// invariant tracking `v` against `old_v`, the body's `+ 1` is safe.
-//
-// The Assume direction fails: the invariant `forall j, safe_at(j, old_v)`
-// is exactly the negation of the spec's asserts (initially `v == old_v`),
-// so it cannot hold on loop entry when `!asserts` is assumed. Nothing
-// abort-able runs before the loop entry, so the prover cannot discharge
-// the loop-entry obligation by a prior abort.
-//
-// In other words: the "asserts-up-to-i" pattern requires the invariant
-// to be derivable from `asserts AND state-so-far`, not equivalent to the
-// asserts at iteration 0.
+// The fix is to use the `j < i` guard so the forall is vacuous at
+// iteration 0 and accumulates per-iteration. See the passing variant
+// in `asserts_loop_mutating_quantified.move`.
 
 #[ext(pure)]
 fun safe_at(j: u64, v: &vector<u64>): bool {
