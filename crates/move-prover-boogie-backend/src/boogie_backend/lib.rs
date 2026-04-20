@@ -60,6 +60,8 @@ struct TypeInfo {
     /// True for U8..U256 (fixed-width unsigned). False for Num (arbitrary precision).
     is_unsigned: bool,
     bit_width: String,
+    /// True when any user-provided pool name is a substring of this type's suffix.
+    has_pool: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -260,12 +262,14 @@ pub fn add_prelude(
     context.insert("options", options);
 
     let mono_info = mono_analysis::get_info(env);
+    let pool_names = collect_all_pool_names(env, targets);
     // Add vector instances implicitly used by the prelude.
     let implicit_vec_inst = vec![TypeInfo::new(
         env,
         options,
         &Type::Primitive(PrimitiveType::U8),
         false,
+        &pool_names,
     )];
     // Used for generating functions for bv types in prelude
     let mut sh_instances = vec![8, 16, 32, 64, 128, 256];
@@ -280,7 +284,7 @@ pub fn add_prelude(
     let mut vec_instances = mono_info
         .vec_inst
         .iter()
-        .map(|ty| TypeInfo::new(env, options, ty, false))
+        .map(|ty| TypeInfo::new(env, options, ty, false, &pool_names))
         .chain(implicit_vec_inst)
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -339,7 +343,7 @@ pub fn add_prelude(
         let mut bv_vec_instances = mono_info
             .vec_inst
             .iter()
-            .map(|ty| TypeInfo::new(env, options, ty, true))
+            .map(|ty| TypeInfo::new(env, options, ty, true, &pool_names))
             .filter(|ty_info| !vec_instances.contains(ty_info))
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -370,7 +374,7 @@ pub fn add_prelude(
                     .get(&option_env.get_qualified_id())
                     .unwrap_or(&BTreeSet::new())
                     .iter()
-                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()))
                     .collect_vec()
             } else {
                 vec![]
@@ -393,7 +397,7 @@ pub fn add_prelude(
                 .get(&vec_set_struct_env.get_qualified_id())
                 .unwrap_or(&BTreeSet::new())
                 .iter()
-                .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                .map(|tys| TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()))
                 .collect_vec()
         } else {
             vec![]
@@ -418,8 +422,8 @@ pub fn add_prelude(
                 .iter()
                 .map(|tys| {
                     (
-                        TypeInfo::new(env, options, &tys[0], false),
-                        TypeInfo::new(env, options, &tys[1], false),
+                        TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()),
+                        TypeInfo::new(env, options, &tys[1], false, &pool_names),
                     )
                 })
                 .collect_vec()
@@ -441,7 +445,7 @@ pub fn add_prelude(
                     .get(&table_vec_env.get_qualified_id())
                     .unwrap_or(&BTreeSet::new())
                     .iter()
-                    .map(|tys| TypeInfo::new(env, options, &tys[0], false))
+                    .map(|tys| TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()))
                     .collect_vec()
             } else {
                 vec![]
@@ -484,7 +488,7 @@ pub fn add_prelude(
             .flat_map(|(_, insts)| {
                 insts.iter().map(|inst| {
                     inst.iter()
-                        .map(|i| TypeInfo::new(env, options, i, false))
+                        .map(|i| TypeInfo::new(env, options, i, false, &pool_names))
                         .collect::<Vec<_>>()
                 })
             })
@@ -548,7 +552,6 @@ pub fn add_prelude(
         }
     }
 
-    let pool_names = collect_all_pool_names(env, targets);
     context.insert(
         "quantifier_helpers_instances",
         &mono_info
@@ -712,16 +715,25 @@ impl QuantifierHelperInfo {
 }
 
 impl TypeInfo {
-    fn new(env: &GlobalEnv, options: &BoogieOptions, ty: &Type, bv_flag: bool) -> Self {
+    fn new(
+        env: &GlobalEnv,
+        options: &BoogieOptions,
+        ty: &Type,
+        bv_flag: bool,
+        pool_names: &BTreeSet<String>,
+    ) -> Self {
         let name_fun = if bv_flag { boogie_bv_type } else { boogie_type };
+        let suffix = boogie_type_suffix_bv(env, ty, bv_flag);
+        let has_pool = pool_names.iter().any(|pn| suffix.contains(pn.as_str()));
         Self {
             name: name_fun(env, ty),
-            suffix: boogie_type_suffix_bv(env, ty, bv_flag),
+            suffix,
             has_native_equality: has_native_equality(env, options, ty),
             is_bv: bv_flag && ty.is_number(),
             bit_width: ty.get_bit_width().unwrap_or(8).to_string(),
             is_number: ty.is_number(),
             is_unsigned: ty.get_bit_width().is_some(),
+            has_pool,
         }
     }
 }
@@ -741,8 +753,8 @@ impl TableImpl {
             .flat_map(|type_insts| {
                 type_insts.iter().map(|tys| {
                     (
-                        TypeInfo::new(env, options, &tys[0], false),
-                        TypeInfo::new(env, options, &tys[1], bv_flag),
+                        TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()),
+                        TypeInfo::new(env, options, &tys[1], bv_flag, &BTreeSet::new()),
                     )
                 })
             })
@@ -801,8 +813,8 @@ impl TableImpl {
             .flat_map(|type_insts| {
                 type_insts.iter().map(|tys| {
                     (
-                        TypeInfo::new(env, options, &tys[0], false),
-                        TypeInfo::new(env, options, &tys[1], bv_flag),
+                        TypeInfo::new(env, options, &tys[0], false, &BTreeSet::new()),
+                        TypeInfo::new(env, options, &tys[1], bv_flag, &BTreeSet::new()),
                     )
                 })
             })
@@ -865,8 +877,8 @@ impl DynamicFieldInfo {
             .unique()
             .map(|(name, value)| {
                 (
-                    TypeInfo::new(env, options, name, false),
-                    TypeInfo::new(env, options, value, bv_flag),
+                    TypeInfo::new(env, options, name, false, &BTreeSet::new()),
+                    TypeInfo::new(env, options, value, bv_flag, &BTreeSet::new()),
                 )
             })
             .collect();
@@ -874,7 +886,7 @@ impl DynamicFieldInfo {
             .iter()
             .map(|name_value_info| name_value_info.name())
             .unique()
-            .map(|name| TypeInfo::new(env, options, name, false))
+            .map(|name| TypeInfo::new(env, options, name, false, &BTreeSet::new()))
             .collect_vec();
 
         DynamicFieldInfo {
@@ -919,8 +931,8 @@ impl DynamicFieldInfo {
             .unique()
             .map(|(name, value)| {
                 (
-                    TypeInfo::new(env, options, name, false),
-                    TypeInfo::new(env, options, value, bv_flag),
+                    TypeInfo::new(env, options, name, false, &BTreeSet::new()),
+                    TypeInfo::new(env, options, value, bv_flag, &BTreeSet::new()),
                 )
             })
             .collect();
@@ -928,7 +940,7 @@ impl DynamicFieldInfo {
             .iter()
             .map(|name_value_info| name_value_info.name())
             .unique()
-            .map(|name| TypeInfo::new(env, options, name, false))
+            .map(|name| TypeInfo::new(env, options, name, false, &BTreeSet::new()))
             .collect_vec();
 
         DynamicFieldInfo {

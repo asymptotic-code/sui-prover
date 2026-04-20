@@ -24,7 +24,7 @@ function $IsValid'$1_option_Option{{S}}'(opt: $1_option_Option{{S}}): bool {
 {% macro vector_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
-{%- set VPOOL = '{:pool "vec' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 {%- if options.native_equality -%}
 {# Whole vector has native equality #}
 function {:inline} $IsEqual'vec{{S}}'(v1: Vec ({{T}}), v2: Vec ({{T}})): bool {
@@ -534,7 +534,7 @@ function {:inline} $0_vector_iter_sum_range{{S}}(v: Vec ({{T}}), start: int, end
 {% macro vec_set_module(instance) %}
 {%- set T = instance.name -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "vec_set' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec_set' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 procedure {:inline 1} $2_vec_set_get_idx_opt{{S}}(
     s: $2_vec_set_VecSet{{S}},
@@ -608,7 +608,7 @@ function {:inline} $2_vec_set_remove_pure{{S}}(s: $2_vec_set_VecSet{{S}}, k: {{T
 {%- set T = instance.name -%}
 {%- set T_S = instance.suffix -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "table_vec' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table_vec' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bool {
     $IsValid'$2_table_Table'u64_{{T_S}}''(s->$contents) &&
@@ -627,7 +627,7 @@ function $IsValid'$2_table_vec_TableVec{{S}}'(s: $2_table_vec_TableVec{{S}}): bo
 {%- set K_S = "'" ~ key_instance.suffix ~ "'" -%}
 {%- set V_S = "'" ~ value_instance.suffix ~ "'" -%}
 {%- set S = "'" ~ key_instance.suffix ~ "_" ~ value_instance.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "vec_map' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "vec_map' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function {:inline} $ContainsVecMap{{S}}(v: Vec ($2_vec_map_Entry{{S}}), k: {{K}}): bool {
     (exists i: int :: $IsValid'u64'(i) && InRangeVec(v, i) && $IsEqual{{K_S}}(ReadVec(v, i)->$key, k))
@@ -787,7 +787,7 @@ function {:inline} $2_vec_map_remove_pure{{S}}(vm: $2_vec_map_VecMap{{S}}, key: 
 {% macro table_key_encoding(instance) %}
 {%- set K = instance.name -%}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "table_key' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table_key' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 function $EncodeKey{{S}}(k: {{K}}): int;
 axiom (
@@ -801,7 +801,7 @@ axiom (
 {%- set Self = "Table int (" ~ V ~ ")" -%}
 {%- set S = "'" ~ "Table" ~ "'" ~ "int" ~ "_" ~ instance.suffix ~ "'" ~ "'" -%}
 {%- set SV = "'" ~ instance.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "table' ~ SV ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table' ~ SV ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 {%- if options.native_equality -%}
 function $IsEqual'{{S}}'(t1: {{Self}}, t2: {{Self}}): bool {
@@ -832,7 +832,7 @@ function $IsValid'{{S}}'(t: {{Self}}): bool {
 {%- set S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "'" -%}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "table' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "table' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 datatype {{Type}}{{S}} {
     {{Type}}{{S}}($id: $2_object_UID, $contents: {{Self}})
@@ -1004,7 +1004,7 @@ procedure {:inline 2} {{impl.fun_drop}}{{S}}(t: {{Type}}{{S}}) {}
 {%- set SV = "'" ~ instance.1.suffix ~ "'" -%}
 {%- set DF_S = "'" ~ instance.0.suffix ~ "_" ~ instance.1.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 {%- set ENC = "$EncodeKey'" ~ instance.0.suffix ~ "'" -%}
-{%- set VPOOL = '{:pool "df' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "df' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 {%- if impl.fun_add != "" %}
 procedure {:inline 2} {{impl.fun_add}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}, v: {{V}}) returns (m': $Mutation({{Type}})) {
@@ -1711,7 +1711,7 @@ function {:inline} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}): bool {
 {% macro bcs_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
-{%- set VPOOL = '{:pool "bcs' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "bcs' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 // Serialize is modeled as an uninterpreted function, with an additional
 // axiom to say it's an injection.
 
@@ -1749,7 +1749,7 @@ axiom (forall {{VPOOL}}v: int :: {$1_bcs_serialize'address'(v)}
 {% macro event_module(instance) %}
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set T = instance.name -%}
-{%- set VPOOL = '{:pool "event' ~ S ~ '"} ' -%}
+{%- if instance.has_pool -%}{%- set VPOOL = '{:pool "event' ~ S ~ '"} ' -%}{%- else -%}{%- set VPOOL = '' -%}{%- endif -%}
 
 // Map type specific handle to universal one.
 type $1_event_EventHandle{{S}} = $1_event_EventHandle;
