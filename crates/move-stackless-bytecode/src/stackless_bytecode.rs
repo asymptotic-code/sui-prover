@@ -243,30 +243,6 @@ impl QuantifierType {
         )
     }
 
-    pub fn is_find_or_find_index(&self) -> bool {
-        matches!(
-            self,
-            QuantifierType::Find
-                | QuantifierType::FindRange
-                | QuantifierType::FindIndex
-                | QuantifierType::FindIndexRange
-        )
-    }
-
-    pub fn requires_sum(&self) -> bool {
-        matches!(
-            self,
-            QuantifierType::SumMap
-                | QuantifierType::SumMapRange
-                | QuantifierType::Count
-                | QuantifierType::CountRange
-        )
-    }
-
-    pub fn requires_filter_indices(&self) -> bool {
-        matches!(self, QuantifierType::Filter | QuantifierType::FilterRange)
-    }
-
     pub fn into_quantifier_helper_type(&self) -> Option<QuantifierHelperType> {
         match self {
             QuantifierType::Map | QuantifierType::MapRange => Some(QuantifierHelperType::Map),

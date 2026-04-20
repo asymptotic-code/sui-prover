@@ -2977,28 +2977,6 @@ impl<'env> FunctionTranslator<'env> {
         ids
     }
 
-    fn create_quantifiers_temp_vars(&self) {
-        let mut has_find = false;
-        let mut has_quantifier_temp_vec = false;
-        for bc in self.fun_target.get_bytecode() {
-            if let Bytecode::Call(_, _, Operation::Quantifier(qt, _, _, _), _, _) = bc {
-                if qt.is_find_or_find_index() {
-                    has_find = true;
-                }
-                if qt.requires_sum() || qt.requires_filter_indices() {
-                    has_quantifier_temp_vec = true;
-                }
-            }
-        }
-        if has_find {
-            emitln!(self.parent.writer, "var $find_i: int;");
-            emitln!(self.parent.writer, "var $find_exists: bool;");
-        }
-        if has_quantifier_temp_vec {
-            emitln!(self.parent.writer, "var $quantifier_temp_vec: Vec int;");
-        }
-    }
-
     /// Check if the current spec's target function is referenced by any asserts_of declaration.
     fn has_asserts_of_ref(&self) -> bool {
         self.parent
