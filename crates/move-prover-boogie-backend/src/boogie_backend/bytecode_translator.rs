@@ -161,6 +161,8 @@ impl<'env> BoogieTranslator<'env> {
             QuantifierHelperType::Filter => format!("$FilterQuantifierHelper_{}", function_name),
             QuantifierHelperType::Count => format!("$CountQuantifierHelper_{}", function_name),
             QuantifierHelperType::SumMap => format!("$SumMapQuantifierHelper_{}", function_name),
+            QuantifierHelperType::All => format!("$AllQuantifierHelper_{}", function_name),
+            QuantifierHelperType::Any => format!("$AnyQuantifierHelper_{}", function_name),
         }
     }
 
@@ -3485,81 +3487,9 @@ impl<'env> FunctionTranslator<'env> {
                     dest
                 );
             }
-            QuantifierType::All => {
-                let v = fmt_temp(srcs[0]);
-                let pred = format!("{}({})", fun_name, cr_args("i"));
-                // counterexample: element doesn't satisfy ==> !helper
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: 0 <= i && i < LenVec({}) && !{} ==> !{});",
-                    pool_str,
-                    v,
-                    pred,
-                    dest
-                );
-                // positive: helper ==> all elements satisfy
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: {} && 0 <= i && i < LenVec({}) ==> {});",
-                    pool_str,
-                    dest,
-                    v,
-                    pred
-                );
-            }
-            QuantifierType::AllRange => {
-                let start = fmt_temp(srcs[1]);
-                let end = fmt_temp(srcs[2]);
-                let pred = format!("{}({})", fun_name, cr_args("i"));
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: {} <= i && i < {} && !{} ==> !{});",
-                    pool_str,
-                    start,
-                    end,
-                    pred,
-                    dest
-                );
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: {} && {} <= i && i < {} ==> {});",
-                    pool_str,
-                    dest,
-                    start,
-                    end,
-                    pred
-                );
-            }
-            QuantifierType::Any => {
-                let v = fmt_temp(srcs[0]);
-                let pred = format!("{}({})", fun_name, cr_args("i"));
-                // witness: element satisfies ==> helper
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: 0 <= i && i < LenVec({}) && {} ==> {});",
-                    pool_str,
-                    v,
-                    pred,
-                    dest
-                );
-            }
-            QuantifierType::AnyRange => {
-                let start = fmt_temp(srcs[1]);
-                let end = fmt_temp(srcs[2]);
-                let pred = format!("{}({})", fun_name, cr_args("i"));
-                emitln!(
-                    self.writer(),
-                    "assume (forall {}i: int :: {} <= i && i < {} && {} ==> {});",
-                    pool_str,
-                    start,
-                    end,
-                    pred,
-                    dest
-                );
-            }
             _ => {
-                // Map, Filter, etc. — don't use pool wrappers, their axioms
-                // are at the top level and already have {:pool}
+                // All, Any, Map, Filter, etc. — use helper functions with
+                // top-level axioms that already carry {:pool}
                 let expr = self.generate_pure_quantifier_expr(
                     qt,
                     fun_env,
@@ -3680,41 +3610,51 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::Any => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::Any, fun_name);
                 format!(
-                    "(exists {}i:int :: 0 <= i && i < LenVec({}) && {}({}))",
-                    pool_str,
+                    "{0}({1}, 0, LenVec({1}){2})",
+                    helper,
                     fmt_temp(srcs[0]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::AnyRange => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::Any, fun_name);
                 format!(
-                    "(exists {}i:int :: {} <= i && i < {} && {}({}))",
-                    pool_str,
+                    "{}({}, {}, {}{})",
+                    helper,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::All => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::All, fun_name);
                 format!(
-                    "(forall {}i:int :: 0 <= i && i < LenVec({}) ==> {}({}))",
-                    pool_str,
+                    "{0}({1}, 0, LenVec({1}){2})",
+                    helper,
                     fmt_temp(srcs[0]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::AllRange => {
+                let helper = self
+                    .parent
+                    .get_quantifier_helper_name(QuantifierHelperType::All, fun_name);
                 format!(
-                    "(forall {}i:int :: {} <= i && i < {} ==> {}({}))",
-                    pool_str,
+                    "{}({}, {}, {}{})",
+                    helper,
+                    fmt_temp(srcs[0]),
                     fmt_temp(srcs[1]),
                     fmt_temp(srcs[2]),
-                    fun_name,
-                    cr_args("i")
+                    extra_args,
                 )
             }
             QuantifierType::Map => {

@@ -153,6 +153,8 @@ pub enum QuantifierHelperType {
     Filter,
     Count,
     SumMap,
+    All,
+    Any,
 }
 
 impl QuantifierHelperType {
@@ -167,6 +169,8 @@ impl QuantifierHelperType {
             QuantifierHelperType::Filter => "filter",
             QuantifierHelperType::Count => "count",
             QuantifierHelperType::SumMap => "sum_map",
+            QuantifierHelperType::All => "all",
+            QuantifierHelperType::Any => "any",
         }
     }
 
@@ -283,6 +287,8 @@ impl QuantifierType {
             QuantifierType::RangeMap => Some(QuantifierHelperType::RangeMap),
             QuantifierType::RangeCount => Some(QuantifierHelperType::RangeCount),
             QuantifierType::RangeSumMap => Some(QuantifierHelperType::RangeSumMap),
+            QuantifierType::All | QuantifierType::AllRange => Some(QuantifierHelperType::All),
+            QuantifierType::Any | QuantifierType::AnyRange => Some(QuantifierHelperType::Any),
             _ => None,
         }
     }

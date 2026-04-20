@@ -1628,6 +1628,64 @@ axiom (forall {{POOL}}{{QP}}, a: int, b: int ::
 {%- endif %}
 {%- endif %}
 
+{%- if instance.qht == "all" %}
+function $AllQuantifierHelper_{{FN}}({{QP}}): bool;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $AllQuantifierHelper_{{FN}}({{QA}}) == $AllQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+// soundness: connects helper to the full forall
+axiom (forall {{POOL}}{{QP}} :: {$AllQuantifierHelper_{{FN}}({{QA}})}
+    $AllQuantifierHelper_{{FN}}({{QA}}) <==>
+        (start >= end || (forall i: int :: start <= i && i < end ==> {{FN}}({{EAB}}ReadVec(v, i){{EAA}})))
+);
+// start-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
+    {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+        ($AllQuantifierHelper_{{FN}}({{QA}}) ==
+            ({{FN}}({{EAB}}ReadVec(v, start){{EAA}}) && $AllQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})))
+);
+// end-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
+    {$AllQuantifierHelper_{{FN}}({{QA}}), $AllQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+        ($AllQuantifierHelper_{{FN}}({{QA}}) ==
+            ($AllQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}}) && {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})))
+);
+{%- endif %}
+
+{%- if instance.qht == "any" %}
+function $AnyQuantifierHelper_{{FN}}({{QP}}): bool;
+{%- if instance.input_vec_is_equal_suffix != "" %}
+axiom (forall {{POOL}}{{QP}}, v2: Vec ({{instance.input_elem_type}}) :: {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v2, start, end{{CAT}})}
+    $IsEqual'{{instance.input_vec_is_equal_suffix}}'(v, v2) ==>
+        $AnyQuantifierHelper_{{FN}}({{QA}}) == $AnyQuantifierHelper_{{FN}}(v2, start, end{{CAT}})
+);
+{%- endif %}
+// soundness: connects helper to the full exists
+axiom (forall {{POOL}}{{QP}} :: {$AnyQuantifierHelper_{{FN}}({{QA}})}
+    $AnyQuantifierHelper_{{FN}}({{QA}}) <==>
+        (start < end && (exists i: int :: start <= i && i < end && {{FN}}({{EAB}}ReadVec(v, i){{EAA}})))
+);
+// start-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, next_start: int ::
+    {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})}
+    next_start == start + 1 && start < end ==>
+        ($AnyQuantifierHelper_{{FN}}({{QA}}) ==
+            ({{FN}}({{EAB}}ReadVec(v, start){{EAA}}) || $AnyQuantifierHelper_{{FN}}(v, next_start, end{{CAT}})))
+);
+// end-step — compound trigger
+axiom (forall {{POOL}}{{QP}}, prev_end: int ::
+    {$AnyQuantifierHelper_{{FN}}({{QA}}), $AnyQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}})}
+    prev_end + 1 == end && start < end ==>
+        ($AnyQuantifierHelper_{{FN}}({{QA}}) ==
+            ($AnyQuantifierHelper_{{FN}}(v, start, prev_end{{CAT}}) || {{FN}}({{EAB}}ReadVec(v, prev_end){{EAA}})))
+);
+{%- endif %}
+
 {% endmacro quantifier_helpers_module %}
 
 {% macro dynamic_field_key_module(impl, instance) %}
