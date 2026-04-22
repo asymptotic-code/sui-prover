@@ -8,6 +8,7 @@
 //! The hierarchies respect opaque boundaries (specs without `no_opaque`) and filter out
 //! system functions from standard libraries.
 
+use crate::file_name_sanitizer::sanitize_file_name_component;
 use crate::function_target_pipeline::FunctionTargetsHolder;
 use move_model::model::{FunId, FunctionEnv, GlobalEnv, QualifiedId};
 use num::BigUint;
@@ -109,7 +110,11 @@ fn write_spec_log_file(
     output_dir: &Path,
     excluded_addresses: &[BigUint],
 ) {
-    let log_file_path = output_dir.join(format!("{}{}", spec_name, LOG_FILE_EXTENSION));
+    let log_file_path = output_dir.join(format!(
+        "{}{}",
+        sanitize_file_name_component(&spec_name),
+        LOG_FILE_EXTENSION
+    ));
 
     let mut content = String::new();
     let mut displayed = BTreeSet::new();

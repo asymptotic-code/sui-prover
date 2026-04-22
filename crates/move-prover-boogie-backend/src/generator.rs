@@ -25,6 +25,7 @@ use move_model::{
 use move_stackless_bytecode::package_targets::PackageTargets;
 use move_stackless_bytecode::{
     escape_analysis::EscapeAnalysisProcessor,
+    file_name_sanitizer::sanitize_file_name_component,
     function_target_pipeline::{
         FunctionHolderTarget, FunctionTargetPipeline, FunctionTargetsHolder,
     },
@@ -328,11 +329,11 @@ fn generate_function_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = format!(
+    let file_name = sanitize_file_name_component(&format!(
         "{}_{:?}",
         env.get_function(*qid).get_full_name_str(),
         asserts_mode
-    );
+    ));
     let target_type = FunctionHolderTarget::Function(*qid);
     let (mut targets, _) = create_and_process_bytecode(options, env, package_targets, target_type);
 
@@ -435,11 +436,11 @@ fn generate_module_bpl<W: WriteColor>(
 ) -> anyhow::Result<FileOptions> {
     env.cleanup();
 
-    let file_name = format!(
+    let file_name = sanitize_file_name_component(&format!(
         "{}_{:?}",
         env.get_module(*mid).get_full_name_str(),
         asserts_mode
-    );
+    ));
     let target_type = if asserts_mode == AssertsMode::SpecNoAbortCheck {
         FunctionHolderTarget::SpecNoAbortCheck(*mid)
     } else {

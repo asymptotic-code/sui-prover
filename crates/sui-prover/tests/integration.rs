@@ -14,6 +14,11 @@ use sui_prover::prove::DEFAULT_EXECUTION_TIMEOUT_SECONDS;
 
 /// Runs the prover on the given file path and returns the output as a string
 fn run_prover(file_path: &Path) -> String {
+    let test_source = read_to_string(file_path).unwrap_or_default();
+    let generate_only = test_source
+        .lines()
+        .any(|line| line.trim() == "// prover-test: generate-only");
+
     let prover_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -117,6 +122,8 @@ integration-test = "0x9"
                 options.backend.debug_trace = false;
                 options.prover.debug_trace = false;
                 options.backend.keep_artifacts = true;
+                options.prover.generate_only = generate_only;
+                options.backend.no_verify = generate_only;
                 options.output_path = Path::new(&options.output_path)
                     .join(relative_path.with_extension(""))
                     .to_string_lossy()
@@ -191,6 +198,9 @@ fn post_process_output(output: String, sources_dir: PathBuf) -> String {
     // This handles paths like: /NORMALIZED_HOME/.move/https___github_com_asymptotic-code_sui_git_XXX/
     let re_git_branch = Regex::new(r"(https___github_com_[^/]+_sui)_git_[^/]+/").unwrap();
     let output = re_git_branch.replace_all(&output, "${1}_git_NORMALIZED/");
+
+    // Normalize Windows path separators so snapshot output stays stable across platforms.
+    let output = output.replace('\\', "/");
 
     // Use regex to replace numbers with more than one digit followed by u64 with ELIDEDu64
     let re = Regex::new(r"\d{2,}u64").unwrap();

@@ -28,6 +28,7 @@ pub mod eliminate_imm_refs;
 pub mod escape_analysis;
 pub mod exp_generator;
 pub mod exp_rewriter;
+pub mod file_name_sanitizer;
 pub mod function_data_builder;
 pub mod function_stats;
 pub mod function_target;
