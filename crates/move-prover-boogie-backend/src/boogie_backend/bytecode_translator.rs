@@ -3097,13 +3097,29 @@ impl<'env> FunctionTranslator<'env> {
                     if matches!(op, Destroy) {
                         continue;
                     }
-                    // Multi-destination operations: handle the patterns that
-                    // can legitimately appear inside a pure body.
+                    // Struct destructuring: `let S { a, b } = s` (or the
+                    // positional form `let S(x) = s`). Bind each destination
+                    // to the corresponding field selector on the source. This
+                    // covers both single-field (dests.len() == 1) and
+                    // multi-field structs.
+                    if let Operation::Unpack(mid, sid, inst) = op {
+                        let inst = &self.inst_slice(inst);
+                        let struct_env = fun_target.global_env().get_module(*mid).into_struct(*sid);
+                        let src_str = fmt_temp(srcs[0]);
+                        for (i, ref field_env) in struct_env.get_fields().enumerate() {
+                            bindings.push((
+                                format!("$t{}", dests[i]),
+                                format!("{}->{}", src_str, boogie_field_sel(field_env, inst)),
+                            ));
+                        }
+                        continue;
+                    }
+                    // Tuple-returning function call: a pure body that
+                    // destructures a multi-return callee. Bind the call
+                    // result to a synthetic tuple temp, then project each
+                    // destination via the boogie datatype selectors
+                    // (`->$ret0`, `->$ret1`, ...).
                     if dests.len() > 1 {
-                        // Tuple-returning function call. Bind the call
-                        // result to a synthetic tuple temp, then project
-                        // each destination via the boogie datatype
-                        // selectors (`->$ret0`, `->$ret1`, ...).
                         if let Function(mid, fid, inst) = op {
                             let callee_env = self.parent.env.get_function(mid.qualified(*fid));
                             let native_fn =
@@ -3139,22 +3155,6 @@ impl<'env> FunctionTranslator<'env> {
                                 bindings.push((
                                     format!("$t{}", dest),
                                     format!("{}->$ret{}", tuple_name, i),
-                                ));
-                            }
-                            continue;
-                        }
-                        // Struct destructuring: `let S { a, b } = s`.
-                        // Bind each destination to the corresponding
-                        // field selector on the source.
-                        if let Operation::Unpack(mid, sid, inst) = op {
-                            let inst = &self.inst_slice(inst);
-                            let struct_env =
-                                fun_target.global_env().get_module(*mid).into_struct(*sid);
-                            let src_str = fmt_temp(srcs[0]);
-                            for (i, ref field_env) in struct_env.get_fields().enumerate() {
-                                bindings.push((
-                                    format!("$t{}", dests[i]),
-                                    format!("{}->{}", src_str, boogie_field_sel(field_env, inst)),
                                 ));
                             }
                             continue;
