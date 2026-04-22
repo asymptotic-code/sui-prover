@@ -32,12 +32,10 @@ impl<'ctx> ReconstructionContext<'ctx> {
 
 /// Reconstructs control flow from basic blocks into a structured representation.
 pub fn reconstruct_control_flow(code: &[Bytecode]) -> Option<StructuredBlock> {
-    if code.iter().any(|bc| {
-        matches!(
-            bc,
-            Bytecode::Call(_, _, Operation::Stop, _, _) | Bytecode::VariantSwitch(..)
-        )
-    }) {
+    if code
+        .iter()
+        .any(|bc| matches!(bc, Bytecode::Call(_, _, Operation::Stop, _, _)))
+    {
         return None;
     }
 
@@ -64,7 +62,41 @@ fn reconstruct_region(
         if let Some((lower, upper)) = ctx.block_bounds(current_block) {
             blocks.push(StructuredBlock::Basic { lower, upper });
         };
-        match ctx.forward_cfg.successors(current_block).as_slice() {
+        let successors = ctx.forward_cfg.successors(current_block).clone();
+        // If the block's terminator is a VariantSwitch, build an N-way
+        // structured switch regardless of the arity (a 2-variant enum has
+        // exactly 2 successors, which would otherwise be mistaken for an if).
+        let terminator = ctx
+            .block_bounds(current_block)
+            .and_then(|(_, upper)| ctx.code.get(upper as usize));
+        if !successors.is_empty() && matches!(terminator, Some(Bytecode::VariantSwitch(..))) {
+            let switch_at = ctx.block_bounds(current_block).unwrap().1;
+            let immediate_post_dominator = ctx
+                .back_cfg
+                .find_immediate_dominator(current_block)
+                .unwrap_or_else(|| {
+                    ctx.forward_cfg.display();
+                    ctx.back_cfg.display();
+                    panic!(
+                        "no post-dominator found for VariantSwitch block={}",
+                        current_block
+                    );
+                });
+            let branches: Vec<StructuredBlock> = successors
+                .iter()
+                .map(|s| {
+                    reconstruct_region(ctx, *s, Some(immediate_post_dominator))
+                        .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
+                })
+                .collect();
+            blocks.push(StructuredBlock::VariantSwitch {
+                switch_at,
+                branches,
+            });
+            current_block = immediate_post_dominator;
+            continue;
+        }
+        match successors.as_slice() {
             [next] => {
                 current_block = *next;
             }
@@ -107,11 +139,11 @@ fn reconstruct_region(
             [] => {
                 break;
             }
-            [..] => {
+            _ => {
                 ctx.forward_cfg.display();
                 ctx.back_cfg.display();
                 unimplemented!(
-                    "unexpected number of successors for block {}",
+                    "unexpected number of successors for non-VariantSwitch block {}",
                     current_block
                 );
             }

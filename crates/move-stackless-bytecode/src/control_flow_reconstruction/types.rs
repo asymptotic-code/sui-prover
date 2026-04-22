@@ -29,6 +29,15 @@ pub enum StructuredBlock {
         branches: Vec<(CodeOffset, Box<StructuredBlock>)>,
         else_branch: Option<Box<StructuredBlock>>,
     },
+
+    /// An N-way switch produced by `Bytecode::VariantSwitch`.
+    /// `switch_at` is the offset of the switch bytecode; `branches` is the
+    /// reconstructed region for each variant, indexed by variant position
+    /// (same ordering as the `labels` vec on the bytecode).
+    VariantSwitch {
+        switch_at: CodeOffset,
+        branches: Vec<StructuredBlock>,
+    },
 }
 
 impl StructuredBlock {
@@ -63,6 +72,9 @@ impl StructuredBlock {
                 } else {
                     Box::new(chain_iter)
                 }
+            }
+            StructuredBlock::VariantSwitch { branches, .. } => {
+                Box::new(branches.iter().flat_map(|b| b.iter_offsets()))
             }
         }
     }

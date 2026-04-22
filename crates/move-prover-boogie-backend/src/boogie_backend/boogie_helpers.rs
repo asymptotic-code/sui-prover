@@ -179,6 +179,60 @@ pub fn boogie_enum_variant_ctor_name(variant_env: &VariantEnv<'_>, inst: &[Type]
     )
 }
 
+/// Return a Boogie expression that evaluates to a fixed default value of the
+/// given Move type. Used to fill non-active variant fields when constructing
+/// an enum value in a pure expression (the value must be concrete so the
+/// Boogie function is total). The specific value is unobservable for the
+/// variant being constructed: `$IsEqual'E'` only compares fields of the
+/// matching variant tag, so any concrete value works.
+pub fn boogie_default_value(env: &GlobalEnv, ty: &Type) -> String {
+    use PrimitiveType::*;
+    use Type::*;
+    match ty {
+        Primitive(p) => match p {
+            U8 | U16 | U32 | U64 | U128 | U256 | Num | Address => "0".to_string(),
+            Bool => "false".to_string(),
+            Signer => "$signer(0)".to_string(),
+            Range | EventStore => panic!("unexpected type for default: {:?}", ty),
+        },
+        Vector(_) => "EmptyVec()".to_string(),
+        Reference(_, inner) => boogie_default_value(env, inner),
+        Datatype(mid, did, inst) => match env.get_struct_or_enum_qid(mid.qualified(*did)) {
+            StructOrEnumEnv::Struct(struct_env) => {
+                let field_defaults = struct_env
+                    .get_fields()
+                    .map(|f| boogie_default_value(env, &f.get_type().instantiate(inst)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if field_defaults.is_empty() {
+                    format!("{}()", boogie_struct_name(&struct_env, inst))
+                } else {
+                    format!(
+                        "{}({})",
+                        boogie_struct_name(&struct_env, inst),
+                        field_defaults
+                    )
+                }
+            }
+            StructOrEnumEnv::Enum(enum_env) => {
+                // Recursively build a default enum value: variant 0 with
+                // defaults for every datatype field and variant_id=0.
+                let all_defaults = enum_env
+                    .get_all_fields()
+                    .map(|f| boogie_default_value(env, &f.get_type().instantiate(inst)))
+                    .chain(std::iter::once("0".to_string()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}({})", boogie_enum_name(&enum_env, inst), all_defaults)
+            }
+        },
+        TypeParameter(_) | Fun(..) | Tuple(..) | TypeDomain(..) | ResourceDomain(..) | Error
+        | Var(..) => {
+            panic!("no default Boogie value for type: {:?}", ty)
+        }
+    }
+}
+
 pub fn boogie_enum_field_update(field_env: &FieldEnv<'_>) -> String {
     let EnclosingEnv::Variant(variant_env) = &field_env.parent_env else {
         unreachable!();

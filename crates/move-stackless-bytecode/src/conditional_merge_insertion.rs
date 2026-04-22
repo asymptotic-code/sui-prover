@@ -26,8 +26,20 @@ use crate::{
 use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
-use move_model::model::FunctionEnv;
+use move_model::{
+    model::FunctionEnv,
+    ty::{PrimitiveType, Type},
+};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Side-table built by `ConditionalMergeInsertionProcessor` when it emits
+/// N-way merges for a `VariantSwitch`. Maps a synthetic bool temp (used as the
+/// `cond` of one of the nested `Operation::IfThenElse` merges) to the enum temp
+/// being switched on and the variant index the test corresponds to. Boogie
+/// emitters substitute `(t_enum->$variant_id == variant_index)` wherever such
+/// a temp appears as a cond.
+#[derive(Default, Clone, Debug)]
+pub struct VariantTestTemps(pub BTreeMap<usize, (usize, usize)>);
 
 /// Information about a merge instruction to be emitted
 /// (`fresh := if_then_else(cond, then_ver, else_ver)`)
@@ -52,6 +64,9 @@ struct VersionState<'env> {
     completed: BTreeSet<usize>,
     /// Completion PC for each variable (last if-then-else block with a merge instruction).
     completed_at: BTreeMap<usize, CodeOffset>,
+    /// Synthetic bool temps that encode variant-id tests (populated while
+    /// emitting merges for `VariantSwitch`). See `VariantTestTemps`.
+    variant_test_temps: BTreeMap<usize, (usize, usize)>,
     /// Builder for modifying bytecode and creating fresh temporary variables.
     builder: FunctionDataBuilder<'env>,
 }
@@ -63,6 +78,7 @@ impl<'env> VersionState<'env> {
             merges_at: BTreeMap::new(),
             completed_at: BTreeMap::new(),
             completed: BTreeSet::new(),
+            variant_test_temps: BTreeMap::new(),
             builder,
         }
     }
@@ -189,6 +205,67 @@ impl<'env> VersionState<'env> {
             StructuredBlock::IfElseChain { .. } => {
                 self.merge_return_temps(&block.clone().chain_to_if_then_else(), merges, fallthrough)
             }
+            StructuredBlock::VariantSwitch {
+                switch_at,
+                branches,
+            } => {
+                let per_branch: Vec<Option<Vec<usize>>> = branches
+                    .iter()
+                    .map(|b| self.merge_return_temps(b, merges, fallthrough.clone()))
+                    .collect();
+
+                // If any arm has no return (neither Ret nor fallthrough), we
+                // cannot merge; propagate None like the IfThenElse case does
+                // for asymmetric branches.
+                if per_branch.iter().any(Option::is_none) {
+                    return None;
+                }
+                let sets: Vec<Vec<usize>> = per_branch.into_iter().map(Option::unwrap).collect();
+
+                // All arms agree → no merge.
+                if sets.windows(2).all(|w| w[0] == w[1]) {
+                    return Some(sets.into_iter().next().unwrap());
+                }
+
+                let arity = sets[0].len();
+                assert!(
+                    sets.iter().all(|s| s.len() == arity),
+                    "mismatched return value counts across match arms"
+                );
+
+                let switched = match &self.builder.data.code[*switch_at as usize] {
+                    Bytecode::VariantSwitch(_, idx, _) => *idx,
+                    _ => unreachable!("expected VariantSwitch at switch_at"),
+                };
+
+                // For each return position, build the nested cascade right-to-left:
+                // the last arm's version is the innermost else; for i from N-2
+                // down to 0, wrap with IfThenElse(cond_i, sets[i][pos], acc).
+                let merged: Vec<usize> = (0..arity)
+                    .map(|pos| {
+                        let mut acc = sets[sets.len() - 1][pos];
+                        for i in (0..sets.len() - 1).rev() {
+                            let this_ver = sets[i][pos];
+                            if this_ver == acc {
+                                continue;
+                            }
+                            let ret_ty = self.builder.get_local_type(this_ver);
+                            let fresh = self.builder.add_local(ret_ty);
+                            let cond = self.builder.add_local(Type::Primitive(PrimitiveType::Bool));
+                            self.variant_test_temps.insert(cond, (switched, i));
+                            merges.push(MergeInfo {
+                                fresh,
+                                cond,
+                                then_ver: this_ver,
+                                else_ver: acc,
+                            });
+                            acc = fresh;
+                        }
+                        acc
+                    })
+                    .collect();
+                Some(merged)
+            }
         }
     }
 
@@ -271,6 +348,31 @@ impl<'env> VersionState<'env> {
             StructuredBlock::IfElseChain { .. } => {
                 self.compute_completed_at(&block.clone().chain_to_if_then_else(), assigned_before)
             }
+            StructuredBlock::VariantSwitch {
+                switch_at,
+                branches,
+            } => {
+                let per_branch: Vec<BTreeSet<usize>> = branches
+                    .iter()
+                    .map(|b| self.compute_completed_at(b, assigned_before))
+                    .collect();
+
+                // A variable completes at this switch if it's known in every
+                // branch (either assigned-before or assigned in the branch)
+                // and newly assigned in at least one branch.
+                let known_everywhere: BTreeSet<usize> = per_branch
+                    .iter()
+                    .map(|a| -> BTreeSet<usize> { assigned_before.union(a).copied().collect() })
+                    .reduce(|acc, s| acc.intersection(&s).copied().collect())
+                    .unwrap_or_default();
+                for var in &known_everywhere {
+                    if per_branch.iter().any(|a| a.contains(var)) {
+                        self.completed_at.insert(*var, *switch_at);
+                    }
+                }
+
+                per_branch.into_iter().flatten().collect()
+            }
         }
     }
 
@@ -305,6 +407,10 @@ impl<'env> VersionState<'env> {
             StructuredBlock::IfElseChain { .. } => {
                 self.process_block(&block.clone().chain_to_if_then_else())
             }
+            StructuredBlock::VariantSwitch {
+                switch_at,
+                branches,
+            } => self.process_variant_switch(*switch_at, branches),
         }
     }
 
@@ -398,6 +504,90 @@ impl<'env> VersionState<'env> {
                     else_ver,
                 });
             }
+        }
+
+        merges
+    }
+
+    /// Process an N-way variant switch, creating nested IfThenElse merges for
+    /// variables whose versions diverge across arms. Merge conditions are
+    /// synthetic bool temps whose Boogie rendering is driven by
+    /// `VariantTestTemps`.
+    fn process_variant_switch(
+        &mut self,
+        switch_at: CodeOffset,
+        branches: &[StructuredBlock],
+    ) -> Vec<MergeInfo> {
+        let switched = match &self.builder.data.code[switch_at as usize] {
+            Bytecode::VariantSwitch(_, idx, _) => *idx,
+            _ => unreachable!(
+                "expected VariantSwitch at switch_at, found {:?}",
+                self.builder.data.code[switch_at as usize]
+            ),
+        };
+
+        // Snapshot and process each arm, remembering its end-of-arm versions.
+        let saved_versions = self.current_version.clone();
+        let mut merges: Vec<MergeInfo> = Vec::new();
+        let mut per_branch_versions: Vec<BTreeMap<usize, usize>> =
+            Vec::with_capacity(branches.len());
+
+        for branch in branches {
+            self.current_version = saved_versions.clone();
+            merges.extend(self.process_block(branch));
+            per_branch_versions.push(std::mem::take(&mut self.current_version));
+        }
+
+        // Reset; we'll rebuild current_version from the merged values.
+        self.current_version = saved_versions.clone();
+
+        for (&var, &saved_ver) in &saved_versions {
+            let branch_vers: Vec<usize> = per_branch_versions
+                .iter()
+                .map(|m| *m.get(&var).unwrap_or(&saved_ver))
+                .collect();
+
+            // All arms agree → keep that single version.
+            if branch_vers.windows(2).all(|w| w[0] == w[1]) {
+                self.current_version.insert(var, branch_vers[0]);
+                continue;
+            }
+
+            // Build nested merges right-to-left. The innermost else is the
+            // last arm's version; wrap with IfThenElse(cond_i, ver_i, acc)
+            // for i = N-2 down to 0.
+            let mut acc = *branch_vers.last().unwrap();
+            let last_idx = branch_vers.len() - 1;
+            for i in (0..last_idx).rev() {
+                let this_ver = branch_vers[i];
+                if this_ver == acc {
+                    continue;
+                }
+                let cond = self.builder.add_local(Type::Primitive(PrimitiveType::Bool));
+                self.variant_test_temps.insert(cond, (switched, i));
+
+                // At the outermost level (i == 0 in source order, which is
+                // the outermost merge because we're folding right-to-left and
+                // i==0 is pushed last), use the original variable if this
+                // switch is its completion point — mirrors the optimization
+                // in `process_if_then_else`.
+                let fresh = if i == 0 && self.completed_at.get(&var) == Some(&switch_at) {
+                    self.completed.insert(var);
+                    var
+                } else {
+                    let var_ty = self.builder.get_local_type(var);
+                    self.builder.add_local(var_ty)
+                };
+
+                merges.push(MergeInfo {
+                    fresh,
+                    cond,
+                    then_ver: this_ver,
+                    else_ver: acc,
+                });
+                acc = fresh;
+            }
+            self.current_version.insert(var, acc);
         }
 
         merges
@@ -535,6 +725,16 @@ impl FunctionTargetProcessor for ConditionalMergeInsertionProcessor {
         // step 6: merge early returns for pure/axiom functions
         if is_pure && ret_count > 1 {
             state.merge_returns(&structured_block);
+        }
+
+        // Persist variant-test-temp mapping so the Boogie emitter can render
+        // the synthetic bool cond temps as `$t_enum->$variant_id == i`.
+        if !state.variant_test_temps.is_empty() {
+            state
+                .builder
+                .data
+                .annotations
+                .set(VariantTestTemps(state.variant_test_temps), true);
         }
 
         state.builder.data
