@@ -3100,77 +3100,64 @@ impl<'env> FunctionTranslator<'env> {
                     // Multi-destination operations: handle the patterns that
                     // can legitimately appear inside a pure body.
                     if dests.len() > 1 {
-                        match op {
-                            // Tuple-returning function call. Bind the call
-                            // result to a synthetic tuple temp, then project
-                            // each destination via the boogie datatype
-                            // selectors (`->$ret0`, `->$ret1`, ...).
-                            Function(mid, fid, inst) => {
-                                let callee_env = self.parent.env.get_function(mid.qualified(*fid));
-                                let native_fn =
-                                    self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
-                                if self.can_callee_be_function(mid, fid)
-                                    || PureFunctionAnalysisProcessor::native_pure_variants(
-                                        self.parent.env,
-                                    )
-                                    .contains(&mid.qualified(*fid))
-                                    || native_fn
-                                {
-                                    let inst = &self.inst_slice(inst);
-                                    let fun_name = boogie_function_name(
-                                        &callee_env,
-                                        inst,
-                                        if native_fn
-                                            && !self
-                                                .parent
-                                                .targets
-                                                .is_uninterpreted(&mid.qualified(*fid))
-                                        {
-                                            FunctionTranslationStyle::Default
-                                        } else {
-                                            FunctionTranslationStyle::Pure
-                                        },
-                                    );
-                                    let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
-                                    let tuple_name = format!("$tuple_res_{}", dests[0]);
-                                    bindings.push((
-                                        tuple_name.clone(),
-                                        format!("{}({})", fun_name, args),
-                                    ));
-                                    for (i, dest) in dests.iter().enumerate() {
-                                        bindings.push((
-                                            format!("$t{}", dest),
-                                            format!("{}->$ret{}", tuple_name, i),
-                                        ));
-                                    }
-                                    continue;
-                                }
+                        // Tuple-returning function call. Bind the call
+                        // result to a synthetic tuple temp, then project
+                        // each destination via the boogie datatype
+                        // selectors (`->$ret0`, `->$ret1`, ...).
+                        if let Function(mid, fid, inst) = op {
+                            let callee_env = self.parent.env.get_function(mid.qualified(*fid));
+                            let native_fn =
+                                self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
+                            if !(self.can_callee_be_function(mid, fid)
+                                || PureFunctionAnalysisProcessor::native_pure_variants(
+                                    self.parent.env,
+                                )
+                                .contains(&mid.qualified(*fid))
+                                || native_fn)
+                            {
                                 unreachable!(
                                     "Cannot emit function call to {:?} as pure function",
                                     callee_env.get_full_name_str()
                                 );
                             }
-                            // Struct destructuring: `let S { a, b } = s`.
-                            // Bind each destination to the corresponding
-                            // field selector on the source.
-                            Operation::Unpack(mid, sid, inst) => {
-                                let inst = &self.inst_slice(inst);
-                                let struct_env =
-                                    fun_target.global_env().get_module(*mid).into_struct(*sid);
-                                let src_str = fmt_temp(srcs[0]);
-                                for (i, ref field_env) in struct_env.get_fields().enumerate() {
-                                    bindings.push((
-                                        format!("$t{}", dests[i]),
-                                        format!(
-                                            "{}->{}",
-                                            src_str,
-                                            boogie_field_sel(field_env, inst)
-                                        ),
-                                    ));
-                                }
-                                continue;
+                            let inst = &self.inst_slice(inst);
+                            let fun_name = boogie_function_name(
+                                &callee_env,
+                                inst,
+                                if native_fn
+                                    && !self.parent.targets.is_uninterpreted(&mid.qualified(*fid))
+                                {
+                                    FunctionTranslationStyle::Default
+                                } else {
+                                    FunctionTranslationStyle::Pure
+                                },
+                            );
+                            let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                            let tuple_name = format!("$tuple_res_{}", dests[0]);
+                            bindings.push((tuple_name.clone(), format!("{}({})", fun_name, args)));
+                            for (i, dest) in dests.iter().enumerate() {
+                                bindings.push((
+                                    format!("$t{}", dest),
+                                    format!("{}->$ret{}", tuple_name, i),
+                                ));
                             }
-                            _ => {}
+                            continue;
+                        }
+                        // Struct destructuring: `let S { a, b } = s`.
+                        // Bind each destination to the corresponding
+                        // field selector on the source.
+                        if let Operation::Unpack(mid, sid, inst) = op {
+                            let inst = &self.inst_slice(inst);
+                            let struct_env =
+                                fun_target.global_env().get_module(*mid).into_struct(*sid);
+                            let src_str = fmt_temp(srcs[0]);
+                            for (i, ref field_env) in struct_env.get_fields().enumerate() {
+                                bindings.push((
+                                    format!("$t{}", dests[i]),
+                                    format!("{}->{}", src_str, boogie_field_sel(field_env, inst)),
+                                ));
+                            }
+                            continue;
                         }
                         panic!(
                             "unexpected {} destinations for operation {:?} in function {}",
