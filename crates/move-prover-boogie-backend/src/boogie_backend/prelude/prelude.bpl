@@ -437,9 +437,9 @@ procedure {:inline 1} $AddBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.
     dst := $Add'Bv{{impl.base}}'(src1, src2);
 }
 
-procedure {:inline 1} $AddBv{{impl.base}}_unchecked(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bv{{impl.base}})
+function {:inline} $AddBv{{impl.base}}_unchecked(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bv{{impl.base}}
 {
-    dst := $Add'Bv{{impl.base}}'(src1, src2);
+    $Add'Bv{{impl.base}}'(src1, src2)
 }
 
 procedure {:inline 1} $SubBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bv{{impl.base}})
@@ -478,39 +478,39 @@ procedure {:inline 1} $ModBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.
     dst := $Mod'Bv{{impl.base}}'(src1, src2);
 }
 
-procedure {:inline 1} $AndBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bv{{impl.base}})
+function {:inline} $AndBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bv{{impl.base}}
 {
-    dst := $And'Bv{{impl.base}}'(src1,src2);
+    $And'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $OrBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bv{{impl.base}})
+function {:inline} $OrBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bv{{impl.base}}
 {
-    dst := $Or'Bv{{impl.base}}'(src1,src2);
+    $Or'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $XorBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bv{{impl.base}})
+function {:inline} $XorBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bv{{impl.base}}
 {
-    dst := $Xor'Bv{{impl.base}}'(src1,src2);
+    $Xor'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $LtBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bool)
+function {:inline} $LtBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bool
 {
-    dst := $Lt'Bv{{impl.base}}'(src1,src2);
+    $Lt'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $LeBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bool)
+function {:inline} $LeBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bool
 {
-    dst := $Le'Bv{{impl.base}}'(src1,src2);
+    $Le'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $GtBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bool)
+function {:inline} $GtBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bool
 {
-    dst := $Gt'Bv{{impl.base}}'(src1,src2);
+    $Gt'Bv{{impl.base}}'(src1,src2)
 }
 
-procedure {:inline 1} $GeBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}) returns (dst: bool)
+function {:inline} $GeBv{{impl.base}}(src1: bv{{impl.base}}, src2: bv{{impl.base}}): bool
 {
-    dst := $Ge'Bv{{impl.base}}'(src1,src2);
+    $Ge'Bv{{impl.base}}'(src1,src2)
 }
 
 function $IsValid'bv{{impl.base}}'(v: bv{{impl.base}}): bool {
@@ -588,17 +588,17 @@ axiom (forall x, y : int :: {$xorInt'u{{impl.base}}'(x, y)}
     $to_i{{impl.base}}($xorInt'u{{impl.base}}'(x, y)) == $xorInt'i{{impl.base}}'(x, y)
 );
 
-procedure {:inline 1} $AndInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+function {:inline} $AndInt'u{{impl.base}}'(src1: int, src2: int): int
 {
-    dst := $andInt'u{{impl.base}}'(src1, src2);
+    $andInt'u{{impl.base}}'(src1, src2)
 }
-procedure {:inline 1} $OrInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+function {:inline} $OrInt'u{{impl.base}}'(src1: int, src2: int): int
 {
-    dst := $orInt'u{{impl.base}}'(src1, src2);
+    $orInt'u{{impl.base}}'(src1, src2)
 }
-procedure {:inline 1} $XorInt'u{{impl.base}}'(src1: int, src2: int) returns (dst: int)
+function {:inline} $XorInt'u{{impl.base}}'(src1: int, src2: int): int
 {
-    dst := $xorInt'u{{impl.base}}'(src1, src2);
+    $xorInt'u{{impl.base}}'(src1, src2)
 }
 
 {%- endfor %}
@@ -969,9 +969,9 @@ procedure {:inline 1} $AddU16(src1: int, src2: int) returns (dst: int)
     dst := src1 + src2;
 }
 
-procedure {:inline 1} $AddU16_unchecked(src1: int, src2: int) returns (dst: int)
+function {:inline} $AddU16_unchecked(src1: int, src2: int): int
 {
-    dst := src1 + src2;
+    src1 + src2
 }
 
 procedure {:inline 1} $AddU32(src1: int, src2: int) returns (dst: int)
@@ -982,9 +982,9 @@ procedure {:inline 1} $AddU32(src1: int, src2: int) returns (dst: int)
     dst := src1 + src2;
 }
 
-procedure {:inline 1} $AddU32_unchecked(src1: int, src2: int) returns (dst: int)
+function {:inline} $AddU32_unchecked(src1: int, src2: int): int
 {
-    dst := src1 + src2;
+    src1 + src2
 }
 
 procedure {:inline 1} $AddU64(src1: int, src2: int) returns (dst: int)
@@ -995,9 +995,9 @@ procedure {:inline 1} $AddU64(src1: int, src2: int) returns (dst: int)
     dst := src1 + src2;
 }
 
-procedure {:inline 1} $AddU64_unchecked(src1: int, src2: int) returns (dst: int)
+function {:inline} $AddU64_unchecked(src1: int, src2: int): int
 {
-    dst := src1 + src2;
+    src1 + src2
 }
 
 procedure {:inline 1} $AddU128(src1: int, src2: int) returns (dst: int)
@@ -1008,9 +1008,9 @@ procedure {:inline 1} $AddU128(src1: int, src2: int) returns (dst: int)
     dst := src1 + src2;
 }
 
-procedure {:inline 1} $AddU128_unchecked(src1: int, src2: int) returns (dst: int)
+function {:inline} $AddU128_unchecked(src1: int, src2: int): int
 {
-    dst := src1 + src2;
+    src1 + src2
 }
 
 procedure {:inline 1} $AddU256(src1: int, src2: int) returns (dst: int)
@@ -1021,9 +1021,9 @@ procedure {:inline 1} $AddU256(src1: int, src2: int) returns (dst: int)
     dst := src1 + src2;
 }
 
-procedure {:inline 1} $AddU256_unchecked(src1: int, src2: int) returns (dst: int)
+function {:inline} $AddU256_unchecked(src1: int, src2: int): int
 {
-    dst := src1 + src2;
+    src1 + src2
 }
 
 procedure {:inline 1} $Sub(src1: int, src2: int) returns (dst: int)
@@ -1405,39 +1405,39 @@ procedure {:inline 1} $Mod(src1: int, src2: int) returns (dst: int)
 
 procedure {:inline 1} $ArithBinaryUnimplemented(src1: int, src2: int) returns (dst: int);
 
-procedure {:inline 1} $Lt(src1: int, src2: int) returns (dst: bool)
+function {:inline} $Lt(src1: int, src2: int): bool
 {
-    dst := src1 < src2;
+    src1 < src2
 }
 
-procedure {:inline 1} $Gt(src1: int, src2: int) returns (dst: bool)
+function {:inline} $Gt(src1: int, src2: int): bool
 {
-    dst := src1 > src2;
+    src1 > src2
 }
 
-procedure {:inline 1} $Le(src1: int, src2: int) returns (dst: bool)
+function {:inline} $Le(src1: int, src2: int): bool
 {
-    dst := src1 <= src2;
+    src1 <= src2
 }
 
-procedure {:inline 1} $Ge(src1: int, src2: int) returns (dst: bool)
+function {:inline} $Ge(src1: int, src2: int): bool
 {
-    dst := src1 >= src2;
+    src1 >= src2
 }
 
-procedure {:inline 1} $And(src1: bool, src2: bool) returns (dst: bool)
+function {:inline} $And(src1: bool, src2: bool): bool
 {
-    dst := src1 && src2;
+    src1 && src2
 }
 
-procedure {:inline 1} $Or(src1: bool, src2: bool) returns (dst: bool)
+function {:inline} $Or(src1: bool, src2: bool): bool
 {
-    dst := src1 || src2;
+    src1 || src2
 }
 
-procedure {:inline 1} $Not(src: bool) returns (dst: bool)
+function {:inline} $Not(src: bool): bool
 {
-    dst := !src;
+    !src
 }
 
 // Pack and Unpack are auto-generated for each type T
