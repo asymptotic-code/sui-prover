@@ -3052,8 +3052,10 @@ impl<'env> FunctionTranslator<'env> {
             }
         };
 
-        // Collect straightline assignments and operations
-        let mut bindings = Vec::new();
+        // Collect straightline assignments and operations. Each entry is
+        // (boogie_var_name, expr); normal temps use `$tN`, but multi-return
+        // function calls introduce synthetic `$tuple_res_N` intermediates.
+        let mut bindings: Vec<(String, String)> = Vec::new();
         let mut final_return_temp = None;
         let mut final_return_expr: Option<String> = None;
 
@@ -3084,12 +3086,86 @@ impl<'env> FunctionTranslator<'env> {
         for bytecode in code.iter() {
             match bytecode {
                 Assign(_, dest, src, _) => {
-                    bindings.push((*dest, fmt_temp(*src)));
+                    bindings.push((format!("$t{}", dest), fmt_temp(*src)));
                 }
                 Load(_, dest, constant) => {
-                    bindings.push((*dest, self.format_constant(constant)));
+                    bindings.push((format!("$t{}", dest), self.format_constant(constant)));
                 }
                 Call(_, dests, op, srcs, _) => {
+                    // Destroy drops an unused value; it has no effect in the
+                    // pure-expression form (e.g. `let (_, b) = ...`).
+                    if matches!(op, Destroy) {
+                        continue;
+                    }
+                    // Multi-destination operations: handle the patterns that
+                    // can legitimately appear inside a pure body.
+                    if dests.len() > 1 {
+                        // Tuple-returning function call. Bind the call
+                        // result to a synthetic tuple temp, then project
+                        // each destination via the boogie datatype
+                        // selectors (`->$ret0`, `->$ret1`, ...).
+                        if let Function(mid, fid, inst) = op {
+                            let callee_env = self.parent.env.get_function(mid.qualified(*fid));
+                            let native_fn =
+                                self.parent.env.should_be_used_as_func(&mid.qualified(*fid));
+                            if !(self.can_callee_be_function(mid, fid)
+                                || PureFunctionAnalysisProcessor::native_pure_variants(
+                                    self.parent.env,
+                                )
+                                .contains(&mid.qualified(*fid))
+                                || native_fn)
+                            {
+                                unreachable!(
+                                    "Cannot emit function call to {:?} as pure function",
+                                    callee_env.get_full_name_str()
+                                );
+                            }
+                            let inst = &self.inst_slice(inst);
+                            let fun_name = boogie_function_name(
+                                &callee_env,
+                                inst,
+                                if native_fn
+                                    && !self.parent.targets.is_uninterpreted(&mid.qualified(*fid))
+                                {
+                                    FunctionTranslationStyle::Default
+                                } else {
+                                    FunctionTranslationStyle::Pure
+                                },
+                            );
+                            let args = srcs.iter().map(|s| fmt_temp(*s)).join(", ");
+                            let tuple_name = format!("$tuple_res_{}", dests[0]);
+                            bindings.push((tuple_name.clone(), format!("{}({})", fun_name, args)));
+                            for (i, dest) in dests.iter().enumerate() {
+                                bindings.push((
+                                    format!("$t{}", dest),
+                                    format!("{}->$ret{}", tuple_name, i),
+                                ));
+                            }
+                            continue;
+                        }
+                        // Struct destructuring: `let S { a, b } = s`.
+                        // Bind each destination to the corresponding
+                        // field selector on the source.
+                        if let Operation::Unpack(mid, sid, inst) = op {
+                            let inst = &self.inst_slice(inst);
+                            let struct_env =
+                                fun_target.global_env().get_module(*mid).into_struct(*sid);
+                            let src_str = fmt_temp(srcs[0]);
+                            for (i, ref field_env) in struct_env.get_fields().enumerate() {
+                                bindings.push((
+                                    format!("$t{}", dests[i]),
+                                    format!("{}->{}", src_str, boogie_field_sel(field_env, inst)),
+                                ));
+                            }
+                            continue;
+                        }
+                        panic!(
+                            "unexpected {} destinations for operation {:?} in function {}",
+                            dests.len(),
+                            op,
+                            fun_target.func_env.get_full_name_str()
+                        );
+                    }
                     if let [dest] = dests.as_slice() {
                         let expr = if let IfThenElse = op {
                             if let [cond, then_val, else_val] = srcs.as_slice() {
@@ -3256,7 +3332,7 @@ impl<'env> FunctionTranslator<'env> {
                                 fun_target.func_env.get_full_name_str()
                             );
                         };
-                        bindings.push((*dest, expr));
+                        bindings.push((format!("$t{}", dest), expr));
                     } else {
                         panic!(
                             "unexpected {} destinations for operation {:?} in function {}",
@@ -3298,8 +3374,8 @@ impl<'env> FunctionTranslator<'env> {
             }
         } else {
             // Emit nested var bindings: (var x := e; (var y := f; body))
-            for (dest, expr) in &bindings {
-                emitln!(writer, "(var $t{} := {};", dest, expr);
+            for (name, expr) in &bindings {
+                emitln!(writer, "(var {} := {};", name, expr);
             }
 
             // Emit return value
@@ -3307,8 +3383,8 @@ impl<'env> FunctionTranslator<'env> {
                 emit!(writer, "{}", fmt_temp(return_temp));
             } else if let Some(ref expr) = final_return_expr {
                 emit!(writer, "{}", expr);
-            } else if let Some((last_dest, _)) = bindings.last() {
-                emit!(writer, "$t{}", last_dest);
+            } else if let Some((last_name, _)) = bindings.last() {
+                emit!(writer, "{}", last_name);
             } else {
                 panic!("expected Some return value");
             }
