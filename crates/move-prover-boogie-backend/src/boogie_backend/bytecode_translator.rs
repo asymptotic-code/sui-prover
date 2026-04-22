@@ -3464,7 +3464,7 @@ impl<'env> FunctionTranslator<'env> {
 
         match qt {
             QuantifierType::Forall => {
-                let loc_type = fun_env.get_parameter_types()[0]
+                let loc_type = fun_env.get_parameter_types()[li]
                     .skip_reference()
                     .instantiate(inst);
                 let b_type = boogie_type(env, &loc_type);
@@ -3478,7 +3478,7 @@ impl<'env> FunctionTranslator<'env> {
                 )
             }
             QuantifierType::Exists => {
-                let loc_type = fun_env.get_parameter_types()[0]
+                let loc_type = fun_env.get_parameter_types()[li]
                     .skip_reference()
                     .instantiate(inst);
                 let b_type = boogie_type(env, &loc_type);
