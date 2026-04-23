@@ -68,8 +68,9 @@ use crate::boogie_backend::{
         boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
         boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp,
         boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix,
-        boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_well_formed_check,
-        boogie_well_formed_expr_bv, FunctionTranslationStyle, TypeIdentToken,
+        boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_variant_merge_expr,
+        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
+        TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -3197,25 +3198,12 @@ impl<'env> FunctionTranslator<'env> {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
                         } else if let VariantMerge = op {
-                            // srcs = [enum_temp, val_0, val_1, ..., val_{N-1}]
-                            // Emit right-folded nested ifs; innermost else is val_{N-1}.
                             let [enum_temp, arm_vers @ ..] = srcs.as_slice() else {
                                 panic!("VariantMerge requires at least 1 source");
                             };
-                            let enum_str = fmt_temp(*enum_temp);
-                            let mut expr = fmt_temp(*arm_vers.last().unwrap());
-                            for (i, ver) in
-                                arm_vers.iter().enumerate().take(arm_vers.len() - 1).rev()
-                            {
-                                expr = format!(
-                                    "(if ({}->$variant_id == {}) then {} else {})",
-                                    enum_str,
-                                    i,
-                                    fmt_temp(*ver),
-                                    expr
-                                );
-                            }
-                            expr
+                            let arm_exprs: Vec<String> =
+                                arm_vers.iter().map(|v| fmt_temp(*v)).collect();
+                            boogie_variant_merge_expr(&fmt_temp(*enum_temp), &arm_exprs)
                         } else if let Function(mid, fid, inst) = op {
                             let callee_env = self.parent.env.get_function(mid.qualified(*fid));
                             let native_fn =
@@ -5869,19 +5857,9 @@ impl<'env> FunctionTranslator<'env> {
                         );
                     }
                     VariantMerge => {
-                        // srcs = [enum_temp, val_0, val_1, ..., val_{N-1}]
-                        let enum_str = str_local(srcs[0]);
-                        let arm_vers = &srcs[1..];
-                        let mut expr = str_local(*arm_vers.last().unwrap());
-                        for (i, ver) in arm_vers.iter().enumerate().take(arm_vers.len() - 1).rev() {
-                            expr = format!(
-                                "(if ({}->$variant_id == {}) then {} else {})",
-                                enum_str,
-                                i,
-                                str_local(*ver),
-                                expr
-                            );
-                        }
+                        let arm_exprs: Vec<String> =
+                            srcs[1..].iter().map(|v| str_local(*v)).collect();
+                        let expr = boogie_variant_merge_expr(&str_local(srcs[0]), &arm_exprs);
                         emitln!(self.writer(), "{} := {};", str_local(dests[0]), expr);
                     }
                     Quantifier(qt, qid, inst, li) => {

@@ -179,6 +179,21 @@ pub fn boogie_enum_variant_ctor_name(variant_env: &VariantEnv<'_>, inst: &[Type]
     )
 }
 
+/// Build the Boogie expression for an `Operation::VariantMerge`: a right-folded
+/// `(if (enum->$variant_id == i) then arm_exprs[i] else ...)` chain with
+/// `arm_exprs.last()` as the terminal else (Move match is total). Shared by
+/// the pure and non-pure emitters.
+pub fn boogie_variant_merge_expr(enum_expr: &str, arm_exprs: &[String]) -> String {
+    let mut expr = arm_exprs.last().expect("non-empty arms").clone();
+    for (i, arm) in arm_exprs.iter().enumerate().take(arm_exprs.len() - 1).rev() {
+        expr = format!(
+            "(if ({}->$variant_id == {}) then {} else {})",
+            enum_expr, i, arm, expr
+        );
+    }
+    expr
+}
+
 /// Return a Boogie expression that evaluates to a fixed default value of the
 /// given Move type. Used to fill non-active variant fields when constructing
 /// an enum value in a pure expression (the value must be concrete so the

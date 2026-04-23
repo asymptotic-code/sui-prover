@@ -59,18 +59,17 @@ fn reconstruct_region(
     let mut current_block = start_block;
     let mut blocks: Vec<StructuredBlock> = Vec::new();
     while Some(current_block) != stop_block {
-        if let Some((lower, upper)) = ctx.block_bounds(current_block) {
+        let bounds = ctx.block_bounds(current_block);
+        if let Some((lower, upper)) = bounds {
             blocks.push(StructuredBlock::Basic { lower, upper });
         };
         let successors = ctx.forward_cfg.successors(current_block).clone();
         // If the block's terminator is a VariantSwitch, build an N-way
         // structured switch regardless of the arity (a 2-variant enum has
         // exactly 2 successors, which would otherwise be mistaken for an if).
-        let terminator = ctx
-            .block_bounds(current_block)
-            .and_then(|(_, upper)| ctx.code.get(upper as usize));
+        let terminator = bounds.and_then(|(_, upper)| ctx.code.get(upper as usize));
         if !successors.is_empty() && matches!(terminator, Some(Bytecode::VariantSwitch(..))) {
-            let switch_at = ctx.block_bounds(current_block).unwrap().1;
+            let switch_at = bounds.unwrap().1;
             let immediate_post_dominator = ctx
                 .back_cfg
                 .find_immediate_dominator(current_block)
@@ -128,7 +127,7 @@ fn reconstruct_region(
                     reconstruct_region(ctx, *else_branch, Some(immediate_post_dominator));
                 blocks.push(
                     StructuredBlock::IfThenElse {
-                        cond_at: ctx.block_bounds(current_block).unwrap().1,
+                        cond_at: bounds.unwrap().1,
                         then_branch: Box::new(then_region),
                         else_branch: else_region.map(Box::new),
                     }
