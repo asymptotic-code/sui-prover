@@ -195,9 +195,35 @@ struct BplAnalysis {
     /// Pre-formatted location strings for $at annotations, so trace formatting
     /// does not require access to GlobalEnv at callback time.
     loc_strings: HashMap<(u16, u32, u32), String>,
+    /// Sorted `(bpl_line, (file_idx, start, end))` pairs for every
+    /// `assume {:print "$at(...)"}` statement in the .bpl file. Used to map
+    /// plain-trace bpl line numbers back to Move source locations when Boogie
+    /// does not emit an augmented execution trace.
+    at_markers: Vec<(usize, (u16, u32, u32))>,
 }
 
 impl BplAnalysis {
+    /// Resolves a BPL line number to its most relevant source location by
+    /// finding the nearest preceding `$at(...)` marker within the same procedure.
+    /// Returns `None` if no such marker exists (e.g., the line is outside any
+    /// procedure, or the procedure has no `$at` annotations before the line).
+    fn resolve_bpl_line(&self, bpl_line: usize) -> Option<(u16, u32, u32)> {
+        let proc = self
+            .procedures
+            .iter()
+            .find(|p| bpl_line >= p.start_line && bpl_line <= p.end_line)?;
+        let idx = self
+            .at_markers
+            .partition_point(|(l, _)| *l <= bpl_line)
+            .checked_sub(1)?;
+        let (marker_line, marker) = self.at_markers[idx];
+        if marker_line >= proc.start_line && marker_line <= proc.end_line {
+            Some(marker)
+        } else {
+            None
+        }
+    }
+
     /// Computes and formats the call trace for an assertion, given the entry procedure
     /// that is currently being verified.
     fn format_call_trace(
@@ -475,7 +501,7 @@ impl<'env> BoogieWrapper<'env> {
                 individual_options,
             )
             .await;
-        self.analyze_output(&res.out, &res.err, res.status, true)
+        self.analyze_output(&res.out, &res.err, res.status, true, boogie_file)
     }
 
     /// Parses a .bpl file and builds the analysis data needed for trace output.
@@ -490,6 +516,7 @@ impl<'env> BoogieWrapper<'env> {
             reverse_calls: HashMap::new(),
             proc_to_func_name: HashMap::new(),
             loc_strings: HashMap::new(),
+            at_markers: Vec::new(),
         };
         let content = match fs::read_to_string(boogie_file) {
             Ok(c) => c,
@@ -497,8 +524,9 @@ impl<'env> BoogieWrapper<'env> {
         };
         let lines: Vec<&str> = content.lines().collect();
 
-        // Phase 1: Parse procedure boundaries, calls, first $at, and inline flag.
-        let procedures = Self::parse_bpl_procedures(&lines);
+        // Phase 1: Parse procedure boundaries, calls, first $at, inline flag,
+        // and per-line $at markers.
+        let (procedures, at_markers) = Self::parse_bpl_procedures(&lines);
 
         // Phase 2: Build call graphs.
         let proc_by_name: HashMap<String, usize> = procedures
@@ -580,13 +608,16 @@ impl<'env> BoogieWrapper<'env> {
             reverse_calls,
             proc_to_func_name,
             loc_strings,
+            at_markers,
         }
     }
 
     /// Parses procedure declarations from .bpl file lines, extracting boundaries,
     /// call statements, first `$at` annotation, and whether the procedure is inlined.
-    fn parse_bpl_procedures(lines: &[&str]) -> Vec<BplProcInfo> {
+    /// Also returns a sorted list of per-line `$at` markers across the file.
+    fn parse_bpl_procedures(lines: &[&str]) -> (Vec<BplProcInfo>, Vec<(usize, (u16, u32, u32))>) {
         let mut procedures: Vec<BplProcInfo> = Vec::new();
+        let mut at_markers: Vec<(usize, (u16, u32, u32))> = Vec::new();
         let mut current_name: Option<String> = None;
         let mut current_start: usize = 0;
         let mut current_calls: Vec<(String, Option<(u16, u32, u32)>)> = Vec::new();
@@ -645,6 +676,7 @@ impl<'env> BoogieWrapper<'env> {
                             cap[3].parse::<u32>(),
                         ) {
                             last_at = Some((f, s, e));
+                            at_markers.push((line_num, (f, s, e)));
                             if current_first_at.is_none() {
                                 current_first_at = last_at;
                             }
@@ -688,7 +720,7 @@ impl<'env> BoogieWrapper<'env> {
             });
         }
 
-        procedures
+        (procedures, at_markers)
     }
 
     /// Formats a parsed `$at(file_idx, start, end)` location into a readable string.
@@ -944,7 +976,13 @@ impl<'env> BoogieWrapper<'env> {
         let out = String::from_utf8_lossy(&output.stdout).to_string();
         let err = String::from_utf8_lossy(&output.stderr).to_string();
 
-        self.analyze_output(&out, &err, output.status.code().unwrap_or(-1), false)
+        self.analyze_output(
+            &out,
+            &err,
+            output.status.code().unwrap_or(-1),
+            false,
+            boogie_file,
+        )
     }
 
     fn analyze_output(
@@ -953,6 +991,7 @@ impl<'env> BoogieWrapper<'env> {
         err: &str,
         status: i32,
         is_remote: bool,
+        boogie_file: &str,
     ) -> anyhow::Result<BoogieOutput> {
         if out
             .trim()
@@ -1014,7 +1053,7 @@ impl<'env> BoogieWrapper<'env> {
                 out
             ));
         }
-        let mut errors = self.extract_verification_errors(&out);
+        let mut errors = self.extract_verification_errors(&out, boogie_file);
         errors.extend(self.extract_inconclusive_errors(&out));
         errors.extend(self.extract_inconsistency_errors(&out));
 
@@ -1347,9 +1386,12 @@ impl<'env> BoogieWrapper<'env> {
     }
 
     /// Extracts verification errors from Boogie output.
-    fn extract_verification_errors(&self, out: &str) -> Vec<BoogieError> {
+    fn extract_verification_errors(&self, out: &str, boogie_file: &str) -> Vec<BoogieError> {
         let mut errors = vec![];
         let mut at = 0;
+        // Lazily built: only when we need to enrich a plain trace fallback,
+        // and only once per call.
+        let mut bpl_analysis: Option<BplAnalysis> = None;
         while let Some(cap) = VERIFICATION_DIAG_STARTS.captures(&out[at..]) {
             let inbetween = out[at..at + cap.get(0).unwrap().start()].trim();
             at = usize::saturating_add(at, cap.get(0).unwrap().end());
@@ -1386,11 +1428,10 @@ impl<'env> BoogieWrapper<'env> {
             let mut execution_trace = self.extract_augmented_trace(out, &mut at);
             let mut model = Model::new(self);
             if execution_trace.is_empty() {
-                execution_trace.push(TraceEntry::InfoLine(format!(
-                    "Boogie does not return any augmented executed trace. \
-                    See the plain trace below:\n{}",
-                    plain_trace.join("\n")
-                )))
+                let analysis = bpl_analysis
+                    .get_or_insert_with(|| self.build_bpl_analysis(boogie_file));
+                execution_trace =
+                    self.enrich_plain_trace_fallback(&plain_trace, analysis);
             } else {
                 self.extract_model(&mut model, out, &mut at);
             }
@@ -1451,8 +1492,16 @@ impl<'env> BoogieWrapper<'env> {
         }
     }
 
-    /// Extracts the plain execution trace.
-    fn extract_execution_trace(&self, out: &str, at: &mut usize) -> Vec<String> {
+    /// Extracts the plain execution trace. Each entry is
+    /// `(bpl_line_opt, formatted_line)` where `bpl_line_opt` is the bpl line
+    /// number parsed from the trace entry's `(line,col)` suffix (used for
+    /// mapping back to source locations), and `formatted_line` is the raw
+    /// `file(line,col): label` form for display fallback.
+    fn extract_execution_trace(
+        &self,
+        out: &str,
+        at: &mut usize,
+    ) -> Vec<(Option<usize>, String)> {
         static TRACE_START: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"(?m)^Execution trace:\s*$").unwrap());
         static TRACE_ENTRY: LazyLock<Regex> = LazyLock::new(|| {
@@ -1466,10 +1515,55 @@ impl<'env> BoogieWrapper<'env> {
                 let name = cap.name("name").unwrap().as_str();
                 let args = cap.name("args").unwrap().as_str();
                 let value = cap.name("value").unwrap().as_str();
-                result.push(format!("{}({}): {}", name, args, value))
+                let bpl_line = args
+                    .split(',')
+                    .next()
+                    .and_then(|s| s.trim().parse::<usize>().ok());
+                result.push((bpl_line, format!("{}({}): {}", name, args, value)))
             }
         }
         result
+    }
+
+    /// Builds a `TraceEntry` list when Boogie did not emit an augmented
+    /// execution trace. Maps each plain-trace bpl line to the nearest
+    /// preceding `$at` marker in the same procedure (via `BplAnalysis`) and
+    /// emits `AtLocation` entries so the diagnostic shows Move source
+    /// locations instead of raw bpl line numbers. If nothing resolves, falls
+    /// back to the original informational dump.
+    fn enrich_plain_trace_fallback(
+        &self,
+        plain_trace: &[(Option<usize>, String)],
+        analysis: &BplAnalysis,
+    ) -> Vec<TraceEntry> {
+        let mut resolved: Vec<TraceEntry> = Vec::new();
+        let mut last_marker: Option<(u16, u32, u32)> = None;
+        for (bpl_line, _) in plain_trace {
+            let marker = bpl_line.and_then(|l| analysis.resolve_bpl_line(l));
+            if let Some(m) = marker {
+                if Some(m) == last_marker {
+                    continue;
+                }
+                let file_id = self.env.file_idx_to_id(m.0);
+                let loc = Loc::new(file_id, Span::new(m.1, m.2));
+                resolved.push(TraceEntry::AtLocation(loc));
+                last_marker = Some(m);
+            }
+        }
+        if resolved.is_empty() {
+            let dump = plain_trace
+                .iter()
+                .map(|(_, s)| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            vec![TraceEntry::InfoLine(format!(
+                "Boogie does not return any augmented executed trace. \
+                See the plain trace below:\n{}",
+                dump
+            ))]
+        } else {
+            resolved
+        }
     }
 
     /// Extracts augmented execution trace.
