@@ -3043,25 +3043,8 @@ impl<'env> FunctionTranslator<'env> {
         let writer = self.writer();
         let fun_target = self.fun_target;
 
-        // Synthetic bool temps introduced by `ConditionalMergeInsertionProcessor`
-        // when it built nested IfThenElse merges for a `VariantSwitch`. Each
-        // such temp is rendered as `(t_enum->$variant_id == variant_index)`.
-        let variant_test_temps: std::collections::BTreeMap<usize, (usize, usize)> = fun_target
-            .get_annotations()
-            .get::<move_stackless_bytecode::conditional_merge_insertion::VariantTestTemps>()
-            .map(|w| w.0.clone())
-            .unwrap_or_default();
-
         // Helper to format a temp reference
         let fmt_temp = |idx: usize| -> String {
-            if let Some((enum_temp, variant_index)) = variant_test_temps.get(&idx) {
-                let enum_str = if *enum_temp < fun_target.get_parameter_count() {
-                    format!("_$t{}", enum_temp)
-                } else {
-                    format!("$t{}", enum_temp)
-                };
-                return format!("({}->$variant_id == {})", enum_str, variant_index);
-            }
             if idx < fun_target.get_parameter_count() {
                 format!("_$t{}", idx)
             } else {
@@ -3213,6 +3196,26 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
+                        } else if let VariantMerge = op {
+                            // srcs = [enum_temp, val_0, val_1, ..., val_{N-1}]
+                            // Emit right-folded nested ifs; innermost else is val_{N-1}.
+                            let [enum_temp, arm_vers @ ..] = srcs.as_slice() else {
+                                panic!("VariantMerge requires at least 1 source");
+                            };
+                            let enum_str = fmt_temp(*enum_temp);
+                            let mut expr = fmt_temp(*arm_vers.last().unwrap());
+                            for (i, ver) in
+                                arm_vers.iter().enumerate().take(arm_vers.len() - 1).rev()
+                            {
+                                expr = format!(
+                                    "(if ({}->$variant_id == {}) then {} else {})",
+                                    enum_str,
+                                    i,
+                                    fmt_temp(*ver),
+                                    expr
+                                );
+                            }
+                            expr
                         } else if let Function(mid, fid, inst) = op {
                             let callee_env = self.parent.env.get_function(mid.qualified(*fid));
                             let native_fn =
@@ -3423,9 +3426,9 @@ impl<'env> FunctionTranslator<'env> {
                 Branch(..) | Jump(..) | Label(..) | Nop(..) | VariantSwitch(..) => {
                     // Control-flow bytecodes. VariantSwitch is consumed
                     // structurally by `ConditionalMergeInsertionProcessor`,
-                    // which emits nested `Operation::IfThenElse` merges keyed
-                    // on synthetic bool temps (see `VariantTestTemps`); the
-                    // VariantSwitch bytecode itself is skipped here.
+                    // which emits a single `Operation::VariantMerge` per
+                    // divergent variable; the VariantSwitch bytecode itself is
+                    // skipped here.
                 }
                 Abort(..) | SaveMem(..) | Prop(..) => {
                     panic!(
@@ -5864,6 +5867,22 @@ impl<'env> FunctionTranslator<'env> {
                             true_expr_str,
                             false_expr_str
                         );
+                    }
+                    VariantMerge => {
+                        // srcs = [enum_temp, val_0, val_1, ..., val_{N-1}]
+                        let enum_str = str_local(srcs[0]);
+                        let arm_vers = &srcs[1..];
+                        let mut expr = str_local(*arm_vers.last().unwrap());
+                        for (i, ver) in arm_vers.iter().enumerate().take(arm_vers.len() - 1).rev() {
+                            expr = format!(
+                                "(if ({}->$variant_id == {}) then {} else {})",
+                                enum_str,
+                                i,
+                                str_local(*ver),
+                                expr
+                            );
+                        }
+                        emitln!(self.writer(), "{} := {};", str_local(dests[0]), expr);
                     }
                     Quantifier(qt, qid, inst, li) => {
                         let qfun_env = self.parent.env.get_function(*qid);

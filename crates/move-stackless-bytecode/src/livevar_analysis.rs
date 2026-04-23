@@ -112,29 +112,6 @@ impl FunctionTargetProcessor for LiveVarAnalysisProcessor {
                     idx
                 }
             });
-            // Propagate the rename into `VariantTestTemps` — the synthetic bool
-            // cond temps it maps are fresh locals introduced by
-            // `ConditionalMergeInsertionProcessor`, and the enum temps it
-            // references are ordinary locals. Both can be renumbered here.
-            if let Some(vtt) = data
-                .annotations
-                .get::<crate::conditional_merge_insertion::VariantTestTemps>()
-            {
-                let renamed: std::collections::BTreeMap<usize, (usize, usize)> = vtt
-                    .0
-                    .iter()
-                    .map(|(cond, (enum_temp, variant_index))| {
-                        (
-                            *remap.get(cond).unwrap_or(cond),
-                            (*remap.get(enum_temp).unwrap_or(enum_temp), *variant_index),
-                        )
-                    })
-                    .collect();
-                data.annotations.set(
-                    crate::conditional_merge_insertion::VariantTestTemps(renamed),
-                    true,
-                );
-            }
             data.local_types = local_types;
             data.code = code;
 
