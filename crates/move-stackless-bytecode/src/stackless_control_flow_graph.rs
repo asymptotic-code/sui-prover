@@ -269,9 +269,9 @@ impl StacklessControlFlowGraph {
         }
     }
 
-    pub fn pc_to_block(cfg: &StacklessControlFlowGraph, pc: u16) -> Option<BlockId> {
-        for b in cfg.blocks() {
-            match cfg.content(b) {
+    pub fn pc_to_block(&self, pc: u16) -> Option<BlockId> {
+        for b in self.blocks() {
+            match self.content(b) {
                 BlockContent::Basic { lower, upper } => {
                     if *lower <= pc && pc <= *upper {
                         return Some(b);

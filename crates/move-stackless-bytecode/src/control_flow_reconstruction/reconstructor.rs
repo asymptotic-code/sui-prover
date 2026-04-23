@@ -91,9 +91,10 @@ fn reconstruct_region(
                     .iter()
                     .map(|label| {
                         let offset = ctx.label_offsets[label];
-                        let arm_block =
-                            StacklessControlFlowGraph::pc_to_block(&ctx.forward_cfg, offset)
-                                .expect("VariantSwitch label points at a known block");
+                        let arm_block = ctx
+                            .forward_cfg
+                            .pc_to_block(offset)
+                            .expect("VariantSwitch label points at a known block");
                         reconstruct_region(ctx, arm_block, Some(immediate_post_dominator))
                             .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
                     })
@@ -111,7 +112,7 @@ fn reconstruct_region(
             (_, [then_branch, else_branch]) if then_branch == else_branch => {
                 current_block = *then_branch;
             }
-            (_, [then_branch, else_branch]) => {
+            (Some(Bytecode::Branch(..)), [then_branch, else_branch]) => {
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
