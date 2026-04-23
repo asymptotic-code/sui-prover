@@ -138,11 +138,11 @@ fn reconstruct_region(
             [] => {
                 break;
             }
-            _ => {
+            [..] => {
                 ctx.forward_cfg.display();
                 ctx.back_cfg.display();
                 unimplemented!(
-                    "unexpected number of successors for non-VariantSwitch block {}",
+                    "unexpected number of successors for block {}",
                     current_block
                 );
             }
