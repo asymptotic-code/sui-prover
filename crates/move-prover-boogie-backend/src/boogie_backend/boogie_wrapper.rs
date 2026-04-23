@@ -1428,10 +1428,9 @@ impl<'env> BoogieWrapper<'env> {
             let mut execution_trace = self.extract_augmented_trace(out, &mut at);
             let mut model = Model::new(self);
             if execution_trace.is_empty() {
-                let analysis = bpl_analysis
-                    .get_or_insert_with(|| self.build_bpl_analysis(boogie_file));
-                execution_trace =
-                    self.enrich_plain_trace_fallback(&plain_trace, analysis);
+                let analysis =
+                    bpl_analysis.get_or_insert_with(|| self.build_bpl_analysis(boogie_file));
+                execution_trace = self.enrich_plain_trace_fallback(&plain_trace, analysis);
             } else {
                 self.extract_model(&mut model, out, &mut at);
             }
@@ -1497,11 +1496,7 @@ impl<'env> BoogieWrapper<'env> {
     /// number parsed from the trace entry's `(line,col)` suffix (used for
     /// mapping back to source locations), and `formatted_line` is the raw
     /// `file(line,col): label` form for display fallback.
-    fn extract_execution_trace(
-        &self,
-        out: &str,
-        at: &mut usize,
-    ) -> Vec<(Option<usize>, String)> {
+    fn extract_execution_trace(&self, out: &str, at: &mut usize) -> Vec<(Option<usize>, String)> {
         static TRACE_START: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"(?m)^Execution trace:\s*$").unwrap());
         static TRACE_ENTRY: LazyLock<Regex> = LazyLock::new(|| {
