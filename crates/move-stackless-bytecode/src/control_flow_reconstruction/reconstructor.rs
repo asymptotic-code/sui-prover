@@ -68,12 +68,18 @@ fn reconstruct_region(
         let terminator = ctx
             .block_bounds(current_block)
             .and_then(|(_, upper)| ctx.code.get(upper as usize));
+        // Structured arms are resolved by label (CFG successor order is not
+        // part of its API); `VariantSwitch` and `Branch` follow the same
+        // convention.
+        let arm_block = |label| {
+            ctx.forward_cfg
+                .pc_to_block(ctx.label_offsets[label])
+                .expect("branch label points at a known block")
+        };
         match (
             terminator,
             ctx.forward_cfg.successors(current_block).as_slice(),
         ) {
-            // N-way variant switch. Arms are resolved by label (the CFG's
-            // successor order is not part of its API).
             (Some(Bytecode::VariantSwitch(_, _, labels)), _) => {
                 let switch_at = ctx.block_bounds(current_block).unwrap().1;
                 let immediate_post_dominator = ctx
@@ -90,12 +96,7 @@ fn reconstruct_region(
                 let branches: Vec<StructuredBlock> = labels
                     .iter()
                     .map(|label| {
-                        let offset = ctx.label_offsets[label];
-                        let arm_block = ctx
-                            .forward_cfg
-                            .pc_to_block(offset)
-                            .expect("VariantSwitch label points at a known block");
-                        reconstruct_region(ctx, arm_block, Some(immediate_post_dominator))
+                        reconstruct_region(ctx, arm_block(label), Some(immediate_post_dominator))
                             .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
                     })
                     .collect();
@@ -105,14 +106,15 @@ fn reconstruct_region(
                 });
                 current_block = immediate_post_dominator;
             }
-            (_, [next]) => {
-                current_block = *next;
-            }
             // Degenerate 2-way: `if (cond) {}` or `if (cond) {} else {}`.
-            (_, [then_branch, else_branch]) if then_branch == else_branch => {
-                current_block = *then_branch;
+            (Some(Bytecode::Branch(_, then_label, else_label, _)), _)
+                if then_label == else_label =>
+            {
+                current_block = arm_block(then_label);
             }
-            (Some(Bytecode::Branch(..)), [then_branch, else_branch]) => {
+            (Some(Bytecode::Branch(_, then_label, else_label, _)), _) => {
+                let then_block = arm_block(then_label);
+                let else_block = arm_block(else_label);
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
@@ -122,17 +124,17 @@ fn reconstruct_region(
                         panic!("no post-dominator found for block={}", current_block);
                     });
                 let then_region =
-                    reconstruct_region(ctx, *then_branch, Some(immediate_post_dominator))
+                    reconstruct_region(ctx, then_block, Some(immediate_post_dominator))
                         .unwrap_or_else(|| {
                             ctx.forward_cfg.display();
                             ctx.back_cfg.display();
                             panic!(
                                 "no region found for if block={}, then block={}, else block={}, merge block={}",
-                                current_block, *then_branch, *else_branch, immediate_post_dominator
+                                current_block, then_block, else_block, immediate_post_dominator
                             )
                         });
                 let else_region =
-                    reconstruct_region(ctx, *else_branch, Some(immediate_post_dominator));
+                    reconstruct_region(ctx, else_block, Some(immediate_post_dominator));
                 blocks.push(
                     StructuredBlock::IfThenElse {
                         cond_at: ctx.block_bounds(current_block).unwrap().1,
@@ -142,6 +144,9 @@ fn reconstruct_region(
                     .optimize_to_chain(),
                 );
                 current_block = immediate_post_dominator;
+            }
+            (_, [next]) => {
+                current_block = *next;
             }
             (_, []) => {
                 break;
