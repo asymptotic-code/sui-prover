@@ -67,51 +67,48 @@ fn reconstruct_region(
             blocks.push(StructuredBlock::Basic { lower, upper });
         };
         let successors = ctx.forward_cfg.successors(current_block).clone();
-        // If the block's terminator is a VariantSwitch, build an N-way
-        // structured switch by reading the variant-labeled arms directly from
-        // the bytecode — `successors` on the CFG has no ordering guarantees.
         let terminator = bounds.and_then(|(_, upper)| ctx.code.get(upper as usize));
-        if let Some(Bytecode::VariantSwitch(_, _, labels)) = terminator {
-            let switch_at = bounds.unwrap().1;
-            let immediate_post_dominator = ctx
-                .back_cfg
-                .find_immediate_dominator(current_block)
-                .unwrap_or_else(|| {
-                    ctx.forward_cfg.display();
-                    ctx.back_cfg.display();
-                    panic!(
-                        "no post-dominator found for VariantSwitch block={}",
-                        current_block
-                    );
+        match (terminator, successors.as_slice()) {
+            // N-way variant switch. Arms are resolved by label (the CFG's
+            // successor order is not part of its API).
+            (Some(Bytecode::VariantSwitch(_, _, labels)), _) => {
+                let switch_at = bounds.unwrap().1;
+                let immediate_post_dominator = ctx
+                    .back_cfg
+                    .find_immediate_dominator(current_block)
+                    .unwrap_or_else(|| {
+                        ctx.forward_cfg.display();
+                        ctx.back_cfg.display();
+                        panic!(
+                            "no post-dominator found for VariantSwitch block={}",
+                            current_block
+                        );
+                    });
+                let branches: Vec<StructuredBlock> = labels
+                    .iter()
+                    .map(|label| {
+                        let offset = ctx.label_offsets[label];
+                        let arm_block =
+                            StacklessControlFlowGraph::pc_to_block(&ctx.forward_cfg, offset)
+                                .expect("VariantSwitch label points at a known block");
+                        reconstruct_region(ctx, arm_block, Some(immediate_post_dominator))
+                            .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
+                    })
+                    .collect();
+                blocks.push(StructuredBlock::VariantSwitch {
+                    switch_at,
+                    branches,
                 });
-            let branches: Vec<StructuredBlock> = labels
-                .iter()
-                .map(|label| {
-                    let offset = ctx.label_offsets[label];
-                    let arm_block =
-                        StacklessControlFlowGraph::pc_to_block(&ctx.forward_cfg, offset)
-                            .expect("VariantSwitch label points at a known block");
-                    reconstruct_region(ctx, arm_block, Some(immediate_post_dominator))
-                        .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
-                })
-                .collect();
-            blocks.push(StructuredBlock::VariantSwitch {
-                switch_at,
-                branches,
-            });
-            current_block = immediate_post_dominator;
-            continue;
-        }
-        match successors.as_slice() {
-            [next] => {
+                current_block = immediate_post_dominator;
+            }
+            (_, [next]) => {
                 current_block = *next;
             }
-            [then_branch, else_branch] => {
-                if then_branch == else_branch {
-                    // `if (condition) {}` or `if (condition) {} else {}`
-                    current_block = *then_branch;
-                    continue;
-                }
+            // Degenerate 2-way: `if (cond) {}` or `if (cond) {} else {}`.
+            (_, [then_branch, else_branch]) if then_branch == else_branch => {
+                current_block = *then_branch;
+            }
+            (_, [then_branch, else_branch]) => {
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
@@ -142,10 +139,10 @@ fn reconstruct_region(
                 );
                 current_block = immediate_post_dominator;
             }
-            [] => {
+            (_, []) => {
                 break;
             }
-            [..] => {
+            (_, [..]) => {
                 ctx.forward_cfg.display();
                 ctx.back_cfg.display();
                 unimplemented!(
