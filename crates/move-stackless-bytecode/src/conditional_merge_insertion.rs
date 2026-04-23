@@ -32,7 +32,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Information about a merge instruction to be emitted. Either a 2-way
 /// `Operation::IfThenElse` for `if/else` merges, or an N-way
 /// `Operation::VariantMerge` for `match` arm merges.
-#[derive(Clone)]
 enum MergeInfo {
     IfThenElse {
         fresh: usize,
@@ -45,6 +44,49 @@ enum MergeInfo {
         enum_temp: usize,
         arm_vers: Vec<usize>,
     },
+}
+
+impl MergeInfo {
+    fn emit(self, builder: &mut FunctionDataBuilder<'_>) {
+        match self {
+            MergeInfo::IfThenElse {
+                fresh,
+                cond,
+                then_ver,
+                else_ver,
+            } => {
+                builder.set_next_debug_comment(format!(
+                    "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
+                    fresh, cond, then_ver, else_ver
+                ));
+                builder.emit_with(|id| {
+                    Bytecode::Call(
+                        id,
+                        vec![fresh],
+                        Operation::IfThenElse,
+                        vec![cond, then_ver, else_ver],
+                        None,
+                    )
+                });
+            }
+            MergeInfo::VariantMerge {
+                fresh,
+                enum_temp,
+                arm_vers,
+            } => {
+                builder.set_next_debug_comment(format!(
+                    "conditional_merge_insertion: t{} := variant_merge(t{}, [{}])",
+                    fresh,
+                    enum_temp,
+                    arm_vers.iter().map(|v| format!("t{}", v)).join(", ")
+                ));
+                let srcs = std::iter::once(enum_temp).chain(arm_vers).collect();
+                builder.emit_with(|id| {
+                    Bytecode::Call(id, vec![fresh], Operation::VariantMerge, srcs, None)
+                });
+            }
+        }
+    }
 }
 
 /// State maintained during the structured control flow walk.
@@ -90,8 +132,8 @@ impl<'env> VersionState<'env> {
         }
 
         // emit collected merges, then single Ret
-        for merge in &merges {
-            Self::emit_merge_bytecode(&mut self.builder, merge);
+        for merge in merges {
+            merge.emit(&mut self.builder);
         }
         let attr = self.builder.new_attr();
         self.builder
@@ -186,18 +228,11 @@ impl<'env> VersionState<'env> {
                 switch_at,
                 branches,
             } => {
-                let per_branch: Vec<Option<Vec<usize>>> = branches
+                // Propagate None if any arm has neither Ret nor fallthrough.
+                let sets: Vec<Vec<usize>> = branches
                     .iter()
                     .map(|b| self.merge_return_temps(b, merges, fallthrough.clone()))
-                    .collect();
-
-                // If any arm has no return (neither Ret nor fallthrough), we
-                // cannot merge; propagate None like the IfThenElse case does
-                // for asymmetric branches.
-                if per_branch.iter().any(Option::is_none) {
-                    return None;
-                }
-                let sets: Vec<Vec<usize>> = per_branch.into_iter().map(Option::unwrap).collect();
+                    .collect::<Option<_>>()?;
 
                 // All arms agree → no merge.
                 if sets.windows(2).all(|w| w[0] == w[1]) {
@@ -210,10 +245,7 @@ impl<'env> VersionState<'env> {
                     "mismatched return value counts across match arms"
                 );
 
-                let enum_temp = match &self.builder.data.code[*switch_at as usize] {
-                    Bytecode::VariantSwitch(_, idx, _) => *idx,
-                    _ => unreachable!("expected VariantSwitch at switch_at"),
-                };
+                let enum_temp = self.enum_temp_at(*switch_at);
 
                 // One VariantMerge per return position, each collecting the N
                 // arm versions for that position.
@@ -487,13 +519,7 @@ impl<'env> VersionState<'env> {
         switch_at: CodeOffset,
         branches: &[StructuredBlock],
     ) -> Vec<MergeInfo> {
-        let enum_temp = match &self.builder.data.code[switch_at as usize] {
-            Bytecode::VariantSwitch(_, idx, _) => *idx,
-            _ => unreachable!(
-                "expected VariantSwitch at switch_at, found {:?}",
-                self.builder.data.code[switch_at as usize]
-            ),
-        };
+        let enum_temp = self.enum_temp_at(switch_at);
 
         // Snapshot and process each arm, remembering its end-of-arm versions.
         let saved_versions = self.current_version.clone();
@@ -507,9 +533,8 @@ impl<'env> VersionState<'env> {
             per_branch_versions.push(std::mem::take(&mut self.current_version));
         }
 
-        // Reset; we'll rebuild current_version from the merged values.
-        self.current_version = saved_versions.clone();
-
+        // `current_version` is empty after the last `mem::take`; we rebuild
+        // it by inserting the merged version for every var below.
         for (&var, &saved_ver) in &saved_versions {
             let arm_vers: Vec<usize> = per_branch_versions
                 .iter()
@@ -547,60 +572,21 @@ impl<'env> VersionState<'env> {
         let code = std::mem::take(&mut self.builder.data.code);
         for (pc, bc) in code.into_iter().enumerate() {
             self.builder.emit(bc);
-
-            // emit merge instructions scheduled at this PC
-            let to_emit: Vec<_> = self
-                .merges_at
-                .get(&(pc as CodeOffset))
-                .cloned()
-                .unwrap_or_default();
-            for merge in &to_emit {
-                Self::emit_merge_bytecode(&mut self.builder, merge);
+            if let Some(merges) = self.merges_at.remove(&(pc as CodeOffset)) {
+                for merge in merges {
+                    merge.emit(&mut self.builder);
+                }
             }
         }
     }
 
-    fn emit_merge_bytecode(builder: &mut FunctionDataBuilder<'env>, merge: &MergeInfo) {
-        match merge {
-            MergeInfo::IfThenElse {
-                fresh,
-                cond,
-                then_ver,
-                else_ver,
-            } => {
-                builder.set_next_debug_comment(format!(
-                    "conditional_merge_insertion: t{} := if_then_else(t{}, t{}, t{})",
-                    fresh, cond, then_ver, else_ver
-                ));
-                let (fresh, cond, then_ver, else_ver) = (*fresh, *cond, *then_ver, *else_ver);
-                builder.emit_with(|id| {
-                    Bytecode::Call(
-                        id,
-                        vec![fresh],
-                        Operation::IfThenElse,
-                        vec![cond, then_ver, else_ver],
-                        None,
-                    )
-                });
-            }
-            MergeInfo::VariantMerge {
-                fresh,
-                enum_temp,
-                arm_vers,
-            } => {
-                builder.set_next_debug_comment(format!(
-                    "conditional_merge_insertion: t{} := variant_merge(t{}, [{}])",
-                    fresh,
-                    enum_temp,
-                    arm_vers.iter().map(|v| format!("t{}", v)).join(", ")
-                ));
-                let fresh = *fresh;
-                let mut srcs = vec![*enum_temp];
-                srcs.extend(arm_vers.iter().copied());
-                builder.emit_with(|id| {
-                    Bytecode::Call(id, vec![fresh], Operation::VariantMerge, srcs, None)
-                });
-            }
+    fn enum_temp_at(&self, switch_at: CodeOffset) -> usize {
+        match &self.builder.data.code[switch_at as usize] {
+            Bytecode::VariantSwitch(_, idx, _) => *idx,
+            _ => unreachable!(
+                "expected VariantSwitch at switch_at, found {:?}",
+                self.builder.data.code[switch_at as usize]
+            ),
         }
     }
 }
