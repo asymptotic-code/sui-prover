@@ -106,14 +106,13 @@ fn reconstruct_region(
                 });
                 current_block = immediate_post_dominator;
             }
-            // Degenerate 2-way: `if (cond) {}` or `if (cond) {} else {}`.
-            (Some(Bytecode::Branch(_, then_label, else_label, _)), _)
-                if then_label == else_label =>
-            {
-                current_block = arm_block(then_label);
-            }
             (Some(Bytecode::Branch(_, then_label, else_label, _)), _) => {
                 let then_block = arm_block(then_label);
+                if then_label == else_label {
+                    // Degenerate 2-way: `if (cond) {}` or `if (cond) {} else {}`.
+                    current_block = then_block;
+                    continue;
+                }
                 let else_block = arm_block(else_label);
                 let immediate_post_dominator = ctx
                     .back_cfg
