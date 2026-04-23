@@ -62,17 +62,20 @@ fn reconstruct_region(
     let mut current_block = start_block;
     let mut blocks: Vec<StructuredBlock> = Vec::new();
     while Some(current_block) != stop_block {
-        let bounds = ctx.block_bounds(current_block);
-        if let Some((lower, upper)) = bounds {
+        if let Some((lower, upper)) = ctx.block_bounds(current_block) {
             blocks.push(StructuredBlock::Basic { lower, upper });
         };
-        let successors = ctx.forward_cfg.successors(current_block).clone();
-        let terminator = bounds.and_then(|(_, upper)| ctx.code.get(upper as usize));
-        match (terminator, successors.as_slice()) {
+        let terminator = ctx
+            .block_bounds(current_block)
+            .and_then(|(_, upper)| ctx.code.get(upper as usize));
+        match (
+            terminator,
+            ctx.forward_cfg.successors(current_block).as_slice(),
+        ) {
             // N-way variant switch. Arms are resolved by label (the CFG's
             // successor order is not part of its API).
             (Some(Bytecode::VariantSwitch(_, _, labels)), _) => {
-                let switch_at = bounds.unwrap().1;
+                let switch_at = ctx.block_bounds(current_block).unwrap().1;
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
@@ -131,7 +134,7 @@ fn reconstruct_region(
                     reconstruct_region(ctx, *else_branch, Some(immediate_post_dominator));
                 blocks.push(
                     StructuredBlock::IfThenElse {
-                        cond_at: bounds.unwrap().1,
+                        cond_at: ctx.block_bounds(current_block).unwrap().1,
                         then_branch: Box::new(then_region),
                         else_branch: else_region.map(Box::new),
                     }
