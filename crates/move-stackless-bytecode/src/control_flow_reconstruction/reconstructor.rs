@@ -1,8 +1,9 @@
 // Copyright (c) Asymptotic
 // SPDX-License-Identifier: Apache-2.0
-use crate::stackless_bytecode::{Bytecode, Operation};
+use crate::stackless_bytecode::{Bytecode, Label, Operation};
 use crate::stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph};
 use move_binary_format::file_format::CodeOffset;
+use std::collections::BTreeMap;
 
 use super::types::StructuredBlock;
 
@@ -11,6 +12,7 @@ struct ReconstructionContext<'ctx> {
     code: &'ctx [Bytecode],
     forward_cfg: StacklessControlFlowGraph,
     back_cfg: StacklessControlFlowGraph,
+    label_offsets: BTreeMap<Label, CodeOffset>,
 }
 
 impl<'ctx> ReconstructionContext<'ctx> {
@@ -19,6 +21,7 @@ impl<'ctx> ReconstructionContext<'ctx> {
             code,
             forward_cfg: StacklessControlFlowGraph::new_forward_with_options(code, true),
             back_cfg: StacklessControlFlowGraph::new_backward_with_options(code, false, true),
+            label_offsets: Bytecode::label_offsets(code),
         }
     }
 
@@ -65,10 +68,10 @@ fn reconstruct_region(
         };
         let successors = ctx.forward_cfg.successors(current_block).clone();
         // If the block's terminator is a VariantSwitch, build an N-way
-        // structured switch regardless of the arity (a 2-variant enum has
-        // exactly 2 successors, which would otherwise be mistaken for an if).
+        // structured switch by reading the variant-labeled arms directly from
+        // the bytecode — `successors` on the CFG has no ordering guarantees.
         let terminator = bounds.and_then(|(_, upper)| ctx.code.get(upper as usize));
-        if !successors.is_empty() && matches!(terminator, Some(Bytecode::VariantSwitch(..))) {
+        if let Some(Bytecode::VariantSwitch(_, _, labels)) = terminator {
             let switch_at = bounds.unwrap().1;
             let immediate_post_dominator = ctx
                 .back_cfg
@@ -81,10 +84,14 @@ fn reconstruct_region(
                         current_block
                     );
                 });
-            let branches: Vec<StructuredBlock> = successors
+            let branches: Vec<StructuredBlock> = labels
                 .iter()
-                .map(|s| {
-                    reconstruct_region(ctx, *s, Some(immediate_post_dominator))
+                .map(|label| {
+                    let offset = ctx.label_offsets[label];
+                    let arm_block =
+                        StacklessControlFlowGraph::pc_to_block(&ctx.forward_cfg, offset)
+                            .expect("VariantSwitch label points at a known block");
+                    reconstruct_region(ctx, arm_block, Some(immediate_post_dominator))
                         .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
                 })
                 .collect();
