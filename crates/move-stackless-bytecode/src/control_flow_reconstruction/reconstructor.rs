@@ -68,10 +68,7 @@ fn reconstruct_region(
         let terminator = ctx
             .block_bounds(current_block)
             .and_then(|(_, upper)| ctx.code.get(upper as usize));
-        // Structured arms are resolved by label (CFG successor order is not
-        // part of its API); `VariantSwitch` and `Branch` follow the same
-        // convention.
-        let arm_block = |label| {
+        let block_at_label = |label| {
             ctx.forward_cfg
                 .pc_to_block(ctx.label_offsets[label])
                 .expect("branch label points at a known block")
@@ -96,8 +93,12 @@ fn reconstruct_region(
                 let branches: Vec<StructuredBlock> = labels
                     .iter()
                     .map(|label| {
-                        reconstruct_region(ctx, arm_block(label), Some(immediate_post_dominator))
-                            .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
+                        reconstruct_region(
+                            ctx,
+                            block_at_label(label),
+                            Some(immediate_post_dominator),
+                        )
+                        .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
                     })
                     .collect();
                 blocks.push(StructuredBlock::VariantSwitch {
@@ -107,13 +108,13 @@ fn reconstruct_region(
                 current_block = immediate_post_dominator;
             }
             (Some(Bytecode::Branch(_, then_label, else_label, _)), _) => {
-                let then_block = arm_block(then_label);
-                if then_label == else_label {
-                    // Degenerate 2-way: `if (cond) {}` or `if (cond) {} else {}`.
-                    current_block = then_block;
+                let then_branch = block_at_label(then_label);
+                let else_branch = block_at_label(else_label);
+                if then_branch == else_branch {
+                    // `if (condition) {}` or `if (condition) {} else {}`
+                    current_block = then_branch;
                     continue;
                 }
-                let else_block = arm_block(else_label);
                 let immediate_post_dominator = ctx
                     .back_cfg
                     .find_immediate_dominator(current_block)
@@ -123,17 +124,17 @@ fn reconstruct_region(
                         panic!("no post-dominator found for block={}", current_block);
                     });
                 let then_region =
-                    reconstruct_region(ctx, then_block, Some(immediate_post_dominator))
+                    reconstruct_region(ctx, then_branch, Some(immediate_post_dominator))
                         .unwrap_or_else(|| {
                             ctx.forward_cfg.display();
                             ctx.back_cfg.display();
                             panic!(
                                 "no region found for if block={}, then block={}, else block={}, merge block={}",
-                                current_block, then_block, else_block, immediate_post_dominator
+                                current_block, then_branch, else_branch, immediate_post_dominator
                             )
                         });
                 let else_region =
-                    reconstruct_region(ctx, else_block, Some(immediate_post_dominator));
+                    reconstruct_region(ctx, else_branch, Some(immediate_post_dominator));
                 blocks.push(
                     StructuredBlock::IfThenElse {
                         cond_at: ctx.block_bounds(current_block).unwrap().1,
