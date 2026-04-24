@@ -226,19 +226,19 @@ impl<'env> VersionState<'env> {
                 branches,
             } => {
                 // propagate None if any arm has neither Ret nor fallthrough
-                let sets: Vec<Vec<usize>> = branches
+                let arm_rets: Vec<Vec<usize>> = branches
                     .iter()
                     .map(|b| self.merge_return_temps(b, merges, fallthrough.clone()))
                     .collect::<Option<_>>()?;
 
                 // all arms agree → no merge
-                if sets.windows(2).all(|w| w[0] == w[1]) {
-                    return Some(sets.into_iter().next().unwrap());
+                if arm_rets.windows(2).all(|w| w[0] == w[1]) {
+                    return Some(arm_rets[0].clone());
                 }
 
-                let arity = sets[0].len();
+                let arity = arm_rets[0].len();
                 assert!(
-                    sets.iter().all(|s| s.len() == arity),
+                    arm_rets.iter().all(|s| s.len() == arity),
                     "mismatched return value counts across match arms"
                 );
 
@@ -248,7 +248,7 @@ impl<'env> VersionState<'env> {
                 // arm versions for that position
                 let fresh_rets: Vec<usize> = (0..arity)
                     .map(|pos| {
-                        let arm_vers: Vec<usize> = sets.iter().map(|s| s[pos]).collect();
+                        let arm_vers: Vec<usize> = arm_rets.iter().map(|s| s[pos]).collect();
                         if arm_vers.windows(2).all(|w| w[0] == w[1]) {
                             return arm_vers[0];
                         }
@@ -350,7 +350,7 @@ impl<'env> VersionState<'env> {
                 switch_at,
                 branches,
             } => {
-                let per_branch: Vec<BTreeSet<usize>> = branches
+                let arm_assigned: Vec<BTreeSet<usize>> = branches
                     .iter()
                     .map(|b| self.compute_completed_at(b, assigned_before))
                     .collect();
@@ -358,18 +358,18 @@ impl<'env> VersionState<'env> {
                 // a variable completes at this switch if it's known in every
                 // branch (either assigned-before or assigned in the branch)
                 // and newly assigned in at least one branch
-                let known_everywhere: BTreeSet<usize> = per_branch
+                let known_everywhere: BTreeSet<usize> = arm_assigned
                     .iter()
                     .map(|a| -> BTreeSet<usize> { assigned_before.union(a).copied().collect() })
                     .reduce(|u, v| u.intersection(&v).copied().collect())
-                    .unwrap_or_default();
+                    .expect("VariantSwitch has at least one arm");
                 for var in &known_everywhere {
-                    if per_branch.iter().any(|a| a.contains(var)) {
+                    if arm_assigned.iter().any(|a| a.contains(var)) {
                         self.completed_at.insert(*var, *switch_at);
                     }
                 }
 
-                per_branch.into_iter().flatten().collect()
+                arm_assigned.into_iter().flatten().collect()
             }
         }
     }
@@ -514,22 +514,18 @@ impl<'env> VersionState<'env> {
         // snapshot and process each arm, remembering its end-of-arm versions
         let saved_versions = self.current_version.clone();
         let mut merges: Vec<MergeInfo> = Vec::new();
-        let mut per_branch_versions: Vec<BTreeMap<usize, usize>> =
-            Vec::with_capacity(branches.len());
+        let mut arm_versions: Vec<BTreeMap<usize, usize>> = Vec::with_capacity(branches.len());
 
         for branch in branches {
             self.current_version = saved_versions.clone();
             merges.extend(self.process_block(branch));
-            per_branch_versions.push(std::mem::take(&mut self.current_version));
+            arm_versions.push(std::mem::take(&mut self.current_version));
         }
 
         // `current_version` is empty after the last `mem::take`; we rebuild
         // it by inserting the merged version for every var below
-        for (&var, &saved_ver) in &saved_versions {
-            let arm_vers: Vec<usize> = per_branch_versions
-                .iter()
-                .map(|m| *m.get(&var).unwrap_or(&saved_ver))
-                .collect();
+        for &var in saved_versions.keys() {
+            let arm_vers: Vec<usize> = arm_versions.iter().map(|m| m[&var]).collect();
 
             // all arms agree → keep that single version
             if arm_vers.windows(2).all(|w| w[0] == w[1]) {
