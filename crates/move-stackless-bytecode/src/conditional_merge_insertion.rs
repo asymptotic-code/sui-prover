@@ -225,13 +225,13 @@ impl<'env> VersionState<'env> {
                 switch_at,
                 branches,
             } => {
-                // Propagate None if any arm has neither Ret nor fallthrough.
+                // propagate None if any arm has neither Ret nor fallthrough
                 let sets: Vec<Vec<usize>> = branches
                     .iter()
                     .map(|b| self.merge_return_temps(b, merges, fallthrough.clone()))
                     .collect::<Option<_>>()?;
 
-                // All arms agree → no merge.
+                // all arms agree → no merge
                 if sets.windows(2).all(|w| w[0] == w[1]) {
                     return Some(sets.into_iter().next().unwrap());
                 }
@@ -244,8 +244,8 @@ impl<'env> VersionState<'env> {
 
                 let enum_temp = self.enum_temp_at(*switch_at);
 
-                // One VariantMerge per return position, each collecting the N
-                // arm versions for that position.
+                // one VariantMerge per return position, each collecting the N
+                // arm versions for that position
                 let merged: Vec<usize> = (0..arity)
                     .map(|pos| {
                         let arm_vers: Vec<usize> = sets.iter().map(|s| s[pos]).collect();
@@ -355,9 +355,9 @@ impl<'env> VersionState<'env> {
                     .map(|b| self.compute_completed_at(b, assigned_before))
                     .collect();
 
-                // A variable completes at this switch if it's known in every
+                // a variable completes at this switch if it's known in every
                 // branch (either assigned-before or assigned in the branch)
-                // and newly assigned in at least one branch.
+                // and newly assigned in at least one branch
                 let known_everywhere: BTreeSet<usize> = per_branch
                     .iter()
                     .map(|a| -> BTreeSet<usize> { assigned_before.union(a).copied().collect() })
@@ -511,7 +511,7 @@ impl<'env> VersionState<'env> {
     ) -> Vec<MergeInfo> {
         let enum_temp = self.enum_temp_at(switch_at);
 
-        // Snapshot and process each arm, remembering its end-of-arm versions.
+        // snapshot and process each arm, remembering its end-of-arm versions
         let saved_versions = self.current_version.clone();
         let mut merges: Vec<MergeInfo> = Vec::new();
         let mut per_branch_versions: Vec<BTreeMap<usize, usize>> =
@@ -524,21 +524,21 @@ impl<'env> VersionState<'env> {
         }
 
         // `current_version` is empty after the last `mem::take`; we rebuild
-        // it by inserting the merged version for every var below.
+        // it by inserting the merged version for every var below
         for (&var, &saved_ver) in &saved_versions {
             let arm_vers: Vec<usize> = per_branch_versions
                 .iter()
                 .map(|m| *m.get(&var).unwrap_or(&saved_ver))
                 .collect();
 
-            // All arms agree → keep that single version.
+            // all arms agree → keep that single version
             if arm_vers.windows(2).all(|w| w[0] == w[1]) {
                 self.current_version.insert(var, arm_vers[0]);
                 continue;
             }
 
-            // Use the original variable as the merge dest if this switch is
-            // its completion point — mirrors `process_if_then_else`.
+            // use the original variable as the merge dest if this switch is
+            // its completion point — mirrors `process_if_then_else`
             let fresh = if self.completed_at.get(&var) == Some(&switch_at) {
                 self.completed.insert(var);
                 var
