@@ -85,9 +85,7 @@ impl PureFunctionAnalysisProcessor {
                 Jump(_, _) => None,
                 Branch(_, _, _, _) => None,
                 Label(_, _) => None,
-                VariantSwitch(_, _, _) => {
-                    Some(format!("{prefix} cannot have variant switch operations"))
-                }
+                VariantSwitch(_, _, _) => None,
                 Abort(_, _) => Some(format!("{prefix} cannot abort")),
                 // should be unreachable
                 SaveMem(_, _, _) => Some(format!("{prefix} cannot use memory save operations")),

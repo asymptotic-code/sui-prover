@@ -60,16 +60,17 @@ use crate::boogie_backend::{
     boogie_helpers::{
         boogie_address_blob, boogie_bv_type, boogie_byte_blob, boogie_constant_blob,
         boogie_debug_track_abort, boogie_debug_track_local, boogie_debug_track_return,
-        boogie_declare_global, boogie_dynamic_field_sel, boogie_dynamic_field_update,
-        boogie_enum_field_name, boogie_enum_field_update, boogie_enum_name,
-        boogie_enum_variant_ctor_name, boogie_equality_for_type, boogie_field_sel,
-        boogie_field_update, boogie_function_bv_name, boogie_function_name, boogie_inst_suffix,
-        boogie_make_vec_from_strings, boogie_modifies_memory_name, boogie_num_literal,
-        boogie_num_type_base, boogie_num_type_string_capital, boogie_resource_memory_name,
-        boogie_spec_global_var_name, boogie_struct_name, boogie_temp, boogie_temp_from_suffix,
-        boogie_type, boogie_type_param, boogie_type_suffix, boogie_type_suffix_bv,
-        boogie_type_suffix_for_struct, boogie_well_formed_check, boogie_well_formed_expr_bv,
-        FunctionTranslationStyle, TypeIdentToken,
+        boogie_declare_global, boogie_default_value, boogie_dynamic_field_sel,
+        boogie_dynamic_field_update, boogie_enum_field_name, boogie_enum_field_update,
+        boogie_enum_name, boogie_enum_variant_ctor_name, boogie_equality_for_type,
+        boogie_field_sel, boogie_field_update, boogie_function_bv_name, boogie_function_name,
+        boogie_inst_suffix, boogie_make_vec_from_strings, boogie_modifies_memory_name,
+        boogie_num_literal, boogie_num_type_base, boogie_num_type_string_capital,
+        boogie_resource_memory_name, boogie_spec_global_var_name, boogie_struct_name, boogie_temp,
+        boogie_temp_from_suffix, boogie_type, boogie_type_param, boogie_type_suffix,
+        boogie_type_suffix_bv, boogie_type_suffix_for_struct, boogie_variant_merge_expr,
+        boogie_well_formed_check, boogie_well_formed_expr_bv, FunctionTranslationStyle,
+        TypeIdentToken,
     },
     options::BoogieOptions,
     spec_translator::SpecTranslator,
@@ -3114,6 +3115,24 @@ impl<'env> FunctionTranslator<'env> {
                         }
                         continue;
                     }
+                    // Enum variant destructuring: `let E::V(x, y) = e`. Like the
+                    // struct case, bind each destination to the corresponding
+                    // field selector on the source. Pure functions reject
+                    // mutable references, so the by-mut-ref branch of the
+                    // non-pure translator (bytecode_translator.rs:4865) is
+                    // unreachable here.
+                    if let Operation::UnpackVariant(mid, eid, vid, _inst, _ref_type) = op {
+                        let enum_env = fun_target.global_env().get_module(*mid).into_enum(*eid);
+                        let variant_env = enum_env.get_variant(*vid);
+                        let src_str = fmt_temp(srcs[0]);
+                        for (i, ref field_env) in variant_env.get_fields().enumerate() {
+                            bindings.push((
+                                format!("$t{}", dests[i]),
+                                format!("{}->{}", src_str, boogie_enum_field_name(field_env)),
+                            ));
+                        }
+                        continue;
+                    }
                     // Tuple-returning function call: a pure body that
                     // destructures a multi-return callee. Bind the call
                     // result to a synthetic tuple temp, then project each
@@ -3178,6 +3197,13 @@ impl<'env> FunctionTranslator<'env> {
                             } else {
                                 panic!("unreachable: expected values for IfThenElse expressions")
                             }
+                        } else if let VariantMerge = op {
+                            let [enum_temp, arm_vers @ ..] = srcs.as_slice() else {
+                                panic!("VariantMerge requires at least 1 source");
+                            };
+                            let arm_exprs: Vec<String> =
+                                arm_vers.iter().map(|v| fmt_temp(*v)).collect();
+                            boogie_variant_merge_expr(&fmt_temp(*enum_temp), &arm_exprs)
                         } else if let Function(mid, fid, inst) = op {
                             let callee_env = self.parent.env.get_function(mid.qualified(*fid));
                             let native_fn =
@@ -3261,6 +3287,39 @@ impl<'env> FunctionTranslator<'env> {
                             let all_args = regular_args.into_iter().chain(dynamic_args).join(", ");
 
                             format!("{}({})", boogie_struct_name(&struct_env, inst), all_args)
+                        } else if let Operation::PackVariant(mid, eid, vid, inst) = op {
+                            let inst = &self.inst_slice(inst);
+                            let enum_env = fun_target.global_env().get_module(*mid).into_enum(*eid);
+                            let variant_env = enum_env.get_variant(*vid);
+                            // Construct the enum datatype directly rather than
+                            // calling the procedure-form variant constructor
+                            // (procedures aren't expressions). For fields of
+                            // variants other than `vid`, fill with defaults;
+                            // `$IsEqual` ignores them because their $variant_id
+                            // doesn't match.
+                            let env = fun_target.global_env();
+                            let mut active_args = srcs.iter().map(|s| fmt_temp(*s));
+                            let variant_name = variant_env.get_name();
+                            let all_field_args = enum_env
+                                .get_all_fields()
+                                .map(|field| {
+                                    let EnclosingEnv::Variant(vr) = &field.parent_env else {
+                                        unreachable!();
+                                    };
+                                    if vr.get_name() == variant_name {
+                                        active_args
+                                            .next()
+                                            .expect("source arg for active variant field")
+                                    } else {
+                                        boogie_default_value(
+                                            env,
+                                            &field.get_type().instantiate(inst),
+                                        )
+                                    }
+                                })
+                                .chain(std::iter::once(variant_env.get_tag().to_string()))
+                                .join(", ");
+                            format!("{}({})", boogie_enum_name(&enum_env, inst), all_field_args)
                         } else if matches!(op, Operation::Eq | Operation::Neq) {
                             // Handle equality/inequality using $IsEqual functions to support
                             // non-extensional types like vectors and tables
@@ -3352,8 +3411,14 @@ impl<'env> FunctionTranslator<'env> {
                         final_return_expr = Some(format!("{}({})", name, args));
                     }
                 }
-                Branch(..) | Jump(..) | Label(..) | Nop(..) => {} // Skip control flow bytecodes that are summarized by if_then_else(...)
-                VariantSwitch(..) | Abort(..) | SaveMem(..) | Prop(..) => {
+                Branch(..) | Jump(..) | Label(..) | Nop(..) | VariantSwitch(..) => {
+                    // Control-flow bytecodes. VariantSwitch is consumed
+                    // structurally by `ConditionalMergeInsertionProcessor`,
+                    // which emits a single `Operation::VariantMerge` per
+                    // divergent variable; the VariantSwitch bytecode itself is
+                    // skipped here.
+                }
+                Abort(..) | SaveMem(..) | Prop(..) => {
                     panic!(
                         "Unsupported bytecode for #[ext(pure)] target: {:?}",
                         bytecode
@@ -3763,7 +3828,10 @@ impl<'env> FunctionTranslator<'env> {
                     // skip control flow bytecodes that are now handled structurally
                     if matches!(
                         bytecode,
-                        Bytecode::Jump(..) | Bytecode::Branch(..) | Bytecode::Label(..)
+                        Bytecode::Jump(..)
+                            | Bytecode::Branch(..)
+                            | Bytecode::Label(..)
+                            | Bytecode::VariantSwitch(..)
                     ) {
                         continue;
                     }
@@ -3796,7 +3864,58 @@ impl<'env> FunctionTranslator<'env> {
                     else_branch.as_deref(),
                 );
             }
+            StructuredBlock::VariantSwitch {
+                switch_at,
+                branches,
+            } => {
+                self.translate_variant_switch(last_tracked_loc, *switch_at, branches);
+            }
         }
+    }
+
+    /// Translate a structured variant switch as nested Boogie if/else-if on
+    /// the `$variant_id` tag. The match is total, so the last branch is the
+    /// unconditional else.
+    fn translate_variant_switch(
+        &mut self,
+        last_tracked_loc: &mut Option<(Loc, LineIndex)>,
+        switch_at: u16,
+        branches: &[StructuredBlock],
+    ) {
+        let code = self.fun_target.get_bytecode();
+        let switched = match &code[switch_at as usize] {
+            Bytecode::VariantSwitch(_, idx, _) => *idx,
+            _ => panic!(
+                "expected VariantSwitch at switch_at={}, got {}",
+                switch_at,
+                code[switch_at as usize].display(self.fun_target, &BTreeMap::default())
+            ),
+        };
+        let switched_str = format!("$t{}", switched);
+        let last = branches.len() - 1;
+        for (i, branch) in branches.iter().enumerate() {
+            if i == 0 {
+                emitln!(
+                    self.writer(),
+                    "if ({}->$variant_id == {}) {{",
+                    switched_str,
+                    i
+                );
+            } else if i == last {
+                emitln!(self.writer(), "} else {");
+            } else {
+                emitln!(
+                    self.writer(),
+                    "}} else if ({}->$variant_id == {}) {{",
+                    switched_str,
+                    i
+                );
+            }
+            self.writer().indent();
+            self.translate_structured_block(last_tracked_loc, branch);
+            self.writer().unindent();
+        }
+        emitln!(self.writer(), "}");
     }
 
     fn translate_if_chain(
@@ -5745,6 +5864,12 @@ impl<'env> FunctionTranslator<'env> {
                             true_expr_str,
                             false_expr_str
                         );
+                    }
+                    VariantMerge => {
+                        let arm_exprs: Vec<String> =
+                            srcs[1..].iter().map(|v| str_local(*v)).collect();
+                        let expr = boogie_variant_merge_expr(&str_local(srcs[0]), &arm_exprs);
+                        emitln!(self.writer(), "{} := {};", str_local(dests[0]), expr);
                     }
                     Quantifier(qt, qid, inst, li) => {
                         let qfun_env = self.parent.env.get_function(*qid);

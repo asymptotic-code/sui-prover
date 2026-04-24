@@ -1,8 +1,9 @@
 // Copyright (c) Asymptotic
 // SPDX-License-Identifier: Apache-2.0
-use crate::stackless_bytecode::{Bytecode, Operation};
+use crate::stackless_bytecode::{Bytecode, Label, Operation};
 use crate::stackless_control_flow_graph::{BlockContent, BlockId, StacklessControlFlowGraph};
 use move_binary_format::file_format::CodeOffset;
+use std::collections::BTreeMap;
 
 use super::types::StructuredBlock;
 
@@ -11,6 +12,7 @@ struct ReconstructionContext<'ctx> {
     code: &'ctx [Bytecode],
     forward_cfg: StacklessControlFlowGraph,
     back_cfg: StacklessControlFlowGraph,
+    label_offsets: BTreeMap<Label, CodeOffset>,
 }
 
 impl<'ctx> ReconstructionContext<'ctx> {
@@ -19,6 +21,7 @@ impl<'ctx> ReconstructionContext<'ctx> {
             code,
             forward_cfg: StacklessControlFlowGraph::new_forward_with_options(code, true),
             back_cfg: StacklessControlFlowGraph::new_backward_with_options(code, false, true),
+            label_offsets: Bytecode::label_offsets(code),
         }
     }
 
@@ -32,12 +35,10 @@ impl<'ctx> ReconstructionContext<'ctx> {
 
 /// Reconstructs control flow from basic blocks into a structured representation.
 pub fn reconstruct_control_flow(code: &[Bytecode]) -> Option<StructuredBlock> {
-    if code.iter().any(|bc| {
-        matches!(
-            bc,
-            Bytecode::Call(_, _, Operation::Stop, _, _) | Bytecode::VariantSwitch(..)
-        )
-    }) {
+    if code
+        .iter()
+        .any(|bc| matches!(bc, Bytecode::Call(_, _, Operation::Stop, _, _)))
+    {
         return None;
     }
 
@@ -64,14 +65,54 @@ fn reconstruct_region(
         if let Some((lower, upper)) = ctx.block_bounds(current_block) {
             blocks.push(StructuredBlock::Basic { lower, upper });
         };
-        match ctx.forward_cfg.successors(current_block).as_slice() {
-            [next] => {
-                current_block = *next;
+        let terminator = ctx
+            .block_bounds(current_block)
+            .and_then(|(_, upper)| ctx.code.get(upper as usize));
+        let block_at_label = |label| {
+            ctx.forward_cfg
+                .pc_to_block(ctx.label_offsets[label])
+                .expect("branch label points at a known block")
+        };
+        match (
+            terminator,
+            ctx.forward_cfg.successors(current_block).as_slice(),
+        ) {
+            (Some(Bytecode::VariantSwitch(_, _, labels)), _) => {
+                let switch_at = ctx.block_bounds(current_block).unwrap().1;
+                let immediate_post_dominator = ctx
+                    .back_cfg
+                    .find_immediate_dominator(current_block)
+                    .unwrap_or_else(|| {
+                        ctx.forward_cfg.display();
+                        ctx.back_cfg.display();
+                        panic!(
+                            "no post-dominator found for VariantSwitch block={}",
+                            current_block
+                        );
+                    });
+                let branches: Vec<StructuredBlock> = labels
+                    .iter()
+                    .map(|label| {
+                        reconstruct_region(
+                            ctx,
+                            block_at_label(label),
+                            Some(immediate_post_dominator),
+                        )
+                        .unwrap_or_else(|| StructuredBlock::Seq(Vec::new()))
+                    })
+                    .collect();
+                blocks.push(StructuredBlock::VariantSwitch {
+                    switch_at,
+                    branches,
+                });
+                current_block = immediate_post_dominator;
             }
-            [then_branch, else_branch] => {
+            (Some(Bytecode::Branch(_, then_label, else_label, _)), _) => {
+                let then_branch = block_at_label(then_label);
+                let else_branch = block_at_label(else_label);
                 if then_branch == else_branch {
                     // `if (condition) {}` or `if (condition) {} else {}`
-                    current_block = *then_branch;
+                    current_block = then_branch;
                     continue;
                 }
                 let immediate_post_dominator = ctx
@@ -83,17 +124,17 @@ fn reconstruct_region(
                         panic!("no post-dominator found for block={}", current_block);
                     });
                 let then_region =
-                    reconstruct_region(ctx, *then_branch, Some(immediate_post_dominator))
+                    reconstruct_region(ctx, then_branch, Some(immediate_post_dominator))
                         .unwrap_or_else(|| {
                             ctx.forward_cfg.display();
                             ctx.back_cfg.display();
                             panic!(
                                 "no region found for if block={}, then block={}, else block={}, merge block={}",
-                                current_block, *then_branch, *else_branch, immediate_post_dominator
+                                current_block, then_branch, else_branch, immediate_post_dominator
                             )
                         });
                 let else_region =
-                    reconstruct_region(ctx, *else_branch, Some(immediate_post_dominator));
+                    reconstruct_region(ctx, else_branch, Some(immediate_post_dominator));
                 blocks.push(
                     StructuredBlock::IfThenElse {
                         cond_at: ctx.block_bounds(current_block).unwrap().1,
@@ -104,10 +145,13 @@ fn reconstruct_region(
                 );
                 current_block = immediate_post_dominator;
             }
-            [] => {
+            (_, [next]) => {
+                current_block = *next;
+            }
+            (_, []) => {
                 break;
             }
-            [..] => {
+            (_, [..]) => {
                 ctx.forward_cfg.display();
                 ctx.back_cfg.display();
                 unimplemented!(

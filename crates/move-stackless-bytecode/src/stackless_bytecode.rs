@@ -359,6 +359,12 @@ pub enum Operation {
     // Represents conditional expressions recovered from bytecode: if (x) { y } else { z / passthrough }
     IfThenElse,
 
+    // N-way analogue of `IfThenElse` for `Bytecode::VariantSwitch` merges.
+    // srcs = [enum_temp, val_0, val_1, ..., val_{N-1}] where val_i is the
+    // result when `enum_temp->$variant_id == i`. The enum type is read from
+    // the type of srcs[0] at emission time.
+    VariantMerge,
+
     // Debugging
     TraceLocal(TempIndex),
     TraceReturn(usize),
@@ -432,6 +438,7 @@ impl Operation {
             Operation::Eq => false,
             Operation::Neq => false,
             Operation::IfThenElse => false,
+            Operation::VariantMerge => false,
             Operation::TraceLocal(..) => false,
             Operation::TraceAbort => false,
             Operation::TraceReturn(..) => false,
@@ -1466,6 +1473,7 @@ impl fmt::Display for OperationDisplay<'_> {
             EventStoreDiverge => write!(f, "event_store_diverge")?,
             TraceGlobalMem(_) => write!(f, "trace_global_mem")?,
             IfThenElse => write!(f, "if_then_else")?,
+            VariantMerge => write!(f, "variant_merge")?,
             Quantifier(qt, _, _, _) => write!(f, "quantifier({})", qt.display())?,
         }
         Ok(())
