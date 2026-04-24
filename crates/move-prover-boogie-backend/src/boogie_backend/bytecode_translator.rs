@@ -5272,7 +5272,7 @@ impl<'env> FunctionTranslator<'env> {
                         let dest = dests[0];
                         emitln!(
                             self.writer(),
-                            "call {} := $Not({});",
+                            "{} := $Not({});",
                             str_local(dest),
                             str_local(src)
                         );
@@ -5334,9 +5334,18 @@ impl<'env> FunctionTranslator<'env> {
                             | Type::Error
                             | Type::Var(_) => unreachable!(),
                         };
+                        // `$Add..._unchecked` is emitted as a pure function
+                        // (direct assignment); the overflow-checking `$Add...`
+                        // stays a procedure (`call` prefix required).
+                        let call_prefix = if add_type.ends_with("_unchecked") {
+                            ""
+                        } else {
+                            "call "
+                        };
                         emitln!(
                             self.writer(),
-                            "call {} := $Add{}({}, {});",
+                            "{}{} := $Add{}({}, {});",
+                            call_prefix,
                             str_local(dest),
                             add_type,
                             str_local(op1),
@@ -5622,7 +5631,7 @@ impl<'env> FunctionTranslator<'env> {
                             };
                             emitln!(
                                 self.writer(),
-                                "call {} := {}{}({}, {});",
+                                "{} := {}{}({}, {});",
                                 str_local(dest),
                                 comp_oper,
                                 lt_type,
@@ -5645,7 +5654,7 @@ impl<'env> FunctionTranslator<'env> {
                         let op2 = srcs[1];
                         emitln!(
                             self.writer(),
-                            "call {} := $Or({}, {});",
+                            "{} := $Or({}, {});",
                             str_local(dest),
                             str_local(op1),
                             str_local(op2)
@@ -5657,7 +5666,7 @@ impl<'env> FunctionTranslator<'env> {
                         let op2 = srcs[1];
                         emitln!(
                             self.writer(),
-                            "call {} := $And({}, {});",
+                            "{} := $And({}, {});",
                             str_local(dest),
                             str_local(op1),
                             str_local(op2)
@@ -5741,7 +5750,7 @@ impl<'env> FunctionTranslator<'env> {
                                 };
                                 emitln!(
                                     self.writer(),
-                                    "call {} := {}{}({}, {});",
+                                    "{} := {}{}({}, {});",
                                     str_local(dest),
                                     bv_oper,
                                     base,
@@ -5758,7 +5767,7 @@ impl<'env> FunctionTranslator<'env> {
                         if self.parent.targets.prover_options().bv_int_encoding {
                             emitln!(
                                 self.writer(),
-                                "call {} := {}Int'u{}'({}, {});",
+                                "{} := {}Int'u{}'({}, {});",
                                 str_local(dest),
                                 bv_oper_str,
                                 boogie_num_type_base(&self.get_local_type(dest)),
