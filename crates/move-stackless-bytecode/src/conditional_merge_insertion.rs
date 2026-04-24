@@ -362,7 +362,7 @@ impl<'env> VersionState<'env> {
                     .iter()
                     .map(|a| -> BTreeSet<usize> { assigned_before.union(a).copied().collect() })
                     .reduce(|u, v| u.intersection(&v).copied().collect())
-                    .expect("VariantSwitch has at least one arm");
+                    .unwrap();
                 for var in &known_everywhere {
                     if arm_assigned.iter().any(|a| a.contains(var)) {
                         self.completed_at.insert(*var, *switch_at);
