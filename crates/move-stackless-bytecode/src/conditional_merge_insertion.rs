@@ -191,10 +191,7 @@ impl<'env> VersionState<'env> {
                 match (then_rets, else_rets) {
                     (Some(t), Some(e)) if t == e => Some(t),
                     (Some(t), Some(e)) if t.len() == e.len() => {
-                        let cond = match &self.builder.data.code[*cond_at as usize] {
-                            Bytecode::Branch(_, _, _, c) => *c,
-                            _ => unreachable!("expected Branch at cond_at"),
-                        };
+                        let cond = self.cond_temp_at(*cond_at);
                         let fresh_rets: Vec<usize> = t
                             .iter()
                             .zip(e.iter())
@@ -454,14 +451,7 @@ impl<'env> VersionState<'env> {
         then_branch: &StructuredBlock,
         else_branch: Option<&StructuredBlock>,
     ) -> Vec<MergeInfo> {
-        // extract condition variable from the Branch instruction
-        let cond = match &self.builder.data.code[cond_at as usize] {
-            Bytecode::Branch(_, _, _, cond) => *cond,
-            _ => unreachable!(
-                "expected branch instruction, found {:?}",
-                self.builder.data.code[cond_at as usize]
-            ),
-        };
+        let cond = self.cond_temp_at(cond_at);
 
         // process then-branch
         let saved_versions = self.current_version.clone();
@@ -577,6 +567,16 @@ impl<'env> VersionState<'env> {
                     merge.emit(&mut self.builder);
                 }
             }
+        }
+    }
+
+    fn cond_temp_at(&self, cond_at: CodeOffset) -> usize {
+        match &self.builder.data.code[cond_at as usize] {
+            Bytecode::Branch(_, _, _, cond) => *cond,
+            _ => unreachable!(
+                "expected Branch at cond_at, found {:?}",
+                self.builder.data.code[cond_at as usize]
+            ),
         }
     }
 
