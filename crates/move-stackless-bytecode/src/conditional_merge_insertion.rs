@@ -246,7 +246,7 @@ impl<'env> VersionState<'env> {
 
                 // one VariantMerge per return position, each collecting the N
                 // arm versions for that position
-                let merged: Vec<usize> = (0..arity)
+                let fresh_rets: Vec<usize> = (0..arity)
                     .map(|pos| {
                         let arm_vers: Vec<usize> = sets.iter().map(|s| s[pos]).collect();
                         if arm_vers.windows(2).all(|w| w[0] == w[1]) {
@@ -262,7 +262,7 @@ impl<'env> VersionState<'env> {
                         fresh
                     })
                     .collect();
-                Some(merged)
+                Some(fresh_rets)
             }
         }
     }
@@ -361,7 +361,7 @@ impl<'env> VersionState<'env> {
                 let known_everywhere: BTreeSet<usize> = per_branch
                     .iter()
                     .map(|a| -> BTreeSet<usize> { assigned_before.union(a).copied().collect() })
-                    .reduce(|acc, s| acc.intersection(&s).copied().collect())
+                    .reduce(|u, v| u.intersection(&v).copied().collect())
                     .unwrap_or_default();
                 for var in &known_everywhere {
                     if per_branch.iter().any(|a| a.contains(var)) {
