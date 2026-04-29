@@ -71,7 +71,7 @@ pub fn get_info(target: &FunctionTarget<'_>) -> VerificationInfo {
 
 // The function target processor
 pub struct VerificationAnalysisProcessor {
-    pub is_test: bool
+    pub is_test: bool,
 }
 
 impl VerificationAnalysisProcessor {
@@ -109,7 +109,7 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             return data;
         }
 
-        if self.is_test && fun_env.get_toplevel_attributes().is_test_or_test_only()  {
+        if self.is_test && fun_env.get_toplevel_attributes().is_test_or_test_only() {
             Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
