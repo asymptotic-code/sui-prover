@@ -70,11 +70,17 @@ pub fn get_info(target: &FunctionTarget<'_>) -> VerificationInfo {
 // }
 
 // The function target processor
-pub struct VerificationAnalysisProcessor();
+pub struct VerificationAnalysisProcessor {
+    pub is_test: bool,
+}
 
 impl VerificationAnalysisProcessor {
     pub fn new() -> Box<Self> {
-        Box::new(Self())
+        Box::new(Self { is_test: false })
+    }
+
+    pub fn new_for_testing() -> Box<Self> {
+        Box::new(Self { is_test: true })
     }
 }
 
@@ -99,6 +105,11 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
         if targets.func_abort_check_mode()
             && targets.target_no_abort_check_functions(&fun_env.get_qualified_id())
         {
+            Self::mark_verified(fun_env, &mut data, targets);
+            return data;
+        }
+
+        if self.is_test && fun_env.get_toplevel_attributes().is_test_or_test_only() {
             Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
