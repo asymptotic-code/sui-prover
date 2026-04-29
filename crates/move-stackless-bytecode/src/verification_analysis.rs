@@ -11,6 +11,7 @@ use crate::{
     function_target::{FunctionData, FunctionTarget},
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder, FunctionVariant},
 };
+use move_compiler::shared::known_attributes::AttributeKind_;
 use move_model::model::{FunId, QualifiedId};
 use move_model::model::{FunctionEnv, GlobalEnv, VerificationScope};
 use std::collections::BTreeSet;
@@ -109,7 +110,14 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
             return data;
         }
 
-        if self.is_test && fun_env.get_toplevel_attributes().is_test_or_test_only() {
+        if self.is_test
+            && fun_env.module_env.is_target()
+            && fun_env
+                .get_toplevel_attributes()
+                .get_(&AttributeKind_::Test)
+                .is_some()
+        {
+            println!("t target: {}", fun_env.get_full_name_str());
             Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
