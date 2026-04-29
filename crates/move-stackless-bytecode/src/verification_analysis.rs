@@ -117,7 +117,6 @@ impl FunctionTargetProcessor for VerificationAnalysisProcessor {
                 .get_(&AttributeKind_::Test)
                 .is_some()
         {
-            println!("t target: {}", fun_env.get_full_name_str());
             Self::mark_verified(fun_env, &mut data, targets);
             return data;
         }
