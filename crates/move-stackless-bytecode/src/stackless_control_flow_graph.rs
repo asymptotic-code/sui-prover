@@ -184,21 +184,18 @@ impl StacklessControlFlowGraph {
                     {
                         successors.push(DUMMY_EXIT);
                     }
-                } else {
-                    assert_eq!(
-                        code[pc].is_exit() || pc + 1 == code.len(),
-                        successors.is_empty(),
-                        "code[{}]: {:?}",
-                        pc,
-                        code[pc]
-                    );
+                } else if code[pc].is_exit() {
                     if pc + 1 == code.len() {
-                        assert!(code[pc].is_exit() || !code[pc].is_branch());
                         successors.push(DUMMY_EXIT);
-                    } else if code[pc].is_exit() {
+                    } else {
                         successors.push(Self::get_block_id(&mut offset_to_key, co_pc + 1));
                     }
+                } else if !code[pc].is_branch() && pc + 1 == code.len() {
+                    successors.push(DUMMY_EXIT);
                 }
+                // A branch as the final instruction (e.g. a back-jump closing an infinite
+                // loop with mid-loop returns) keeps its existing targets and yields a
+                // cyclic CFG, so callers can detect via is_acyclic() and bail out.
                 let bb = BlockContent::Basic {
                     lower: block_entry,
                     upper: co_pc,
