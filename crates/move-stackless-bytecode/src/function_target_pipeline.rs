@@ -580,6 +580,34 @@ impl FunctionTargetsHolder {
         }
     }
 
+    /// Merge another holder's per-function bytecode and analysis state
+    /// (`targets` field) into this one.
+    ///
+    /// On duplicate `(QualifiedId<FunId>, FunctionVariant)` keys, the
+    /// existing entry in `self` is kept; the entry from `other` is
+    /// dropped. Callers must ensure both holders ran the same analysis
+    /// pipeline on the same Move source so duplicates are equivalent.
+    ///
+    /// **Shallow merge: limited to the `targets` field.** Other state
+    /// (`function_specs`, `datatype_invs`, `loop_invariants`,
+    /// `asserts_of`, `package_targets`, `target`) is left unchanged on
+    /// `self`. The intended caller is a backend driver that fans out
+    /// `FunctionTargetsHolder` construction per spec-module (each batch
+    /// keeping its own BiMap intact so the "Duplicate target function"
+    /// diag never fires for packages with multiple specs targeting the
+    /// same function across modules) and then squashes the per-batch
+    /// bytecode into one combined holder for downstream rendering.
+    /// Downstream consumers that need `function_specs` etc. must read
+    /// them from individual per-batch holders BEFORE the merge.
+    pub fn merge_targets_from(&mut self, other: Self) {
+        for (qid, variants) in other.targets {
+            let entry = self.targets.entry(qid).or_default();
+            for (variant, data) in variants {
+                entry.entry(variant).or_insert(data);
+            }
+        }
+    }
+
     fn process_spec(&mut self, spec_env: &FunctionEnv, target_id: &QualifiedId<FunId>) {
         let env = spec_env.module_env.env;
 
