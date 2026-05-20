@@ -25,6 +25,18 @@ fun TestBranching::branching($t0|cond: bool): u64 {
  12: return $t5
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `reaching_def` ================
 
 [variant baseline]
@@ -47,3 +59,15 @@ fun TestBranching::branching($t0|cond: bool): u64 {
  10: $t5 := move($t1)
  11: return $t1
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

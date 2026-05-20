@@ -38,6 +38,18 @@ public fun test::f($t0|a: u64): u64 {
  18: return $t12
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `conditional_merge_insertion` ================
 
 [variant baseline]
@@ -75,3 +87,15 @@ public fun test::f($t0|a: u64): u64 {
  15: $t9 := *($t1, $t2)
  16: return $t9
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

@@ -44,6 +44,18 @@ fun ReturnRefsSafe::return_vec_mut($t0|v: &mut vector<u64>): &mut vector<u64> {
   1: return $t1
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `escape_analysis` ================
 
 [variant baseline]
@@ -86,3 +98,15 @@ fun ReturnRefsSafe::return_vec_mut($t0|v: &mut vector<u64>): &mut vector<u64> {
   0: $t1 := move($t0)
   1: return $t1
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

@@ -90,6 +90,18 @@ fun TestEliminateImmRefs::test5(): TestEliminateImmRefs::R {
   6: return $t4
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `eliminate_imm_refs` ================
 
 [variant baseline]
@@ -177,3 +189,15 @@ fun TestEliminateImmRefs::test5(): TestEliminateImmRefs::R {
   4: $t4 := move($t0)
   5: return $t4
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

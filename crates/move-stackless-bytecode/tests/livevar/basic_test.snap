@@ -120,6 +120,18 @@ fun TestLiveVars::test3($t0|n: u64, $t1|r_ref: &TestLiveVars::R): u64 {
  40: return $t23
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `livevar` ================
 
 [variant baseline]
@@ -198,3 +210,15 @@ fun TestLiveVars::test3($t0|n: u64, $t1|r_ref: TestLiveVars::R): u64 {
  25: $t15 := TestLiveVars::test1($t1)
  26: return $t15
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

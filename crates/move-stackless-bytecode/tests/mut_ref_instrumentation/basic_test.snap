@@ -232,6 +232,18 @@ fun TestEliminateMutRefs::test8($t0|b: bool, $t1|n: u64, $t2|r_ref: &mut TestEli
  57: return ()
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `mut_ref_instrumentation` ================
 
 [variant baseline]
@@ -461,3 +473,15 @@ fun TestEliminateMutRefs::test8($t0|b: bool, $t1|n: u64, $t2|r_ref: &mut TestEli
  53: trace_local[r_ref]($t2)
  54: return ()
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
