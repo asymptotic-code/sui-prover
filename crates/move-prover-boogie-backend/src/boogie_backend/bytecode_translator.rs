@@ -3078,6 +3078,7 @@ impl<'env> FunctionTranslator<'env> {
                 Not => Some(("!", 1)),
                 BitAnd => Some(("$andInt", 2)),
                 BitOr => Some(("$orInt", 2)),
+                Xor => Some(("$xorInt", 2)),
                 Shl => Some(("$shl", 2)),
                 Shr => Some(("$shr", 2)),
                 _ => None,
@@ -3362,6 +3363,7 @@ impl<'env> FunctionTranslator<'env> {
                                     op,
                                     Operation::BitAnd
                                         | Operation::BitOr
+                                        | Operation::Xor
                                         | Operation::Shl
                                         | Operation::Shr
                                 );
