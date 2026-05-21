@@ -56,7 +56,6 @@ jobs:
           RUN_URL="${GITHUB_SERVER_URL}/${AGENT_REPO}/actions/runs/${NEW_RUN_ID}"
           echo "run_id=$NEW_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
-          echo "Triggered run: $RUN_URL"
 
           {
             echo "## Sui-Prover CI (cross-repo)"
@@ -71,4 +70,21 @@ jobs:
           RUN_ID: ${{ steps.dispatch.outputs.run_id }}
         run: |
           set -euo pipefail
-          gh run watch -R "$AGENT_REPO" "$RUN_ID" --exit-status --interval 15
+          while true; do
+            STATUS=$(gh run view -R "$AGENT_REPO" "$RUN_ID" --json status --jq '.status')
+            if [ "$STATUS" = "completed" ]; then
+              CONCLUSION=$(gh run view -R "$AGENT_REPO" "$RUN_ID" --json conclusion --jq '.conclusion')
+              echo "Run completed with conclusion: $CONCLUSION"
+              [ "$CONCLUSION" = "success" ] && exit 0 || exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Cancel cross-repo run if this workflow is cancelled
+        if: cancelled() && steps.dispatch.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          echo "Cancelling cross-repo run $RUN_ID"
+          gh run cancel -R "$AGENT_REPO" "$RUN_ID" || true
