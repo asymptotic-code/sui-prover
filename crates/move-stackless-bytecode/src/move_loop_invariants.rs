@@ -523,19 +523,24 @@ impl MoveLoopInvariantsProcessor {
                 // analysis, not the original code offset. Earlier invariant
                 // insertions shift bytecode positions in the rebuilt code.
                 let emitted_len = builder.data.code.len();
-                let mut args = Self::build_invariant_arguments(
-                    &mut builder,
-                    &func_env.module_env.env.get_function(*qid),
-                    emitted_len,
-                );
+                let inv_env = func_env.module_env.env.get_function(*qid);
+                let mut args =
+                    Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len);
+
+                // build_invariant_arguments emits diagnostics and skips the
+                // push when a parameter can't be resolved. Bail out if the
+                // arg list is incomplete — downstream code indexes args by
+                // parameter position and would panic.
+                if args.len() != inv_env.get_parameter_count() {
+                    builder.emit(bc);
+                    continue;
+                }
 
                 // Capture the loop header location before emitting (which consumes bc).
                 let loop_header_loc = builder.data.locations.get(&bc.get_attr_id()).cloned();
 
                 // NOTE: Emit clone! calls before label
                 builder.emit(bc);
-
-                let inv_env = func_env.module_env.env.get_function(*qid);
 
                 if inv_env.get_return_count() == 0 {
                     // Void invariant: inline bytecodes
