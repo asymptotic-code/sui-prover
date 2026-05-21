@@ -88,7 +88,11 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             }
 
             Self::handle_targeted_loop_invariant_functions(
-                func_env, data.clone(), targets, invs, &loop_info,
+                func_env,
+                data.clone(),
+                targets,
+                invs,
+                &loop_info,
             )
         } else {
             Self::handle_classical_loop_invariants(func_env, data.clone(), invariants)
@@ -531,7 +535,8 @@ impl MoveLoopInvariantsProcessor {
                 // insertions shift bytecode positions in the rebuilt code.
                 let emitted_len = builder.data.code.len();
                 let inv_env = func_env.module_env.env.get_function(*qid);
-                let mut args = Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len)?;
+                let mut args =
+                    Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len)?;
 
                 // Capture the loop header location before emitting (which consumes bc).
                 let loop_header_loc = builder.data.locations.get(&bc.get_attr_id()).cloned();
