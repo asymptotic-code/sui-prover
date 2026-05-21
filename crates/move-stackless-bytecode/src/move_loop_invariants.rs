@@ -524,8 +524,7 @@ impl MoveLoopInvariantsProcessor {
                 // insertions shift bytecode positions in the rebuilt code.
                 let emitted_len = builder.data.code.len();
                 let inv_env = func_env.module_env.env.get_function(*qid);
-                let mut args =
-                    Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len);
+                let mut args = Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len);
 
                 // build_invariant_arguments emits diagnostics and skips the
                 // push when a parameter can't be resolved. Bail out if the
