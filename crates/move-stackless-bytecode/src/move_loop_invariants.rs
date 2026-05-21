@@ -526,13 +526,8 @@ impl MoveLoopInvariantsProcessor {
                 let inv_env = func_env.module_env.env.get_function(*qid);
                 let mut args = Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len);
 
-                // build_invariant_arguments emits diagnostics and skips the
-                // push when a parameter can't be resolved. Bail out if the
-                // arg list is incomplete — downstream code indexes args by
-                // parameter position and would panic.
                 if args.len() != inv_env.get_parameter_count() {
-                    builder.emit(bc);
-                    continue;
+                    return (builder.data, attrs);
                 }
 
                 // Capture the loop header location before emitting (which consumes bc).
