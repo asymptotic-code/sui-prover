@@ -13,6 +13,7 @@ edition = "2021"
 workspace = true
 
 [dependencies]
+anyhow.workspace = true
 move-model.workspace = true
 move-binary-format.workspace = true
 move-core-types.workspace = true
@@ -38,7 +39,6 @@ clap.workspace = true
 [dev-dependencies]
 move-stdlib.workspace = true
 datatest-stable.workspace = true
-anyhow.workspace = true
 regex.workspace = true
 
 [[test]]

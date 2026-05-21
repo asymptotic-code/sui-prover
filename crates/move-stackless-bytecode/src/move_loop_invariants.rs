@@ -1,3 +1,4 @@
+use anyhow::bail;
 use bimap::BiBTreeMap;
 use codespan_reporting::diagnostic::Severity;
 use itertools::Itertools;
@@ -81,25 +82,28 @@ impl FunctionTargetProcessor for MoveLoopInvariantsProcessor {
             return data;
         }
 
-        let (mut new_data, attrs) = if let Some(invs) = loop_inv_functions {
+        let result = if let Some(invs) = loop_inv_functions {
             if !Self::is_valid_inv_function(&targets, invs, &loop_info, func_env) {
                 return data;
             }
 
             Self::handle_targeted_loop_invariant_functions(
-                func_env, data, targets, invs, &loop_info,
+                func_env, data.clone(), targets, invs, &loop_info,
             )
         } else {
-            Self::handle_classical_loop_invariants(func_env, data, invariants)
+            Self::handle_classical_loop_invariants(func_env, data.clone(), invariants)
         };
 
-        let info = new_data
-            .annotations
-            .get_or_default_mut::<TargetedLoopInfo>(true);
+        if let Ok((mut new_data, attrs)) = result {
+            let info = new_data
+                .annotations
+                .get_or_default_mut::<TargetedLoopInfo>(true);
 
-        info.attrs = attrs;
+            info.attrs = attrs;
+            return new_data;
+        }
 
-        new_data
+        data
     }
 
     fn name(&self) -> String {
@@ -301,7 +305,7 @@ impl MoveLoopInvariantsProcessor {
         builder: &mut FunctionDataBuilder,
         loop_inv_env: &FunctionEnv,
         offset: usize,
-    ) -> Vec<usize> {
+    ) -> anyhow::Result<Vec<usize>> {
         let mut args = vec![];
         let scope_vars = Self::vars_in_scope(offset, builder);
 
@@ -328,7 +332,7 @@ impl MoveLoopInvariantsProcessor {
                                 builder.fun_env.get_full_name_str()
                             ),
                         );
-                        continue;
+                        bail!("invariant validation failed");
                     };
 
                     let attr_ref = builder.new_attr();
@@ -374,6 +378,7 @@ impl MoveLoopInvariantsProcessor {
                             builder.fun_env.get_full_name_str()
                         ),
                     );
+                    bail!("invariant validation failed");
                 }
 
                 continue;
@@ -393,6 +398,7 @@ impl MoveLoopInvariantsProcessor {
                             builder.fun_env.get_full_name_str()
                         ),
                     );
+                    bail!("invariant validation failed");
                 }
 
                 args.push(idx);
@@ -419,10 +425,11 @@ impl MoveLoopInvariantsProcessor {
                         ).join(", ")
                     ),
                 );
+                bail!("invariant validation failed");
             }
         }
 
-        args
+        Ok(args)
     }
 
     // Returns a bimap between the begin offset of an invariant and the end offset of the invariant.
@@ -447,7 +454,7 @@ impl MoveLoopInvariantsProcessor {
         func_env: &FunctionEnv,
         data: FunctionData,
         invariants: BiBTreeMap<usize, usize>,
-    ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
+    ) -> anyhow::Result<(FunctionData, BTreeSet<Vec<AttrId>>)> {
         let mut builder: FunctionDataBuilder<'_> = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
         let invariant_labels = invariants
@@ -490,7 +497,7 @@ impl MoveLoopInvariantsProcessor {
             builder.emit(bc);
         }
 
-        (builder.data, attrs)
+        Ok((builder.data, attrs))
     }
 
     fn find_label_offset(code: &[Bytecode], label: Label) -> Option<usize> {
@@ -504,7 +511,7 @@ impl MoveLoopInvariantsProcessor {
         targets: &FunctionTargetsHolder,
         invariants: &BiBTreeMap<QualifiedId<FunId>, usize>,
         loop_info: &Vec<Label>,
-    ) -> (FunctionData, BTreeSet<Vec<AttrId>>) {
+    ) -> anyhow::Result<(FunctionData, BTreeSet<Vec<AttrId>>)> {
         let mut builder = FunctionDataBuilder::new(func_env, data);
         let code = std::mem::take(&mut builder.data.code);
 
@@ -524,11 +531,7 @@ impl MoveLoopInvariantsProcessor {
                 // insertions shift bytecode positions in the rebuilt code.
                 let emitted_len = builder.data.code.len();
                 let inv_env = func_env.module_env.env.get_function(*qid);
-                let mut args = Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len);
-
-                if args.len() != inv_env.get_parameter_count() {
-                    return (builder.data, attrs);
-                }
+                let mut args = Self::build_invariant_arguments(&mut builder, &inv_env, emitted_len)?;
 
                 // Capture the loop header location before emitting (which consumes bc).
                 let loop_header_loc = builder.data.locations.get(&bc.get_attr_id()).cloned();
@@ -616,7 +619,7 @@ impl MoveLoopInvariantsProcessor {
             }
         }
 
-        (builder.data, attrs)
+        Ok((builder.data, attrs))
     }
 
     fn inline_void_invariant(
