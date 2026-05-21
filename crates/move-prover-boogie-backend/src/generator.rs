@@ -813,7 +813,7 @@ pub async fn verify_boogie(
         };
         // Determine run location based on per-spec run_on attribute and global config
         let use_remote = match run_on.as_deref() {
-            Some(RUN_ON_LOCAL) => false,
+            Some(RUN_ON_LOCAL) => options.backend.no_verify && options.remote.is_some(),
             Some(RUN_ON_CLOUD) => {
                 if options.remote.is_none() {
                     env.diag(
