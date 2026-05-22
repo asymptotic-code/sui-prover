@@ -279,12 +279,17 @@ impl BoogieOptions {
         &self,
         boogie_file: &str,
         individual_options: Option<String>,
+        for_remote: bool,
     ) -> anyhow::Result<Vec<String>> {
-        let mut result = if self.use_exp_boogie {
-            // This should have a better ux...
-            vec![read_env_var("EXP_BOOGIE_EXE")]
+        let mut result = if for_remote {
+            vec![]
         } else {
-            vec![self.boogie_exe.clone()]
+            if self.use_exp_boogie {
+                // This should have a better ux...
+                vec![read_env_var("EXP_BOOGIE_EXE")]
+            } else {
+                vec![self.boogie_exe.clone()]
+            }
         };
 
         // If we don't have a boogie executable, nothing will work
@@ -303,20 +308,22 @@ impl BoogieOptions {
         };
 
         add(DEFAULT_BOOGIE_FLAGS);
-        if self.use_cvc5 {
-            if self.cvc5_exe.is_empty() {
-                anyhow::bail!("No cvc5 executable set.  Please set CVC5_EXE");
+        if !for_remote {
+            if self.use_cvc5 {
+                if self.cvc5_exe.is_empty() {
+                    anyhow::bail!("No cvc5 executable set.  Please set CVC5_EXE");
+                } else {
+                    add(&[
+                        "-proverOpt:SOLVER=cvc5",
+                        &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
+                    ]);
+                }
             } else {
-                add(&[
-                    "-proverOpt:SOLVER=cvc5",
-                    &format!("-proverOpt:PROVER_PATH={}", &self.cvc5_exe),
-                ]);
-            }
-        } else {
-            if self.z3_exe.is_empty() {
-                anyhow::bail!("No z3 executable set.  Please set Z3_EXE");
-            } else {
-                add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+                if self.z3_exe.is_empty() {
+                    anyhow::bail!("No z3 executable set.  Please set Z3_EXE");
+                } else {
+                    add(&[&format!("-proverOpt:PROVER_PATH={}", &self.z3_exe)]);
+                }
             }
         }
         if self.use_array_theory {
@@ -404,7 +411,9 @@ impl BoogieOptions {
             .map(|s| s.as_str())
             .collect::<Vec<&str>>());
 
-        add(&[boogie_file]);
+        if !for_remote {
+            add(&[boogie_file]);
+        }
 
         result.extend(seen_options.into_iter());
 

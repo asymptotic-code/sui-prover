@@ -118,20 +118,36 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let body_value: Value = from_str(event.get("body").unwrap().as_str().unwrap()).unwrap();
     let body = body_value.as_object().unwrap();
 
-    if body.get("file_text").is_none() || body.get("file_text").unwrap().as_str().is_none() {
+    if body.get("file_text").is_none() || !body.get("file_text").unwrap().is_string() {
         return Ok(make_error_response(400, "File text is missing."));
     }
 
+    if body.get("options").is_none() || !body.get("options").unwrap().is_array() {
+        return Ok(make_error_response(400, "Options are missing."));
+    }
+
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();
-    let boogie_options = if let Some(options) = body.get("options") {
-        Some(options.as_str().unwrap().to_string())
-    } else {
-        None
+    let options: Vec<String> = match body
+        .get("options")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().map(|s| s.to_string()))
+        .collect()
+    {
+        Some(opts) => opts,
+        None => {
+            return Ok(make_error_response(
+                400,
+                "Options must be an array of strings.",
+            ));
+        }
     };
 
     let prover = ProverHandler::new()?;
 
-    let response = match prover.process(file_text, boogie_options).await {
+    let response = match prover.process(file_text, options).await {
         Ok(resp) => resp,
         Err(e) => {
             return Ok(make_error_response(
@@ -169,7 +185,10 @@ async fn local_handler() -> Result<()> {
     };
 
     let prover = ProverHandler::new().unwrap();
-    prover.process(file_text, None).await.unwrap();
+    prover
+        .process(file_text, vec!["-inferModifies".to_string()])
+        .await
+        .unwrap();
 
     Ok(())
 }

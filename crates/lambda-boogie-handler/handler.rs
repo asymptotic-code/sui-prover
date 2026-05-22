@@ -15,22 +15,6 @@ pub struct ProverResponse {
     pub cached: bool,
 }
 
-const DEFAULT_BOOGIE_FLAGS: &[&str] = &[
-    "-inferModifies",
-    "-printVerifiedProceduresCount:0",
-    "-printModel:1",
-    "-enhancedErrorMessages:1",
-    "-useArrayAxioms",
-    "-proverOpt:O:smt.QI.EAGER_THRESHOLD=10",
-    "-proverOpt:O:smt.QI.LAZY_THRESHOLD=100",
-    "-proverOpt:O:model_validate=true",
-    "-vcsCores:4",
-    "-verifySeparately",
-    "-vcsMaxKeepGoingSplits:2",
-    "-vcsSplitOnEveryAssert",
-    "-vcsFinalAssertTimeout:600",
-];
-
 pub struct ProverHandler {
     redis_client: Option<redis::Client>,
     cache_lifetime_seconds: u64,
@@ -135,26 +119,14 @@ impl ProverHandler {
         }
     }
 
-    fn get_boogie_command(
-        &self,
-        boogie_file_name: &str,
-        individual_options: Option<String>,
-    ) -> Result<Vec<String>> {
+    fn get_boogie_command(&self, boogie_file_name: &str, args: Vec<String>) -> Result<Vec<String>> {
         let boogie_exe =
             std::env::var("BOOGIE_EXE").context("BOOGIE_EXE environment variable not set")?;
         let z3_exe = std::env::var("Z3_EXE").context("Z3_EXE environment variable not set")?;
 
         let mut result = vec![boogie_exe];
-        result.extend(DEFAULT_BOOGIE_FLAGS.iter().map(|s| s.to_string()));
 
-        if let Some(options) = individual_options {
-            for option in options.split_whitespace().map(|s| format!("-{}", s)) {
-                let key = Self::get_option_key(&option);
-                result.retain(|existing: &String| Self::get_option_key(existing) != key);
-                result.push(option);
-            }
-        }
-
+        result.extend(args);
         result.push(format!("-proverOpt:PROVER_PATH={z3_exe}"));
         result.push(boogie_file_name.to_string());
 
@@ -164,9 +136,9 @@ impl ProverHandler {
     async fn execute_boogie(
         &self,
         temp_file_path: &str,
-        individual_options: Option<String>,
+        remote_args: Vec<String>,
     ) -> Result<(String, String, i32)> {
-        let args = self.get_boogie_command(temp_file_path, individual_options)?;
+        let args = self.get_boogie_command(temp_file_path, remote_args)?;
 
         let mut child = unsafe {
             Command::new(&args[0])
@@ -220,7 +192,7 @@ impl ProverHandler {
     pub async fn process(
         &self,
         file_text: String,
-        boogie_options: Option<String>,
+        remote_args: Vec<String>,
     ) -> Result<ProverResponse> {
         let hash = Self::generate_hash(&file_text);
 
@@ -245,7 +217,7 @@ impl ProverHandler {
 
         let temp_file_path = temp_file.path().to_string_lossy().to_string();
 
-        let (out, err, status) = match self.execute_boogie(&temp_file_path, boogie_options).await {
+        let (out, err, status) = match self.execute_boogie(&temp_file_path, remote_args).await {
             Ok(output) => output,
             Err(e) => (
                 String::new(),
