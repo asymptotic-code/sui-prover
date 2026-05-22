@@ -119,11 +119,11 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let body = body_value.as_object().unwrap();
 
     if body.get("file_text").is_none() || !body.get("file_text").unwrap().is_string() {
-        return Ok(make_error_response(400, "File text is missing."));
+        return Ok(make_error_response(400, "File text is missing or invalid."));
     }
 
     if body.get("options").is_none() || !body.get("options").unwrap().is_array() {
-        return Ok(make_error_response(400, "Options are missing."));
+        return Ok(make_error_response(400, "Options are missing or invalid."));
     }
 
     let file_text = body.get("file_text").unwrap().as_str().unwrap().to_string();

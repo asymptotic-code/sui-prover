@@ -283,17 +283,15 @@ impl BoogieOptions {
     ) -> anyhow::Result<Vec<String>> {
         let mut result = if for_remote {
             vec![]
+        } else if self.use_exp_boogie {
+            // This should have a better ux...
+            vec![read_env_var("EXP_BOOGIE_EXE")]
         } else {
-            if self.use_exp_boogie {
-                // This should have a better ux...
-                vec![read_env_var("EXP_BOOGIE_EXE")]
-            } else {
-                vec![self.boogie_exe.clone()]
-            }
+            vec![self.boogie_exe.clone()]
         };
 
         // If we don't have a boogie executable, nothing will work
-        if result.iter().all(|path| path.is_empty()) {
+        if !for_remote && result.iter().all(|path| path.is_empty()) {
             anyhow::bail!("No boogie executable set.  Please set BOOGIE_EXE");
         }
 

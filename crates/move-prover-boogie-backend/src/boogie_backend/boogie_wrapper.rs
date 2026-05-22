@@ -483,7 +483,7 @@ impl<'env> BoogieWrapper<'env> {
                 .get_boogie_command(boogie_file, individual_options.clone(), true)?;
 
         if self.options.ci {
-            println!("Boogie Execution Command: {}", remote_args.iter().join(" "));
+            println!("Boogie Execution Params: {}", remote_args.iter().join(" "));
             if individual_timeout.is_some() {
                 println!("Individual Timeout: {:?}", individual_timeout.unwrap());
             }
