@@ -19,17 +19,9 @@ env:
   PROVER_CLOUD_CONFIG: ${{ vars.PROVER_CLOUD_CONFIG }}
 
 jobs:
-  # -- Build sui-prover (per-OS matrix) ------------------------------------
+  # -- Build sui-prover (macOS only; downstream legs all run on macOS) ------
   build-prover:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            os_tag: macos
-          - runner: ubuntu-latest
-            os_tag: linux
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     steps:
       - name: Checkout sui-prover
         uses: actions/checkout@v4
@@ -43,7 +35,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: sui-prover-cross-repo-${{ matrix.os_tag }}
+          shared-key: sui-prover-cross-repo-macos
           cache-on-failure: true
 
       - name: Checkout boogie
@@ -56,13 +48,8 @@ jobs:
       - name: Install z3 and build prover + boogie
         run: |
           set -euo pipefail
-          if [ "${{ matrix.os_tag }}" = "macos" ]; then
-            brew install z3
-            Z3_PREFIX="$(brew --prefix z3)"
-          else
-            sudo apt-get update && sudo apt-get install -y z3
-            Z3_PREFIX="/usr"
-          fi
+          brew install z3
+          Z3_PREFIX="$(brew --prefix z3)"
           echo "Z3_PREFIX=$Z3_PREFIX" >> "$GITHUB_ENV"
 
           cargo build --release --locked -p sui-prover
@@ -79,7 +66,7 @@ jobs:
       - name: Upload prover bundle
         uses: actions/upload-artifact@v4
         with:
-          name: sui-prover-bundle-${{ matrix.os_tag }}
+          name: sui-prover-bundle-macos
           path: ~/artifact-bundle
           retention-days: 90
           if-no-files-found: error
@@ -139,7 +126,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "sui-prover"
+          shared-key: sui-prover-cross-repo-macos
           save-if: false
 
       - name: Download
@@ -174,6 +161,7 @@ jobs:
 
   # -- stackless-bytecode cargo tests --------------------------------------
   internal-tests-stackless-bytecode:
+    needs: build-prover
     runs-on: macos-latest
     steps:
       - name: Checkout sui-prover
@@ -183,7 +171,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "sui-prover"
+          shared-key: sui-prover-cross-repo-macos
           save-if: false
 
       - name: Run
