@@ -215,6 +215,12 @@ jobs:
   # -- Cross-repo client matrix (dispatches into agent repo) ---------------
   trigger-and-wait:
     runs-on: ubuntu-latest
+    needs:
+      - build-prover
+      - kit-specs
+      - internal-tests-prover
+      - internal-tests-stackless-bytecode
+      - token-distribution-specs
     steps:
       - name: Dispatch cross-repo CI and capture run URL
         id: dispatch
