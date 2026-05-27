@@ -19,7 +19,6 @@ env:
   PROVER_CLOUD_CONFIG: ${{ vars.PROVER_CLOUD_CONFIG }}
 
 jobs:
-  # -- Build sui-prover (macOS only; downstream legs all run on macOS) ------
   build-prover:
     runs-on: macos-latest
     steps:
@@ -78,7 +77,6 @@ jobs:
           ~/artifact-bundle/bin/sui-prover --version
           dotnet ~/artifact-bundle/boogie/BoogieDriver.dll /version
 
-  # -- sui-kit example specs (cloud) ---------------------------------------
   kit-specs:
     needs: build-prover
     runs-on: macos-latest
@@ -114,7 +112,6 @@ jobs:
           cd ../guide
           sui-prover --ci --cloud
 
-  # -- sui-prover crate cargo tests (self-hosted) --------------------------
   internal-tests-prover:
     needs: build-prover
     runs-on: self-hosted
@@ -159,7 +156,6 @@ jobs:
         working-directory: crates/sui-prover
         run: cargo test
 
-  # -- stackless-bytecode cargo tests --------------------------------------
   internal-tests-stackless-bytecode:
     needs: build-prover
     runs-on: macos-latest
@@ -180,7 +176,6 @@ jobs:
         run: |
           cargo test -p move-stackless-bytecode --test testsuite -- 'test_runner::conditional_merge_insertion'
 
-  # -- securitize token-distribution specs (cloud) -------------------------
   token-distribution-specs:
     needs: build-prover
     runs-on: macos-latest
@@ -212,7 +207,6 @@ jobs:
           cd sui-smart-contracts/token-distribution-specs
           sui-prover --ci --cloud
 
-  # -- Cross-repo client matrix (dispatches into agent repo) ---------------
   trigger-and-wait:
     runs-on: ubuntu-latest
     needs:
@@ -290,7 +284,6 @@ jobs:
           echo "Cancelling cross-repo run $RUN_ID"
           gh run cancel -R "$AGENT_REPO" "$RUN_ID" || true
 
-  # -- Single aggregate gate ------------------------------------------------
   conclusion:
     needs:
       - build-prover
