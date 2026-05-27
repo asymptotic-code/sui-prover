@@ -16,10 +16,223 @@ concurrency:
 env:
   AGENT_REPO: asymptotic-code/agent
   AGENT_WORKFLOW: sui-prover-ci.yml
+  PROVER_CLOUD_CONFIG: ${{ secrets.CLOUD_EXEC_CONFIG }}
 
 jobs:
+  build-prover:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout sui-prover
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: sui-prover-cross-repo-macos
+          cache-on-failure: true
+
+      - name: Checkout boogie
+        uses: actions/checkout@v4
+        with:
+          repository: asymptotic-code/boogie
+          ref: master
+          path: boogie-src
+
+      - name: Install z3 and build prover + boogie
+        run: |
+          set -euo pipefail
+          brew install z3
+          Z3_PREFIX="$(brew --prefix z3)"
+          echo "Z3_PREFIX=$Z3_PREFIX" >> "$GITHUB_ENV"
+
+          cargo build --release --locked -p sui-prover
+          (cd boogie-src && dotnet build Source/Boogie.sln -c Release)
+
+      - name: Prepare artifact bundle
+        run: |
+          set -euo pipefail
+          mkdir -p ~/artifact-bundle/bin ~/artifact-bundle/z3/bin ~/artifact-bundle/boogie
+          cp target/release/sui-prover ~/artifact-bundle/bin/
+          cp -r boogie-src/Source/BoogieDriver/bin/Release/net8.0/. ~/artifact-bundle/boogie/
+          cp "$Z3_PREFIX/bin/z3" ~/artifact-bundle/z3/bin/
+
+      - name: Upload prover bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sui-prover-bundle-macos
+          path: ~/artifact-bundle
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 6
+
+      - name: Verify installation
+        run: |
+          chmod +x ~/artifact-bundle/bin/sui-prover
+          ~/artifact-bundle/bin/sui-prover --version
+          dotnet ~/artifact-bundle/boogie/BoogieDriver.dll /version
+
+  kit-specs:
+    needs: build-prover
+    runs-on: self-hosted
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: sui-prover-bundle-macos
+          path: ~/prover-bundle
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+          mkdir -p "$HOME/.asymptotic"
+          echo "$PROVER_CLOUD_CONFIG" > "$HOME/.asymptotic/sui_prover.toml"
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
+
+          chmod +x ~/.local/bin/boogie ~/.local/bin/sui-prover ~/prover-bundle/z3/bin/z3
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+          ~/.local/bin/boogie /version
+
+      - name: Run
+        run: |
+          git clone https://github.com/asymptotic-code/sui-kit.git sui-kit
+          cd sui-kit/examples/amm
+          sui-prover --ci
+          cd ../showcase
+          sui-prover --ci
+          cd ../guide
+          sui-prover --ci
+
+  internal-tests-prover:
+    needs: build-prover
+    runs-on: self-hosted
+    steps:
+      - name: Checkout sui-prover
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: sui-prover-cross-repo-macos
+          save-if: false
+
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: sui-prover-bundle-macos
+          path: ~/prover-bundle
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
+          chmod +x ~/.local/bin/boogie ~/.local/bin/sui-prover ~/prover-bundle/z3/bin/z3
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+          ~/.local/bin/boogie /version
+
+      - name: Run
+        working-directory: crates/sui-prover
+        run: cargo test
+
+  internal-tests-stackless-bytecode:
+    needs: build-prover
+    runs-on: self-hosted
+    steps:
+      - name: Checkout sui-prover
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: sui-prover-cross-repo-macos
+          save-if: false
+
+      - name: Run
+        env:
+          STACKLESS_TEST_IGNORE_DEPS: 1
+        run: |
+          cargo test -p move-stackless-bytecode --test testsuite -- 'test_runner::conditional_merge_insertion'
+
+  token-distribution-specs:
+    needs: build-prover
+    runs-on: self-hosted
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: sui-prover-bundle-macos
+          path: ~/prover-bundle
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup
+        run: |
+          mkdir -p ~/.local/bin
+          mkdir -p "$HOME/.asymptotic"
+          echo "$PROVER_CLOUD_CONFIG" > "$HOME/.asymptotic/sui_prover.toml"
+
+          cp ~/prover-bundle/bin/sui-prover ~/.local/bin/
+          cat <<'EOF' > ~/.local/bin/boogie
+          #!/bin/bash
+          exec dotnet "$HOME/prover-bundle/boogie/BoogieDriver.dll" "$@"
+          EOF
+
+          chmod +x ~/.local/bin/boogie ~/.local/bin/sui-prover ~/prover-bundle/z3/bin/z3
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/prover-bundle/z3/bin" >> $GITHUB_PATH
+          echo "BOOGIE_EXE=$HOME/.local/bin/boogie" >> $GITHUB_ENV
+          echo "Z3_EXE=$HOME/prover-bundle/z3/bin/z3" >> $GITHUB_ENV
+          ~/.local/bin/boogie /version
+
+      - name: Run
+        run: |
+          git clone --depth 1 -b fix/prover_specs https://github.com/asymptotic-code/sui-smart-contracts.git sui-smart-contracts
+          cd sui-smart-contracts/token-distribution-specs
+          sui-prover --ci
+
   trigger-and-wait:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    needs:
+      - build-prover
+      - kit-specs
+      - internal-tests-prover
+      - internal-tests-stackless-bytecode
+      - token-distribution-specs
     steps:
       - name: Dispatch cross-repo CI and capture run URL
         id: dispatch
@@ -34,6 +247,7 @@ jobs:
           echo "Previous run id: ${PREV_RUN_ID:-<none>}"
 
           gh workflow run "$AGENT_WORKFLOW" -R "$AGENT_REPO" \
+            -f generate_only=true \
             -f prover_ref="$PROVER_REF"
 
           NEW_RUN_ID=""
@@ -55,7 +269,6 @@ jobs:
 
           RUN_URL="${GITHUB_SERVER_URL}/${AGENT_REPO}/actions/runs/${NEW_RUN_ID}"
           echo "run_id=$NEW_RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
 
           {
             echo "## Sui-Prover CI (cross-repo)"
@@ -88,3 +301,55 @@ jobs:
         run: |
           echo "Cancelling cross-repo run $RUN_ID"
           gh run cancel -R "$AGENT_REPO" "$RUN_ID" || true
+
+  conclusion:
+    needs:
+      - build-prover
+      - kit-specs
+      - internal-tests-prover
+      - internal-tests-stackless-bytecode
+      - token-distribution-specs
+      - trigger-and-wait
+    if: always()
+    runs-on: self-hosted
+    steps:
+      - name: Summarize
+        run: |
+          echo "build-prover:                       ${{ needs.build-prover.result }}"
+          echo "kit-specs:                          ${{ needs.kit-specs.result }}"
+          echo "internal-tests-prover:              ${{ needs.internal-tests-prover.result }}"
+          echo "internal-tests-stackless-bytecode:  ${{ needs.internal-tests-stackless-bytecode.result }}"
+          echo "token-distribution-specs:           ${{ needs.token-distribution-specs.result }}"
+          echo "trigger-and-wait:                   ${{ needs.trigger-and-wait.result }}"
+
+      - name: Fail if any job failed
+        if: >-
+          needs.build-prover.result != 'success' ||
+          needs.kit-specs.result != 'success' ||
+          needs.internal-tests-prover.result != 'success' ||
+          needs.internal-tests-stackless-bytecode.result != 'success' ||
+          needs.token-distribution-specs.result != 'success' ||
+          needs.trigger-and-wait.result != 'success'
+        run: |
+          echo "Sui-Prover CI did not succeed across all targets."
+          exit 1
+
+      - name: Notify Slack on failure (main only)
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "Sui-Prover CI Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Sui-Prover CI failed*\n*Ref:* `${{ github.ref }}`\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
