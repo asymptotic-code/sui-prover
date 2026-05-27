@@ -16,7 +16,7 @@ concurrency:
 env:
   AGENT_REPO: asymptotic-code/agent
   AGENT_WORKFLOW: sui-prover-ci.yml
-  PROVER_CLOUD_CONFIG: ${{ vars.PROVER_CLOUD_CONFIG }}
+  PROVER_CLOUD_CONFIG: ${{ vars.CLOUD_EXEC_CONFIG }}
 
 jobs:
   build-prover:
