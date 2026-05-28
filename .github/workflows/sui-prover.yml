@@ -20,7 +20,7 @@ env:
 
 jobs:
   build-prover:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Checkout sui-prover
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
 
   kit-specs:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Download
         uses: actions/download-artifact@v4
@@ -123,7 +123,7 @@ jobs:
 
   internal-tests-prover:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Checkout sui-prover
         uses: actions/checkout@v4
@@ -167,7 +167,7 @@ jobs:
 
   internal-tests-stackless-bytecode:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Checkout sui-prover
         uses: actions/checkout@v4
@@ -187,7 +187,7 @@ jobs:
 
   token-distribution-specs:
     needs: build-prover
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Download
         uses: actions/download-artifact@v4
@@ -226,7 +226,7 @@ jobs:
           sui-prover --ci
 
   trigger-and-wait:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     needs:
       - build-prover
       - kit-specs
@@ -311,7 +311,7 @@ jobs:
       - token-distribution-specs
       - trigger-and-wait
     if: always()
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Summarize
         run: |
