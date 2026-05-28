@@ -7,7 +7,7 @@ on:
 
 jobs:
   create-pr:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     permissions:
       contents: write
 
@@ -53,7 +53,7 @@ jobs:
 
   wait-for-checks:
     needs: create-pr
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     permissions:
       contents: write
     steps:
@@ -83,7 +83,7 @@ jobs:
 
   add-label:
     needs: wait-for-checks
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     permissions:
       contents: write
 
