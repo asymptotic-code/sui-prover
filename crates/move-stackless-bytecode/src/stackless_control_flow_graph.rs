@@ -184,20 +184,35 @@ impl StacklessControlFlowGraph {
                     {
                         successors.push(DUMMY_EXIT);
                     }
-                } else {
+                } else if pc + 1 < code.len() {
+                    // Mid-code: only exits are edge-less, and they get a
+                    // synthetic fall-through instead of the exit edge.
                     assert_eq!(
-                        code[pc].is_exit() || pc + 1 == code.len(),
+                        code[pc].is_exit(),
                         successors.is_empty(),
                         "code[{}]: {:?}",
                         pc,
                         code[pc]
                     );
-                    if pc + 1 == code.len() {
-                        assert!(code[pc].is_exit() || !code[pc].is_branch());
-                        successors.push(DUMMY_EXIT);
-                    } else if code[pc].is_exit() {
+                    if code[pc].is_exit() {
                         successors.push(Self::get_block_id(&mut offset_to_key, co_pc + 1));
                     }
+                } else {
+                    // Final pc: the unique DUMMY_EXIT anchor of this mode.
+                    // A non-exit branch here keeps its real successors and
+                    // gains the exit edge alongside -- the Move compiler
+                    // emits this shape for `loop { ... return ... }` whose
+                    // unreachable trailing expression was dropped, leaving
+                    // the loop back-edge as the last instruction. Anchoring
+                    // the exit on that block keeps the whole component
+                    // exit-reachable for post-dominator analysis.
+                    assert!(
+                        code[pc].is_exit() || code[pc].is_branch() || successors.is_empty(),
+                        "code[{}]: {:?}",
+                        pc,
+                        code[pc]
+                    );
+                    successors.push(DUMMY_EXIT);
                 }
                 let bb = BlockContent::Basic {
                     lower: block_entry,
@@ -215,6 +230,106 @@ impl StacklessControlFlowGraph {
             }
         }
         assert_eq!(block_entry, code.len() as CodeOffset);
+        if ignore_return_abort {
+            // A return-only loop -- every escape is a Ret/Abort -- has no
+            // post-dominator in this mode: returns are fall-throughs here
+            // and the back-edge only cycles, so the entire loop is
+            // unreachable BACKWARD from DUMMY_EXIT. Recover the syntactic
+            // CFG by giving such a loop the mode's standard early-return
+            // treatment: its EXITING latch (the back-edge source whose
+            // textual successor lies outside the loop) falls through to
+            // that successor, exactly like a mid-code `Ret` falls through
+            // to `pc + 1`. Mid-body latches (`continue`) get nothing --
+            // the exiting latch provides the component's path to the
+            // exit. A function-final latch needs nothing either: the
+            // final pc anchored DUMMY_EXIT above. Loops that already
+            // reach the exit are never touched, so graphs without the
+            // pathology come out identical.
+            //
+            // Back edges are certified by forward dominators (target
+            // dominates source); stray backward jumps in irreducible
+            // shapes do not qualify, stay unanchored, and the affected
+            // function fails downstream with a clean per-function error
+            // instead of being silently mis-structured.
+            let mut nodes: Vec<BlockId> = blocks.keys().copied().collect();
+            nodes.push(DUMMY_EXIT);
+            let entry_bb = *offset_to_key.get(&0).unwrap();
+            let edges: Vec<(BlockId, BlockId)> = blocks
+                .iter()
+                .flat_map(|(b, blk)| blk.successors.iter().map(move |s| (*b, *s)))
+                .collect();
+            let dom = crate::graph::DomRelation::new(&crate::graph::Graph::new(
+                entry_bb,
+                nodes,
+                edges.clone(),
+            ));
+
+            let mut preds: Map<BlockId, Vec<BlockId>> = Map::new();
+            for (u, v) in &edges {
+                preds.entry(*v).or_default().push(*u);
+            }
+            let mut reaches_exit: Set<BlockId> = Set::new();
+            let mut stack = vec![DUMMY_EXIT];
+            while let Some(n) = stack.pop() {
+                if reaches_exit.insert(n) {
+                    if let Some(ps) = preds.get(&n) {
+                        stack.extend(ps.iter().copied());
+                    }
+                }
+            }
+
+            let mut back_edges: Vec<(BlockId, BlockId)> = Vec::new();
+            for (u, v) in &edges {
+                if *v != DUMMY_EXIT && dom.is_reachable(*u) && dom.is_dominated_by(*u, *v) {
+                    back_edges.push((*u, *v));
+                }
+            }
+            // Per-header UNION body: multiple back edges to one header
+            // are one loop (same merge as the consumer-side loop index).
+            // Body = header + every node reaching a latch without
+            // passing through the header.
+            let mut union_body: Map<BlockId, Set<BlockId>> = Map::new();
+            for (u, v) in &back_edges {
+                let body = union_body.entry(*v).or_default();
+                body.insert(*v);
+                let mut stack = vec![*u];
+                while let Some(n) = stack.pop() {
+                    if body.insert(n) {
+                        if let Some(ps) = preds.get(&n) {
+                            stack.extend(ps.iter().copied());
+                        }
+                    }
+                }
+            }
+
+            let mut added: Vec<(BlockId, BlockId)> = Vec::new();
+            for (u, v) in &back_edges {
+                if reaches_exit.contains(u) {
+                    continue;
+                }
+                let BlockContent::Basic { upper, .. } = blocks[u].content else {
+                    continue;
+                };
+                let next_pc = upper + 1;
+                assert!(
+                    (next_pc as usize) < code.len(),
+                    "post-dominator-less latch at the final pc: the final-pc arm \
+                     anchors DUMMY_EXIT, so it must already be exit-reachable"
+                );
+                let next_block = *offset_to_key
+                    .get(&next_pc)
+                    .expect("a mid-code block end implies a block start at pc + 1");
+                if !union_body[v].contains(&next_block) {
+                    added.push((*u, next_block));
+                }
+            }
+            for (u, t) in added {
+                let succ = &mut blocks.get_mut(&u).unwrap().successors;
+                if !succ.contains(&t) {
+                    succ.push(t);
+                }
+            }
+        }
         let entry_bb = *offset_to_key.get(&0).unwrap();
         blocks.insert(
             DUMMY_ENTRANCE,
