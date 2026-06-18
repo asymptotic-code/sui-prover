@@ -374,8 +374,8 @@ impl<'env> BoogieWrapper<'env> {
         &self,
         boogie_file: &str,
         remote_opt: &RemoteOptions,
+        remote_args: Vec<String>,
         individual_timeout: Option<u64>,
-        individual_options: Option<String>,
     ) -> RemoteProverResponse {
         let err = |msg: String, status: i32| RemoteProverResponse {
             out: String::new(),
@@ -404,14 +404,10 @@ impl<'env> BoogieWrapper<'env> {
 
         let is_remote = remote_opt.url.as_str().contains("https://");
 
-        let request_body = if individual_options.is_some() {
-            json!({
-                "file_text": file_text,
-                "options": individual_options,
-            })
-        } else {
-            json!({ "file_text": file_text })
-        };
+        let request_body = json!({
+            "file_text": file_text,
+            "options": remote_args,
+        });
 
         let request = if is_remote {
             request_body
@@ -482,24 +478,25 @@ impl<'env> BoogieWrapper<'env> {
         individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<BoogieOutput> {
+        let remote_args =
+            self.options
+                .get_boogie_command(boogie_file, individual_options.clone(), true)?;
+
         if self.options.ci {
+            println!("Boogie Execution Params: {}", remote_args.iter().join(" "));
             if individual_timeout.is_some() {
                 println!("Individual Timeout: {:?}", individual_timeout.unwrap());
             }
             if individual_options.is_some() {
                 println!(
                     "Individual Boogie Options: {:?}",
-                    individual_options.clone().unwrap()
+                    individual_options.unwrap()
                 );
             }
         }
+
         let res = self
-            .call_remote(
-                boogie_file,
-                remote_opt,
-                individual_timeout,
-                individual_options,
-            )
+            .call_remote(boogie_file, remote_opt, remote_args, individual_timeout)
             .await;
         self.analyze_output(&res.out, &res.err, res.status, true, boogie_file)
     }
@@ -755,9 +752,9 @@ impl<'env> BoogieWrapper<'env> {
         individual_timeout: Option<u64>,
         individual_options: Option<String>,
     ) -> anyhow::Result<BoogieOutput> {
-        let args = self
-            .options
-            .get_boogie_command(boogie_file, individual_options.clone())?;
+        let args =
+            self.options
+                .get_boogie_command(boogie_file, individual_options.clone(), false)?;
 
         if self.options.ci {
             println!("Boogie Execution Command: {}", args.iter().join(" "));
