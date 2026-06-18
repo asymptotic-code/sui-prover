@@ -45,8 +45,9 @@ use move_binary_format::{
     file_format::{
         AddressIdentifierIndex, Bytecode, Constant as VMConstant, ConstantPoolIndex,
         DatatypeHandleIndex, EnumDefinitionIndex, FunctionDefinition, FunctionDefinitionIndex,
-        FunctionHandleIndex, IdentifierIndex, ModuleHandle, SignatureIndex, SignatureToken,
-        StructDefinitionIndex, StructFieldInformation, VariantJumpTable, Visibility,
+        FunctionHandle, FunctionHandleIndex, IdentifierIndex, ModuleHandle, ModuleHandleIndex,
+        Signature, SignatureIndex, SignatureToken, StructDefinitionIndex, StructFieldInformation,
+        VariantJumpTable, Visibility,
     },
 };
 use move_bytecode_source_map::{mapping::SourceMapping, source_map::SourceMap};
@@ -4450,6 +4451,18 @@ impl GlobalEnv {
         .collect()
     }
 
+    /// Name used for the placeholder function injected into every stub
+    /// module so `find_module_by_name` (which filters on
+    /// `get_function_count() > 0`) returns the stub. Any well-known qid
+    /// getter like `env.global_qid()` or `env.log_text_qid()` walks
+    /// `find_module_id -> find_module_by_name`; without a non-empty
+    /// `function_data`, the stub is invisible and the call panics with
+    /// `module not found: <name>`. The placeholder isn't referenced by
+    /// any real bytecode (it lives only in the stub module that has no
+    /// callers), so the only observable effect of its presence is that
+    /// the stub becomes visible to lookups.
+    const STUB_PLACEHOLDER_FUNCTION_NAME: &'static str = "__stub_placeholder";
+
     fn add_stub_module(&mut self, module_symbol: Symbol) {
         if self.find_module_by_name(module_symbol).is_none() {
             let mut compiled_module: CompiledModule = CompiledModule::default();
@@ -4464,6 +4477,64 @@ impl GlobalEnv {
             compiled_module
                 .identifiers
                 .push(Identifier::new("SELF").unwrap());
+            // inject a placeholder function so the stub passes
+            // `find_module_by_name`'s `get_function_count() > 0` filter.
+            // without this, callers like `env.global_qid()` /
+            // `env.log_text_qid()` (and every analysis processor that
+            // calls them while walking bytecode -- borrow_analysis,
+            // debug_instrumentation, no_abort_analysis,
+            // spec_global_variable_analysis, ...) panic with
+            // `module not found: <name>` on packages that don't
+            // transitively load `SuiProver` (the package that owns the
+            // real `prover` / `ghost` / `log` modules).
+            let placeholder_ident_idx =
+                IdentifierIndex(compiled_module.identifiers.len() as u16);
+            compiled_module
+                .identifiers
+                .push(Identifier::new(Self::STUB_PLACEHOLDER_FUNCTION_NAME).unwrap());
+            // a SignatureIndex(0) -- shared by params + return for the
+            // placeholder. CompiledModule::default() has an empty
+            // signatures vec, so we add a single empty Signature for it.
+            let empty_sig_idx = SignatureIndex(compiled_module.signatures.len() as u16);
+            compiled_module.signatures.push(Signature(Vec::new()));
+            let placeholder_handle_idx =
+                FunctionHandleIndex(compiled_module.function_handles.len() as u16);
+            compiled_module.function_handles.push(FunctionHandle {
+                module: ModuleHandleIndex(0),
+                name: placeholder_ident_idx,
+                parameters: empty_sig_idx,
+                return_: empty_sig_idx,
+                type_parameters: Vec::new(),
+            });
+            let placeholder_def_idx =
+                FunctionDefinitionIndex(compiled_module.function_defs.len() as u16);
+            compiled_module.function_defs.push(FunctionDefinition {
+                function: placeholder_handle_idx,
+                visibility: Visibility::Private,
+                is_entry: false,
+                acquires_global_resources: Vec::new(),
+                // `code: None` marks the placeholder as a native function
+                // so no body needs to exist anywhere. The bytecode
+                // verifier accepts this shape; downstream code that
+                // walks `function_defs` either skips natives or treats
+                // missing-body as a no-op.
+                code: None,
+            });
+
+            let placeholder_sym = self.symbol_pool.make(Self::STUB_PLACEHOLDER_FUNCTION_NAME);
+            let placeholder_fun_id = FunId::new(placeholder_sym);
+            let mut function_data = BTreeMap::new();
+            function_data.insert(
+                placeholder_fun_id,
+                FunctionData::stub(
+                    placeholder_sym,
+                    placeholder_def_idx,
+                    placeholder_handle_idx,
+                ),
+            );
+            let mut function_idx_to_id = BTreeMap::new();
+            function_idx_to_id.insert(placeholder_def_idx, placeholder_fun_id);
+
             self.module_data.push(ModuleData {
                 name: ModuleName::new(Default::default(), module_symbol),
                 id: ModuleId::new(self.get_module_count()),
@@ -4471,8 +4542,8 @@ impl GlobalEnv {
                 named_constants: BTreeMap::new(),
                 struct_data: BTreeMap::new(),
                 struct_idx_to_id: BTreeMap::new(),
-                function_data: BTreeMap::new(),
-                function_idx_to_id: BTreeMap::new(),
+                function_data,
+                function_idx_to_id,
                 // below this line is source/prover specific
                 source_map: SourceMap::new(
                     MoveIrLoc::new(FileHash::empty(), 0, 0),

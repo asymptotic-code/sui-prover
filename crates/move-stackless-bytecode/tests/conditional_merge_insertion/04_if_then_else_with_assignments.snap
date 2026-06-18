@@ -68,6 +68,18 @@ fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool,
  28: return $t17
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `conditional_merge_insertion` ================
 
 [variant baseline]
@@ -122,3 +134,15 @@ fun ConditionalMergeInsertionTest::if_then_else_with_assignments($t0|cond: bool,
  21: $t3 := if_then_else($t0, $t15, $t14)
  22: return $t3
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

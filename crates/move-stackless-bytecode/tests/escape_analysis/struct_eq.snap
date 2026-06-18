@@ -22,6 +22,18 @@ public fun StructEq::new(): StructEq::S {
   2: return $t1
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `escape_analysis` ================
 
 [variant baseline]
@@ -42,3 +54,24 @@ public fun StructEq::new(): StructEq::S {
   1: $t1 := pack StructEq::S($t0)
   2: return $t1
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
+============ Diagnostics ================
+error: Leaked mutable module-internal reference via return value 0
+   ┌─ tests/escape_analysis/struct_eq.move:10:5
+   │  
+10 │ ╭     public fun leak_f(s: &mut S): &mut u64 {
+11 │ │         &mut s.f
+12 │ │     }
+   │ ╰─────^

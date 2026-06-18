@@ -64,6 +64,18 @@ fun test::helper($t0|x: u64, $t1|y: u64, $t2|_z: u8): u64 {
   4: return $t6
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `conditional_merge_insertion` ================
 
 [variant baseline]
@@ -119,3 +131,15 @@ fun test::helper($t0|x: u64, $t1|y: u64, $t2|_z: u8): u64 {
   1: $t4 := +($t0, $t3)
   2: return $t4
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

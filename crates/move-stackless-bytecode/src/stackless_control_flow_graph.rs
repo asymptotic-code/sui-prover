@@ -184,18 +184,28 @@ impl StacklessControlFlowGraph {
                     {
                         successors.push(DUMMY_EXIT);
                     }
-                } else if code[pc].is_exit() {
-                    if pc + 1 == code.len() {
-                        successors.push(DUMMY_EXIT);
-                    } else {
+                } else if pc + 1 < code.len() {
+                    // mid-code exits are edge-less; fall them through to pc+1.
+                    assert_eq!(
+                        code[pc].is_exit(),
+                        successors.is_empty(),
+                        "code[{}]: {:?}",
+                        pc,
+                        code[pc]
+                    );
+                    if code[pc].is_exit() {
                         successors.push(Self::get_block_id(&mut offset_to_key, co_pc + 1));
                     }
-                } else if !code[pc].is_branch() && pc + 1 == code.len() {
+                } else {
+                    // final pc: anchor DUMMY_EXIT here to keep the component exit-reachable.
+                    assert!(
+                        code[pc].is_exit() || code[pc].is_branch() || successors.is_empty(),
+                        "code[{}]: {:?}",
+                        pc,
+                        code[pc]
+                    );
                     successors.push(DUMMY_EXIT);
                 }
-                // A branch as the final instruction (e.g. a back-jump closing an infinite
-                // loop with mid-loop returns) keeps its existing targets and yields a
-                // cyclic CFG, so callers can detect via is_acyclic() and bail out.
                 let bb = BlockContent::Basic {
                     lower: block_entry,
                     upper: co_pc,
@@ -227,7 +237,88 @@ impl StacklessControlFlowGraph {
                 content: BlockContent::Dummy,
             },
         );
+        if ignore_return_abort {
+            Self::anchor_return_only_loops(&mut blocks, &offset_to_key, code);
+        }
         blocks
+    }
+
+    /// Give every return-only loop the early-return treatment so its
+    /// in-loop branches gain a post-dominator.
+    ///
+    /// In `ignore_return_abort` mode a loop whose only escapes are
+    /// Ret/Abort is unreachable backward from DUMMY_EXIT. Restore
+    /// exit-reachability by falling its exiting latch through to that
+    /// latch's textual successor, as a mid-code `Ret` falls through to
+    /// pc+1; loops that already reach the exit are untouched. Back edges
+    /// are certified by dominators, so irreducible stray jumps are ignored.
+    fn anchor_return_only_loops(
+        blocks: &mut Map<BlockId, Block>,
+        offset_to_key: &Map<CodeOffset, BlockId>,
+        code: &[Bytecode],
+    ) {
+        // `blocks` already holds both dummies, so its keys are all nodes.
+        let nodes: Vec<BlockId> = blocks.keys().copied().collect();
+        let edges: Vec<(BlockId, BlockId)> = blocks
+            .iter()
+            .flat_map(|(b, blk)| blk.successors.iter().map(move |s| (*b, *s)))
+            .collect();
+
+        // `dom`: forward dominators (back-edge certification, loop bodies).
+        // `postdom`: reversed-graph dominators, where `is_reachable` answers
+        // "can the latch reach the exit" without a hand-rolled walk.
+        let rev_edges: Vec<(BlockId, BlockId)> = edges.iter().map(|(u, v)| (*v, *u)).collect();
+        let graph = crate::graph::Graph::new(DUMMY_ENTRANCE, nodes.clone(), edges.clone());
+        let dom = crate::graph::DomRelation::new(&graph);
+        let postdom =
+            crate::graph::DomRelation::new(&crate::graph::Graph::new(DUMMY_EXIT, nodes, rev_edges));
+
+        let back_edges: Vec<(BlockId, BlockId)> = edges
+            .iter()
+            .copied()
+            .filter(|(u, v)| {
+                *v != DUMMY_EXIT && dom.is_reachable(*u) && dom.is_dominated_by(*u, *v)
+            })
+            .collect();
+        // union the natural-loop bodies of back edges that share a header
+        // (multiple back edges to one header are a single loop).
+        let mut union_body: Map<BlockId, Set<BlockId>> = Map::new();
+        for &(u, v) in &back_edges {
+            union_body
+                .entry(v)
+                .or_default()
+                .extend(graph.natural_loop((u, v)).loop_body);
+        }
+
+        let mut added: Vec<(BlockId, BlockId)> = Vec::new();
+        for (u, v) in &back_edges {
+            if postdom.is_reachable(*u) {
+                continue;
+            }
+            // a latch is a back-edge source, hence a real (Basic) block:
+            // neither dummy can be one (no successors / not a back edge).
+            let BlockContent::Basic { upper, .. } = blocks[u].content else {
+                unreachable!("back-edge latch {u} is not a Basic block");
+            };
+            let next_pc = upper + 1;
+            assert!(
+                (next_pc as usize) < code.len(),
+                "post-dominator-less latch at the final pc: the final-pc arm \
+                 anchors DUMMY_EXIT, so it must already be exit-reachable"
+            );
+            let next_block = *offset_to_key
+                .get(&next_pc)
+                .expect("a mid-code block end implies a block start at pc + 1");
+            if !union_body[v].contains(&next_block) {
+                added.push((*u, next_block));
+            }
+        }
+        for (u, t) in added {
+            let succ = &mut blocks.get_mut(&u).unwrap().successors;
+            if !succ.contains(&t) {
+                succ.push(t);
+            }
+        }
     }
 
     fn get_block_id(offset_to_key: &mut Map<CodeOffset, BlockId>, offset: CodeOffset) -> BlockId {

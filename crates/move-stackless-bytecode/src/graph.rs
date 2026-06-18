@@ -111,7 +111,7 @@ impl<T: Ord + Copy + Debug> Graph<T> {
         true
     }
 
-    fn natural_loop(&self, back_edge: (T, T)) -> NaturalLoop<T> {
+    pub(crate) fn natural_loop(&self, back_edge: (T, T)) -> NaturalLoop<T> {
         let loop_latch = back_edge.0;
         let loop_header = back_edge.1;
         let mut stack = vec![];
