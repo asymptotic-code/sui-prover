@@ -4477,9 +4477,9 @@ impl GlobalEnv {
             compiled_module
                 .identifiers
                 .push(Identifier::new("SELF").unwrap());
-            // Inject a placeholder function so the stub passes
+            // inject a placeholder function so the stub passes
             // `find_module_by_name`'s `get_function_count() > 0` filter.
-            // Without this, callers like `env.global_qid()` /
+            // without this, callers like `env.global_qid()` /
             // `env.log_text_qid()` (and every analysis processor that
             // calls them while walking bytecode -- borrow_analysis,
             // debug_instrumentation, no_abort_analysis,
@@ -4492,7 +4492,7 @@ impl GlobalEnv {
             compiled_module
                 .identifiers
                 .push(Identifier::new(Self::STUB_PLACEHOLDER_FUNCTION_NAME).unwrap());
-            // SignatureIndex(0) -- shared by params + return for the
+            // a SignatureIndex(0) -- shared by params + return for the
             // placeholder. CompiledModule::default() has an empty
             // signatures vec, so we add a single empty Signature for it.
             let empty_sig_idx = SignatureIndex(compiled_module.signatures.len() as u16);
