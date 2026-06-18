@@ -782,22 +782,7 @@ impl FunctionTargetsHolder {
             .expect("variant exists")
     }
 
-    /// Remove all variants of a function from targets, and drop any
-    /// `function_specs` entry that referenced it (in either direction).
-    ///
-    /// Keeping `function_specs` consistent with `targets` is load-bearing:
-    /// `MonoAnalysisProcessor` (and other downstream passes) treats
-    /// `get_spec_by_fun(callee)` as a query for "find the spec whose
-    /// bytecode is in this holder", and immediately calls
-    /// `get_target(spec_qid, Baseline)` on the result. If the spec was
-    /// pruned from `targets` but still mapped in `function_specs`,
-    /// `get_target` blows up with `expected function target: <spec>
-    /// (Baseline)`. The asymmetry is reachable for any cross-module
-    /// spec whose target ends up `reachable=true` (via `mark_reachable`)
-    /// without anyone walking back to call `mark_inlined` on the spec
-    /// itself — e.g. `i32_specs::sign_spec` when verifying a
-    /// `pool_specs::pool_spec` that transitively calls `i32::sign`
-    /// through a non-pure, non-verified, non-no_opaque intermediary.
+    /// Remove all variants of a function from targets
     pub fn remove_target(&mut self, id: &QualifiedId<FunId>) {
         self.targets.remove(id);
         self.function_specs.remove_by_left(id);
