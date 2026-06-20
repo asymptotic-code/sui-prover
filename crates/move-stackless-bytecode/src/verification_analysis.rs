@@ -575,7 +575,7 @@ impl VerificationAnalysisProcessor {
 
     /// Marks all callees of this function to be inlined. Forms a mutual recursion with the
     /// `mark_inlined` function above.
-    fn mark_callees_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
+    pub fn mark_callees_inlined(fun_env: &FunctionEnv, targets: &mut FunctionTargetsHolder) {
         let env = fun_env.module_env.env;
 
         let mut callees = targets

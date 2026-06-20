@@ -19,7 +19,7 @@ use std::{
 };
 
 /// Valid values for the `run_on` attribute in `#[spec(prove, run_on="...")]`.
-pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud"];
+pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud", "boogie"];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
@@ -1077,6 +1077,17 @@ impl PackageTargets {
 
     pub fn spec_run_on(&self) -> &BTreeMap<QualifiedId<FunId>, String> {
         &self.spec_run_on
+    }
+
+    /// Specs marked `#[spec(prove, run_on="boogie")]`. The Lean backend
+    /// emits these obligations as trusted axioms (the hybrid Boogie+Lean
+    /// flow proves them on the Boogie side).
+    pub fn boogie_proven_specs(&self) -> BTreeSet<QualifiedId<FunId>> {
+        self.spec_run_on
+            .iter()
+            .filter(|(_, value)| value.as_str() == "boogie")
+            .map(|(qid, _)| *qid)
+            .collect()
     }
 
     pub fn loop_invariant_candidates(
