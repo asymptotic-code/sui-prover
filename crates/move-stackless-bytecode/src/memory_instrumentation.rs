@@ -11,7 +11,7 @@ use move_model::{
 };
 
 use crate::{
-    borrow_analysis::{BorrowAnnotation, WriteBackAction},
+    borrow_analysis::{instruction_has_borrow_info, BorrowAnnotation, WriteBackAction},
     exp_generator::ExpGenerator,
     function_data_builder::FunctionDataBuilder,
     function_target::FunctionData,
@@ -163,12 +163,20 @@ impl<'a> Instrumenter<'a> {
     fn memory_instrumentation(&mut self, code_offset: CodeOffset, bytecode: &Bytecode) {
         let param_count = self.builder.get_target().get_parameter_count();
 
+        if !instruction_has_borrow_info(bytecode) {
+            assert!(
+                self.borrow_annotation
+                    .get_borrow_info_at(code_offset)
+                    .is_none(),
+                "unexpected borrow info for bytecode offset {}",
+                code_offset
+            );
+            return;
+        }
         let borrow_annotation_at = self
             .borrow_annotation
             .get_borrow_info_at(code_offset)
-            .unwrap();
-        let before = &borrow_annotation_at.before;
-        let after = &borrow_annotation_at.after;
+            .expect("missing borrow info for bytecode that requires it");
 
         // Generate UnpackRef from Borrow instructions.
         if let Call(attr_id, dests, op, _, _) = bytecode {
@@ -180,8 +188,11 @@ impl<'a> Instrumenter<'a> {
                         .get_target()
                         .get_local_type(dests[0])
                         .to_owned();
-                    let node = BorrowNode::Reference(dests[0]);
-                    if self.is_pack_ref_ty(ty) && after.is_in_use(&node) {
+                    if self.is_pack_ref_ty(ty)
+                        && borrow_annotation_at
+                            .live_nodes_after
+                            .contains(&BorrowNode::Reference(dests[0]))
+                    {
                         self.builder.set_loc_from_attr(*attr_id);
                         self.builder.emit_with(|id| {
                             Bytecode::Call(id, vec![], Operation::UnpackRef, vec![dests[0]], None)
@@ -196,7 +207,7 @@ impl<'a> Instrumenter<'a> {
         let attr_id = bytecode.get_attr_id();
         self.builder.set_loc_from_attr(attr_id);
 
-        for (node, ancestors) in before.dying_nodes(after) {
+        for (node, ancestors) in &borrow_annotation_at.dying_nodes {
             // we only care about references that occurs in the function body
             let node_idx = match node {
                 BorrowNode::LocalRoot(..)
@@ -205,7 +216,7 @@ impl<'a> Instrumenter<'a> {
                     continue;
                 }
                 BorrowNode::Reference(idx) => {
-                    if idx < param_count {
+                    if *idx < param_count {
                         // NOTE: we have an entry-point assumption where a &mut parameter must
                         // have its data invariants hold. As a result, when we write-back the
                         // references, we should assert that the data invariant still hold.
@@ -214,15 +225,15 @@ impl<'a> Instrumenter<'a> {
                         // function body, i.e., by borrow local or borrow global. These cases
                         // are handled by the `pre_writeback_check_opt` (see below).
                         let target = self.builder.get_target();
-                        let ty = target.get_local_type(idx);
+                        let ty = target.get_local_type(*idx);
                         if self.is_pack_ref_ty(ty) {
                             self.builder.emit_with(|id| {
-                                Bytecode::Call(id, vec![], Operation::PackRefDeep, vec![idx], None)
+                                Bytecode::Call(id, vec![], Operation::PackRefDeep, vec![*idx], None)
                             });
                         }
                         continue;
                     }
-                    idx
+                    *idx
                 }
                 BorrowNode::ReturnPlaceholder(..) => {
                     unreachable!("Unexpected placeholder borrow node");
@@ -333,15 +344,15 @@ impl<'a> Instrumenter<'a> {
                     });
                     if self.prover_options.debug_trace {
                         // add a trace for written back value if it's a user variable.
-                        match action.dst {
+                        match &action.dst {
                             BorrowNode::LocalRoot(temp) | BorrowNode::Reference(temp) => {
-                                if temp < self.builder.fun_env.get_local_count() {
+                                if *temp < self.builder.fun_env.get_local_count() {
                                     self.builder.emit_with(|id| {
                                         Bytecode::Call(
                                             id,
                                             vec![],
-                                            Operation::TraceLocal(temp),
-                                            vec![temp],
+                                            Operation::TraceLocal(*temp),
+                                            vec![*temp],
                                             None,
                                         )
                                     });
