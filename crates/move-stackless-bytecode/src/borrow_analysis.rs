@@ -370,9 +370,24 @@ impl BorrowInfo {
 }
 
 #[derive(Clone, Default)]
-pub struct BorrowInfoAtCodeOffset {
+struct FullBorrowInfoAtCodeOffset {
     pub before: BorrowInfo,
     pub after: BorrowInfo,
+}
+
+#[derive(Clone, Default)]
+pub struct BorrowInfoAtCodeOffset {
+    pub live_nodes_after: SetDomain<BorrowNode>,
+    pub dying_nodes: Vec<(BorrowNode, Vec<Vec<WriteBackAction>>)>,
+}
+
+impl FullBorrowInfoAtCodeOffset {
+    fn saved(&self) -> BorrowInfoAtCodeOffset {
+        BorrowInfoAtCodeOffset {
+            live_nodes_after: self.after.live_nodes.clone(),
+            dying_nodes: self.before.dying_nodes(&self.after),
+        }
+    }
 }
 
 /// Borrow annotation computed by the borrow analysis processor.
@@ -386,22 +401,48 @@ impl BorrowAnnotation {
     pub fn get_summary(&self) -> &BorrowInfo {
         &self.summary
     }
+
     pub fn get_borrow_info_at(&self, code_offset: CodeOffset) -> Option<&BorrowInfoAtCodeOffset> {
         self.code_map.get(&code_offset)
     }
 
-    fn join(&mut self, other: &Self) -> JoinResult {
-        let mut result = self.summary.join(&other.summary);
-        for (offset, info) in self.code_map.iter_mut() {
-            let other_info = other.code_map.get(offset).unwrap();
-            result = result.combine(
-                info.before
-                    .join(&other_info.before)
-                    .combine(info.after.join(&other_info.after)),
-            );
+    fn from_full(
+        summary: BorrowInfo,
+        code_map: BTreeMap<CodeOffset, FullBorrowInfoAtCodeOffset>,
+        instrs: &[Bytecode],
+    ) -> Self {
+        Self {
+            summary,
+            code_map: code_map
+                .into_iter()
+                .filter(|(offset, _)| instruction_has_borrow_info(&instrs[*offset as usize]))
+                .map(|(offset, info)| (offset, info.saved()))
+                .collect(),
         }
-        result
     }
+
+    fn code_map(&self) -> &BTreeMap<CodeOffset, BorrowInfoAtCodeOffset> {
+        &self.code_map
+    }
+
+    fn join(&mut self, other: &Self) -> JoinResult {
+        self.summary.join(&other.summary)
+    }
+}
+
+pub(crate) fn instruction_has_borrow_info(bytecode: &Bytecode) -> bool {
+    matches!(
+        bytecode,
+        Bytecode::Assign(..)
+            | Bytecode::Call(..)
+            | Bytecode::Ret(..)
+            | Bytecode::Branch(..)
+            | Bytecode::Jump(..)
+            | Bytecode::VariantSwitch(..)
+            | Bytecode::Abort(..)
+            | Bytecode::SaveMem(..)
+            | Bytecode::Prop(..)
+    )
 }
 
 /// Borrow analysis processor.
@@ -479,11 +520,10 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
                     data.annotations
                         .get::<BorrowAnnotation>()
                         .unwrap()
-                        .code_map
+                        .code_map()
                         .values()
                         .flat_map(|info| {
-                            info.before
-                                .dying_nodes(&info.after)
+                            info.dying_nodes
                                 .iter()
                                 .flat_map(|(_, actions)| actions)
                                 .flatten()
@@ -705,7 +745,7 @@ impl<'a> BorrowAnalysis<'a> {
             let mut after = after.clone();
             before.consolidate();
             after.consolidate();
-            BorrowInfoAtCodeOffset { before, after }
+            FullBorrowInfoAtCodeOffset { before, after }
         });
         let mut summary = BorrowInfo::default();
         for (offs, code) in instrs.iter().enumerate() {
@@ -716,7 +756,7 @@ impl<'a> BorrowAnalysis<'a> {
             }
         }
         summary.consolidate();
-        BorrowAnnotation { summary, code_map }
+        BorrowAnnotation::from_full(summary, code_map, instrs)
     }
 
     fn borrow_node(&self, idx: TempIndex) -> BorrowNode {
@@ -911,7 +951,7 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             }
                         }
 
-                        let callee_annotation = get_custom_annotation_or_none(
+                        let callee_summary = get_custom_annotation_or_none(
                             callee_env,
                             &targs,
                             &srcs
@@ -920,6 +960,7 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                                 .collect_vec(),
                             self.borrow_natives,
                         )
+                        .map(|annotation| annotation.summary)
                         .unwrap_or_else(|| {
                             let callee_info = if mid.qualified(*fid)
                                 == self.func_target.func_env.get_qualified_id()
@@ -941,11 +982,11 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                             match callee_info {
                                 None => {
                                     // 1st iteration of the recursive case
-                                    BorrowAnnotation::default()
+                                    BorrowInfo::default()
                                 }
                                 Some(annotation) => {
                                     // non-recursive case or Nth iteration of fixedpoint (N >= 1)
-                                    annotation.clone()
+                                    annotation.summary.clone()
                                 }
                             }
                         });
@@ -953,7 +994,7 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                         state.instantiate(
                             callee_env,
                             targs,
-                            &callee_annotation.summary,
+                            &callee_summary,
                             srcs,
                             dests,
                             Some(callee_env.get_qualified_id())
@@ -1009,12 +1050,10 @@ pub fn format_borrow_annotation(
     func_target: &FunctionTarget<'_>,
     code_offset: CodeOffset,
 ) -> Option<String> {
-    if let Some(BorrowAnnotation { code_map, .. }) =
-        func_target.get_annotations().get::<BorrowAnnotation>()
-    {
-        if let Some(map_at) = code_map.get(&code_offset) {
-            if !map_at.before.is_empty() {
-                return Some(map_at.before.borrow_info_str(func_target));
+    if let Some(annotation) = func_target.get_annotations().get::<BorrowAnnotation>() {
+        if let Some(map_at) = annotation.get_borrow_info_at(code_offset) {
+            if !map_at.dying_nodes.is_empty() {
+                return Some(format!("{:?}", map_at.dying_nodes));
             }
         }
     }
