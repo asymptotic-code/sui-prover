@@ -351,6 +351,10 @@ impl FunctionTargetsHolder {
         self.is_spec(id) && !self.no_verify_specs().contains(id)
     }
 
+    pub fn lean_proven_specs(&self) -> BTreeSet<QualifiedId<FunId>> {
+        self.package_targets.lean_proven_specs()
+    }
+
     pub fn is_scenario_spec(&self, id: &QualifiedId<FunId>) -> bool {
         self.package_targets.scenario_specs().contains(id)
     }

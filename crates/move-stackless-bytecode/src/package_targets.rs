@@ -19,7 +19,7 @@ use std::{
 };
 
 /// Valid values for the `run_on` attribute in `#[spec(prove, run_on="...")]`.
-pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud", "boogie"];
+pub const VALID_RUN_ON_VALUES: &[&str] = &["local", "cloud", "boogie", "lean"];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModuleExternalSpecAttribute {
@@ -421,7 +421,13 @@ impl PackageTargets {
             }
 
             if let Some(run_on_value) = run_on {
-                if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
+                if !*prove || skip.is_some() {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "`run_on` requires `prove` (it is meaningless on a non-prove / skipped spec)",
+                    );
+                } else if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
                     self.spec_run_on
                         .insert(func_env.get_qualified_id(), run_on_value.clone());
                 } else {
@@ -1090,6 +1096,15 @@ impl PackageTargets {
             .collect()
     }
 
+    /// Mirror of `boogie_proven_specs` for `run_on="lean"` (proven only by Lean).
+    pub fn lean_proven_specs(&self) -> BTreeSet<QualifiedId<FunId>> {
+        self.spec_run_on
+            .iter()
+            .filter(|(_, value)| value.as_str() == "lean")
+            .map(|(qid, _)| *qid)
+            .collect()
+    }
+
     pub fn loop_invariant_candidates(
         &self,
     ) -> &BTreeMap<QualifiedId<FunId>, Vec<(QualifiedId<FunId>, usize)>> {
@@ -1147,5 +1162,80 @@ impl PackageTargets {
         &self,
     ) -> &BTreeMap<QualifiedId<FunId>, BTreeSet<QualifiedId<FunId>>> {
         &self.spec_uninterpreted_functions
+    }
+
+    /// Empty `PackageTargets` carrying just `spec_run_on`, for filter tests.
+    #[cfg(test)]
+    fn for_test_with_run_on(spec_run_on: BTreeMap<QualifiedId<FunId>, String>) -> Self {
+        Self {
+            target_specs: BTreeSet::new(),
+            abort_check_functions: BTreeSet::new(),
+            pure_functions: BTreeSet::new(),
+            pure_callees: BTreeSet::new(),
+            axiom_functions: BTreeSet::new(),
+            target_no_abort_check_functions: BTreeSet::new(),
+            skipped_specs: BTreeMap::new(),
+            no_verify_specs: BTreeSet::new(),
+            ignore_aborts: BTreeSet::new(),
+            omit_opaque_specs: BTreeSet::new(),
+            focus_specs: BTreeSet::new(),
+            scenario_specs: BTreeSet::new(),
+            globally_uninterpreted_functions: BTreeSet::new(),
+            spec_uninterpreted_functions: BTreeMap::new(),
+            spec_interpreted_functions: BTreeMap::new(),
+            spec_boogie_options: BTreeMap::new(),
+            spec_timeouts: BTreeMap::new(),
+            spec_run_on,
+            loop_invariant_candidates: BTreeMap::new(),
+            module_external_attributes: BTreeMap::new(),
+            function_external_attributes: BTreeMap::new(),
+            module_extra_bpl: BTreeMap::new(),
+            function_extra_bpl: BTreeMap::new(),
+            prelude_extra_exists: false,
+            all_specs: BTreeMap::new(),
+            all_datatypes_invs: BTreeMap::new(),
+            system_specs: BTreeSet::new(),
+            filter: TargetFilterOptions::default(),
+            allow_focus_attr: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use move_model::symbol::SymbolPool;
+
+    fn qid(pool: &SymbolPool, name: &str) -> QualifiedId<FunId> {
+        ModuleId::new(0).qualified(FunId::new(pool.make(name)))
+    }
+
+    #[test]
+    fn lean_is_a_valid_run_on_value() {
+        assert!(VALID_RUN_ON_VALUES.contains(&"lean"));
+    }
+
+    #[test]
+    fn lean_and_boogie_proven_specs_partition_by_run_on_value() {
+        let pool = SymbolPool::new();
+        let lean_spec = qid(&pool, "lean_spec");
+        let boogie_spec = qid(&pool, "boogie_spec");
+        let local_spec = qid(&pool, "local_spec");
+
+        let mut spec_run_on = BTreeMap::new();
+        spec_run_on.insert(lean_spec, "lean".to_string());
+        spec_run_on.insert(boogie_spec, "boogie".to_string());
+        spec_run_on.insert(local_spec, "local".to_string());
+
+        let targets = PackageTargets::for_test_with_run_on(spec_run_on);
+
+        let lean = targets.lean_proven_specs();
+        assert_eq!(lean, BTreeSet::from([lean_spec]));
+
+        let boogie = targets.boogie_proven_specs();
+        assert_eq!(boogie, BTreeSet::from([boogie_spec]));
+
+        assert!(!lean.contains(&boogie_spec));
+        assert!(!boogie.contains(&lean_spec));
     }
 }
