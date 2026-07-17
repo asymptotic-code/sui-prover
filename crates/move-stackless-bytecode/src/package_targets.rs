@@ -4,7 +4,8 @@ use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
     expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
     shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
+        AttributeKind_, ExternalAttribute, ExternalAttributeEntry_, KnownAttribute,
+        VerificationAttribute,
     },
 };
 use move_ir_types::location::Spanned;
@@ -295,6 +296,29 @@ impl PackageTargets {
     }
 
     fn check_spec_only_scope(&mut self, func_env: &FunctionEnv) {
+        // Try the bare verification form first; fall back to the upstream-compiler-compatible
+        // `#[ext(spec_only)]` wrapper. Only the parameterless ext form is recognized — for
+        // parameterized usage (`spec_only(loop_inv(...), axiom, extra_bpl=...)`) keep the bare
+        // syntax. This lets projects using the official Mysten Labs sui CLI (which warns on
+        // unknown bare attributes via W02018) annotate accessor-style spec_only functions in
+        // the wrapped form without losing prover recognition.
+        let owned;
+        let spec_only_ref = if let Some(va) = func_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::SpecOnly)
+            .map(|attr| &attr.value)
+        {
+            Some(va)
+        } else if Self::has_bare_ext_attribute(
+            func_env.get_toplevel_attributes(),
+            "spec_only",
+        ) {
+            owned = KnownAttribute::Verification(Self::default_spec_only());
+            Some(&owned)
+        } else {
+            None
+        };
+
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target,
             loop_inv,
@@ -302,10 +326,7 @@ impl PackageTargets {
             explicit_specs: _,
             axiom,
             extra_bpl,
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
+        })) = spec_only_ref
         {
             if func_env.get_name_str().contains("type_inv") {
                 return;
@@ -868,6 +889,42 @@ impl PackageTargets {
         Some(result)
     }
 
+    /// Detects a parameterless `#[ext(<name>)]` attribute (e.g. `#[ext(spec_only)]`).
+    /// Parameterized forms like `#[ext(spec_only(loop_inv(...)))]` are intentionally
+    /// not matched here — those keep the bare verification syntax for now.
+    fn has_bare_ext_attribute(
+        attrs: &move_compiler::expansion::ast::Attributes,
+        name: &str,
+    ) -> bool {
+        if let Some(KnownAttribute::External(ExternalAttribute { attrs: ext_attrs })) = attrs
+            .get_(&AttributeKind_::External)
+            .map(|attr| &attr.value)
+        {
+            ext_attrs.iter().any(|(_, _, entry)| {
+                matches!(
+                    &entry.value,
+                    ExternalAttributeEntry_::Name(n) if n.value.as_str() == name
+                )
+            })
+        } else {
+            false
+        }
+    }
+
+    /// All-defaults `SpecOnly` payload used when discovering a parameterless
+    /// `#[ext(spec_only)]`. Matches what the compiler fork's parser would yield
+    /// for a bare `#[spec_only]` with no inner attributes.
+    fn default_spec_only() -> VerificationAttribute {
+        VerificationAttribute::SpecOnly {
+            axiom: false,
+            extra_bpl: Vec::new(),
+            inv_target: None,
+            loop_inv: None,
+            explicit_specs: Vec::new(),
+            explicit_spec_modules: Vec::new(),
+        }
+    }
+
     fn validate_and_read_extra_bpl(
         env: &GlobalEnv,
         loc: &move_model::model::Loc,
@@ -932,6 +989,25 @@ impl PackageTargets {
     }
 
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
+        // Mirror the function-level handler: accept bare verification form or
+        // a parameterless `#[ext(spec_only)]` wrapper. See check_spec_only_scope.
+        let owned;
+        let spec_only_ref = if let Some(va) = module_env
+            .get_toplevel_attributes()
+            .get_(&AttributeKind_::SpecOnly)
+            .map(|attr| &attr.value)
+        {
+            Some(va)
+        } else if Self::has_bare_ext_attribute(
+            module_env.get_toplevel_attributes(),
+            "spec_only",
+        ) {
+            owned = KnownAttribute::Verification(Self::default_spec_only());
+            Some(&owned)
+        } else {
+            None
+        };
+
         if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
             inv_target: _,
             loop_inv: _,
@@ -939,10 +1015,7 @@ impl PackageTargets {
             explicit_spec_modules,
             explicit_specs,
             extra_bpl,
-        })) = module_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
+        })) = spec_only_ref
         {
             if let Some(attrs) = Self::handle_explicit_spec_attributes(
                 module_env,
