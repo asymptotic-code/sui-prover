@@ -330,8 +330,18 @@ impl PackageTargets {
             if let Some(loop_inv) = loop_inv {
                 match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
                     Some((module_name, fun_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-                        self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
+                        if let Some(module_env) = env.find_module(&module_name) {
+                            self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "loop_inv target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
+                            );
+                        }
                     }
                     None => {
                         let module_name = func_env.module_env.get_full_name_str();
@@ -350,9 +360,18 @@ impl PackageTargets {
                 match Self::parse_module_access(inv_target.as_ref().unwrap(), &func_env.module_env)
                 {
                     Some((module_name, struct_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-
-                        self.process_inv(func_env, &module_env, struct_name);
+                        if let Some(module_env) = env.find_module(&module_name) {
+                            self.process_inv(func_env, &module_env, struct_name);
+                        } else {
+                            env.diag(
+                                Severity::Error,
+                                &func_env.get_loc(),
+                                &format!(
+                                    "inv_target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
+                                ),
+                            );
+                        }
                     }
                     None => {
                         let module_name = func_env.module_env.get_full_name_str();
@@ -488,19 +507,29 @@ impl PackageTargets {
             if target.is_some() {
                 match Self::parse_module_access(target.as_ref().unwrap(), &func_env.module_env) {
                     Some((module_name, func_name)) => {
-                        let module_env = env.find_module(&module_name).unwrap();
-                        if let Some(target_func_env) = module_env
-                            .find_function(func_env.symbol_pool().make(func_name.as_str()))
-                        {
-                            self.process_spec(func_env, &target_func_env);
+                        if let Some(module_env) = env.find_module(&module_name) {
+                            if let Some(target_func_env) = module_env
+                                .find_function(func_env.symbol_pool().make(func_name.as_str()))
+                            {
+                                self.process_spec(func_env, &target_func_env);
+                            } else {
+                                env.diag(
+                                    Severity::Error,
+                                    &func_env.get_loc(),
+                                    &format!(
+                                        "Target function '{}' not found in module '{}'",
+                                        func_name,
+                                        module_env.get_full_name_str(),
+                                    ),
+                                );
+                            }
                         } else {
                             env.diag(
                                 Severity::Error,
                                 &func_env.get_loc(),
                                 &format!(
-                                    "Target function '{}' not found in module '{}'",
-                                    func_name,
-                                    module_env.get_full_name_str(),
+                                    "target module not found for path '{}'",
+                                    module_name.display(env.symbol_pool())
                                 ),
                             );
                         }
@@ -831,7 +860,17 @@ impl PackageTargets {
         for ms in explicit_specs {
             match Self::parse_module_access(ms, module_env) {
                 Some((module_name, fun_name)) => {
-                    let target_module_env = module_env.env.find_module(&module_name).unwrap();
+                    let Some(target_module_env) = module_env.env.find_module(&module_name) else {
+                        module_env.env.diag(
+                            Severity::Error,
+                            &module_env.get_loc(),
+                            &format!(
+                                "included spec module not found for path '{}'",
+                                module_name.display(module_env.env.symbol_pool())
+                            ),
+                        );
+                        return None;
+                    };
                     if let Some(func_env) = target_module_env
                         .find_function(module_env.env.symbol_pool().make(&fun_name))
                     {
