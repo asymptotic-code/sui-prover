@@ -4487,8 +4487,7 @@ impl GlobalEnv {
             // `module not found: <name>` on packages that don't
             // transitively load `SuiProver` (the package that owns the
             // real `prover` / `ghost` / `log` modules).
-            let placeholder_ident_idx =
-                IdentifierIndex(compiled_module.identifiers.len() as u16);
+            let placeholder_ident_idx = IdentifierIndex(compiled_module.identifiers.len() as u16);
             compiled_module
                 .identifiers
                 .push(Identifier::new(Self::STUB_PLACEHOLDER_FUNCTION_NAME).unwrap());
@@ -4526,11 +4525,7 @@ impl GlobalEnv {
             let mut function_data = BTreeMap::new();
             function_data.insert(
                 placeholder_fun_id,
-                FunctionData::stub(
-                    placeholder_sym,
-                    placeholder_def_idx,
-                    placeholder_handle_idx,
-                ),
+                FunctionData::stub(placeholder_sym, placeholder_def_idx, placeholder_handle_idx),
             );
             let mut function_idx_to_id = BTreeMap::new();
             function_idx_to_id.insert(placeholder_def_idx, placeholder_fun_id);
