@@ -78,27 +78,6 @@ fun ghost_mut_example_spec() {
 }
 ```
 
-### Verifying Event Emission
-
-A common pattern: use ghost variables to verify events are emitted. The function that emits the event `requires` the ghost variable; the spec declares it and checks it with `ensures`:
-
-```move
-fun emit_large_withdraw_event() {
-    event::emit(LargeWithdrawEvent { });
-    requires(*global<LargeWithdrawEvent, bool>());
-}
-
-#[spec(prove)]
-fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    declare_global<LargeWithdrawEvent, bool>();
-    // ...
-    if (shares_in_value >= LARGE_WITHDRAW_AMOUNT) {
-        ensures(*global<LargeWithdrawEvent, bool>());
-    };
-    result
-}
-```
-
 ## Mathematical Types (Spec-Only)
 
 ### `std::integer::Integer`
@@ -203,7 +182,9 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 
 Marks a function as a specification.
 
-**Naming convention**: A spec named `<function_name>_spec` is used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose — the prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
+**External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
+
+**Naming convention**: Name an implementation spec `<function_name>_spec`. Once associated through `target`, the prover can use its `requires`/`ensures` contract as an opaque summary instead of inlining the function body.
 
 **Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
 
@@ -226,11 +207,10 @@ Marks a function as a specification.
 
 Examples:
 ```move
-#[spec(prove)]
-#[spec(prove, focus)]
 #[spec(prove, target = 0x42::foo::bar)]
-#[spec(prove, ignore_abort)]
-#[spec(prove, no_opaque)]
+#[spec(prove, focus, target = 0x42::foo::bar)]
+#[spec(prove, ignore_abort, target = 0x42::foo::bar)]
+#[spec(prove, no_opaque, target = 0x42::foo::bar)]
 #[spec(prove, target = 0x42::foo::bar, include = 0x42::specs::helper_spec)]
 ```
 
@@ -280,12 +260,14 @@ Use parameterized `spec_only` attributes for axioms, datatype invariants, loop i
 
 Examples:
 ```move
+use project::numbers::PositiveNumber;
+
 #[spec_only(axiom)]
 fun sqrt_axiom(x: u64): u64 { ... }
 
-#[spec_only(inv_target = MyStruct)]
-public fun MyStruct_inv(self: &MyStruct): bool {
-    self.value > 0
+#[spec_only(inv_target = project::numbers::PositiveNumber)]
+public fun PositiveNumber_inv(self: &PositiveNumber): bool {
+    self.value() > 0
 }
 
 #[spec_only(loop_inv(target = my_func_spec))]
@@ -363,25 +345,34 @@ fun second_loop_inv(...): bool { ... }
 
 ## Datatype Invariants
 
+Add any private-state accessor to the implementation module:
+
 ```move
+module project::numbers;
+
 public struct PositiveNumber { value: u64 }
 
-#[spec_only(inv_target = PositiveNumber)]
+#[test_only]
+#[ext(pure)]
+public fun value(self: &PositiveNumber): u64 {
+    self.value
+}
+```
+
+Define the invariant in the sibling spec package and target the implementation type:
+
+```move
+module project_specs::number_specs;
+
+use project::numbers::PositiveNumber;
+
+#[spec_only(inv_target = project::numbers::PositiveNumber)]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
-    self.value > 0
+    self.value() > 0
 }
 ```
 
 The invariant is automatically checked on construction and modification.
-
-Alternatively, if the invariant is in the same module as the type, you can use just `#[spec_only]` with the naming convention `<Type>_inv`:
-
-```move
-#[spec_only]
-public fun PositiveNumber_inv(self: &PositiveNumber): bool {
-    self.value > 0
-}
-```
 
 ## Quantifiers (`forall!` and `exists!`)
 
@@ -465,18 +456,17 @@ fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
     j <= i && j < u.length() && i < v.length() && u[j] > v[i]
 }
 
-fun vec_leq(i: u64): bool {
-    let v: vector<u8> = vector[10, 20, 30, 40];
-    let u: vector<u8> = vector[15, 25, 35, 45];
-    // For any i, there exists j <= i such that u[j] > v[i]
-    exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
-}
-
-#[spec(prove)]
+#[spec(prove, target = project::vectors::vec_leq)]
 fun vec_leq_spec(i: u64): bool {
     requires(i < 4);
-    let res = vec_leq(i);
-    ensures(res);
+
+    let v: vector<u8> = vector[10, 20, 30, 40];
+    let u: vector<u8> = vector[15, 25, 35, 45];
+
+    let res = project::vectors::vec_leq(i);
+
+    // For any i, there exists j <= i such that u[j] > v[i].
+    ensures(res == exists!<u64>(|j| invariant_expression(*j, i, &u, &v)));
     res
 }
 ```
