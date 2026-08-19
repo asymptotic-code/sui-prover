@@ -65,11 +65,10 @@ fun my_function_spec(args): ReturnType {
 ### How Specs Compose
 
 - **External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
-- **Naming convention**: Name an implementation spec `<function_name>_spec`. Once associated through `target`, the prover can use its `requires`/`ensures` contract as an opaque summary instead of inlining the function body.
 - **`prove`**: The spec is verified by the prover. Without `prove`, the spec is not checked itself, but is still used when proving other functions that depend on it.
 - **`focus`**: Only verify this spec (and other focused specs). Useful for debugging. Do not commit `focus` — it skips all non-focused specs.
-- **`no_opaque`**: By default, when proving `bar_spec`, the prover uses `foo_spec` (if it exists) as an opaque summary for `foo`. Adding `#[spec(prove, no_opaque)]` forces the prover to also include the actual implementation of called functions, not just their specs.
-- **Scenario specs**: A spec without the `_spec` naming convention and without a `target` attribute is a standalone scenario — it's verified but not used as a summary for other proofs.
+- **`no_opaque`**: By default, the prover can use the external spec targeting a called function as an opaque summary. Adding `no_opaque` forces the prover to include the actual implementation instead.
+- **Scenario specs**: A spec without a `target` attribute is a standalone scenario — it is verified but does not specify an implementation function.
 
 ### Cross-Package Specs
 

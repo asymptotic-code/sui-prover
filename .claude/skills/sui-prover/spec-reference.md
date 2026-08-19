@@ -184,13 +184,11 @@ Marks a function as a specification.
 
 **External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
 
-**Naming convention**: Name an implementation spec `<function_name>_spec`. Once associated through `target`, the prover can use its `requires`/`ensures` contract as an opaque summary instead of inlining the function body.
-
 **Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
 
 **With `prove`**: The spec is verified by the prover.
 
-**Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — verified but not used as a summary for other proofs.
+**Scenario specs**: A spec without a `target` attribute is a standalone scenario — verified but not associated with an implementation function.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -200,7 +198,7 @@ Marks a function as a specification.
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
 | `ignore_abort` | Don't check abort conditions. Allows omitting `asserts` for aborts. |
-| `no_opaque` | Include actual implementations of called functions, not just their specs. By default the prover uses `foo_spec` as an opaque summary when proving code that calls `foo`; `no_opaque` overrides this. |
+| `no_opaque` | Include actual implementations of called functions instead of using their targeted specs as opaque summaries. |
 | `uninterpreted = <NAME>` | Treat pure function as uninterpreted |
 | `extra_bpl = b"<file>"` | Load extra Boogie code |
 | `boogie_opt = b"<opt>"` | Pass custom Boogie options |
