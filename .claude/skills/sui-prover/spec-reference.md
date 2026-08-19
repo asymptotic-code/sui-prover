@@ -2,6 +2,10 @@
 
 Detailed reference for Move specification syntax used with the Sui Prover.
 
+## Package Layout
+
+Place specification modules in a sibling `specs/` Move package next to the implementation `project/` package. Make the spec package depend on the implementation package and use `target` to specify implementation functions. When specifications need private implementation state, expose it through `#[test_only]` accessor functions in the implementation module and call the accessors with method syntax.
+
 ## Vector Iterator Functions
 
 Import with `use prover::vector_iter::*`:
@@ -71,27 +75,6 @@ fun ghost_mut_example_spec() {
     let ghost_ref = borrow_mut<MyKey, u64>();
     *ghost_ref = 42;
     ensures(*global<MyKey, u64>() == 42);
-}
-```
-
-### Verifying Event Emission
-
-A common pattern: use ghost variables to verify events are emitted. The function that emits the event `requires` the ghost variable; the spec declares it and checks it with `ensures`:
-
-```move
-fun emit_large_withdraw_event() {
-    event::emit(LargeWithdrawEvent { });
-    requires(*global<LargeWithdrawEvent, bool>());
-}
-
-#[spec(prove)]
-fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    declare_global<LargeWithdrawEvent, bool>();
-    // ...
-    if (shares_in_value >= LARGE_WITHDRAW_AMOUNT) {
-        ensures(*global<LargeWithdrawEvent, bool>());
-    };
-    result
 }
 ```
 
@@ -199,13 +182,13 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 
 Marks a function as a specification.
 
-**Naming convention**: A spec named `<function_name>_spec` is used as an opaque summary when the prover verifies other functions that call `<function_name>`. This is how specs compose — the prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
+**External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
 
 **Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
 
 **With `prove`**: The spec is verified by the prover.
 
-**Scenario specs**: A spec without the `_spec` naming convention is a standalone scenario — verified but not used as a summary for other proofs.
+**Scenario specs**: A spec without a `target` attribute is a standalone scenario — verified but not associated with an implementation function.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -215,18 +198,17 @@ Marks a function as a specification.
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
 | `ignore_abort` | Don't check abort conditions. Allows omitting `asserts` for aborts. |
-| `no_opaque` | Include actual implementations of called functions, not just their specs. By default the prover uses `foo_spec` as an opaque summary when proving code that calls `foo`; `no_opaque` overrides this. |
+| `no_opaque` | Include actual implementations of called functions instead of using their targeted specs as opaque summaries. |
 | `uninterpreted = <NAME>` | Treat pure function as uninterpreted |
 | `extra_bpl = b"<file>"` | Load extra Boogie code |
 | `boogie_opt = b"<opt>"` | Pass custom Boogie options |
 
 Examples:
 ```move
-#[spec(prove)]
-#[spec(prove, focus)]
 #[spec(prove, target = 0x42::foo::bar)]
-#[spec(prove, ignore_abort)]
-#[spec(prove, no_opaque)]
+#[spec(prove, focus, target = 0x42::foo::bar)]
+#[spec(prove, ignore_abort, target = 0x42::foo::bar)]
+#[spec(prove, no_opaque, target = 0x42::foo::bar)]
 #[spec(prove, target = 0x42::foo::bar, include = 0x42::specs::helper_spec)]
 ```
 
@@ -250,13 +232,23 @@ fun safe_get(v: &vector<u64>, i: u64): u64 { ... }
 fun sqrt(x: u64): u64;  // No body, assumed correct
 ```
 
-### `#[spec_only(...)]` - Specification-Only Items
+### `#[test_only]` - Implementation Getters
 
-Similar to `test_only`, `spec_only` makes annotated code (modules, functions, structs, imports) only visible to the prover. The code will not appear under regular compilation or in test mode.
+Use `#[test_only]` for getter or accessor functions added to implementation modules. The prover can call test-only getters without including them in production builds:
+
+```move
+#[test_only]
+public fun get_field_name(self: &MyStruct): u64 {
+    self.field_name
+}
+```
+
+### `#[spec_only(...)]` - Specification Attributes
+
+Use parameterized `spec_only` attributes for axioms, datatype invariants, loop invariants, spec inclusion, and extra Boogie files.
 
 | Parameter | Description |
 |-----------|-------------|
-| (none) | Basic spec-only item |
 | `(axiom)` | Axiom definition |
 | `(inv_target = <TYPE>)` | Datatype invariant for specified type |
 | `(loop_inv(target = <FUNC>))` | External loop invariant |
@@ -266,15 +258,14 @@ Similar to `test_only`, `spec_only` makes annotated code (modules, functions, st
 
 Examples:
 ```move
-#[spec_only]
-fun helper_predicate(x: u64): bool { x > 0 }
+use project::numbers::PositiveNumber;
 
 #[spec_only(axiom)]
 fun sqrt_axiom(x: u64): u64 { ... }
 
-#[spec_only(inv_target = MyStruct)]
-public fun MyStruct_inv(self: &MyStruct): bool {
-    self.value > 0
+#[spec_only(inv_target = project::numbers::PositiveNumber)]
+public fun PositiveNumber_inv(self: &PositiveNumber): bool {
+    self.value() > 0
 }
 
 #[spec_only(loop_inv(target = my_func_spec))]
@@ -352,25 +343,34 @@ fun second_loop_inv(...): bool { ... }
 
 ## Datatype Invariants
 
+Add any private-state accessor to the implementation module:
+
 ```move
+module project::numbers;
+
 public struct PositiveNumber { value: u64 }
 
-#[spec_only(inv_target = PositiveNumber)]
+#[test_only]
+#[ext(pure)]
+public fun value(self: &PositiveNumber): u64 {
+    self.value
+}
+```
+
+Define the invariant in the sibling spec package and target the implementation type:
+
+```move
+module project_specs::number_specs;
+
+use project::numbers::PositiveNumber;
+
+#[spec_only(inv_target = project::numbers::PositiveNumber)]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
-    self.value > 0
+    self.value() > 0
 }
 ```
 
 The invariant is automatically checked on construction and modification.
-
-Alternatively, if the invariant is in the same module as the type, you can use just `#[spec_only]` with the naming convention `<Type>_inv`:
-
-```move
-#[spec_only]
-public fun PositiveNumber_inv(self: &PositiveNumber): bool {
-    self.value > 0
-}
-```
 
 ## Quantifiers (`forall!` and `exists!`)
 
@@ -454,18 +454,17 @@ fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
     j <= i && j < u.length() && i < v.length() && u[j] > v[i]
 }
 
-fun vec_leq(i: u64): bool {
-    let v: vector<u8> = vector[10, 20, 30, 40];
-    let u: vector<u8> = vector[15, 25, 35, 45];
-    // For any i, there exists j <= i such that u[j] > v[i]
-    exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
-}
-
-#[spec(prove)]
+#[spec(prove, target = project::vectors::vec_leq)]
 fun vec_leq_spec(i: u64): bool {
     requires(i < 4);
-    let res = vec_leq(i);
-    ensures(res);
+
+    let v: vector<u8> = vector[10, 20, 30, 40];
+    let u: vector<u8> = vector[15, 25, 35, 45];
+
+    let res = project::vectors::vec_leq(i);
+
+    // For any i, there exists j <= i such that u[j] > v[i].
+    ensures(res == exists!<u64>(|j| invariant_expression(*j, i, &u, &v)));
     res
 }
 ```

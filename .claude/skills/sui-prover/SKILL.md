@@ -24,7 +24,7 @@ The Sui Prover relies on implicit dependencies. Remove any direct dependencies t
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet", override = true }
 ```
 
-If you need to reference Sui directly, put the specs in a separate package.
+Keep prover specifications and prover-specific dependencies in a sibling Move package next to the implementation package.
 
 ## Running the Prover
 
@@ -40,10 +40,10 @@ If the user provides arguments like `$ARGUMENTS`, pass them to `sui-prover` dire
 
 ## Writing Specifications
 
-To verify a function, write a specification function annotated with `#[spec(prove)]`. The spec has the same signature as the function under test and follows this structure:
+Write specification modules in a sibling Move package that depends on the implementation package. To verify an implementation function, write a specification function annotated with `#[spec(prove, target = ...)]`. The spec has the same signature as the function under test and follows this structure:
 
 ```move
-#[spec(prove)]
+#[spec(prove, target = project::example::my_function)]
 fun my_function_spec(args): ReturnType {
     // 1. Preconditions assumed on arguments
     requires(precondition);
@@ -52,7 +52,7 @@ fun my_function_spec(args): ReturnType {
     let old_state = clone!(mutable_ref);
 
     // 3. Call the function under test
-    let result = my_function(args);
+    let result = project::example::my_function(args);
 
     // 4. Postconditions that must hold
     ensures(postcondition);
@@ -64,43 +64,38 @@ fun my_function_spec(args): ReturnType {
 
 ### How Specs Compose
 
-- **Naming convention**: A spec named `<function_name>_spec` is automatically used as an opaque summary when the prover verifies other functions that call `<function_name>`. The prover substitutes the spec's `requires`/`ensures` contract instead of inlining the function body.
-- **`#[spec(prove)]`**: The spec is verified by the prover. Without `prove`, the spec is not checked itself, but is still used when proving other functions that depend on it.
-- **`#[spec(prove, focus)]`**: Only verify this spec (and other focused specs). Useful for debugging. Do not commit `focus` — it skips all non-focused specs.
-- **`no_opaque`**: By default, when proving `bar_spec`, the prover uses `foo_spec` (if it exists) as an opaque summary for `foo`. Adding `#[spec(prove, no_opaque)]` forces the prover to also include the actual implementation of called functions, not just their specs.
-- **Scenario specs**: A spec without the `_spec` naming convention and without a `target` attribute is a standalone scenario — it's verified but not used as a summary for other proofs.
+- **External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
+- **`prove`**: The spec is verified by the prover. Without `prove`, the spec is not checked itself, but is still used when proving other functions that depend on it.
+- **`focus`**: Only verify this spec (and other focused specs). Useful for debugging. Do not commit `focus` — it skips all non-focused specs.
+- **`no_opaque`**: By default, the prover can use the external spec targeting a called function as an opaque summary. Adding `no_opaque` forces the prover to include the actual implementation instead.
+- **Scenario specs**: A spec without a `target` attribute is a standalone scenario — it is verified but does not specify an implementation function.
 
-### Cross-Module Specs
+### Cross-Package Specs
 
-Use `target` to spec a function in a different module:
+Use `target` to spec an implementation function from the sibling spec package:
 
 ```move
-module 0x43::foo_spec {
-    #[spec(prove, target = foo::inc)]
-    public fun inc_spec(x: u64): u64 {
-        let res = foo::inc(x);
-        ensures(res == x + 1);
-        res
-    }
+module project_specs::foo_spec;
+
+#[spec(prove, target = project::foo::inc)]
+public fun inc_spec(x: u64): u64 {
+    let res = project::foo::inc(x);
+    ensures(res == x + 1);
+    res
 }
 ```
 
-To access private members/functions from a cross-module spec, add `#[spec_only]` getter functions to the target module. These are only visible to the prover, not included in regular compilation.
+To access private members/functions from a cross-module spec, add `#[test_only]` getter functions to the target implementation module. The prover can use test-only code, while regular production builds omit it.
 
 ### Specifying Abort Conditions
 
-Specs must comprehensively describe when a function aborts. Use `asserts` for this:
+Specs must comprehensively describe when a function aborts. For an implementation function that aborts unless `x < y`, use `asserts` in its external spec:
 
 ```move
-fun foo(x: u64, y: u64): u64 {
-    assert!(x < y);
-    x
-}
-
-#[spec(prove)]
+#[spec(prove, target = project::math::foo)]
 fun foo_spec(x: u64, y: u64): u64 {
     asserts(x < y);  // foo aborts unless x < y
-    let res = foo(x, y);
+    let res = project::math::foo(x, y);
     res
 }
 ```
@@ -108,10 +103,10 @@ fun foo_spec(x: u64, y: u64): u64 {
 For **overflow aborts**, cast to a wider type in the assertion:
 
 ```move
-#[spec(prove)]
+#[spec(prove, target = project::math::add)]
 fun add_spec(x: u64, y: u64): u64 {
     asserts((x as u128) + (y as u128) <= u64::max_value!() as u128);
-    let res = add(x, y);
+    let res = project::math::add(x, y);
     res
 }
 ```
@@ -119,17 +114,29 @@ fun add_spec(x: u64, y: u64): u64 {
 To **skip abort checking** entirely, use `ignore_abort`:
 
 ```move
-#[spec(prove, ignore_abort)]
+#[spec(prove, ignore_abort, target = project::math::add)]
 fun add_spec(x: u64, y: u64): u64 {
-    let res = add(x, y);
+    let res = project::math::add(x, y);
     ensures(res == x + y);
     res
 }
 ```
 
-### Putting Specs in a Separate Package
+### Put Specs in a Separate Package
 
-Currently, specs may cause compile errors when placed alongside regular Move code due to prover-specific changes in the compilation pipeline. If this happens, create a separate package for specs and use the `target` attribute to reference functions in the original package.
+Always place specification modules in a sibling Move package next to the implementation package. Make the spec package depend on the implementation package, and use `target` to reference implementation functions.
+
+```text
+workspace/
+├── project/
+│   ├── Move.toml
+│   └── sources/
+└── specs/
+    ├── Move.toml       # local dependency on ../project
+    └── sources/        # specification modules
+```
+
+When a spec needs private implementation state, add `#[test_only]` accessor functions to the implementation module and call those accessors with method syntax from the spec package.
 
 ### Example: Verifying an LP Withdraw
 
@@ -162,26 +169,43 @@ public fun withdraw<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T
     pool.shares.decrease_supply(shares_in);
     pool.balance.split(balance_to_withdraw)
 }
+
+#[test_only]
+#[ext(pure)]
+public fun balance_value<T>(self: &Pool<T>): u64 {
+    self.balance.value()
+}
+
+#[test_only]
+#[ext(pure)]
+public fun shares_value<T>(self: &Pool<T>): u64 {
+    self.shares.supply_value()
+}
 ```
 
 A specification proving that the share price does not decrease on withdrawal:
 
 ```move
-#[spec_only]
-use prover::prover::{requires, ensures};
+module amm_specs::simple_lp_specs;
 
-#[spec(prove)]
+use amm::simple_lp::{LP, Pool};
+use sui::balance::Balance;
+
+#[spec_only]
+use prover::prover::{clone, ensures, requires};
+
+#[spec(prove, target = amm::simple_lp::withdraw)]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= pool.shares.supply_value());
+    requires(shares_in.value() <= pool.shares_value());
 
     let old_pool = clone!(pool);
 
-    let result = withdraw(pool, shares_in);
+    let result = pool.withdraw(shares_in);
 
-    let old_balance = old_pool.balance.value().to_int();
-    let new_balance = pool.balance.value().to_int();
-    let old_shares = old_pool.shares.supply_value().to_int();
-    let new_shares = pool.shares.supply_value().to_int();
+    let old_balance = old_pool.balance_value().to_int();
+    let new_balance = pool.balance_value().to_int();
+    let old_shares = old_pool.shares_value().to_int();
+    let new_shares = pool.shares_value().to_int();
 
     // Share price does not decrease: new_balance/new_shares >= old_balance/old_shares
     ensures(new_shares.mul(old_balance).lte(old_shares.mul(new_balance)));
@@ -293,10 +317,10 @@ fun max(a: u64, b: u64): u64 { if (a >= b) { a } else { b } }
 ```move
 // In implementation module:
 #[test_only]
-public fun get_field_name(s: &MyStruct): String { s.name }
+public fun get_field_name(self: &MyStruct): String { self.name }
 
 // In spec:
-ensures(module::get_field_name(&result) == expected);
+ensures(result.get_field_name() == expected);
 ```
 
 **Inline loop invariants** - Use `invariant!` before the loop:
@@ -320,11 +344,11 @@ fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
 }
 ```
 
-**`no_opaque` for same-file public functions** - If functions `x` and `y` are both public, both have specs in one file, and `y` is called inside `x`, then `y`'s spec should have `no_opaque` so the prover uses the implementation (not `y_spec`) when proving `x_spec`. Exception: if `y` has a loop with `requires(forall!(...))`, keep it opaque to avoid timeouts.
+**`no_opaque` for related public functions** - If implementation functions `x` and `y` are both public, their external specs are in one spec module, and `y` is called inside `x`, then `y`'s spec should have `no_opaque` so the prover uses the implementation (not `y_spec`) when proving `x_spec`. Exception: if `y` has a loop with `requires(forall!(...))`, keep it opaque to avoid timeouts.
 
 **`boogie_opt` for complex specs** - For specs with many calculations, add `boogie_opt=b"vcsSplitOnEveryAssert"` to improve performance:
 ```move
-#[spec(prove, target=module::complex_func, boogie_opt=b"vcsSplitOnEveryAssert")]
+#[spec(prove, target=project::example::complex_func, boogie_opt=b"vcsSplitOnEveryAssert")]
 ```
 
 **Prefer `asserts` over `requires`** where possible. Use `requires` only for preconditions that truly constrain inputs.
@@ -339,7 +363,7 @@ ensures(module::get_value(storage, key) == value);
 **Extra BPL prelude files** - When the prover fails with `use of undeclared function: $X_module_native_func$pure`, create a `.bpl` prelude file with the missing function definition:
 ```move
 #[spec_only(extra_bpl = b"mymodule_prelude.bpl")]
-module specs::mymodule;
+module project_specs::mymodule;
 ```
 Place the BPL file in the same directory as the spec module.
 
@@ -354,7 +378,7 @@ fun public_transfer_spec<T: key + store>(obj: T, recipient: address) { ... }
 #[spec_only]
 use specs::transfer_spec::{SpecTransferAddress, SpecTransferAddressExists};
 
-#[spec(prove, target = module::func_that_transfers)]
+#[spec(prove, target = project::example::func_that_transfers)]
 fun func_spec<T>(...) {
     ghost::declare_global_mut<SpecTransferAddress, address>();
     ghost::declare_global_mut<SpecTransferAddressExists, bool>();
@@ -366,56 +390,7 @@ fun func_spec<T>(...) {
 
 ## Ghost Variables
 
-Ghost variables are spec-only globals for propagating information between specifications. Import with `use prover::ghost::*`.
-
-### Example: Verifying Event Emission
-
-Building on the LP example, suppose `withdraw` emits an event on large withdrawals:
-
-```move
-const LARGE_WITHDRAW_AMOUNT: u64 = 10000;
-
-public struct LargeWithdrawEvent has copy, drop {}
-
-fun emit_large_withdraw_event() {
-    event::emit(LargeWithdrawEvent { });
-    requires(*global<LargeWithdrawEvent, bool>());
-}
-```
-
-Use a ghost variable to verify the event is emitted correctly:
-
-```move
-#[spec_only]
-use prover::ghost::{declare_global, global};
-
-#[spec(prove)]
-fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= pool.shares.supply_value());
-
-    declare_global<LargeWithdrawEvent, bool>();
-
-    let old_pool = clone!(pool);
-    let shares_in_value = shares_in.value();
-
-    let result = withdraw(pool, shares_in);
-
-    // ... share price postconditions ...
-
-    if (shares_in_value >= LARGE_WITHDRAW_AMOUNT) {
-        ensures(*global<LargeWithdrawEvent, bool>());
-    };
-
-    result
-}
-```
-
-Key points:
-- `declare_global<Key, Type>()` declares a ghost variable at the start of a spec
-- The `Key` type is usually a user struct or a spec-only struct (e.g., `public struct MyGhostKey {}`)
-- `global<Key, Type>()` reads the ghost variable's current value
-- Ghost variables can be `requires`'d inside the functions that set them
-- Use conditional `ensures` with regular `if` statements for conditional postconditions
+Ghost variables are spec-only globals for propagating information between specifications. Keep their declarations and uses in the sibling spec package. Import them with `use prover::ghost::*`. The key type is usually a spec-only struct, `declare_global<Key, Type>()` declares the variable, and `global<Key, Type>()` reads it.
 
 ## CLI Options
 
@@ -481,7 +456,7 @@ When verification fails, follow these steps in order:
 
 ### 2. Use Focus for Iterative Development
 ```move
-#[spec(prove, focus, target = module::func)]  // Only verify this spec
+#[spec(prove, focus, target = project::example::func)]  // Only verify this spec
 ```
 Always use `focus` when developing a spec. Full suite takes very long.
 
@@ -534,7 +509,7 @@ sui-prover --timeout 120                # Increase timeout
 | `undeclared function: $X_native$pure` | Create `.bpl` prelude file with the missing function, use `extra_bpl` |
 | `undeclared global variable` for transfers | Declare ghost variables for `SpecTransferAddress`/`SpecTransferAddressExists` |
 | `UID object type not found` | Known bug — skip spec for functions that destructure structs to extract UID |
-| Compile errors adding specs | Put specs in a separate package, use `target` attribute |
+| Specs added to implementation package | Move them to a sibling spec package and use the `target` attribute |
 
 ## Known Issues
 
