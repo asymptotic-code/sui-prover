@@ -4,7 +4,7 @@ Detailed reference for Move specification syntax used with the Sui Prover.
 
 ## Package Layout
 
-Place specification modules in a sibling `specs/` Move package next to the implementation `project/` package. Make the spec package depend on the implementation package and use `target` to specify implementation functions. When specifications need private implementation state, expose it through `#[test_only]` accessor functions in the implementation module.
+Place specification modules in a sibling `specs/` Move package next to the implementation `project/` package. Make the spec package depend on the implementation package and use `target` to specify implementation functions. When specifications need private implementation state, expose it through `#[test_only]` accessor functions in the implementation module and call the accessors with method syntax.
 
 ## Vector Iterator Functions
 
@@ -260,8 +260,8 @@ Use `#[test_only]` for getter or accessor functions added to implementation modu
 
 ```move
 #[test_only]
-public fun get_field_name(value: &MyStruct): u64 {
-    value.field_name
+public fun get_field_name(self: &MyStruct): u64 {
+    self.field_name
 }
 ```
 

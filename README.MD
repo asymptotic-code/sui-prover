@@ -33,7 +33,7 @@ workspace/
 
 Use `target` to specify implementation functions. When specifications need
 private implementation state, expose it through `#[test_only]` accessor
-functions in the implementation module.
+functions in the implementation module and call them with method syntax.
 
 ### Specification Structure
 
@@ -83,14 +83,14 @@ public fun withdraw<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T
 
 #[test_only]
 #[ext(pure)]
-public fun balance_value<T>(pool: &Pool<T>): u64 {
-    pool.balance.value()
+public fun balance_value<T>(self: &Pool<T>): u64 {
+    self.balance.value()
 }
 
 #[test_only]
 #[ext(pure)]
-public fun shares_value<T>(pool: &Pool<T>): u64 {
-    pool.shares.supply_value()
+public fun shares_value<T>(self: &Pool<T>): u64 {
+    self.shares.supply_value()
 }
 ```
 
@@ -101,7 +101,7 @@ A specification to verify that the price of a share doesn't decrease when withdr
 ```move
 module amm_specs::simple_lp_specs;
 
-use amm::simple_lp::{Self, LP, Pool};
+use amm::simple_lp::{LP, Pool};
 use sui::balance::Balance;
 
 #[spec_only]
@@ -109,17 +109,17 @@ use prover::prover::{clone, ensures, requires};
 
 #[spec(prove, target = amm::simple_lp::withdraw)]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= simple_lp::shares_value(pool));
+    requires(shares_in.value() <= pool.shares_value());
 
     let old_pool = clone!(pool);
 
-    let result = simple_lp::withdraw(pool, shares_in);
+    let result = pool.withdraw(shares_in);
 
-    let old_balance = simple_lp::balance_value(old_pool).to_int();
-    let new_balance = simple_lp::balance_value(pool).to_int();
+    let old_balance = old_pool.balance_value().to_int();
+    let new_balance = pool.balance_value().to_int();
 
-    let old_shares = simple_lp::shares_value(old_pool).to_int();
-    let new_shares = simple_lp::shares_value(pool).to_int();
+    let old_shares = old_pool.shares_value().to_int();
+    let new_shares = pool.shares_value().to_int();
 
     ensures(new_shares.mul(old_balance).lte(old_shares.mul(new_balance)));
 

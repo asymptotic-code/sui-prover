@@ -141,7 +141,7 @@ workspace/
     └── sources/        # specification modules
 ```
 
-When a spec needs private implementation state, add `#[test_only]` accessor functions to the implementation module and call those accessors from the spec package.
+When a spec needs private implementation state, add `#[test_only]` accessor functions to the implementation module and call those accessors with method syntax from the spec package.
 
 ### Example: Verifying an LP Withdraw
 
@@ -174,26 +174,43 @@ public fun withdraw<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T
     pool.shares.decrease_supply(shares_in);
     pool.balance.split(balance_to_withdraw)
 }
+
+#[test_only]
+#[ext(pure)]
+public fun balance_value<T>(self: &Pool<T>): u64 {
+    self.balance.value()
+}
+
+#[test_only]
+#[ext(pure)]
+public fun shares_value<T>(self: &Pool<T>): u64 {
+    self.shares.supply_value()
+}
 ```
 
 A specification proving that the share price does not decrease on withdrawal:
 
 ```move
-#[spec_only]
-use prover::prover::{requires, ensures};
+module amm_specs::simple_lp_specs;
 
-#[spec(prove)]
+use amm::simple_lp::{LP, Pool};
+use sui::balance::Balance;
+
+#[spec_only]
+use prover::prover::{clone, ensures, requires};
+
+#[spec(prove, target = amm::simple_lp::withdraw)]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= pool.shares.supply_value());
+    requires(shares_in.value() <= pool.shares_value());
 
     let old_pool = clone!(pool);
 
-    let result = withdraw(pool, shares_in);
+    let result = pool.withdraw(shares_in);
 
-    let old_balance = old_pool.balance.value().to_int();
-    let new_balance = pool.balance.value().to_int();
-    let old_shares = old_pool.shares.supply_value().to_int();
-    let new_shares = pool.shares.supply_value().to_int();
+    let old_balance = old_pool.balance_value().to_int();
+    let new_balance = pool.balance_value().to_int();
+    let old_shares = old_pool.shares_value().to_int();
+    let new_shares = pool.shares_value().to_int();
 
     // Share price does not decrease: new_balance/new_shares >= old_balance/old_shares
     ensures(new_shares.mul(old_balance).lte(old_shares.mul(new_balance)));
@@ -403,14 +420,14 @@ use prover::ghost::{declare_global, global};
 
 #[spec(prove)]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
-    requires(shares_in.value() <= pool.shares.supply_value());
+    requires(shares_in.value() <= pool.shares_value());
 
     declare_global<LargeWithdrawEvent, bool>();
 
     let old_pool = clone!(pool);
     let shares_in_value = shares_in.value();
 
-    let result = withdraw(pool, shares_in);
+    let result = pool.withdraw(shares_in);
 
     // ... share price postconditions ...
 
