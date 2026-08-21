@@ -1,9 +1,9 @@
 module 0x42::foo_specs;
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
-#[spec_only]
+#[mode(spec)]
 use prover::ghost;
-#[spec_only]
+#[mode(spec)]
 use sui::transfer::{transfer, transfer_impl};
 
 public struct Foo has key {

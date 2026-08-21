@@ -2,7 +2,7 @@ module 0x42::opaque_tests;
 
 use prover::prover::{fresh};
 
-#[spec_only]
+#[mode(spec)]
 fun fresh_with_type_withness<T, U>(_: &T): U {
     fresh()
 }

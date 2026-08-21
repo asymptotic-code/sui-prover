@@ -1,13 +1,13 @@
 #[allow(unused)]
 module 0x42::quantifiers_map_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::map;
 
-#[spec_only]
+#[mode(spec)]
 native fun x_plus_10(x: &u64): u64;
 
 #[spec(prove)]

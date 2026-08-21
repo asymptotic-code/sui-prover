@@ -4,7 +4,7 @@
 module 0x42::type_name_pure;
 
 use std::type_name;
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 public struct MyCoin has drop {}

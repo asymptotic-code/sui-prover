@@ -3,7 +3,7 @@ module 0x42::foo;
 use prover::prover::ensures;
 
 #[ext(pure)]
-#[spec_only]
+#[mode(spec)]
 native fun bar<T1, T2>(x: u64): u64;
 
 fun foo(x: u64): u64 {

@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_complex_usage;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{exists, ensures, invariant};
 use prover::vector_iter::map;
 

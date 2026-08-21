@@ -7,7 +7,7 @@ public fun foo(x: u64): u64 {
   x + 1
 }
 
-#[spec_only]
+#[mode(spec)]
 fun show_real(the_real: std::real::Real): std::real::Real {
   the_real
 }

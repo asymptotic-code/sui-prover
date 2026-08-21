@@ -4,7 +4,7 @@
 /// on any `Call` with `dests.len() > 1`.
 module 0x42::pure_tuple_return_callee;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // --- Tuple return -----------------------------------------------------------

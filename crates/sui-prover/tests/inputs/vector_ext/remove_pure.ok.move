@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_remove_pure_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::remove_pure;
 
 #[spec(prove)]

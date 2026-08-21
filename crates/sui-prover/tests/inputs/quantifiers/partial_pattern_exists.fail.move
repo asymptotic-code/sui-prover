@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_partial_pattern_exists_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{end_exists_lambda, ensures};
 
 #[spec(prove)]

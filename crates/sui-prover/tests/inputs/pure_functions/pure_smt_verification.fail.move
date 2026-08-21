@@ -5,7 +5,7 @@
 /// Expected: Should reach SMT verification and fail there (not at bytecode transformation).
 module 0x42::pure_smt_verification;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // Valid pure function - passes all syntactic checks:

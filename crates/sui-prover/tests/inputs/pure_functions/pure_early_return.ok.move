@@ -2,7 +2,7 @@
 /// The early return should not be dropped during pure function translation.
 module 0x42::pure_early_return;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[ext(pure)]

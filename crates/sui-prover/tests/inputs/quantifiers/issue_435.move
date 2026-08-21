@@ -6,7 +6,7 @@ public struct Queue<T: store> has store {
     tail: u64,
 }
 
-#[spec_only, ext(pure)]
+#[mode(spec), ext(pure)]
 fun queue_borrow_or_default(queue: &Queue<u64>, i: u64): u64 {
     if (i < queue.contents.length()) {
         queue.contents[i]
@@ -15,12 +15,13 @@ fun queue_borrow_or_default(queue: &Queue<u64>, i: u64): u64 {
     }
 }
 
-#[spec_only, ext(pure)]
+#[mode(spec), ext(pure)]
 fun queue_as_vector(queue: &Queue<u64>): &vector<u64> {
     prover::vector_iter::range_map!(queue.head, queue.tail, |i| queue_borrow_or_default(queue, i))
 }
 
-#[spec_only, ext(pure)]
+#[mode(spec), ext(pure)]
+#[allow(unused_function)]
 fun foo_spec(queue: &Queue<u64>): &vector<u64> {
     queue_as_vector(queue)
 }

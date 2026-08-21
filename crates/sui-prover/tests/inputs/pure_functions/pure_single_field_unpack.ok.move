@@ -1,6 +1,6 @@
 module 0x42::pure_single_field_unpack;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{requires, val};
 
 public struct S(u8) has copy, drop;

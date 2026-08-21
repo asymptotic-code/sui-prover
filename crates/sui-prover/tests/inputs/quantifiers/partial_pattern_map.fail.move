@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_partial_pattern_map_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{begin_map_lambda};
 
 #[spec(prove)]

@@ -1,4 +1,4 @@
-#[spec_only]
+#[mode(spec)]
 module specs::event_spec;
 
 use sui::event::{emit, num_events, events_by_type};

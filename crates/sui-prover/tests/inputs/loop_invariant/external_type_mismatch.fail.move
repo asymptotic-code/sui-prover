@@ -2,8 +2,8 @@ module 0x42::loop_invariant_external_type_mismatch_fail;
 
 use prover::prover::ensures;
 
-#[spec_only(loop_inv(target = test_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv(i: u64, n: u64, s: &u256): bool {
     i <= n && (s == (i as u256) * ((i as u256) + 1) / 2)
 }

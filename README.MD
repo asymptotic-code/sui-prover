@@ -104,7 +104,7 @@ module amm_specs::simple_lp_specs;
 use amm::simple_lp::{LP, Pool};
 use sui::balance::Balance;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{clone, ensures, requires};
 
 #[spec(prove, target = amm::simple_lp::withdraw)]

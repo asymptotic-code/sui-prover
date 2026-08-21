@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::range_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::range;
 
 #[spec(prove)]

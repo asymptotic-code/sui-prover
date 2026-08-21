@@ -6,6 +6,7 @@ use move_package::BuildConfig as MoveBuildConfig;
 use move_prover_boogie_backend::{
     generator::run_move_prover_with_model, generator_options::Options,
 };
+use move_stackless_bytecode::attr_query::SPEC_MODE;
 use regex::Regex;
 use std::fs::{copy, create_dir_all, read_to_string};
 use std::path::{Path, PathBuf};
@@ -102,7 +103,7 @@ integration-test = "0x9"
         let mut config = MoveBuildConfig::default();
         config.default_flavor = Some(Flavor::Sui);
         config.silence_warnings = false; // Disable warning suppression
-        config.modes = vec![ModeAttribute::VERIFY_ONLY.into()];
+        config.modes = vec![ModeAttribute::VERIFY_ONLY.into(), SPEC_MODE.into()];
         config.skip_fetch_latest_git_deps = true;
 
         // Try to build the model (using unlocked version for parallel test execution)

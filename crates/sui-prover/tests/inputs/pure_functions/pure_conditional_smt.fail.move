@@ -6,7 +6,7 @@
 /// Expected: Should reach SMT verification and fail there (not at bytecode transformation).
 module 0x42::pure_conditional_smt;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
 // BUGGY pure function - has x - 10 instead of x - 1

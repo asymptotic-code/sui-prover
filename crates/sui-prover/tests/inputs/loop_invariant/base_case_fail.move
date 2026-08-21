@@ -4,7 +4,8 @@ module 0x42::base_case_fail;
 
 use prover::prover::ensures;
 
-#[spec_only(loop_inv(target = foo_spec)), ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = foo_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_0(i: u64, n: u64): bool {
     // This invariant is wrong at entry: i starts at 0, but we claim i > 0.
     i > 0 && i <= n

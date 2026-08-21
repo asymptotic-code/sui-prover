@@ -9,7 +9,7 @@ module 0x42::dynamic_fields {
         u128::sqrt(x) as u64
     }
 
-    #[spec_only]
+    #[mode(spec)]
     use prover::prover::ensures;
 
     #[spec(prove)]

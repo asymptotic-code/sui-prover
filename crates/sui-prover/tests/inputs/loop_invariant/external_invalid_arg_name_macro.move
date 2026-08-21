@@ -28,8 +28,8 @@ macro fun test_loop_2($n: u64): u128 {
     s
 }
 
-#[spec_only(loop_inv(target = test_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv(i: u64, n: u64, compare: u128): bool {
     i <= n && (compare == (i as u128) * ((i as u128) + 1) / 2)
 }

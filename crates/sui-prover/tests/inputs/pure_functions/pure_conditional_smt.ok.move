@@ -5,7 +5,7 @@
 /// Expected: Should reach SMT verification and pass.
 module 0x42::pure_conditional_smt_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // Valid pure function with conditional - passes all syntactic checks:

@@ -2,8 +2,8 @@ module 0x42::loop_invariant_external_mut_ref_ok;
 
 use prover::prover::ensures;
 
-#[spec_only(loop_inv(target = test_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv(i: u64, n: u64, p: &u128): bool {
     i <= n && (*p == (i as u128) * ((i as u128) + 1) / 2)
 }

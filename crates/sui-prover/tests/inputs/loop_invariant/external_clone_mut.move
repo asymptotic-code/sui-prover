@@ -15,7 +15,7 @@ public fun foo(s: &mut Foo) {
     }
 }
 
-#[spec_only(loop_inv(target = foo)), ext(pure)]
+#[mode(spec), ext(spec(loop_inv(target = foo)), pure)]
 public fun foo_inv(s: &Foo, i: u64, __old_s: &Foo): bool {
     i <= s.y &&
     s.x.to_int() == __old_s.x.to_int().add(i.to_int()) &&

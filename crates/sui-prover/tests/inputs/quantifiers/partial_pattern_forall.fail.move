@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_partial_pattern_forall_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{begin_forall_lambda, ensures};
 
 #[spec(prove)]

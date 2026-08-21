@@ -3,7 +3,7 @@ module 0x42::working_test;
 
 use sui::test_utils::destroy; // check test imports
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{asserts, requires, ensures};
 
 #[test_only] // check test_only attribute visibility

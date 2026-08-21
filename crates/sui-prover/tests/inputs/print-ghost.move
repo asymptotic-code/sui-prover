@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 use prover::log;
 use prover::ghost;

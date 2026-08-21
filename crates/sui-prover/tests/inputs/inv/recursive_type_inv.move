@@ -7,7 +7,8 @@ public struct Leaf has copy, drop, store {
     right: Option<Leaf>,
 }
 
-#[spec_only(inv_target=0x42::recursive_type_inv::Leaf)]
+#[mode(spec), ext(spec(inv_target=0x42::recursive_type_inv::Leaf))]
+#[allow(unused_function)]
 fun Leaf_inv(self: &Leaf): bool {
     self.value > 0
 }
@@ -39,7 +40,8 @@ public fun new_c(value: u64): C {
     C { value, a_field: vector[] }
 }
 
-#[spec_only(inv_target=0x42::recursive_type_inv::A)]
+#[mode(spec), ext(spec(inv_target=0x42::recursive_type_inv::A))]
+#[allow(unused_function)]
 fun A_inv(self: &A): bool {
     self.value > 0
 }

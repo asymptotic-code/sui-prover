@@ -3,10 +3,10 @@ module 0x42::dynamic_field_ext_borrow_or_unknown_fail;
 
 use sui::dynamic_field;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::dynamic_field::borrow_or_unknown;
 
 public struct Foo has key {

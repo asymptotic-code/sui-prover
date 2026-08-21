@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::asserts;
 
 fun add(x: u64, _y: u64): u64 {

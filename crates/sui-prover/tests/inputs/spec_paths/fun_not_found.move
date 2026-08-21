@@ -6,7 +6,7 @@ module 0x42::foo {
 
 
 module 0x43::foo_spec {
-    #[spec_only]
+    #[mode(spec)]
     use prover::prover::{ensures, requires};
     use 0x42::foo::inc;
 

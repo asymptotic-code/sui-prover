@@ -30,7 +30,7 @@ public fun active_ids(set: &MySet): vector<u64> {
     r
 }
 
-#[spec_only(loop_inv(target = active_ids)), ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = active_ids)), no_abort)]
 fun active_ids_invariant(i: u64, len: u64, set: &MySet, r: &vector<u64>): bool {
        i <= len
     && len == set.validators.length()

@@ -1,0 +1,11 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 298
+expression: output
+---
+exiting with bytecode transformation errors
+error: #[spec_only] is no longer supported; use #[mode(spec)] (move parameters into #[ext(spec(...))])
+  ┌─ tests/inputs/spec_only_deprecated.fail.move:5:1
+  │
+5 │ native fun helper(): u64;
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^

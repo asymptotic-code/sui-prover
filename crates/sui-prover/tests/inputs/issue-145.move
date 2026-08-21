@@ -10,7 +10,7 @@ public fun bar_spec(ctx: &mut TxContext): Versioned {
     bar(ctx)
 }
 
-#[spec_only]
+#[mode(spec)]
 use sui::random::RandomInner;
 
 #[spec]

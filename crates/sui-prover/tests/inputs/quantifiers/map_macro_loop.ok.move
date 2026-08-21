@@ -16,7 +16,8 @@ fun flip(x: u64): u64 {
     std::u64::max_value!() - x
 }
 
-#[spec_only(loop_inv(target=map_flip)), ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target=map_flip)), no_abort)]
+#[allow(unused_function)]
 fun map_flip_invariant(v: &vector<u64>, v__3: &vector<u64>, i: u64, stop: u64, r: &vector<u64>): bool {
     i <= stop
     && stop - i == v__3.length()

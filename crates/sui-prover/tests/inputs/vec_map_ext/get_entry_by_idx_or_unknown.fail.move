@@ -3,10 +3,10 @@ module 0x42::vec_map_ext_get_entry_by_idx_or_unknown_fail;
 
 use sui::vec_map;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::vec_map::get_entry_by_idx_or_unknown;
 
 // For an out-of-range index, get_entry_by_idx_or_unknown returns an

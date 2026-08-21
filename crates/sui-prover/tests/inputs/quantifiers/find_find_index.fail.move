@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_find_index_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{find, find_index};
 
 #[ext(pure)]

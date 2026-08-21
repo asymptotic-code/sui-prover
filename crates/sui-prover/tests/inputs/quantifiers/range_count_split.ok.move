@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_count_split_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::range_count;
 
 #[ext(pure)]

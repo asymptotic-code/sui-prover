@@ -3,10 +3,10 @@ module 0x42::table_ext_remove_pure_ok;
 
 use sui::table::Table;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use sui::table::remove_pure;
 
 #[spec(prove)]

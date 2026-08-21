@@ -5,12 +5,12 @@
 #[allow(unused)]
 module 0x42::quantifiers_concat_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, invariant};
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::slice;
-#[spec_only]
+#[mode(spec)]
 use std::vector::append_pure;
 
 // Concrete values: concat of two literal vectors.

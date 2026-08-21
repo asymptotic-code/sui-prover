@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::extra_bpl_missing;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // This should fail because the file doesn't exist

@@ -15,7 +15,7 @@ module 0x42::dynamic_fields {
         ofield::borrow(&x.id, b"dfochild") == y
     }
 
-    #[spec_only]
+    #[mode(spec)]
     use prover::prover::requires;
 
     #[spec(prove)]

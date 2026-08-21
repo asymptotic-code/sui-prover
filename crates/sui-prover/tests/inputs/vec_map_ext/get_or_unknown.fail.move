@@ -3,10 +3,10 @@ module 0x42::vec_map_ext_get_or_unknown_fail;
 
 use sui::vec_map;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::vec_map::get_or_unknown;
 
 // For an absent key, get_or_unknown returns an uninterpreted value —

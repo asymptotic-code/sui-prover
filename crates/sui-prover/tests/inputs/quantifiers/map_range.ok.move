@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_map_range_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::map_range;
 
 #[ext(pure)]

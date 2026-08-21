@@ -1,12 +1,13 @@
 ---
 source: crates/sui-prover/tests/integration.rs
+assertion_line: 298
 expression: output
 ---
 exiting with verification errors
 error: prover::ensures does not hold
-   ┌─ tests/inputs/inv_paths/inv_path.ok.move:31:5
+   ┌─ tests/inputs/inv_paths/inv_path.ok.move:32:5
    │
-31 │     }
+32 │     }
    │     ^
    │
-   =     at tests/inputs/inv_paths/inv_path.ok.move:29: increment_spec
+   =     at tests/inputs/inv_paths/inv_path.ok.move:30: increment_spec

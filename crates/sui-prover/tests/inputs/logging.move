@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
 public fun foo(x: u64): u64 {

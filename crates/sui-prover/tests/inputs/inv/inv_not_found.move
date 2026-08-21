@@ -15,7 +15,7 @@ module 0x42::inv_foo {
         bar.set_value(150);
     }
 
-    #[spec_only]
+    #[mode(spec)]
     public fun foo_inv(bar: &Bar): bool {
         bar.x < 150
     }

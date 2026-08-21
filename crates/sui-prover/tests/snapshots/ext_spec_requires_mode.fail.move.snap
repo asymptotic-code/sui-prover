@@ -1,0 +1,13 @@
+---
+source: crates/sui-prover/tests/integration.rs
+assertion_line: 298
+expression: output
+---
+exiting with bytecode transformation errors
+error: #[ext(spec(...))] on 'ext_spec_requires_mode_test::helper' requires #[mode(spec)]
+  ┌─ tests/inputs/ext_spec_requires_mode.fail.move:5:1
+  │  
+5 │ ╭ fun helper(): bool {
+6 │ │     true
+7 │ │ }
+  │ ╰─^
