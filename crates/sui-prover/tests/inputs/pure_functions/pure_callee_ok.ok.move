@@ -2,7 +2,7 @@
 /// The helper function is NOT marked #[ext(pure)] but satisfies all pure requirements.
 module 0x42::pure_callee_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // This function is NOT marked #[ext(pure)] but satisfies pure requirements:

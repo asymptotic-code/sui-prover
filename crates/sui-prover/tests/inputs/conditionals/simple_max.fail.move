@@ -1,6 +1,6 @@
 module 0x42::simple_max_failure_test;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures};
 
 // A broken max function that returns the minimum instead (should fail verification)

@@ -3,10 +3,10 @@ module 0x42::vec_set_ext_insert_pure_ok;
 
 use sui::vec_set;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use sui::vec_set::insert_pure;
 
 #[spec(prove)]

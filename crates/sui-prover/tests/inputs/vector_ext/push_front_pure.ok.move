@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_push_front_pure_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, clone};
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::push_front_pure;
 
 // New first element equals the pushed element.

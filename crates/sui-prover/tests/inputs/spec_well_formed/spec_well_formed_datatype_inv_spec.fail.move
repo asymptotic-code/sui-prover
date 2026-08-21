@@ -2,10 +2,11 @@ module 0x42::bad_inv;
 
 public struct S { x: u8 }
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
+#[allow(unused_function)]
 fun S_inv(self: &S): bool {
     self.get_y() > 0
 }

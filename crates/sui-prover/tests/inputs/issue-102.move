@@ -2,7 +2,7 @@ module 0x42::issue_102;
 
 use prover::prover::{ensures, requires, invariant};
 
-#[spec_only]
+#[mode(spec)]
 fun fib(n: u16): u16 {
     if (n <= 1) {
         1

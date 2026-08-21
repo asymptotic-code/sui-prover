@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_multiple_args;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{forall, exists, ensures};
 use prover::vector_iter::map;
 

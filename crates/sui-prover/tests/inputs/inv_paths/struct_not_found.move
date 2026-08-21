@@ -17,10 +17,11 @@ module 0x42::inv_path_foo {
 }
 
 module 0x43::inv_path_foo_spec {
-    #[spec_only]
+    #[mode(spec)]
     use 0x42::inv_path_foo::{increment, Bar};
 
-    #[spec_only(inv_target = 0x42::inv_path_foo::Baz)]
+    #[mode(spec), ext(spec(inv_target = 0x42::inv_path_foo::Baz))]
+    #[allow(unused_function)]
     fun foo(bar: &Bar): bool {
         bar.get_values() < 150
     }

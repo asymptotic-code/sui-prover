@@ -191,7 +191,7 @@ module amm_specs::simple_lp_specs;
 use amm::simple_lp::{LP, Pool};
 use sui::balance::Balance;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{clone, ensures, requires};
 
 #[spec(prove, target = amm::simple_lp::withdraw)]
@@ -337,7 +337,7 @@ while (i < n) {
 
 **External loop invariants** - Define as separate functions (alternative to inline):
 ```move
-#[spec_only(loop_inv(target = sum_to_n_spec))]
+#[mode(spec), ext(spec(loop_inv(target = sum_to_n_spec)))]
 #[ext(no_abort)]
 fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
     i <= n && sum == (i as u128) * ((i as u128) + 1) / 2
@@ -362,7 +362,7 @@ ensures(module::get_value(storage, key) == value);
 
 **Extra BPL prelude files** - When the prover fails with `use of undeclared function: $X_module_native_func$pure`, create a `.bpl` prelude file with the missing function definition:
 ```move
-#[spec_only(extra_bpl = b"mymodule_prelude.bpl")]
+#[mode(spec), ext(spec(extra_bpl = b"mymodule_prelude.bpl"))]
 module project_specs::mymodule;
 ```
 Place the BPL file in the same directory as the spec module.
@@ -375,7 +375,7 @@ fun public_transfer_spec<T: key + store>(obj: T, recipient: address) { ... }
 
 **Ghost variables for `transfer::public_transfer`** - When a spec involves `transfer::public_transfer` (directly or indirectly), declare ghost variables:
 ```move
-#[spec_only]
+#[mode(spec)]
 use specs::transfer_spec::{SpecTransferAddress, SpecTransferAddressExists};
 
 #[spec(prove, target = project::example::func_that_transfers)]

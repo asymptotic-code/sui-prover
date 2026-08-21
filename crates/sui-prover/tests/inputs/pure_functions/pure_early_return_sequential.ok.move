@@ -2,7 +2,7 @@
 /// Each condition is checked in order; the first match returns.
 module 0x42::pure_early_return_sequential;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[ext(pure)]

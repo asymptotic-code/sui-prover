@@ -1,9 +1,9 @@
 #[allow(unused)]
 module 0x42::issue_329;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::requires;
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{all, any};
 
 #[ext(pure)]

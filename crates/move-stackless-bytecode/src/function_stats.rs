@@ -29,7 +29,7 @@ impl std::fmt::Display for ProofStatus {
     }
 }
 
-/// Checks if a function has a specific attribute (e.g., "spec_only", "test_only").
+/// Checks if a function has a specific attribute (e.g., "test_only").
 fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
     func_env.get_attributes().iter().any(|attr| {
         matches!(
@@ -44,8 +44,7 @@ fn has_attribute(func_env: &FunctionEnv, attr_name: &str) -> bool {
 ///
 /// Filters out:
 /// - Non-public and non-entry functions
-/// - Functions with `spec_only` attribute
-/// - Functions with `test_only` attribute
+/// - Functions with any `mode` attribute (e.g. `#[mode(spec)]`, `#[test_only]`)
 /// - Spec functions themselves
 fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> bool {
     if func_env
@@ -59,6 +58,7 @@ fn should_include_function(func_env: &FunctionEnv, targets: &PackageTargets) -> 
     if func_env.visibility() != Visibility::Public && !func_env.is_entry() {
         return false;
     }
+    // Unmigrated dependencies (e.g. the system framework packages) still carry `#[spec_only]`.
     if func_env
         .get_toplevel_attributes()
         .get_(&AttributeKind_::SpecOnly)

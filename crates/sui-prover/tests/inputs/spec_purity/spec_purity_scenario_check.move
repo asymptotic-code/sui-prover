@@ -5,7 +5,7 @@ fun foo(x: &mut u64) {
   *x = *x + 1;
 }
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[spec(prove)]

@@ -2,7 +2,8 @@ module 0x42::simple_axiom;
 
 use prover::prover::ensures;
 
-#[spec_only(axiom)]
+#[mode(spec), ext(spec(axiom))]
+#[allow(unused_function)]
 fun f_axiom(x: &u64): bool {
     (*x).to_int().sqrt() == 3u8.to_int()
 }

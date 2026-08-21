@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_sum_map_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::range_sum_map;
 
 #[ext(pure)]

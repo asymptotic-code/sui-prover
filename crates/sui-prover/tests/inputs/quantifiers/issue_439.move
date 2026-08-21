@@ -1,15 +1,15 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::requires;
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::filter;
 
 public struct Foo {
     x: u64,
 }
 
-#[spec_only, ext(pure)]
+#[mode(spec), ext(pure)]
 fun foo_property(
     v1: &vector<Foo>,
     v2: &vector<Foo>,
@@ -18,7 +18,7 @@ fun foo_property(
     v1 == filter!(v2, |foo| is_x(foo, x))
 }
 
-#[spec_only, ext(pure)]
+#[mode(spec), ext(pure)]
 fun is_x(foo: &Foo, x: u64): bool {
     foo.x == x
 }

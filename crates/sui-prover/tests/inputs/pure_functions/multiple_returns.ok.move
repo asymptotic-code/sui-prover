@@ -5,7 +5,7 @@
 /// Expected: Should pass verification.
 module 0x42::pure_multiple_returns;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // Pure function with 2 return values

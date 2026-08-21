@@ -1,16 +1,15 @@
+use crate::attr_query::{get_ext_flags, SpecModeAnnotated, SpecRole};
 use crate::target_filter::TargetFilterOptions;
 use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
 use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
-    shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
-    },
+    expansion::ast::{Attributes, ModuleAccess, ModuleAccess_, ModuleIdent_},
+    shared::known_attributes::{AttributeKind_, KnownAttribute, VerificationAttribute},
 };
 use move_ir_types::location::Spanned;
 use move_model::{
     ast::ModuleName,
-    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
+    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleEnv, ModuleId, QualifiedId},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -268,11 +267,24 @@ impl PackageTargets {
         // Phase 1: Collect all attributes except uninterpreted
         // This ensures pure_functions is populated before we validate uninterpreted targets
         for module_env in env.get_modules() {
+            let is_target = module_env.is_target();
             for func_env in module_env.get_functions() {
+                Self::check_deprecated_spec_only(
+                    env,
+                    func_env.get_toplevel_attributes(),
+                    &func_env.get_loc(),
+                    is_target,
+                );
                 self.check_spec_scope(&func_env);
-                self.check_spec_only_scope(&func_env);
+                self.check_spec_mode_scope(&func_env);
                 self.check_abort_check_scope(&func_env);
             }
+            Self::check_deprecated_spec_only(
+                env,
+                module_env.get_toplevel_attributes(),
+                &module_env.get_loc(),
+                is_target,
+            );
             self.handle_module_explicit_spec_attributes(&module_env);
         }
 
@@ -294,102 +306,103 @@ impl PackageTargets {
         }
     }
 
-    fn check_spec_only_scope(&mut self, func_env: &FunctionEnv) {
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
-            inv_target,
-            loop_inv,
-            explicit_spec_modules: _,
-            explicit_specs: _,
-            axiom,
-            extra_bpl,
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
-        {
-            if func_env.get_name_str().contains("type_inv") {
-                return;
-            }
+    /// Reports an error for the removed `#[spec_only]` attribute.
+    fn check_deprecated_spec_only(env: &GlobalEnv, attrs: &Attributes, loc: &Loc, is_target: bool) {
+        if is_target && attrs.get_(&AttributeKind_::SpecOnly).is_some() {
+            env.diag(
+                Severity::Error,
+                loc,
+                "#[spec_only] is no longer supported; use #[mode(spec)] \
+                 (move parameters into #[ext(spec(...))])",
+            );
+        }
+    }
 
-            let env = func_env.module_env.env;
+    /// Resolves a `ModuleAccess` from an attribute into its module and member name.
+    fn resolve_attr_target<'env>(
+        func_env: &FunctionEnv<'env>,
+        ma: &ModuleAccess,
+        target_kind: &str,
+    ) -> Option<(ModuleEnv<'env>, String)> {
+        let env = func_env.module_env.env;
+        let Some((module_name, member_name)) = Self::parse_module_access(ma, &func_env.module_env)
+        else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "Error parsing module path '{}'",
+                    func_env.module_env.get_full_name_str()
+                ),
+            );
+            return None;
+        };
+        let Some(module_env) = env.find_module(&module_name) else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "{target_kind} module not found for path '{}'",
+                    module_name.display(env.symbol_pool())
+                ),
+            );
+            return None;
+        };
+        Some((module_env, member_name))
+    }
 
-            if *axiom {
+    fn check_spec_mode_scope(&mut self, func_env: &FunctionEnv) {
+        let env = func_env.module_env.env;
+        let info = func_env.get_spec_info();
+        if !func_env.is_spec_mode() {
+            return;
+        }
+        let info = info.unwrap_or_default();
+
+        if let Some(content) = Self::validate_and_read_extra_bpl(
+            env,
+            &func_env.get_loc(),
+            func_env.module_env.get_source_path(),
+            &info.extra_bpl,
+        ) {
+            self.function_extra_bpl
+                .insert(func_env.get_qualified_id(), content);
+        }
+
+        match &info.role {
+            Some(SpecRole::Axiom) => {
                 self.axiom_functions.insert(func_env.get_qualified_id());
             }
-
-            if let Some(content) = Self::validate_and_read_extra_bpl(
-                env,
-                &func_env.get_loc(),
-                func_env.module_env.get_source_path(),
-                extra_bpl,
-            ) {
-                self.function_extra_bpl
-                    .insert(func_env.get_qualified_id(), content);
-            }
-
-            if let Some(loop_inv) = loop_inv {
-                match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
-                    Some((module_name, fun_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "loop_inv target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-                return;
-            }
-
-            if inv_target.is_some() {
-                match Self::parse_module_access(inv_target.as_ref().unwrap(), &func_env.module_env)
+            Some(SpecRole::LoopInvariant { target, label }) => {
+                let Some(target) = target else {
+                    env.diag(
+                        Severity::Error,
+                        &func_env.get_loc(),
+                        "`loop_inv` in #[ext(spec(...))] requires a `target` parameter",
+                    );
+                    return;
+                };
+                if let Some((module_env, fun_name)) =
+                    Self::resolve_attr_target(func_env, target, "loop_inv target")
                 {
-                    Some((module_name, struct_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            self.process_inv(func_env, &module_env, struct_name);
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "inv_target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
+                    self.process_loop_inv(func_env, &module_env, fun_name, *label);
                 }
-            } else {
-                func_env
-                    .get_name_str()
-                    .strip_suffix("_inv")
-                    .map(|struct_name: &str| {
-                        self.process_inv(func_env, &func_env.module_env, struct_name.to_string());
-                    });
+            }
+            Some(SpecRole::Invariant { target }) => {
+                if let Some((module_env, struct_name)) =
+                    Self::resolve_attr_target(func_env, target, "inv_target")
+                {
+                    self.process_inv(func_env, &module_env, struct_name);
+                }
+            }
+            None => {
+                // The `type_inv` intrinsic ends in `_inv` but is not a datatype invariant.
+                if func_env.get_qualified_id() == env.type_inv_qid() {
+                    return;
+                }
+                if let Some(struct_name) = func_env.get_name_str().strip_suffix("_inv") {
+                    self.process_inv(func_env, &func_env.module_env, struct_name.to_string());
+                }
             }
         }
     }
@@ -581,51 +594,36 @@ impl PackageTargets {
     }
 
     fn check_abort_check_scope(&mut self, func_env: &FunctionEnv) {
-        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::External)
-            .map(|attr| &attr.value)
-        {
-            let has_no_abort = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort");
-            let has_pure = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure");
-            let has_uninterpreted = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "uninterpreted");
-
-            if has_no_abort {
-                self.abort_check_functions
+        let flags = get_ext_flags(func_env.get_toplevel_attributes());
+        if flags.no_abort {
+            self.abort_check_functions
+                .insert(func_env.get_qualified_id());
+            if self.is_target(func_env) {
+                self.target_no_abort_check_functions
                     .insert(func_env.get_qualified_id());
-                if self.is_target(func_env) {
-                    self.target_no_abort_check_functions
-                        .insert(func_env.get_qualified_id());
-                }
             }
-            if has_pure {
-                self.pure_functions.insert(func_env.get_qualified_id());
-                if self.is_target(func_env) {
-                    self.target_no_abort_check_functions
-                        .insert(func_env.get_qualified_id());
-                }
+        }
+        if flags.pure {
+            self.pure_functions.insert(func_env.get_qualified_id());
+            if self.is_target(func_env) {
+                self.target_no_abort_check_functions
+                    .insert(func_env.get_qualified_id());
             }
-            if has_uninterpreted {
-                if !has_pure {
-                    let env = func_env.module_env.env;
-                    env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        &format!(
-                            "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
-                            func_env.get_full_name_str(),
-                        ),
-                    );
-                } else {
-                    self.globally_uninterpreted_functions
-                        .insert(func_env.get_qualified_id());
-                }
+        }
+        if flags.uninterpreted {
+            if !flags.pure {
+                let env = func_env.module_env.env;
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!(
+                        "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
+                        func_env.get_full_name_str(),
+                    ),
+                );
+            } else {
+                self.globally_uninterpreted_functions
+                    .insert(func_env.get_qualified_id());
             }
         }
     }
@@ -971,35 +969,26 @@ impl PackageTargets {
     }
 
     fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
-            inv_target: _,
-            loop_inv: _,
-            axiom: _,
-            explicit_spec_modules,
-            explicit_specs,
-            extra_bpl,
-        })) = module_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
-        {
-            if let Some(attrs) = Self::handle_explicit_spec_attributes(
-                module_env,
-                explicit_spec_modules,
-                explicit_specs,
-            ) {
-                self.module_external_attributes
-                    .insert(module_env.get_id(), attrs);
-            }
+        let Some(info) = module_env.get_spec_info() else {
+            return;
+        };
 
-            if let Some(content) = Self::validate_and_read_extra_bpl(
-                module_env.env,
-                &module_env.get_loc(),
-                module_env.get_source_path(),
-                extra_bpl,
-            ) {
-                self.module_extra_bpl.insert(module_env.get_id(), content);
-            }
+        if let Some(attrs) = Self::handle_explicit_spec_attributes(
+            module_env,
+            &info.explicit_spec_modules,
+            &info.explicit_specs,
+        ) {
+            self.module_external_attributes
+                .insert(module_env.get_id(), attrs);
+        }
+
+        if let Some(content) = Self::validate_and_read_extra_bpl(
+            module_env.env,
+            &module_env.get_loc(),
+            module_env.get_source_path(),
+            &info.extra_bpl,
+        ) {
+            self.module_extra_bpl.insert(module_env.get_id(), content);
         }
     }
 

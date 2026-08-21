@@ -1,6 +1,6 @@
 module 0x42::pure_enum_unpack;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
 public enum Pair has copy, drop {

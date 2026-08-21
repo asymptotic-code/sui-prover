@@ -2,7 +2,7 @@ module 0x42::simple_axiom;
 
 use prover::prover::ensures;
 
-#[spec_only(axiom)]
+#[mode(spec), ext(spec(axiom))]
 fun f_axiom(x: u64): bool {
   x.to_int().sqrt().gte(1u8.to_int())
 }

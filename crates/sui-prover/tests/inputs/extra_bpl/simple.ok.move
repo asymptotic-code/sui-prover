@@ -1,11 +1,11 @@
 #[allow(unused)]
 module 0x42::extra_bpl_test;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 // Native function that will be defined in the extra BPL file
-#[spec_only]
+#[mode(spec)]
 native fun custom_add(x: u64, y: u64): u64;
 
 #[spec(prove, extra_bpl = b"simple.ok.bpl")]

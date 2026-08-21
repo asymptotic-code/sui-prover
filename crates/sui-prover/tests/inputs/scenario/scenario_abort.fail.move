@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 fun foo(a: u128): bool {

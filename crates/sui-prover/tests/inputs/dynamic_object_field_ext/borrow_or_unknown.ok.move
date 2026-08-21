@@ -3,10 +3,10 @@ module 0x42::dynamic_object_field_ext_borrow_or_unknown_ok;
 
 use sui::dynamic_object_field;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::dynamic_object_field::borrow_or_unknown;
 
 public struct Parent has key {

@@ -4,38 +4,38 @@ use prover::prover::{requires, ensures, clone};
 use prover::ghost;
 use std::integer::Integer;
 
-#[spec_only(loop_inv(target = test0_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test0_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_0(i: u64, n: u64): bool {
     i <= n
 }
 
-#[spec_only(loop_inv(target = test1_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test1_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_1(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test2_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test2_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_2(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test3_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test3_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_3(n: u64, old_n: u64, s: u128): bool {
     n <= old_n && (s == ((old_n as u128) - (n as u128)) * ((old_n as u128) + (n as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test4_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test4_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_4(i: u64, n: u64, s: u128): bool {
     i < n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test6_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test6_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_6(i: u64, n: u64, old_s: u128, ss: u128): bool {
     i <= n && ((ss as u256) == (old_s as u256) + (i as u256) * ((i as u256) + 1) / 2)
 }

@@ -20,7 +20,7 @@ module 0x42::b {
 module 0x42::c {
     use 0x42::b::{Sb};
 
-    #[spec_only(inv_target=Sb)]
+    #[mode(spec), ext(spec(inv_target=Sb))]
     public fun Sb_inv(self: &Sb): bool {
         self.x().is_in_good_state()
     }

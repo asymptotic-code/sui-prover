@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_forall_exists_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{forall, exists, ensures};
 
 #[ext(pure)]

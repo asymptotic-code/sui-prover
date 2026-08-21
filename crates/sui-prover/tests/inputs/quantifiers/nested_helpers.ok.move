@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_nested_helpers_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{count, filter, map, sum_map, find_index};
 
 #[ext(pure)]

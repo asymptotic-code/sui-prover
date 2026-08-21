@@ -13,7 +13,8 @@ fun sums<T>(y: &vector<T>): bool {
     sum_range(y, 0, 3).gt(5u8.to_int()) && sum_range(y, 0, 3).lt(25u8.to_int())
 }
 
-#[spec_only(axiom)]
+#[mode(spec), ext(spec(axiom))]
+#[allow(unused_function)]
 fun f_axiom(v: &vector<u8>): bool {
     let y = filter_range!<u8>(v, 0, 3, |x| is_qualified(x));
     sums<u8>(y)

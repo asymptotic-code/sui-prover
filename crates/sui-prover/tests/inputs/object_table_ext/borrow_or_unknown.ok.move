@@ -3,10 +3,10 @@ module 0x42::object_table_ext_borrow_or_unknown_ok;
 
 use sui::object_table::ObjectTable;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::object_table::borrow_or_unknown;
 
 public struct Foo has key, store {

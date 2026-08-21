@@ -1,13 +1,13 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_count_pure_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::range_count;
 
-#[spec_only]
+#[mode(spec)]
 use std::integer::Integer;
 
 #[ext(pure)]

@@ -536,7 +536,7 @@ pub fn add_prelude(
         if seen_bpl.insert(*content) {
             emitln!(
                 writer,
-                "\n// ** Extra BPL from #[spec] or #[spec_only] attribute\n"
+                "\n// ** Extra BPL from #[spec] or #[ext(spec(extra_bpl = ...))] attribute\n"
             );
             emitln!(writer, content);
         }

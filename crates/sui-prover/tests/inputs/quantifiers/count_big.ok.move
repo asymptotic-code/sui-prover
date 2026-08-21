@@ -4,10 +4,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_count_big_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::count;
 
 #[ext(pure)]

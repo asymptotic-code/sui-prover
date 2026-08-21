@@ -3,10 +3,10 @@ module 0x42::object_table_ext_remove_pure_ok;
 
 use sui::object_table::ObjectTable;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use sui::object_table::remove_pure;
 
 public struct Foo has key, store {

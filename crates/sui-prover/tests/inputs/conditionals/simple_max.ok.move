@@ -1,6 +1,6 @@
 module 0x42::simple_max_succeeds_test;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures};
 
 #[ext(pure)]

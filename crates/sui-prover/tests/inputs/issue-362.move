@@ -8,7 +8,8 @@ module 0x42::A {
         (*x)%2 == 1
     }
 
-    #[spec_only(loop_inv(target=0x42::foo::find_odd_index2)), ext(pure)]
+    #[mode(spec), ext(spec(loop_inv(target=0x42::foo::find_odd_index2)), pure)]
+    #[allow(unused_function)]
     fun foo_inv(v: &vector<u64>, i: u64): bool {
         i <= v.length() && !any_range!(v, 0, i, |x| is_odd(x))
     }
