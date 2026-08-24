@@ -3,7 +3,7 @@
 /// should fall through to the default return value.
 module 0x42::pure_early_return_nested;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[ext(pure)]

@@ -3,10 +3,10 @@ module 0x42::vec_map_ext_remove_pure_ok;
 
 use sui::vec_map;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use sui::vec_map::remove_pure;
 
 // After remove of a contained key, the functional model equals the result.

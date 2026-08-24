@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_borrow_or_unknown_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::borrow_or_unknown;
 
 #[spec(prove)]

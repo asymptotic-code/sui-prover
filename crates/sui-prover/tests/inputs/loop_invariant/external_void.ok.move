@@ -2,35 +2,35 @@ module 0x42::loop_invariant_external_void_ok;
 
 use prover::prover::{requires, ensures, clone};
 
-#[spec_only(loop_inv(target = test0_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test0_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_0(i: u64, n: u64) {
     ensures(i <= n);
 }
 
-#[spec_only(loop_inv(target = test1_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test1_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_1(i: u64, n: u64, s: u128) {
     ensures(i <= n);
     ensures(s == (i as u128) * ((i as u128) + 1) / 2);
 }
 
-#[spec_only(loop_inv(target = test2_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test2_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_2(n: u64, old_n: u64, s: u128) {
     ensures(n <= old_n);
     ensures(s == ((old_n as u128) - (n as u128)) * ((old_n as u128) + (n as u128) + 1) / 2);
 }
 
-#[spec_only(loop_inv(target = test3_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test3_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_3(i: u64, n: u64, s: u128) {
     ensures(i < n);
     ensures(s == (i as u128) * ((i as u128) + 1) / 2);
 }
 
-#[spec_only(loop_inv(target = test4_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target = test4_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_4(i: u64, n: u64, p: &u128) {
     ensures(i <= n);
     ensures(*p == (i as u128) * ((i as u128) + 1) / 2);

@@ -1,8 +1,8 @@
 module 0x42::loop_inv_count_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{invariant, ensures, requires};
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{count, count_range};
 
 
@@ -11,7 +11,7 @@ fun x_is_positive(x: &u64): bool {
     *x > 0
 }
 
-#[spec_only]
+#[mode(spec)]
 fun count_loop(v: &vector<u64>): u64 {
     let mut i = 0;
     let mut r = 0;

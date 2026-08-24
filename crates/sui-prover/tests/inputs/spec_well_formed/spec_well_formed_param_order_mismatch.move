@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{requires, ensures};
 
 public fun add_up(x: u8, y: u8): u8 {

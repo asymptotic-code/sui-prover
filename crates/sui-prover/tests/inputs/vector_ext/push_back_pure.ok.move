@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_push_back_pure_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::push_back_pure;
 
 #[spec(prove)]

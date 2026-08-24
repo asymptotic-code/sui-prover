@@ -14,7 +14,7 @@ module 0x42::dynamic_fields {
         event::emit(TestEvent { value: x });
     }
 
-    #[spec_only]
+    #[mode(spec)]
     use prover::prover::ensures;
 
     #[spec(prove)]

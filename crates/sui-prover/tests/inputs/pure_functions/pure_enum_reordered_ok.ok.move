@@ -1,6 +1,6 @@
 module 0x42::pure_enum_reordered;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 public enum Op has copy, drop {

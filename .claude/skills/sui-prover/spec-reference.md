@@ -43,14 +43,14 @@ Ghost variables are spec-only globals for propagating information between specif
 Ghost variables are declared with two type-level arguments: a key type and a value type. The key is usually a user struct or a spec-only struct:
 
 ```move
-#[spec_only]
+#[mode(spec)]
 public struct MyGhostKey {}
 ```
 
 ### Declaring and Reading
 
 ```move
-#[spec_only]
+#[mode(spec)]
 use prover::ghost::{declare_global, global};
 
 #[spec(prove)]
@@ -66,7 +66,7 @@ fun ghost_example_spec() {
 ### Mutable Ghost Variables
 
 ```move
-#[spec_only]
+#[mode(spec)]
 use prover::ghost::{declare_global_mut, borrow_mut, global};
 
 #[spec(prove)]
@@ -243,9 +243,9 @@ public fun get_field_name(self: &MyStruct): u64 {
 }
 ```
 
-### `#[spec_only(...)]` - Specification Attributes
+### `#[mode(spec), ext(spec(...))]` - Specification Attributes
 
-Use parameterized `spec_only` attributes for axioms, datatype invariants, loop invariants, spec inclusion, and extra Boogie files.
+Mark spec-only code with `#[mode(spec)]`. Parameterized spec attributes (axioms, datatype invariants, loop invariants, spec inclusion, and extra Boogie files) go in a companion `#[ext(spec(...))]` attribute, which requires `#[mode(spec)]` on the same item.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -254,21 +254,23 @@ Use parameterized `spec_only` attributes for axioms, datatype invariants, loop i
 | `(loop_inv(target = <FUNC>))` | External loop invariant |
 | `(loop_inv(target = <FUNC>, label = N))` | Loop invariant with label |
 | `(include = <PATH>)` | Include spec module |
+| `(include(a = <PATH>, b = <PATH>))` | Include multiple spec modules (inner keys arbitrary but unique) |
 | `(extra_bpl = b"<file>")` | Load extra Boogie code |
+| `(extra_bpl(a = b"<file>", b = b"<file>"))` | Load multiple extra Boogie files (inner keys arbitrary but unique) |
 
 Examples:
 ```move
 use project::numbers::PositiveNumber;
 
-#[spec_only(axiom)]
+#[mode(spec), ext(spec(axiom))]
 fun sqrt_axiom(x: u64): u64 { ... }
 
-#[spec_only(inv_target = project::numbers::PositiveNumber)]
+#[mode(spec), ext(spec(inv_target = project::numbers::PositiveNumber))]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
     self.value() > 0
 }
 
-#[spec_only(loop_inv(target = my_func_spec))]
+#[mode(spec), ext(spec(loop_inv(target = my_func_spec)))]
 fun loop_inv_for_my_func() { }
 ```
 
@@ -302,10 +304,10 @@ fun sum_to_n_spec(n: u64): u128 {
 
 ### External Loop Invariants
 
-Alternatively, define loop invariants as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
+Alternatively, define loop invariants as separate functions with `#[mode(spec), ext(spec(loop_inv(target = ...)))]`. The invariant function returns a boolean conjunction of all conditions.
 
 ```move
-#[spec_only(loop_inv(target = sum_to_n_spec))]
+#[mode(spec), ext(spec(loop_inv(target = sum_to_n_spec)))]
 #[ext(no_abort)]
 fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
     i <= n && sum == (i as u128) * ((i as u128) + 1) / 2
@@ -332,11 +334,11 @@ fun sum_to_n_spec(n: u64): u128 {
 - For multiple loops, use `label = N` (0-indexed):
 
 ```move
-#[spec_only(loop_inv(target = my_spec, label = 0))]
+#[mode(spec), ext(spec(loop_inv(target = my_spec, label = 0)))]
 #[ext(no_abort)]
 fun first_loop_inv(...): bool { ... }
 
-#[spec_only(loop_inv(target = my_spec, label = 1))]
+#[mode(spec), ext(spec(loop_inv(target = my_spec, label = 1)))]
 #[ext(no_abort)]
 fun second_loop_inv(...): bool { ... }
 ```
@@ -364,7 +366,7 @@ module project_specs::number_specs;
 
 use project::numbers::PositiveNumber;
 
-#[spec_only(inv_target = project::numbers::PositiveNumber)]
+#[mode(spec), ext(spec(inv_target = project::numbers::PositiveNumber))]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
     self.value() > 0
 }

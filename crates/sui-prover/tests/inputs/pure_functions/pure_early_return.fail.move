@@ -2,7 +2,7 @@
 /// This spec makes a FALSE claim to verify the early return is not dropped.
 module 0x42::pure_early_return_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[ext(pure)]

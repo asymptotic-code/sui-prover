@@ -2,8 +2,8 @@ module 0x42::loop_invariant_external_clone;
 
 use prover::prover::{ensures, clone};
 
-#[spec_only(loop_inv(target = test_spec))]
-#[ext(pure)]
+#[mode(spec), ext(spec(loop_inv(target = test_spec)), pure)]
+#[allow(unused_function)]
 fun loop_inv(n: u64, __old_n: u64, s: u128): bool {
     n <= __old_n && (s == ((__old_n as u128) - (n as u128)) * ((__old_n as u128) + (n as u128) + 1) / 2)
 }

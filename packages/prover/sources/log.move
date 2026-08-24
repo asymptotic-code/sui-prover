@@ -1,10 +1,10 @@
 module prover::log;
 
-#[spec_only]
+#[mode(spec)]
 public native fun text(x: vector<u8>);
 
-#[spec_only]
+#[mode(spec)]
 public native fun var<T>(x: &T);
 
-#[spec_only]
+#[mode(spec)]
 public native fun ghost<T, U>();

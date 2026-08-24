@@ -15,7 +15,7 @@ use sui::tx_context::{
     native_sponsor
 };
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, clone};
 
 #[spec(target = sui::tx_context::fresh_object_address)]

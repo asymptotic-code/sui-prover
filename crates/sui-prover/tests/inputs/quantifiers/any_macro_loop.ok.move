@@ -10,7 +10,8 @@ fun is_small(x: &u64): bool {
     *x <= 256
 }
 
-#[spec_only(loop_inv(target=any_small)), ext(no_abort)]
+#[mode(spec), ext(spec(loop_inv(target=any_small)), no_abort)]
+#[allow(unused_function)]
 fun any_small_invariant(v: &vector<u64>, i: u64): bool {
     ! any_range!(v, 0, i, |j| is_small(j))
 }

@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_find_index_range_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{find_range, find_index_range};
 
 #[ext(pure)]

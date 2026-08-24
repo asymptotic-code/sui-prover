@@ -6,7 +6,7 @@
 /// the predicate's trailing `int` parameter and Boogie rejected it.
 module 0x42::pure_forall_trailing_binder;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, forall};
 
 #[ext(pure)]

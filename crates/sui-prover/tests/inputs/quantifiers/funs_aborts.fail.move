@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_funs_aborts_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{exists, ensures};
 
 

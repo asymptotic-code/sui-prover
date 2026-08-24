@@ -3,7 +3,7 @@
 /// Mirrors integer-mate's u32_neg pattern (v ^ 0xffffffff for bitwise NOT).
 module 0x42::pure_xor_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 #[ext(pure)]

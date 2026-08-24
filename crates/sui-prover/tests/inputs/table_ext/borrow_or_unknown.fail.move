@@ -3,10 +3,10 @@ module 0x42::table_ext_borrow_or_unknown_fail;
 
 use sui::table::Table;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use sui::table::borrow_or_unknown;
 
 // For an absent key, borrow_or_unknown returns an uninterpreted value —

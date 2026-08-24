@@ -1,6 +1,6 @@
 module 0x42::pure_enum_match;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
 public enum E has copy, drop {

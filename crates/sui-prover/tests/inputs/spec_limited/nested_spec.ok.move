@@ -1,10 +1,10 @@
 #[allow(unused_function)]
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 fun sum(x: u32, y: u32): u64 {
     (x as u64) + (y as u64)
 }

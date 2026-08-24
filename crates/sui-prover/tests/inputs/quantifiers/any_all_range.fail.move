@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_any_all_range_fail;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec)]
 use prover::vector_iter::{any_range, all_range};
 
 #[ext(pure)]

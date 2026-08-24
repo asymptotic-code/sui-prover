@@ -4,10 +4,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_borrow_or_unknown_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::borrow_or_unknown;
 
 // In-range: borrow_or_unknown agrees with vector::borrow.

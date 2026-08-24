@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::vector_ext_pop_front_pure_ok;
 
-#[spec_only]
+#[mode(spec)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec)]
 use std::vector::pop_front_pure;
 
 // Length of pop_front on a non-empty vector is length - 1.
