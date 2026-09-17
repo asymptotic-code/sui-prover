@@ -1,3 +1,4 @@
+#[allow(deprecated_usage)]
 module 0x42::foo;
 
 use prover::prover::{requires, ensures};

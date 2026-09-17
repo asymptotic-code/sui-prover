@@ -7,7 +7,7 @@ public fun test_take_basic(v: vector<u64>, n: u64): vector<u64> {
 }
 
 public fun test_take_empty(): vector<u64> {
-    let v = vector::empty<u64>();
+    let v: vector<u64> = vector[];
     vector::take(v, 0)
 }
 

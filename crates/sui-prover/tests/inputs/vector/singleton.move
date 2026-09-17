@@ -1,3 +1,4 @@
+#[allow(deprecated_usage)]
 module 0x42::vector_singleton;
 
 use prover::prover::ensures;

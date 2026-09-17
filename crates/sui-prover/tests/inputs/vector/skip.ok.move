@@ -12,7 +12,7 @@ public fun test_skip_all(v: vector<u64>): vector<u64> {
 }
 
 public fun test_skip_empty(): vector<u64> {
-    let v = vector::empty<u64>();
+    let v: vector<u64> = vector[];
     vector::skip(v, 0)
 }
 
