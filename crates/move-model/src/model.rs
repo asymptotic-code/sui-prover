@@ -2791,6 +2791,24 @@ impl GlobalEnv {
         )
     }
 
+    /// Module ids of the framework's dynamic-field APIs.
+    ///
+    /// Functions defined *in* these modules receive the parent as a bare
+    /// `&UID` by construction, so trying to resolve a concrete parent object
+    /// type inside their bodies can never succeed. They are framework
+    /// plumbing rather than user code, and must not be taken as evidence that
+    /// the parent type is unknowable in the program being verified.
+    pub fn dynamic_field_api_module_ids(&self) -> Vec<ModuleId> {
+        [
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+        ]
+        .into_iter()
+        .filter_map(|name| self.find_module_by_name(self.symbol_pool().make(name)))
+        .map(|module_env| module_env.get_id())
+        .collect()
+    }
+
     pub fn dynamic_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
         self.get_fun_qid_opt(
             Self::DYNAMIC_FIELD_MODULE_NAME,
