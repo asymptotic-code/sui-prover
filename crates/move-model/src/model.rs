@@ -1735,7 +1735,7 @@ impl GlobalEnv {
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
     const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
-    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid";
+    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid_from_hash";
 
     // dynamic_field function names
     const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
