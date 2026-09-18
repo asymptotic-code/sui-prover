@@ -4491,10 +4491,12 @@ impl GlobalEnv {
             compiled_module
                 .address_identifiers
                 .push(AccountAddress::ZERO);
-            // Use a valid identifier for stub module handle name; "<SELF>" is disallowed.
+            // name the self module handle after the stub module itself, so that the
+            // bytecode's `self_id()` (0x0::<name>) agrees with the `ModuleName` registered
+            // below and `find_module_by_language_storage_id` can resolve the stub.
             compiled_module
                 .identifiers
-                .push(Identifier::new("SELF").unwrap());
+                .push(Identifier::new(self.symbol_pool.string(module_symbol).as_str()).unwrap());
             // inject a placeholder function so the stub passes
             // `find_module_by_name`'s `get_function_count() > 0` filter.
             // without this, callers like `env.global_qid()` /

@@ -389,6 +389,18 @@ fun test::many_sequential_ifs($t0|ratio: u128, $t1|abs_tick: u32): u128 {
 235: return $t146
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `control_flow_reconstruction` ================
 
 [variant baseline]
@@ -649,229 +661,245 @@ fun test::many_sequential_ifs($t0|ratio: u128, $t1|abs_tick: u32): u128 {
 }
 
 
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
+
 ============ Control Flow Reconstruction ================
 
 [variant baseline]
 fun test::many_sequential_ifs
-[
-    Basic {
-        lower: 0,
-        upper: 3,
-    },
-    IfThenElse {
-        cond_at: 4,
-        then_branch: Basic {
-            lower: 5,
-            upper: 7,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 8,
-        upper: 12,
-    },
-    IfThenElse {
-        cond_at: 13,
-        then_branch: Basic {
-            lower: 14,
-            upper: 16,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 17,
-        upper: 21,
-    },
-    IfThenElse {
-        cond_at: 22,
-        then_branch: Basic {
-            lower: 23,
-            upper: 25,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 26,
-        upper: 30,
-    },
-    IfThenElse {
-        cond_at: 31,
-        then_branch: Basic {
-            lower: 32,
-            upper: 34,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 35,
-        upper: 39,
-    },
-    IfThenElse {
-        cond_at: 40,
-        then_branch: Basic {
-            lower: 41,
-            upper: 43,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 44,
-        upper: 48,
-    },
-    IfThenElse {
-        cond_at: 49,
-        then_branch: Basic {
-            lower: 50,
-            upper: 52,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 53,
-        upper: 57,
-    },
-    IfThenElse {
-        cond_at: 58,
-        then_branch: Basic {
-            lower: 59,
-            upper: 61,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 62,
-        upper: 66,
-    },
-    IfThenElse {
-        cond_at: 67,
-        then_branch: Basic {
-            lower: 68,
-            upper: 70,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 71,
-        upper: 75,
-    },
-    IfThenElse {
-        cond_at: 76,
-        then_branch: Basic {
-            lower: 77,
-            upper: 79,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 80,
-        upper: 84,
-    },
-    IfThenElse {
-        cond_at: 85,
-        then_branch: Basic {
-            lower: 86,
-            upper: 88,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 89,
-        upper: 93,
-    },
-    IfThenElse {
-        cond_at: 94,
-        then_branch: Basic {
-            lower: 95,
-            upper: 97,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 98,
-        upper: 102,
-    },
-    IfThenElse {
-        cond_at: 103,
-        then_branch: Basic {
-            lower: 104,
-            upper: 106,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 107,
-        upper: 111,
-    },
-    IfThenElse {
-        cond_at: 112,
-        then_branch: Basic {
-            lower: 113,
-            upper: 115,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 116,
-        upper: 120,
-    },
-    IfThenElse {
-        cond_at: 121,
-        then_branch: Basic {
-            lower: 122,
-            upper: 124,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 125,
-        upper: 129,
-    },
-    IfThenElse {
-        cond_at: 130,
-        then_branch: Basic {
-            lower: 131,
-            upper: 133,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 134,
-        upper: 138,
-    },
-    IfThenElse {
-        cond_at: 139,
-        then_branch: Basic {
-            lower: 140,
-            upper: 142,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 143,
-        upper: 147,
-    },
-    IfThenElse {
-        cond_at: 148,
-        then_branch: Basic {
-            lower: 149,
-            upper: 151,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 152,
-        upper: 156,
-    },
-    IfThenElse {
-        cond_at: 157,
-        then_branch: Basic {
-            lower: 158,
-            upper: 160,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 161,
-        upper: 162,
-    },
-]
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 4,
+            },
+            IfThenElse {
+                cond_at: 4,
+                then_branch: Basic {
+                    lower: 5,
+                    upper: 7,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 8,
+                upper: 13,
+            },
+            IfThenElse {
+                cond_at: 13,
+                then_branch: Basic {
+                    lower: 14,
+                    upper: 16,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 17,
+                upper: 22,
+            },
+            IfThenElse {
+                cond_at: 22,
+                then_branch: Basic {
+                    lower: 23,
+                    upper: 25,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 26,
+                upper: 31,
+            },
+            IfThenElse {
+                cond_at: 31,
+                then_branch: Basic {
+                    lower: 32,
+                    upper: 34,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 35,
+                upper: 40,
+            },
+            IfThenElse {
+                cond_at: 40,
+                then_branch: Basic {
+                    lower: 41,
+                    upper: 43,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 44,
+                upper: 49,
+            },
+            IfThenElse {
+                cond_at: 49,
+                then_branch: Basic {
+                    lower: 50,
+                    upper: 52,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 53,
+                upper: 58,
+            },
+            IfThenElse {
+                cond_at: 58,
+                then_branch: Basic {
+                    lower: 59,
+                    upper: 61,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 62,
+                upper: 67,
+            },
+            IfThenElse {
+                cond_at: 67,
+                then_branch: Basic {
+                    lower: 68,
+                    upper: 70,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 71,
+                upper: 76,
+            },
+            IfThenElse {
+                cond_at: 76,
+                then_branch: Basic {
+                    lower: 77,
+                    upper: 79,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 80,
+                upper: 85,
+            },
+            IfThenElse {
+                cond_at: 85,
+                then_branch: Basic {
+                    lower: 86,
+                    upper: 88,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 89,
+                upper: 94,
+            },
+            IfThenElse {
+                cond_at: 94,
+                then_branch: Basic {
+                    lower: 95,
+                    upper: 97,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 98,
+                upper: 103,
+            },
+            IfThenElse {
+                cond_at: 103,
+                then_branch: Basic {
+                    lower: 104,
+                    upper: 106,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 107,
+                upper: 112,
+            },
+            IfThenElse {
+                cond_at: 112,
+                then_branch: Basic {
+                    lower: 113,
+                    upper: 115,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 116,
+                upper: 121,
+            },
+            IfThenElse {
+                cond_at: 121,
+                then_branch: Basic {
+                    lower: 122,
+                    upper: 124,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 125,
+                upper: 130,
+            },
+            IfThenElse {
+                cond_at: 130,
+                then_branch: Basic {
+                    lower: 131,
+                    upper: 133,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 134,
+                upper: 139,
+            },
+            IfThenElse {
+                cond_at: 139,
+                then_branch: Basic {
+                    lower: 140,
+                    upper: 142,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 143,
+                upper: 148,
+            },
+            IfThenElse {
+                cond_at: 148,
+                then_branch: Basic {
+                    lower: 149,
+                    upper: 151,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 152,
+                upper: 157,
+            },
+            IfThenElse {
+                cond_at: 157,
+                then_branch: Basic {
+                    lower: 158,
+                    upper: 160,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 161,
+                upper: 162,
+            },
+        ],
+    ),
+)

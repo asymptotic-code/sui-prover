@@ -232,6 +232,18 @@ fun TestPackref::test8($t0|b: bool, $t1|n: u64, $t2|r_ref: &mut TestPackref::R) 
  57: return ()
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `memory_instr` ================
 
 [variant baseline]
@@ -347,38 +359,38 @@ fun TestPackref::test7($t0|b: bool) {
   3: $t2 := pack TestPackref::R($t5)
   4: $t6 := borrow_local($t1)
   5: $t3 := $t6
-  6: if ($t0) goto 31 else goto 35
-  7: label L1
-  8: write_back[LocalRoot($t1)@]($t6)
-  9: trace_local[r1#1#0]($t1)
- 10: destroy($t6)
- 11: $t7 := borrow_local($t2)
- 12: $t3 := $t7
- 13: label L0
- 14: $t8 := 0
- 15: TestPackref::test3($t3, $t8)
- 16: $t9 := is_parent[Reference($t6)@]($t3)
- 17: if ($t9) goto 18 else goto 22
- 18: label L4
- 19: write_back[Reference($t6)@]($t3)
- 20: write_back[LocalRoot($t1)@]($t6)
- 21: trace_local[r1#1#0]($t1)
- 22: label L5
- 23: $t10 := is_parent[Reference($t7)@]($t3)
- 24: if ($t10) goto 25 else goto 29
- 25: label L6
- 26: write_back[Reference($t7)@]($t3)
- 27: write_back[LocalRoot($t2)@]($t7)
- 28: trace_local[r2#1#0]($t2)
- 29: label L7
- 30: return ()
- 31: label L2
- 32: write_back[Reference($t6)@]($t3)
- 33: destroy($t3)
- 34: goto 7
- 35: label L3
- 36: destroy($t6)
- 37: goto 13
+  6: if ($t0) goto 7 else goto 11
+  7: label L2
+  8: write_back[Reference($t6)@]($t3)
+  9: destroy($t3)
+ 10: goto 14
+ 11: label L3
+ 12: destroy($t6)
+ 13: goto 20
+ 14: label L1
+ 15: write_back[LocalRoot($t1)@]($t6)
+ 16: trace_local[r1#1#0]($t1)
+ 17: destroy($t6)
+ 18: $t7 := borrow_local($t2)
+ 19: $t3 := $t7
+ 20: label L0
+ 21: $t8 := 0
+ 22: TestPackref::test3($t3, $t8)
+ 23: $t9 := is_parent[Reference($t6)@]($t3)
+ 24: if ($t9) goto 25 else goto 29
+ 25: label L4
+ 26: write_back[Reference($t6)@]($t3)
+ 27: write_back[LocalRoot($t1)@]($t6)
+ 28: trace_local[r1#1#0]($t1)
+ 29: label L5
+ 30: $t10 := is_parent[Reference($t7)@]($t3)
+ 31: if ($t10) goto 32 else goto 36
+ 32: label L6
+ 33: write_back[Reference($t7)@]($t3)
+ 34: write_back[LocalRoot($t2)@]($t7)
+ 35: trace_local[r2#1#0]($t2)
+ 36: label L7
+ 37: return ()
 }
 
 
@@ -517,3 +529,15 @@ fun TestPackref::test8($t0|b: bool, $t1|n: u64, $t2|r_ref: &mut TestPackref::R) 
 104: trace_local[r_ref]($t2)
 105: return ()
 }
+
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();

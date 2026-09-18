@@ -24,7 +24,11 @@ use move_stackless_bytecode::{
     reaching_def_analysis::ReachingDefProcessor,
 };
 use regex::Regex;
-use std::{fs::File, io::Read, path::Path};
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 // Extracts lines out of some text file where each line starts with `start` which can be a regular
 // expressions. Returns the list of such lines with `start` stripped. Use as in
@@ -147,16 +151,39 @@ fn get_tested_transformation_pipeline(
     }
 }
 
+// Prefix of `// dep:` directives that refer to the Move standard library. These paths date
+// from when this crate lived next to `move-stdlib` in the Move repository; they are resolved
+// against the sources of the `move-stdlib` crate this crate depends on.
+const MOVE_STDLIB_DEP_PREFIX: &str = "../move-stdlib/";
+
+// Resolves a `// dep:` directive to a path on disk. Paths are relative to the crate
+// directory, except for Move stdlib deps (see `MOVE_STDLIB_DEP_PREFIX`).
+fn resolve_dep(dep: &str) -> anyhow::Result<String> {
+    let resolved = match dep.strip_prefix(MOVE_STDLIB_DEP_PREFIX) {
+        Some(relative) => move_stdlib::path_in_crate(relative),
+        None => PathBuf::from(dep),
+    };
+    if !resolved.exists() {
+        return Err(anyhow!(
+            "dependency `{}` not found (resolved to `{}`)",
+            dep,
+            resolved.display()
+        ));
+    }
+    Ok(resolved.to_string_lossy().to_string())
+}
+
 fn test_runner(path: &Path) -> datatest_stable::Result<()> {
     // Allow opting out of external deps (e.g., move-stdlib) so isolated tests can run
-    // without requiring a local stdlib checkout. Set env var `STACKLESS_TEST_IGNORE_DEPS=1`.
+    // without them. Set env var `STACKLESS_TEST_IGNORE_DEPS=1`.
     let ignore_deps = std::env::var("STACKLESS_TEST_IGNORE_DEPS").is_ok();
     let sources = if ignore_deps {
         vec![path.to_string_lossy().to_string()]
     } else {
-        let mut deps = extract_test_directives(path, "// dep:")?;
-        // Keep only deps that exist on disk to avoid hard failures on missing stdlib
-        deps.retain(|p| std::path::Path::new(p).exists());
+        let mut deps = extract_test_directives(path, "// dep:")?
+            .iter()
+            .map(|dep| resolve_dep(dep))
+            .collect::<anyhow::Result<Vec<_>>>()?;
         deps.push(path.to_string_lossy().to_string());
         deps
     };
@@ -259,6 +286,10 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
         }
         text
     };
+    // diagnostics in stdlib deps mention their absolute, machine-specific location; replace it
+    // with the `../move-stdlib/` prefix the deps are declared with.
+    let stdlib_dir = move_stdlib::path_in_crate("").to_string_lossy().to_string();
+    let out = out.replace(&stdlib_dir, MOVE_STDLIB_DEP_PREFIX);
     insta_assert! {
         input_path: path,
         contents: out,

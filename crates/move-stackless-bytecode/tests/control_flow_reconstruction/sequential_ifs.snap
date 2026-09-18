@@ -167,6 +167,18 @@ fun test::sequential_if_statements($t0|value: u64, $t1|flags: u64): u64 {
  66: return $t42
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `control_flow_reconstruction` ================
 
 [variant baseline]
@@ -285,118 +297,138 @@ fun test::sequential_if_statements($t0|value: u64, $t1|flags: u64): u64 {
 }
 
 
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
+
 ============ Control Flow Reconstruction ================
 
 [variant baseline]
 fun test::sequential_if_else
-[
-    Basic {
-        lower: 0,
-        upper: 3,
-    },
-    IfThenElse {
-        cond_at: 4,
-        then_branch: Basic {
-            lower: 5,
-            upper: 7,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 8,
-        upper: 10,
-    },
-    IfThenElse {
-        cond_at: 11,
-        then_branch: Basic {
-            lower: 12,
-            upper: 14,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 15,
-        upper: 17,
-    },
-    IfThenElse {
-        cond_at: 18,
-        then_branch: Basic {
-            lower: 19,
-            upper: 21,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 22,
-        upper: 23,
-    },
-]
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 4,
+            },
+            IfThenElse {
+                cond_at: 4,
+                then_branch: Basic {
+                    lower: 5,
+                    upper: 7,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 8,
+                upper: 11,
+            },
+            IfThenElse {
+                cond_at: 11,
+                then_branch: Basic {
+                    lower: 12,
+                    upper: 14,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 15,
+                upper: 18,
+            },
+            IfThenElse {
+                cond_at: 18,
+                then_branch: Basic {
+                    lower: 19,
+                    upper: 21,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 22,
+                upper: 23,
+            },
+        ],
+    ),
+)
 
 [variant baseline]
 fun test::sequential_if_statements
-[
-    Basic {
-        lower: 0,
-        upper: 3,
-    },
-    IfThenElse {
-        cond_at: 4,
-        then_branch: Basic {
-            lower: 5,
-            upper: 7,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 8,
-        upper: 12,
-    },
-    IfThenElse {
-        cond_at: 13,
-        then_branch: Basic {
-            lower: 14,
-            upper: 16,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 17,
-        upper: 21,
-    },
-    IfThenElse {
-        cond_at: 22,
-        then_branch: Basic {
-            lower: 23,
-            upper: 25,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 26,
-        upper: 30,
-    },
-    IfThenElse {
-        cond_at: 31,
-        then_branch: Basic {
-            lower: 32,
-            upper: 34,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 35,
-        upper: 39,
-    },
-    IfThenElse {
-        cond_at: 40,
-        then_branch: Basic {
-            lower: 41,
-            upper: 43,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 44,
-        upper: 45,
-    },
-]
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 4,
+            },
+            IfThenElse {
+                cond_at: 4,
+                then_branch: Basic {
+                    lower: 5,
+                    upper: 7,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 8,
+                upper: 13,
+            },
+            IfThenElse {
+                cond_at: 13,
+                then_branch: Basic {
+                    lower: 14,
+                    upper: 16,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 17,
+                upper: 22,
+            },
+            IfThenElse {
+                cond_at: 22,
+                then_branch: Basic {
+                    lower: 23,
+                    upper: 25,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 26,
+                upper: 31,
+            },
+            IfThenElse {
+                cond_at: 31,
+                then_branch: Basic {
+                    lower: 32,
+                    upper: 34,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 35,
+                upper: 40,
+            },
+            IfThenElse {
+                cond_at: 40,
+                then_branch: Basic {
+                    lower: 41,
+                    upper: 43,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 44,
+                upper: 45,
+            },
+        ],
+    ),
+)
