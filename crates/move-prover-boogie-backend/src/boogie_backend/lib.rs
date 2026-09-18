@@ -121,9 +121,13 @@ struct DynamicFieldInfo {
     fun_borrow_mut: String,
     fun_borrow_or_unknown: String,
     fun_remove: String,
-    fun_remove_if_exists: String,
+    /// `remove_opt` and its deprecated alias `remove_if_exists`, whichever
+    /// the framework defines.
+    fun_remove_opt: Vec<String>,
     fun_exists_with_type: String,
-    fun_exists: String,
+    /// `exists` and its deprecated alias `exists_`, whichever the framework
+    /// defines. All of them are wrappers around `fun_exists_inner`.
+    fun_exists: Vec<String>,
     fun_exists_inner: String,
 }
 
@@ -545,6 +549,36 @@ pub fn add_prelude(
     Ok(())
 }
 
+/// Boogie names of the given functions, skipping the ones that are not defined.
+fn triple_opts_to_names(
+    env: &GlobalEnv,
+    triple_opts: impl IntoIterator<Item = Option<QualifiedId<FunId>>>,
+) -> Vec<String> {
+    triple_opts
+        .into_iter()
+        .map(|triple_opt| triple_opt_to_name(env, triple_opt))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// Name of the uninterpreted Boogie function shared by all the spellings of a
+/// dynamic field `exists` function (see `DynamicFieldInfo::fun_exists`).
+fn exists_inner_name(env: &GlobalEnv, fun_qids: &[Option<QualifiedId<FunId>>]) -> String {
+    fun_qids
+        .iter()
+        .flatten()
+        .next()
+        .map(|fun_qid| {
+            let fun = env.get_function(*fun_qid);
+            format!(
+                "{}_{}",
+                fun.module_env.get_name().name().display(fun.symbol_pool()),
+                fun.get_name_str(),
+            )
+        })
+        .unwrap_or_default()
+}
+
 fn triple_opt_to_name(env: &GlobalEnv, triple_opt: Option<QualifiedId<FunId>>) -> String {
     triple_opt
         .and_then(|fun_qid| {
@@ -827,6 +861,10 @@ impl DynamicFieldInfo {
             .map(|name| TypeInfo::new(env, options, name, false))
             .collect_vec();
 
+        let exists_qids = [
+            env.dynamic_field_exists_qid(),
+            env.dynamic_field_exists_deprecated_qid(),
+        ];
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
@@ -839,20 +877,16 @@ impl DynamicFieldInfo {
                 env.dynamic_field_ext_borrow_or_unknown_qid(),
             ),
             fun_remove: triple_opt_to_name(env, env.dynamic_field_remove_qid()),
-            fun_remove_if_exists: triple_opt_to_name(env, env.dynamic_field_remove_if_exists_qid()),
+            fun_remove_opt: triple_opts_to_names(
+                env,
+                [
+                    env.dynamic_field_remove_opt_qid(),
+                    env.dynamic_field_remove_if_exists_qid(),
+                ],
+            ),
             fun_exists_with_type: triple_opt_to_name(env, env.dynamic_field_exists_with_type_qid()),
-            fun_exists: triple_opt_to_name(env, env.dynamic_field_exists_qid()),
-            fun_exists_inner: env
-                .dynamic_field_exists_qid()
-                .map(|fun_qid| {
-                    let fun = env.get_function(fun_qid);
-                    format!(
-                        "{}_{}",
-                        fun.module_env.get_name().name().display(fun.symbol_pool()),
-                        fun.get_name_str(),
-                    )
-                })
-                .unwrap_or_default(),
+            fun_exists: triple_opts_to_names(env, exists_qids),
+            fun_exists_inner: exists_inner_name(env, &exists_qids),
         }
     }
 
@@ -881,6 +915,10 @@ impl DynamicFieldInfo {
             .map(|name| TypeInfo::new(env, options, name, false))
             .collect_vec();
 
+        let exists_qids = [
+            env.dynamic_object_field_exists_qid(),
+            env.dynamic_object_field_exists_deprecated_qid(),
+        ];
         DynamicFieldInfo {
             struct_name: boogie_type_suffix_bv(env, tp, bv_flag),
             insts,
@@ -893,23 +931,14 @@ impl DynamicFieldInfo {
                 env.dynamic_object_field_ext_borrow_or_unknown_qid(),
             ),
             fun_remove: triple_opt_to_name(env, env.dynamic_object_field_remove_qid()),
-            fun_remove_if_exists: "".to_string(), // dynamic object field do not support remove_if_exists
+            // dynamic_object_field never had `remove_if_exists`
+            fun_remove_opt: triple_opts_to_names(env, [env.dynamic_object_field_remove_opt_qid()]),
             fun_exists_with_type: triple_opt_to_name(
                 env,
                 env.dynamic_object_field_exists_with_type_qid(),
             ),
-            fun_exists: triple_opt_to_name(env, env.dynamic_object_field_exists_qid()),
-            fun_exists_inner: env
-                .dynamic_object_field_exists_qid()
-                .map(|fun_qid| {
-                    let fun = env.get_function(fun_qid);
-                    format!(
-                        "{}_{}",
-                        fun.module_env.get_name().name().display(fun.symbol_pool()),
-                        fun.get_name_str(),
-                    )
-                })
-                .unwrap_or_default(),
+            fun_exists: triple_opts_to_names(env, exists_qids),
+            fun_exists_inner: exists_inner_name(env, &exists_qids),
         }
     }
 }
