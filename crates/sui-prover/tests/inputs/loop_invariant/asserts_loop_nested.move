@@ -47,7 +47,7 @@ fun nested(n: u64, m: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun nested_spec(n: u64, m: u64) {
     asserts(forall!(|k| outer_safe(*k, n, m)));
     nested(n, m);

@@ -10,7 +10,7 @@ fun foo(): u64 {
     bar()
 }
 
-#[spec(prove, uninterpreted = bar)] // should panic because bar is not pure
+#[mode(spec), ext(spec(prove, uninterpreted = bar))] // should panic because bar is not pure
 fun foo_spec(): u64 {
     let result = foo();
     ensures(result == 42);

@@ -1,0 +1,76 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:10:3
+   │
+10 │ #[spec_only]
+   │   ^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:29:3
+   │
+29 │ #[spec_only(loop_inv(target = count)), ext(pure)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:49:3
+   │
+49 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:35:3
+   │
+35 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:41:3
+   │
+41 │ #[spec(prove, uninterpreted = id)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:30:1
+   │  
+24 │       while (y < x) {
+   │              - loop invariant does not hold on loop entry
+   ·  
+30 │ ╭ fun count_inv(y: u8, x: u8): bool {
+31 │ │     y < x
+32 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/spec_syntax/failing.legacy.move:50: count_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:30:1
+   │  
+24 │       while (y < x) {
+   │              - loop invariant is not preserved by the loop body
+   ·  
+30 │ ╭ fun count_inv(y: u8, x: u8): bool {
+31 │ │     y < x
+32 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/spec_syntax/failing.legacy.move:50: count_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:38:1
+   │
+38 │ }
+   │ ^
+   │
+   =     at tests/inputs/spec_syntax/failing.legacy.move:36: overflow_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.legacy.move:44:5
+   │
+44 │     ensures(r == x);
+   │     ^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/spec_syntax/failing.legacy.move:42: use_id_spec

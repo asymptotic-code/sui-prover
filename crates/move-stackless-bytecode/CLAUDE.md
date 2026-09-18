@@ -16,7 +16,7 @@ src/
 ├── stackless_bytecode_generator.rs # Move bytecode → stackless conversion
 ├── function_target.rs              # FunctionTarget, FunctionData types
 ├── function_target_pipeline.rs     # Pipeline orchestration, FunctionTargetsHolder
-├── package_targets.rs              # Selects functions to verify from #[spec(prove)]
+├── package_targets.rs              # Selects functions to verify from #[mode(spec), ext(spec(prove))]
 ├── pipeline_factory.rs             # Pipeline construction with all passes
 ├── options.rs                      # ProverOptions configuration
 ├── annotations.rs                  # Type-safe annotation storage
@@ -80,7 +80,7 @@ let pkg_targets = targets.get_package_targets();
 
 ### PackageTargets (package_targets.rs)
 Selects which functions to verify based on annotations:
-- `#[spec(prove)]` - Functions to verify
+- `#[mode(spec), ext(spec(prove))]` - Functions to verify
 - `#[ext(pure)]`, `#[ext(no_abort)]` - External function attributes
 
 ## Stackless Bytecode (stackless_bytecode.rs)

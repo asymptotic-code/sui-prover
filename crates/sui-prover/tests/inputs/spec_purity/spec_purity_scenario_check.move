@@ -5,10 +5,10 @@ fun foo(x: &mut u64) {
   *x = *x + 1;
 }
 
-#[mode(spec)]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec() {
   let mut x = 0;
   foo(&mut x);

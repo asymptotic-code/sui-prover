@@ -12,7 +12,7 @@ fun foo(t: &mut ObjectTable<u64, Foo>): Foo {
   t.remove(10)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(t: &mut ObjectTable<u64, Foo>): Foo {
   requires(t.contains(10));
   let old_t = clone!(t);

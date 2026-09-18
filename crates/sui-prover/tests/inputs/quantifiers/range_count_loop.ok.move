@@ -28,7 +28,7 @@ fun count_odd_range(n: u64): u64 {
     c
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_odd_range_spec(n: u64): u64 {
     let r = count_odd_range(n);
     ensures(r.to_int() == range_count!(0, n, |j| is_odd(j)));

@@ -13,7 +13,7 @@ fun sums<T>(y: &vector<T>): bool {
     sum_range(y, 0, 3).gt(5u8.to_int()) && sum_range(y, 0, 3).lt(25u8.to_int())
 }
 
-#[mode(spec), ext(spec(axiom))]
+#[mode(spec), ext(spec_only(axiom))]
 #[allow(unused_function)]
 fun f_axiom(v: &vector<u8>): bool {
     let y = filter_range!<u8>(v, 0, 3, |x| is_qualified(x));
@@ -24,7 +24,7 @@ public fun foo(_v: &vector<u8>) {
   assert!(true);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(_v: &vector<u8>) {
     foo(_v);
     ensures(true);

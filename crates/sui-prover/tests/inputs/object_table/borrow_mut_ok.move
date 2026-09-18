@@ -15,7 +15,7 @@ fun foo(t: &mut ObjectTable<u64, Foo>) {
   *val_ref = 0;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(t: &mut ObjectTable<u64, Foo>) {
   requires(t.contains(10));
   let old_t = clone!(t);

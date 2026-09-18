@@ -18,7 +18,7 @@ fun foo(x: &mut Foo) {
     dynamic_object_field::borrow_mut<u64, Bar>(&mut x.id, 10).bar = 0;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(x: &mut Foo) {
     requires(dynamic_object_field::exists_with_type<u64, Bar>(&x.id, 10));
     foo(x);

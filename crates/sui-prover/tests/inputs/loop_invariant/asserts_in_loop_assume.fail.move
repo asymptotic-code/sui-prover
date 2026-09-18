@@ -22,7 +22,7 @@ fun bounded_loop(n: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bounded_loop_spec(n: u64) {
     asserts(n <= 100);
     bounded_loop(n);

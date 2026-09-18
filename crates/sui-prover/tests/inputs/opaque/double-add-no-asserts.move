@@ -10,7 +10,7 @@ fun double_no_asserts(x: u64): u64 {
     add_no_asserts(x, x)
 }
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun double_no_asserts_spec(x: u64): u64 {
     let result = double_no_asserts(x);
 

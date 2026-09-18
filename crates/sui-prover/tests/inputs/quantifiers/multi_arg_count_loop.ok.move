@@ -29,7 +29,7 @@ fun count_greater_than(v: &vector<u64>, threshold: u64): u64 {
     c
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_greater_than_spec(v: &vector<u64>, threshold: u64): u64 {
     let r = count_greater_than(v, threshold);
     ensures(r == count!(v, |j| greater_than(j, threshold)));

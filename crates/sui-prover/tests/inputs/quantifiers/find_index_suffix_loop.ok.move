@@ -36,7 +36,7 @@ fun find_index_odd_suffix(v: &vector<u64>): Option<u64> {
     option::none()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun find_index_odd_suffix_spec(v: &vector<u64>): Option<u64> {
     let r = find_index_odd_suffix(v);
     ensures(r == find_index!(v, |j| is_odd(j)));

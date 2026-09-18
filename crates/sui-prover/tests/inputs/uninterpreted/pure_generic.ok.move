@@ -15,7 +15,7 @@ fun foo(k: u64, v: u8): bool {
     contains(k, v)
 }
 
-#[spec(prove, uninterpreted = contains)]
+#[mode(spec), ext(spec(prove, uninterpreted = contains))]
 fun foo_spec(k: u64, v: u8): bool {
     let result = foo(k, v);
     ensures(result == contains(k, v));

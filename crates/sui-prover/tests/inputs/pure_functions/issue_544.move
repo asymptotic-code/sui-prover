@@ -35,7 +35,7 @@ public fun check_bound(lower: u64, upper: u64): bool {
     is_valid_bound(lower, upper)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_check_bound() {
     let result = check_bound(0, 100);
     ensures(result);

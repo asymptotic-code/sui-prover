@@ -1,0 +1,46 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.new.move:30:1
+   │  
+24 │       while (y < x) {
+   │              - loop invariant does not hold on loop entry
+   ·  
+30 │ ╭ fun count_inv(y: u8, x: u8): bool {
+31 │ │     y < x
+32 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/spec_syntax/failing.new.move:50: count_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.new.move:30:1
+   │  
+24 │       while (y < x) {
+   │              - loop invariant is not preserved by the loop body
+   ·  
+30 │ ╭ fun count_inv(y: u8, x: u8): bool {
+31 │ │     y < x
+32 │ │ }
+   │ ╰─^
+   │  
+   =     at tests/inputs/spec_syntax/failing.new.move:50: count_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.new.move:38:1
+   │
+38 │ }
+   │ ^
+   │
+   =     at tests/inputs/spec_syntax/failing.new.move:36: overflow_spec
+
+error: prover::ensures does not hold
+   ┌─ tests/inputs/spec_syntax/failing.new.move:44:5
+   │
+44 │     ensures(r == x);
+   │     ^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/spec_syntax/failing.new.move:42: use_id_spec

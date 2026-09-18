@@ -1,0 +1,64 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:13:3
+   │
+13 │ #[spec_only]
+   │   ^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:21:3
+   │
+21 │ #[spec_only]
+   │   ^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:63:3
+   │
+63 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:53:3
+   │
+53 │ #[spec_only(loop_inv(target = count, label = 0)), ext(pure)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:58:3
+   │
+58 │ #[spec_only(loop_inv(target = count, label = 1)), ext(pure)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:81:3
+   │
+81 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:17:3
+   │
+17 │ #[spec_only(inv_target = 0x42::spec_only_params::Limit)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:69:3
+   │
+69 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:75:3
+   │
+75 │ #[spec(prove)]
+   │   ^^^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_only_params.legacy.move:24:3
+   │
+24 │ #[spec_only(axiom)]
+   │   ^^^^^^^^^^^^^^^^

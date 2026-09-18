@@ -6,7 +6,7 @@ public fun foo() {
   assert!(true);
 }
 
-#[spec(prove, skip)]
+#[mode(spec), ext(spec(prove, skip))]
 public fun foo_spec() {
   foo();
   ensures(false); 

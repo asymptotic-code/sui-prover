@@ -15,7 +15,7 @@ public fun foo(x: u64): MyStruct<u64> {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(x: u64): MyStruct<u64> {
     let res = foo(x);
     log::var<MyStruct<u64>>(&res);

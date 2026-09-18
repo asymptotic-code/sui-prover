@@ -8,7 +8,7 @@ fun frob(x: u8, y: u8): Option<u8> {
     some(x+y)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun frob_spec(x: u8, y: u8): Option<u8> {
     requires(x <= 100 && y <= 100 && 0 < y);
     let z = x+y;

@@ -1,0 +1,48 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: 'mixed_syntax::an_axiom' mixes the deprecated #[spec]/#[spec_only] attributes with #[mode(spec)]/#[ext(spec(...))]/#[ext(spec_only(...))]; use only the latter
+   ┌─ tests/inputs/spec_syntax/mixed_syntax.fail.move:11:1
+   │  
+11 │ ╭ fun an_axiom(): bool {
+12 │ │     true
+13 │ │ }
+   │ ╰─^
+
+error: 'mixed_syntax::bar_spec' mixes the deprecated #[spec]/#[spec_only] attributes with #[mode(spec)]/#[ext(spec(...))]/#[ext(spec_only(...))]; use only the latter
+   ┌─ tests/inputs/spec_syntax/mixed_syntax.fail.move:26:1
+   │  
+26 │ ╭ fun bar_spec(): u64 {
+27 │ │     foo()
+28 │ │ }
+   │ ╰─^
+
+error: 'mixed_syntax::foo_spec' mixes the deprecated #[spec]/#[spec_only] attributes with #[mode(spec)]/#[ext(spec(...))]/#[ext(spec_only(...))]; use only the latter
+   ┌─ tests/inputs/spec_syntax/mixed_syntax.fail.move:20:1
+   │  
+20 │ ╭ fun foo_spec(): u64 {
+21 │ │     foo()
+22 │ │ }
+   │ ╰─^
+
+error: 'mixed_syntax::helper' mixes the deprecated #[spec]/#[spec_only] attributes with #[mode(spec)]/#[ext(spec(...))]/#[ext(spec_only(...))]; use only the latter
+  ┌─ tests/inputs/spec_syntax/mixed_syntax.fail.move:6:1
+  │  
+6 │ ╭ fun helper(): bool {
+7 │ │     true
+8 │ │ }
+  │ ╰─^
+
+error: '0x42::mixed_syntax' mixes the deprecated #[spec]/#[spec_only] attributes with #[mode(spec)]/#[ext(spec(...))]/#[ext(spec_only(...))]; use only the latter
+   ┌─ tests/inputs/spec_syntax/mixed_syntax.fail.move:2:1
+   │  
+ 2 │ ╭ module 0x42::mixed_syntax;
+ 3 │ │ 
+ 4 │ │ // The deprecated attributes cannot be combined with the new syntax on one item.
+ 5 │ │ #[spec_only, mode(spec), ext(spec_only)]
+   · │
+27 │ │     foo()
+28 │ │ }
+   │ ╰─^

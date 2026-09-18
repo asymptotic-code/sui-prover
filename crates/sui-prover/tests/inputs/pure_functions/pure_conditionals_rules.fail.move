@@ -11,7 +11,7 @@ module 0x42::pure_functions_conditionals_rules_fail {
         a
     }
 
-    #[spec(focus)]
+    #[mode(spec), ext(spec(focus))]
     public fun test_spec(a: u64) {
         invalid_loop(a);
     }

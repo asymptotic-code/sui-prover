@@ -6,7 +6,7 @@ module 0x42::split_here_simple;
 
 use prover::prover::{ensures, boogie_split_here};
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun split_on_simple_branch(a: u64, b: u64): u64 {
     let r = if (a < b) { a } else { b };
     boogie_split_here();

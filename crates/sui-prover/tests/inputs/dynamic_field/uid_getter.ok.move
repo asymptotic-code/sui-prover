@@ -42,7 +42,7 @@ fun test_add_with_uid_getter_del(market: &mut Market, value: u64) {
     df::add<SupplyLimitKey, u64>(id, supply_limit_key, value);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_spec(market: &mut Market) {
     let supply_value = 1000;
     let fee_value = 50;

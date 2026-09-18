@@ -18,7 +18,7 @@ fun decrement_loop_weak(mut x: u64, n: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun decrement_loop_weak_spec(x: u64, n: u64) {
     asserts(x >= n);
     decrement_loop_weak(x, n);

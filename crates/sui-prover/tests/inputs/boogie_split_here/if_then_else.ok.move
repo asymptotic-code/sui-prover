@@ -30,7 +30,7 @@ fun clamp_and_scale(x: u64, lo: u64, hi: u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun clamp_and_scale_spec(x: u64, lo: u64, hi: u64): u64 {
     let r = clamp_and_scale(x, lo, hi);
     // Both phases contribute to the post-condition.

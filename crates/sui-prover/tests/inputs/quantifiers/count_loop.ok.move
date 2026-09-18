@@ -23,7 +23,7 @@ fun count_odd(v: &vector<u64>): u64 {
     c
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_odd_spec(v: &vector<u64>): u64 {
     let r = count_odd(v);
     ensures(r == count!(v, |j| is_odd(j)));

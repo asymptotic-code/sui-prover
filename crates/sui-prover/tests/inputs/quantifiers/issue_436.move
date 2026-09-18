@@ -6,10 +6,10 @@ public struct Queue<T: copy + drop + store> has store {
     tail: u64,
 }
 
-#[mode(spec), ext(pure)]
+#[mode(spec), ext(spec_only, pure)]
 native fun as_vector<T: copy + drop + store>(queue: &Queue<T>): &vector<T>;
 
-#[mode(spec), ext(axiom)]
+#[mode(spec), ext(spec_only, axiom)]
 #[allow(unused_function)]
 fun as_vector_definition<T: copy + drop + store>(queue: &Queue<T>, i: u64): bool {
     queue.head <= queue.contents.length() &&
@@ -23,12 +23,12 @@ fun as_vector_definition<T: copy + drop + store>(queue: &Queue<T>, i: u64): bool
     }
 }
 
-#[mode(spec), ext(pure)]
+#[mode(spec), ext(spec_only, pure)]
 fun foo(queue: &Queue<u64>): &vector<u64> {
     as_vector(queue)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(queue: &Queue<u64>): &vector<u64> {
     foo(queue)
 }

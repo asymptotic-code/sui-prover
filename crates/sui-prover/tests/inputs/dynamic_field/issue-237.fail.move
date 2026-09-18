@@ -32,12 +32,12 @@ public fun foo(self: &mut ValidatorWrapper, validator_address: address) {
     candidate.sui_address = validator_address;
 }
 
-#[spec]
+#[mode(spec), ext(spec)]
 public fun load_value_mut_spec<T: store>(self: &mut Versioned): &mut T {
     load_value_mut(self)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(self: &mut ValidatorWrapper, validator_address: address) {
     foo(self, validator_address);
 }

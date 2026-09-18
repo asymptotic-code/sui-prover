@@ -9,7 +9,7 @@ fun test1(j: u64, v: &vector<u8>, w: &vector<u8>): bool {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun test_spec(j: u64, v: &vector<u8>, w: &vector<u8>): bool {
     let res = test1(j, v, w);
     res

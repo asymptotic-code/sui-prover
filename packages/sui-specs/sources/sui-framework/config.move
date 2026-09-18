@@ -2,7 +2,7 @@ module specs::config_spec;
 
 use sui::config::read_setting_impl;
 
-#[spec(target = sui::config::read_setting_impl)]
+#[mode(spec), ext(spec(target = sui::config::read_setting_impl))]
 public fun read_setting_impl_spec<
     FieldSettingValue: key,
     SettingValue: store,

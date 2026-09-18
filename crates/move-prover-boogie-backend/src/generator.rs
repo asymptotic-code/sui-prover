@@ -142,6 +142,12 @@ pub async fn run_move_prover_with_model<W: WriteColor>(
     }
 
     if targets.target_no_abort_check_functions().is_empty() {
+        // A malformed spec annotation is reported rather than dropped, and may leave
+        // nothing to verify; surface its errors instead of "nothing to verify".
+        if env.has_errors() {
+            env.report_diag(error_writer, options.prover.report_severity);
+            return Err(anyhow!("exiting with bytecode transformation errors"));
+        }
         if !targets.has_specs() {
             return Ok("🦀 No specifications found in the project. Nothing to verify.".to_owned());
         }

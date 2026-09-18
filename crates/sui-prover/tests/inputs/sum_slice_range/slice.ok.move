@@ -3,7 +3,7 @@ module 0x42::slice_ok;
 use prover::prover::ensures;
 use prover::vector_iter::slice;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_slice() {
     let v1 = vector[10u64, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     

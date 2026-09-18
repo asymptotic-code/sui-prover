@@ -8,7 +8,7 @@ fun is_qualified(x: &u8): bool {
     *x > 1 && *x < 20 && *x % 2 == 0
 }
 
-#[mode(spec), ext(spec(axiom))]
+#[mode(spec), ext(spec_only(axiom))]
 #[allow(unused_function)]
 fun f_axiom(v: &vector<u8>): bool {
     let y = filter_range!<u8>(v, 0, 3, |x| is_qualified(x));
@@ -19,7 +19,7 @@ public fun foo(_v: &vector<u8>) {
   assert!(true);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(_v: &vector<u8>) {
     foo(_v);
     ensures(true);

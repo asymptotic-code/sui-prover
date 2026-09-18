@@ -2,7 +2,7 @@ module specs::zklogin_verified_id_spec;
 
 use sui::zklogin_verified_id::check_zklogin_id_internal;
 
-#[spec(target = sui::zklogin_verified_id::check_zklogin_id_internal)]
+#[mode(spec), ext(spec(target = sui::zklogin_verified_id::check_zklogin_id_internal))]
 public fun check_zklogin_id_internal_spec(
     address: address,
     key_claim_name: &vector<u8>,

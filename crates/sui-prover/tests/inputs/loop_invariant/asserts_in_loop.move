@@ -34,7 +34,7 @@ fun bounded_loop(n: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bounded_loop_spec(n: u64) {
     asserts(n <= 100);
     bounded_loop(n);
@@ -56,7 +56,7 @@ fun decrement_loop(mut x: u64, n: u64): u64 {
     x
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun decrement_loop_spec(x: u64, n: u64): u64 {
     asserts(x >= n);
     let result = decrement_loop(x, n);
@@ -80,7 +80,7 @@ fun count_u8_loop(n: u64): u8 {
     count
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_u8_loop_spec(n: u64): u8 {
     asserts(n <= 255);
     count_u8_loop(n)
@@ -100,7 +100,7 @@ fun visit_vec(v: &vector<u64>) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun visit_vec_spec(v: &vector<u64>) {
     visit_vec(v);
 }
@@ -121,7 +121,7 @@ fun progressive_loop(n: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun progressive_loop_spec(n: u64) {
     progressive_loop(n);
 }
@@ -154,7 +154,7 @@ fun positive_check(v: &vector<u64>) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun positive_check_spec(v: &vector<u64>) {
     asserts(forall!(|j| positive_at(*j, v)));
     positive_check(v);

@@ -25,7 +25,7 @@ public fun foo(self: &mut ValidatorSet, pool_id: &ID): address {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(self: &mut ValidatorSet, pool_id: &ID): address {
     requires(
         self.staking_pool_mappings.contains(*pool_id) || self.inactive_validators.contains(*pool_id),

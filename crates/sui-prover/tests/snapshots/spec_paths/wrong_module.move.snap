@@ -3,8 +3,8 @@ source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
 exiting with model building errors
-error: unexpected name in this position
-   ┌─ tests/inputs/spec_paths/wrong_module.move:12:28
+error: unbound module
+   ┌─ tests/inputs/spec_paths/wrong_module.move:12:49
    │
-12 │     #[spec(prove, target = bar::inc)]
-   │                            ^^^^^^^^ Unexpected module identifier. A module identifier is not a valid expression
+12 │     #[mode(spec), ext(spec(prove, target = bar::inc))]
+   │                                                 ^^^ Unbound module alias 'inc'

@@ -11,7 +11,7 @@ public fun eq_num(x: Option<u64>, y: Option<u64>): bool {
     *x.borrow() == *y.borrow()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun eq_bool_spec(x: Option<bool>, y: Option<bool>): bool {
     requires(x.is_some() && y.is_some());
     let r = eq_bool(x, y);
@@ -19,7 +19,7 @@ public fun eq_bool_spec(x: Option<bool>, y: Option<bool>): bool {
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun eq_num_spec(x: Option<u64>, y: Option<u64>): bool {
     requires(x.is_some() && y.is_some());
     requires(x != y);

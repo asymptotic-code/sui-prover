@@ -1,0 +1,20 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: #[mode(spec)] on 'mode_without_ext::helper' requires #[ext(spec)] or #[ext(spec_only)]; e.g. #[mode(spec), ext(spec_only)] for a spec helper
+  ┌─ tests/inputs/spec_syntax/mode_without_ext.fail.move:5:1
+  │  
+5 │ ╭ fun helper(): bool {
+6 │ │     true
+7 │ │ }
+  │ ╰─^
+
+error: #[mode(spec)] on 'mode_without_ext::pure_helper' requires #[ext(spec)] or #[ext(spec_only)]; e.g. #[mode(spec), ext(spec_only)] for a spec helper
+   ┌─ tests/inputs/spec_syntax/mode_without_ext.fail.move:11:1
+   │  
+11 │ ╭ fun pure_helper(): bool {
+12 │ │     true
+13 │ │ }
+   │ ╰─^

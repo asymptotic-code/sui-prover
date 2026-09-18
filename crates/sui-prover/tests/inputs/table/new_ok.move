@@ -8,7 +8,7 @@ fun foo(ctx: &mut TxContext): Table<u64, u8> {
   table::new(ctx)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(ctx: &mut TxContext): Table<u64, u8> {
   let result = foo(ctx);
   ensures(result.is_empty());

@@ -13,7 +13,7 @@ fun scale<T>(r: &mut Range<T>, k: u64) {
     r.y = r.y * k;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun scale_spec<T>(r: &mut Range<T>, k: u64) {
     let old_r = clone!(r);
 

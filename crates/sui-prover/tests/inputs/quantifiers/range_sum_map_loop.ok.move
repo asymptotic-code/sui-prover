@@ -27,7 +27,7 @@ fun count_odd_via_range_sum(n: u64): u64 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_odd_via_range_sum_spec(n: u64): u64 {
     let r = count_odd_via_range_sum(n);
     ensures(r.to_int() == range_sum_map!<u64>(0, n, |j| odd_to_int(j)));

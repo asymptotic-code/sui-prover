@@ -10,7 +10,7 @@ fun is_small(x: &u64): bool {
     *x <= 256
 }
 
-#[mode(spec), ext(spec(loop_inv(target=find_index_small)), no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target=find_index_small)), no_abort)]
 #[allow(unused_function)]
 fun find_index_small_invariant(v: &vector<u64>, i: u64): bool {
     i <= v.length() && !any_range!(v, 0, i, |j| is_small(j))
@@ -20,7 +20,7 @@ fun find_index_small(v: &vector<u64>): Option<u64> {
     v.find_index!(|j| is_small(j))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun find_index_small_spec(v: &vector<u64>): Option<u64> {
     let r = find_index_small(v);
     ensures(r == find_index!(v, |j| is_small(j)));

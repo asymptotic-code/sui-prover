@@ -6,7 +6,7 @@ public fun test_take_fail() {
     vector::take(v, 4); // Trying to take 4 elements from a 3-element vector
 }
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun test_take_fail_spec() {
     test_take_fail(); // This should abort and that's expected
 }

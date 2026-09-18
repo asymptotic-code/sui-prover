@@ -10,7 +10,7 @@ fun foo(t: &TableVec<u8>, i: u64): u8 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(t: &TableVec<u8>, i: u64): u8 {
     foo(t, i)
 }

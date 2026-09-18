@@ -15,7 +15,7 @@ public fun initialize(uid: &mut UID, count: u64) {
     df::add<CountKey, u64>(uid, CountKey {}, count);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_initialize(obj: &mut MyObject, count: u64) {
     requires(!df::exists_with_type<NameKey, bool>(&obj.id, NameKey {}));
     requires(!df::exists_with_type<CountKey, u64>(&obj.id, CountKey {}));

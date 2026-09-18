@@ -11,7 +11,7 @@ public struct Foo has key, store {
 fun bar(ctx: &mut TxContext) {
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(ctx: &mut TxContext) {
   let old_ctx = clone!(ctx);
   bar(ctx);

@@ -8,7 +8,7 @@ module 0x42::A {
         }
     }
 
-    #[spec(prove)]
+    #[mode(spec), ext(spec(prove))]
     fun foo_spec(x: Option<u8>): Option<u8> {
         foo(x)
     }
@@ -18,7 +18,7 @@ module 0x42::B {
     use std::option::some;
     use prover::prover::{val, drop};
 
-    #[mode(spec), ext(spec(inv_target=std::option::Option))]
+    #[mode(spec), ext(spec_only(inv_target=std::option::Option))]
     #[allow(unused_function)]
     fun Option_inv<T>(self: &Option<T>): bool {
         if (self.is_some()) {

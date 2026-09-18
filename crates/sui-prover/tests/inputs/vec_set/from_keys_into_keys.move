@@ -8,7 +8,7 @@ fun foo(s: vec_set::VecSet<u64>): vec_set::VecSet<u64> {
     vec_set::from_keys(s.into_keys())
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(s: vec_set::VecSet<u64>): vec_set::VecSet<u64> {
   let old_s = clone!(&s);
   let result = foo(s);

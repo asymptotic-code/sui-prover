@@ -35,7 +35,7 @@ public fun mint_balance<T>(cap: &mut TreasuryCap<T>, value: u64): Balance<T> {
     cap.total_supply.increase_supply(value)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun mint_balance_spec<T>(cap: &mut TreasuryCap<T>, value: u64): Balance<T> {
     asserts(cap.total_supply() < u64::max_value!() - value);
 

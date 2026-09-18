@@ -28,7 +28,7 @@ fun filter_greater_than(v: &vector<u64>, threshold: u64): vector<u64> {
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun filter_greater_than_spec(v: &vector<u64>, threshold: u64): vector<u64> {
     let r = filter_greater_than(v, threshold);
     ensures(r == filter!(v, |j| greater_than(j, threshold)));

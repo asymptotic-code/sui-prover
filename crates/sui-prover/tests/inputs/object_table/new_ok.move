@@ -12,7 +12,7 @@ fun foo(ctx: &mut TxContext): ObjectTable<u64, Foo> {
   object_table::new(ctx)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(ctx: &mut TxContext): ObjectTable<u64, Foo> {
   let result = foo(ctx);
   ensures(result.is_empty());

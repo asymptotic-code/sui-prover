@@ -19,7 +19,7 @@ public fun get_field<K: copy + store + drop, V: store + copy + drop>(uid: &UID, 
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_get_field(obj: &MyObject, key: u64): u64 {
     requires(df::exists_with_type<u64, u64>(&obj.id, key));
     requires(*df::borrow<u64, u64>(&obj.id, key) == 42);

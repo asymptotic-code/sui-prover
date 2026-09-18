@@ -1,0 +1,46 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:33:3
+   │
+33 │ #[spec(prove, timeout = 60)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:41:3
+   │
+41 │ #[spec(prove, target = double, ignore_abort)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:25:3
+   │
+25 │ #[spec]
+   │   ^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:55:3
+   │
+55 │ #[spec(prove, boogie_opt = b"{:isolate_paths}")]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:48:3
+   │
+48 │ #[spec(prove, target = quarter, no_opaque, run_on = b"local")]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:70:3
+   │
+70 │ #[spec(prove, skip = b"not ready")]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/spec_params.legacy.move:62:3
+   │
+62 │ #[spec(prove, interpreted = square)]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -12,7 +12,7 @@ fun pick_smaller(a: u64, b: u64): u64 {
     if (a <= b) { a } else { b }
 }
 
-#[spec(prove, boogie_opt = b"{:isolate_paths}")]
+#[mode(spec), ext(spec(prove, boogie_opt = b"{:isolate_paths}"))]
 fun pick_smaller_spec(a: u64, b: u64): u64 {
     let r = pick_smaller(a, b);
     ensures(r <= a && r <= b);

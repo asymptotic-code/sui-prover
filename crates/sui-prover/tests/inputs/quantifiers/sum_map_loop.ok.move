@@ -26,7 +26,7 @@ fun count_odd_via_sum(v: &vector<u64>): u64 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_odd_via_sum_spec(v: &vector<u64>): u64 {
     let r = count_odd_via_sum(v);
     ensures(r.to_int() == sum_map!(v, |j| odd_to_int(j)));

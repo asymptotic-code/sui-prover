@@ -17,7 +17,7 @@ public fun foo(foo: &Foo): bool {
     *dynamic_field::borrow<String, u64>(&foo.id, string::utf8(b"asdf")) == 10
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(foo: &Foo): bool {
     let id = borrow_uid(foo);
     requires(string::try_utf8(b"asdf").is_some());

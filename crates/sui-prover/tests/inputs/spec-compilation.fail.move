@@ -4,7 +4,7 @@ public fun foo() {
   assert!(true);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec() {
   foo();
   and_this_function_does_not_exist();

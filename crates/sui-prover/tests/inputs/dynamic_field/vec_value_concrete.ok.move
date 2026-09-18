@@ -11,7 +11,7 @@ fun store_list(x: &mut Foo, key: u64, items: vector<u64>) {
     df::add<u64, vector<u64>>(&mut x.id, key, items);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun store_list_spec(x: &mut Foo, key: u64, items: vector<u64>) {
     requires(!df::exists_with_type<u64, vector<u64>>(&x.id, key));
     store_list(x, key, items);
