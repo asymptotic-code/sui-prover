@@ -1,16 +1,14 @@
+use crate::attr_query::{
+    get_ext_flags, SpecAttr, SpecIncludes, SpecModeAnnotated, SpecOnlyAttr, SpecOnlyRole,
+};
 use crate::target_filter::TargetFilterOptions;
 use codespan_reporting::diagnostic::Severity;
 use move_binary_format::file_format::FunctionHandleIndex;
-use move_compiler::{
-    expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_},
-    shared::known_attributes::{
-        AttributeKind_, ExternalAttribute, KnownAttribute, VerificationAttribute,
-    },
-};
+use move_compiler::expansion::ast::{ModuleAccess, ModuleAccess_, ModuleIdent_};
 use move_ir_types::location::Spanned;
 use move_model::{
     ast::ModuleName,
-    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId, QualifiedId},
+    model::{DatatypeId, FunId, FunctionEnv, GlobalEnv, Loc, ModuleEnv, ModuleId, QualifiedId},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -267,21 +265,28 @@ impl PackageTargets {
     fn collect_targets(&mut self, env: &GlobalEnv) {
         // Phase 1: Collect all attributes except uninterpreted
         // This ensures pure_functions is populated before we validate uninterpreted targets
+        let mut specs = vec![];
         for module_env in env.get_modules() {
             for func_env in module_env.get_functions() {
-                self.check_spec_scope(&func_env);
-                self.check_spec_only_scope(&func_env);
+                let annotations = func_env.spec_annotations();
+                if let Some(spec) = annotations.spec {
+                    self.check_spec_scope(&func_env, &spec);
+                    specs.push((func_env.get_qualified_id(), spec));
+                }
+                if let Some(spec_only) = annotations.spec_only {
+                    self.check_spec_only_scope(&func_env, &spec_only);
+                }
                 self.check_abort_check_scope(&func_env);
             }
-            self.handle_module_explicit_spec_attributes(&module_env);
+            if let Some(spec_only) = module_env.spec_annotations().spec_only {
+                self.handle_module_includes(&module_env, &spec_only.includes);
+            }
         }
 
         // Phase 2: Process uninterpreted attributes with validation
         // Now pure_functions is complete, so we can validate uninterpreted targets
-        for module_env in env.get_modules() {
-            for func_env in module_env.get_functions() {
-                self.check_uninterpreted_scope(&func_env);
-            }
+        for (qid, spec) in specs {
+            self.check_uninterpreted_scope(&env.get_function(qid), &spec);
         }
 
         if !self.focus_specs.is_empty() {
@@ -294,483 +299,341 @@ impl PackageTargets {
         }
     }
 
-    fn check_spec_only_scope(&mut self, func_env: &FunctionEnv) {
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
-            inv_target,
-            loop_inv,
-            explicit_spec_modules: _,
-            explicit_specs: _,
-            axiom,
-            extra_bpl,
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
-        {
-            if func_env.get_name_str().contains("type_inv") {
-                return;
-            }
+    /// Resolves a `ModuleAccess` from an attribute into its module and member name.
+    fn resolve_attr_target<'env>(
+        func_env: &FunctionEnv<'env>,
+        ma: &ModuleAccess,
+        kind: &str,
+    ) -> Option<(ModuleEnv<'env>, String)> {
+        let env = func_env.module_env.env;
+        let Some((module_name, member_name)) = Self::parse_module_access(ma, &func_env.module_env)
+        else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "Error parsing {kind} path in module '{}'",
+                    func_env.module_env.get_full_name_str()
+                ),
+            );
+            return None;
+        };
+        let Some(module_env) = env.find_module(&module_name) else {
+            env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "{kind} module not found for path '{}'",
+                    module_name.display(env.symbol_pool())
+                ),
+            );
+            return None;
+        };
+        Some((module_env, member_name))
+    }
 
-            let env = func_env.module_env.env;
+    /// Resolves a `ModuleAccess` from an attribute into the function it names.
+    fn resolve_attr_function<'env>(
+        func_env: &FunctionEnv<'env>,
+        ma: &ModuleAccess,
+        kind: &str,
+    ) -> Option<FunctionEnv<'env>> {
+        let (module_env, fun_name) = Self::resolve_attr_target(func_env, ma, kind)?;
+        let target = module_env.find_function(func_env.symbol_pool().make(&fun_name));
+        if target.is_none() {
+            let mut kind = kind.to_string();
+            kind[..1].make_ascii_uppercase();
+            func_env.module_env.env.diag(
+                Severity::Error,
+                &func_env.get_loc(),
+                &format!(
+                    "{kind} function '{fun_name}' not found in module '{}'",
+                    module_env.get_full_name_str(),
+                ),
+            );
+        }
+        target
+    }
 
-            if *axiom {
+    /// Records the `include` and `extra_bpl` parameters of a function annotation.
+    fn handle_function_includes(&mut self, func_env: &FunctionEnv, includes: &SpecIncludes) {
+        let (attrs, extra_bpl) =
+            Self::realize_includes(&func_env.module_env, &func_env.get_loc(), includes);
+        let qid = func_env.get_qualified_id();
+        if let Some(attrs) = attrs {
+            self.function_external_attributes.insert(qid, attrs);
+        }
+        if let Some(content) = extra_bpl {
+            self.function_extra_bpl.insert(qid, content);
+        }
+    }
+
+    /// Records the `include` and `extra_bpl` parameters of a module annotation.
+    fn handle_module_includes(&mut self, module_env: &ModuleEnv, includes: &SpecIncludes) {
+        let (attrs, extra_bpl) =
+            Self::realize_includes(module_env, &module_env.get_loc(), includes);
+        if let Some(attrs) = attrs {
+            self.module_external_attributes
+                .insert(module_env.get_id(), attrs);
+        }
+        if let Some(content) = extra_bpl {
+            self.module_extra_bpl.insert(module_env.get_id(), content);
+        }
+    }
+
+    fn realize_includes(
+        module_env: &ModuleEnv,
+        loc: &Loc,
+        includes: &SpecIncludes,
+    ) -> (
+        Option<BTreeSet<ModuleExternalSpecAttribute>>,
+        Option<String>,
+    ) {
+        let attrs = Self::handle_explicit_spec_attributes(
+            module_env,
+            &includes.explicit_spec_modules,
+            &includes.explicit_specs,
+        )
+        .filter(|attrs| !attrs.is_empty());
+        let extra_bpl = Self::validate_and_read_extra_bpl(
+            module_env.env,
+            loc,
+            module_env.get_source_path(),
+            &includes.extra_bpl,
+        );
+        (attrs, extra_bpl)
+    }
+
+    fn check_spec_only_scope(&mut self, func_env: &FunctionEnv, spec_only: &SpecOnlyAttr) {
+        let env = func_env.module_env.env;
+        // Only `extra_bpl` applies to functions; `include` is a module-level parameter.
+        let extra_bpl = SpecIncludes {
+            extra_bpl: spec_only.includes.extra_bpl.clone(),
+            ..Default::default()
+        };
+        self.handle_function_includes(func_env, &extra_bpl);
+
+        match &spec_only.role {
+            Some(SpecOnlyRole::Axiom) => {
                 self.axiom_functions.insert(func_env.get_qualified_id());
             }
-
-            if let Some(content) = Self::validate_and_read_extra_bpl(
-                env,
-                &func_env.get_loc(),
-                func_env.module_env.get_source_path(),
-                extra_bpl,
-            ) {
-                self.function_extra_bpl
-                    .insert(func_env.get_qualified_id(), content);
-            }
-
-            if let Some(loop_inv) = loop_inv {
-                match Self::parse_module_access(&loop_inv.target, &func_env.module_env) {
-                    Some((module_name, fun_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            self.process_loop_inv(func_env, &module_env, fun_name, loop_inv.label);
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "loop_inv target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-                return;
-            }
-
-            if inv_target.is_some() {
-                match Self::parse_module_access(inv_target.as_ref().unwrap(), &func_env.module_env)
+            Some(SpecOnlyRole::LoopInvariant { target, label }) => {
+                if let Some((module_env, fun_name)) =
+                    Self::resolve_attr_target(func_env, target, "loop_inv target")
                 {
-                    Some((module_name, struct_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            self.process_inv(func_env, &module_env, struct_name);
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "inv_target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
+                    self.process_loop_inv(func_env, &module_env, fun_name, *label);
                 }
-            } else {
-                func_env
-                    .get_name_str()
-                    .strip_suffix("_inv")
-                    .map(|struct_name: &str| {
-                        self.process_inv(func_env, &func_env.module_env, struct_name.to_string());
-                    });
+            }
+            Some(SpecOnlyRole::Invariant { target }) => {
+                if let Some((module_env, struct_name)) =
+                    Self::resolve_attr_target(func_env, target, "inv_target")
+                {
+                    self.process_inv(func_env, &module_env, struct_name);
+                }
+            }
+            None => {
+                // The `type_inv` intrinsic ends in `_inv` but is not a datatype invariant.
+                if func_env.get_qualified_id() == env.type_inv_qid() {
+                    return;
+                }
+                if let Some(struct_name) = func_env.get_name_str().strip_suffix("_inv") {
+                    self.process_inv(func_env, &func_env.module_env, struct_name.to_string());
+                }
             }
         }
     }
 
-    fn check_spec_scope(&mut self, func_env: &FunctionEnv) {
+    fn check_spec_scope(&mut self, func_env: &FunctionEnv, spec: &SpecAttr) {
         let env = func_env.module_env.env;
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
-            focus,
-            prove,
-            skip,
-            target,
-            no_opaque,
-            ignore_abort,
-            boogie_opt,
-            timeout,
-            run_on,
-            explicit_spec_modules,
-            explicit_specs,
-            extra_bpl,
-            uninterpreted: _,
-            ..
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::Spec)
-            .map(|attr| &attr.value)
-        {
-            if let Some(attrs) = Self::handle_explicit_spec_attributes(
-                &func_env.module_env,
-                explicit_spec_modules,
-                explicit_specs,
-            ) {
-                self.function_external_attributes
-                    .insert(func_env.get_qualified_id(), attrs);
-            }
+        let qid = func_env.get_qualified_id();
+        self.handle_function_includes(func_env, &spec.includes);
 
-            if Self::system_spec(&func_env.get_qualified_id(), env) {
-                self.system_specs.insert(func_env.get_qualified_id());
+        if Self::system_spec(&qid, env) {
+            self.system_specs.insert(qid);
+        }
+        if let Some(opt) = &spec.boogie_opt {
+            self.spec_boogie_options.insert(qid, opt.clone());
+        }
+        if let Some(timeout) = spec.timeout {
+            self.spec_timeouts.insert(qid, timeout);
+        }
+        if let Some(run_on_value) = &spec.run_on {
+            if !spec.prove || spec.skip.is_some() {
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    "`run_on` requires `prove` (it is meaningless on a non-prove / skipped spec)",
+                );
+            } else if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
+                self.spec_run_on.insert(qid, run_on_value.clone());
+            } else {
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!(
+                        "invalid run_on value \"{}\". Valid values are: {}",
+                        run_on_value,
+                        VALID_RUN_ON_VALUES.join(", ")
+                    ),
+                );
             }
-
-            if let Some(opt) = boogie_opt {
-                self.spec_boogie_options
-                    .insert(func_env.get_qualified_id(), opt.clone());
+        }
+        if spec.no_opaque {
+            self.omit_opaque_specs.insert(qid);
+        }
+        if spec.ignore_abort {
+            self.ignore_aborts.insert(qid);
+        }
+        if let Some(skip_reason) = &spec.skip {
+            if self.is_target(func_env) {
+                self.skipped_specs.insert(qid, skip_reason.clone());
             }
+        }
 
-            if let Some(timeout) = timeout {
-                self.spec_timeouts
-                    .insert(func_env.get_qualified_id(), *timeout);
-            }
-
-            if let Some(run_on_value) = run_on {
-                if !*prove || skip.is_some() {
+        if !self.is_target(func_env) || spec.skip.is_some() || (!spec.prove && !spec.focus) {
+            self.no_verify_specs.insert(qid);
+        } else {
+            if spec.focus {
+                if !self.allow_focus_attr {
                     env.diag(
                         Severity::Error,
                         &func_env.get_loc(),
-                        "`run_on` requires `prove` (it is meaningless on a non-prove / skipped spec)",
+                        "The 'focus' attribute is restricted in CI mode.",
                     );
-                } else if VALID_RUN_ON_VALUES.contains(&run_on_value.as_str()) {
-                    self.spec_run_on
-                        .insert(func_env.get_qualified_id(), run_on_value.clone());
-                } else {
+                    return;
+                }
+                self.focus_specs.insert(qid);
+            }
+            self.target_specs.insert(qid);
+        }
+
+        if let Some(target) = &spec.target {
+            if let Some(target_func_env) = Self::resolve_attr_function(func_env, target, "target") {
+                self.process_spec(func_env, &target_func_env);
+            }
+            return;
+        }
+
+        let target_func_env_opt = func_env
+            .get_name_str()
+            .strip_suffix("_spec")
+            .and_then(|name| {
+                func_env
+                    .module_env
+                    .find_function(func_env.symbol_pool().make(name))
+            });
+        match target_func_env_opt {
+            Some(target_func_env) => {
+                self.process_spec(func_env, &target_func_env);
+            }
+            None => {
+                // scenario specs either ignore aborts or do not have any asserts
+                if !spec.ignore_abort
+                    && func_env
+                        .get_called_functions()
+                        .iter()
+                        .any(|f| *f == env.asserts_qid())
+                {
                     env.diag(
                         Severity::Error,
                         &func_env.get_loc(),
-                        &format!(
-                            "invalid run_on value \"{}\". Valid values are: {}",
-                            run_on_value,
-                            VALID_RUN_ON_VALUES.join(", ")
-                        ),
+                        "Scenario specs either ignore aborts or do not have any asserts.",
                     );
+                    return;
                 }
-            }
-
-            if let Some(content) = Self::validate_and_read_extra_bpl(
-                env,
-                &func_env.get_loc(),
-                func_env.module_env.get_source_path(),
-                extra_bpl,
-            ) {
-                self.function_extra_bpl
-                    .insert(func_env.get_qualified_id(), content);
-            }
-
-            if *no_opaque {
-                self.omit_opaque_specs.insert(func_env.get_qualified_id());
-            }
-
-            if *ignore_abort {
-                self.ignore_aborts.insert(func_env.get_qualified_id());
-            }
-
-            if let Some(skip_reason) = skip {
-                if self.is_target(func_env) {
-                    self.skipped_specs
-                        .insert(func_env.get_qualified_id(), skip_reason.clone());
-                }
-            }
-
-            if !self.is_target(func_env) || skip.is_some() || (!*prove && !*focus) {
-                self.no_verify_specs.insert(func_env.get_qualified_id());
-            } else {
-                if *focus {
-                    if !self.allow_focus_attr {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            "The 'focus' attribute is restricted in CI mode.",
-                        );
-                        return;
-                    }
-                    self.focus_specs.insert(func_env.get_qualified_id());
-                }
-                self.target_specs.insert(func_env.get_qualified_id());
-            }
-
-            if target.is_some() {
-                match Self::parse_module_access(target.as_ref().unwrap(), &func_env.module_env) {
-                    Some((module_name, func_name)) => {
-                        if let Some(module_env) = env.find_module(&module_name) {
-                            if let Some(target_func_env) = module_env
-                                .find_function(func_env.symbol_pool().make(func_name.as_str()))
-                            {
-                                self.process_spec(func_env, &target_func_env);
-                            } else {
-                                env.diag(
-                                    Severity::Error,
-                                    &func_env.get_loc(),
-                                    &format!(
-                                        "Target function '{}' not found in module '{}'",
-                                        func_name,
-                                        module_env.get_full_name_str(),
-                                    ),
-                                );
-                            }
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        let module_name = func_env.module_env.get_full_name_str();
-
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            &format!("Error parsing module path '{}'", module_name),
-                        );
-                    }
-                }
-            } else {
-                let target_func_env_opt =
-                    func_env
-                        .get_name_str()
-                        .strip_suffix("_spec")
-                        .and_then(|name| {
-                            func_env
-                                .module_env
-                                .find_function(func_env.symbol_pool().make(name))
-                        });
-                match target_func_env_opt {
-                    Some(target_func_env) => {
-                        self.process_spec(func_env, &target_func_env);
-                    }
-                    None => {
-                        // scenario specs either ignore aborts or do not have any asserts
-                        if !*ignore_abort
-                            && func_env
-                                .get_called_functions()
-                                .iter()
-                                .any(|f| *f == func_env.module_env.env.asserts_qid())
-                        {
-                            func_env.module_env.env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                "Scenario specs either ignore aborts or do not have any asserts.",
-                            );
-                            return;
-                        }
-                        self.scenario_specs.insert(func_env.get_qualified_id());
-                    }
-                }
+                self.scenario_specs.insert(qid);
             }
         }
     }
 
     fn check_abort_check_scope(&mut self, func_env: &FunctionEnv) {
-        if let Some(KnownAttribute::External(ExternalAttribute { attrs })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::External)
-            .map(|attr| &attr.value)
-        {
-            let has_no_abort = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "no_abort");
-            let has_pure = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "pure");
-            let has_uninterpreted = attrs
-                .into_iter()
-                .any(|attr| attr.2.value.name().value.as_str() == "uninterpreted");
-
-            if has_no_abort {
-                self.abort_check_functions
+        let flags = get_ext_flags(func_env.get_toplevel_attributes());
+        if flags.no_abort {
+            self.abort_check_functions
+                .insert(func_env.get_qualified_id());
+            if self.is_target(func_env) {
+                self.target_no_abort_check_functions
                     .insert(func_env.get_qualified_id());
-                if self.is_target(func_env) {
-                    self.target_no_abort_check_functions
-                        .insert(func_env.get_qualified_id());
-                }
             }
-            if has_pure {
-                self.pure_functions.insert(func_env.get_qualified_id());
-                if self.is_target(func_env) {
-                    self.target_no_abort_check_functions
-                        .insert(func_env.get_qualified_id());
-                }
+        }
+        if flags.pure {
+            self.pure_functions.insert(func_env.get_qualified_id());
+            if self.is_target(func_env) {
+                self.target_no_abort_check_functions
+                    .insert(func_env.get_qualified_id());
             }
-            if has_uninterpreted {
-                if !has_pure {
-                    let env = func_env.module_env.env;
-                    env.diag(
-                        Severity::Error,
-                        &func_env.get_loc(),
-                        &format!(
-                            "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
-                            func_env.get_full_name_str(),
-                        ),
-                    );
-                } else {
-                    self.globally_uninterpreted_functions
-                        .insert(func_env.get_qualified_id());
-                }
+        }
+        if flags.uninterpreted {
+            if !flags.pure {
+                let env = func_env.module_env.env;
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!(
+                        "#[ext(uninterpreted)] on '{}' requires #[ext(pure)]",
+                        func_env.get_full_name_str(),
+                    ),
+                );
+            } else {
+                self.globally_uninterpreted_functions
+                    .insert(func_env.get_qualified_id());
             }
         }
     }
 
-    fn check_uninterpreted_scope(&mut self, func_env: &FunctionEnv) {
+    fn check_uninterpreted_scope(&mut self, func_env: &FunctionEnv, spec: &SpecAttr) {
         let env = func_env.module_env.env;
-        if let Some(KnownAttribute::Verification(VerificationAttribute::Spec {
-            focus: _,
-            prove: _,
-            skip: _,
-            target: _,
-            no_opaque: _,
-            ignore_abort: _,
-            boogie_opt: _,
-            timeout: _,
-            explicit_spec_modules: _,
-            explicit_specs: _,
-            extra_bpl: _,
-            uninterpreted,
-            interpreted,
-            ..
-        })) = func_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::Spec)
-            .map(|attr| &attr.value)
-        {
-            for module_access in uninterpreted {
-                match Self::parse_module_access(module_access, &func_env.module_env) {
-                    Some((module_name, fun_name)) => {
-                        if let Some(target_module_env) = env.find_module(&module_name) {
-                            if let Some(target_func_env) =
-                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
-                            {
-                                // Validate that the target is a pure function or a known native function
-                                if !self
-                                    .pure_functions
-                                    .contains(&target_func_env.get_qualified_id())
-                                    && !env
-                                        .should_be_used_as_func(&target_func_env.get_qualified_id())
-                                {
-                                    env.diag(
-                                        Severity::Error,
-                                        &func_env.get_loc(),
-                                        &format!(
-                                            "uninterpreted target '{}' must be marked with #[ext(pure)]",
-                                            target_func_env.get_full_name_str(),
-                                        ),
-                                    );
-                                    continue;
-                                }
-
-                                self.spec_uninterpreted_functions
-                                    .entry(func_env.get_qualified_id())
-                                    .or_insert_with(BTreeSet::new)
-                                    .insert(target_func_env.get_qualified_id());
-                            } else {
-                                env.diag(
-                                    Severity::Error,
-                                    &func_env.get_loc(),
-                                    &format!(
-                                        "uninterpreted target function '{}' not found in module '{}'",
-                                        fun_name,
-                                        target_module_env.get_full_name_str(),
-                                    ),
-                                );
-                            }
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "uninterpreted target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            "Error parsing uninterpreted target path",
-                        );
-                    }
-                }
+        let qid = func_env.get_qualified_id();
+        for module_access in &spec.uninterpreted {
+            let Some(target) =
+                Self::resolve_attr_function(func_env, module_access, "uninterpreted target")
+            else {
+                continue;
+            };
+            // Validate that the target is a pure function or a known native function
+            let target_qid = target.get_qualified_id();
+            if !self.pure_functions.contains(&target_qid)
+                && !env.should_be_used_as_func(&target_qid)
+            {
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!(
+                        "uninterpreted target '{}' must be marked with #[ext(pure)]",
+                        target.get_full_name_str(),
+                    ),
+                );
+                continue;
             }
+            self.spec_uninterpreted_functions
+                .entry(qid)
+                .or_default()
+                .insert(target_qid);
+        }
 
-            for module_access in interpreted {
-                match Self::parse_module_access(module_access, &func_env.module_env) {
-                    Some((module_name, fun_name)) => {
-                        if let Some(target_module_env) = env.find_module(&module_name) {
-                            if let Some(target_func_env) =
-                                target_module_env.find_function(env.symbol_pool().make(&fun_name))
-                            {
-                                // Validate that the target is globally uninterpreted
-                                if !self
-                                    .globally_uninterpreted_functions
-                                    .contains(&target_func_env.get_qualified_id())
-                                {
-                                    env.diag(
-                                        Severity::Error,
-                                        &func_env.get_loc(),
-                                        &format!(
-                                            "interpreted target '{}' must be marked with #[ext(uninterpreted)]",
-                                            target_func_env.get_full_name_str(),
-                                        ),
-                                    );
-                                    continue;
-                                }
-
-                                self.spec_interpreted_functions
-                                    .entry(func_env.get_qualified_id())
-                                    .or_insert_with(BTreeSet::new)
-                                    .insert(target_func_env.get_qualified_id());
-                            } else {
-                                env.diag(
-                                    Severity::Error,
-                                    &func_env.get_loc(),
-                                    &format!(
-                                        "interpreted target function '{}' not found in module '{}'",
-                                        fun_name,
-                                        target_module_env.get_full_name_str(),
-                                    ),
-                                );
-                            }
-                        } else {
-                            env.diag(
-                                Severity::Error,
-                                &func_env.get_loc(),
-                                &format!(
-                                    "interpreted target module not found for path '{}'",
-                                    module_name.display(env.symbol_pool())
-                                ),
-                            );
-                        }
-                    }
-                    None => {
-                        env.diag(
-                            Severity::Error,
-                            &func_env.get_loc(),
-                            "Error parsing interpreted target path",
-                        );
-                    }
-                }
+        for module_access in &spec.interpreted {
+            let Some(target) =
+                Self::resolve_attr_function(func_env, module_access, "interpreted target")
+            else {
+                continue;
+            };
+            // Validate that the target is globally uninterpreted
+            let target_qid = target.get_qualified_id();
+            if !self.globally_uninterpreted_functions.contains(&target_qid) {
+                env.diag(
+                    Severity::Error,
+                    &func_env.get_loc(),
+                    &format!(
+                        "interpreted target '{}' must be marked with #[ext(uninterpreted)]",
+                        target.get_full_name_str(),
+                    ),
+                );
+                continue;
             }
+            self.spec_interpreted_functions
+                .entry(qid)
+                .or_default()
+                .insert(target_qid);
         }
     }
 
@@ -967,39 +830,6 @@ impl PackageTargets {
             None
         } else {
             Some(contents.join("\n"))
-        }
-    }
-
-    fn handle_module_explicit_spec_attributes(&mut self, module_env: &ModuleEnv) {
-        if let Some(KnownAttribute::Verification(VerificationAttribute::SpecOnly {
-            inv_target: _,
-            loop_inv: _,
-            axiom: _,
-            explicit_spec_modules,
-            explicit_specs,
-            extra_bpl,
-        })) = module_env
-            .get_toplevel_attributes()
-            .get_(&AttributeKind_::SpecOnly)
-            .map(|attr| &attr.value)
-        {
-            if let Some(attrs) = Self::handle_explicit_spec_attributes(
-                module_env,
-                explicit_spec_modules,
-                explicit_specs,
-            ) {
-                self.module_external_attributes
-                    .insert(module_env.get_id(), attrs);
-            }
-
-            if let Some(content) = Self::validate_and_read_extra_bpl(
-                module_env.env,
-                &module_env.get_loc(),
-                module_env.get_source_path(),
-                extra_bpl,
-            ) {
-                self.module_extra_bpl.insert(module_env.get_id(), content);
-            }
         }
     }
 

@@ -22,7 +22,7 @@ fun find_index_odd(v: &vector<u8>): Option<u64> {
     option::none()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun find_index_odd_spec(v: &vector<u8>): Option<u64> {
     let r = find_index_odd(v);
     ensures(r == find_index!(v, |j| is_odd(j)));
@@ -46,7 +46,7 @@ fun find_index_odd_direct(v: &vector<u8>): Option<u64> {
     option::none()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun find_index_odd_direct_spec(v: &vector<u8>): Option<u64> {
     let r = find_index_odd_direct(v);
     ensures(r == find_index!(v, |j| is_odd(j)));

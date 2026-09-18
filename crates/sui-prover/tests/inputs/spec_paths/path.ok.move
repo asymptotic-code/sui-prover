@@ -5,11 +5,11 @@ module 0x42::foo {
 }
 
 module 0x43::foo_spec {
-    #[spec_only]
+    #[mode(spec), ext(spec_only)]
     use prover::prover::{ensures, requires};
     use 0x42::foo;
 
-    #[spec(prove, target = foo::inc)]
+    #[mode(spec), ext(spec(prove, target = foo::inc))]
     public fun foo_spec_mod_fun_prove(x: u64): u64 {
         requires(x < std::u64::max_value!());
         let res = foo::inc(x);

@@ -8,7 +8,7 @@ public fun foo(r: u64): u64 {
     6
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(r: u64): u64 {
     log::text("test log");
     log::var<u64>(&r);

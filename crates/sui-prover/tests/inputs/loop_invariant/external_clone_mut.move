@@ -15,14 +15,14 @@ public fun foo(s: &mut Foo) {
     }
 }
 
-#[spec_only(loop_inv(target = foo)), ext(pure)]
+#[mode(spec), ext(spec_only(loop_inv(target = foo)), pure)]
 public fun foo_inv(s: &Foo, i: u64, __old_s: &Foo): bool {
     i <= s.y &&
     s.x.to_int() == __old_s.x.to_int().add(i.to_int()) &&
     s.y == __old_s.y
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(s: &mut Foo) {
     let old_x = s.x;
     let old_y = s.y;

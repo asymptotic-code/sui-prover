@@ -2,7 +2,7 @@
 /// The early return should not be dropped during pure function translation.
 module 0x42::pure_early_return;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 #[ext(pure)]
@@ -17,7 +17,7 @@ public fun check_positive(x: u64): bool {
     is_positive(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_is_positive(): bool {
     let result = check_positive(5);
     ensures(result == true);

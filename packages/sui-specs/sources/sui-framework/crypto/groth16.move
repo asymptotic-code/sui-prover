@@ -5,7 +5,7 @@ use sui::groth16::{
     PreparedVerifyingKey,
 };
 
-#[spec(target = sui::groth16::prepare_verifying_key_internal)]
+#[mode(spec), ext(spec(target = sui::groth16::prepare_verifying_key_internal))]
 public fun prepare_verifying_key_internal_spec(
     curve: u8,
     verifying_key: &vector<u8>,
@@ -13,7 +13,7 @@ public fun prepare_verifying_key_internal_spec(
     prepare_verifying_key_internal(curve, verifying_key)
 }
 
-#[spec(target = sui::groth16::verify_groth16_proof_internal)]
+#[mode(spec), ext(spec(target = sui::groth16::verify_groth16_proof_internal))]
 public fun verify_groth16_proof_internal_spec(
     curve: u8,
     vk_gamma_abc_g1_bytes: &vector<u8>,

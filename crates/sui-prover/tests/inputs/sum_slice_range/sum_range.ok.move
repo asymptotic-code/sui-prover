@@ -4,7 +4,7 @@ use prover::prover::{requires, ensures};
 use prover::vector_iter::sum_range;
 
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum(mut v: vector<u64>) {
     let mut v1 = vector[10u64, 20, 30];
     let mut v2 = vector[5u64, 15, 1, 1];

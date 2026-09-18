@@ -20,7 +20,7 @@ public fun blah(self: &TT): bool {
     self.get_s().look()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun blah_spec(self: &TT): bool {
     requires (dynamic_field::exists_with_type<u8,SS>(&self.id, self.v));
     blah(self)

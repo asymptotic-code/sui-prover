@@ -4,43 +4,43 @@ use prover::prover::{requires, ensures, clone};
 use prover::ghost;
 use std::integer::Integer;
 
-#[spec_only(loop_inv(target = test0_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test0_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_0(i: u64, n: u64): bool {
     i <= n
 }
 
-#[spec_only(loop_inv(target = test1_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test1_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_1(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test2_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test2_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_2(i: u64, n: u64, s: u128): bool {
     i <= n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test3_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test3_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_3(n: u64, old_n: u64, s: u128): bool {
     n <= old_n && (s == ((old_n as u128) - (n as u128)) * ((old_n as u128) + (n as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test4_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test4_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_4(i: u64, n: u64, s: u128): bool {
     i < n && (s == (i as u128) * ((i as u128) + 1) / 2)
 }
 
-#[spec_only(loop_inv(target = test6_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = test6_spec)), no_abort)]
+#[allow(unused_function)]
 fun loop_inv_6(i: u64, n: u64, old_s: u128, ss: u128): bool {
     i <= n && ((ss as u256) == (old_s as u256) + (i as u256) * ((i as u256) + 1) / 2)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test0_spec(n: u64) {
     let mut i = 0;
 
@@ -51,7 +51,7 @@ fun test0_spec(n: u64) {
     ensures(i == n);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test1_spec(n: u64): u128 {
     let mut s: u128 = 0;
     let mut i = 0;
@@ -65,7 +65,7 @@ fun test1_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test2_spec(n: u64): u128 {
     let mut s: u128 = 0;
     let mut i = 0;
@@ -79,7 +79,7 @@ fun test2_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test3_spec(mut n: u64): u128 {
     let mut s: u128 = 0;
 
@@ -93,7 +93,7 @@ fun test3_spec(mut n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test4_spec(n: u64): u128 {
     requires(0 < n);
 
@@ -116,7 +116,7 @@ public struct SpecSum {}
 
 fun emit_u64(_x: u64) {}
 
-#[spec]
+#[mode(spec), ext(spec)]
 fun emit_u64_spec(x: u64) {
     ghost::declare_global_mut<SpecSum, Integer>();
     let old_sum = *ghost::global<SpecSum, Integer>();
@@ -125,7 +125,7 @@ fun emit_u64_spec(x: u64) {
 }
 
 #[allow(unused_mut_parameter)]
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun test6_spec(s: &mut u128, n: u64) {
     // mutable references are not allowed
     let old_s: &u128 = clone!(s);

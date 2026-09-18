@@ -4,7 +4,7 @@ use prover::ghost;
 use prover::prover::{requires, ensures, invariant, clone};
 use std::integer::Integer;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test0_spec(n: u64) {
     let mut i = 0;
 
@@ -18,7 +18,7 @@ fun test0_spec(n: u64) {
     ensures(i == n);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test1_spec(n: u64): u128 {
     let mut s: u128 = 0;
     let mut i = 0;
@@ -35,7 +35,7 @@ fun test1_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test2_spec(n: u64): u128 {
     let mut s: u128 = 0;
     let mut i = 0;
@@ -53,7 +53,7 @@ fun test2_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test3_spec(mut n: u64): u128 {
     let mut s: u128 = 0;
 
@@ -71,7 +71,7 @@ fun test3_spec(mut n: u64): u128 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test4_spec(n: u64): u128 {
     requires(0 < n);
 
@@ -94,7 +94,7 @@ fun test4_spec(n: u64): u128 {
     s
 }
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun test5_spec(n: u64) {
     let mut i = 0;
 
@@ -109,7 +109,7 @@ public struct SpecSum {}
 
 fun emit_u64(_x: u64) {}
 
-#[spec]
+#[mode(spec), ext(spec)]
 fun emit_u64_spec(x: u64) {
     ghost::declare_global_mut<SpecSum, Integer>();
     let old_sum = *ghost::global<SpecSum, Integer>();
@@ -117,7 +117,7 @@ fun emit_u64_spec(x: u64) {
     ensures(ghost::global<SpecSum, Integer>() == old_sum.add(x.to_int()));
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test6_spec(n: u64) {
     ghost::declare_global_mut<SpecSum, Integer>();
     requires(ghost::global<SpecSum, Integer>() == 0u64.to_int());
@@ -139,7 +139,7 @@ fun test6_spec(n: u64) {
     ensures(ghost::global<SpecSum, Integer>() == ((n as u128) * ((n as u128) + 1) / 2).to_int());
 }
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun test7_spec(s: &mut u128, n: u64) {
     let old_s = clone!(s);
 

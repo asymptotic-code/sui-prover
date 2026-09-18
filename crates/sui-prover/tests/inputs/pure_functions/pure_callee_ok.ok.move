@@ -2,7 +2,7 @@
 /// The helper function is NOT marked #[ext(pure)] but satisfies all pure requirements.
 module 0x42::pure_callee_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 // This function is NOT marked #[ext(pure)] but satisfies pure requirements:
@@ -37,7 +37,7 @@ public fun call_compute(x: u64, y: u64): u64 {
     compute(x, y)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_compute_spec(): u64 {
     let result = call_compute(3, 4);
     // add_two(3) = 5, max_val(5, 4) = 5

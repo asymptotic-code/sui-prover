@@ -4,7 +4,7 @@
 /// on any `Call` with `dests.len() > 1`.
 module 0x42::pure_tuple_return_callee;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 // --- Tuple return -----------------------------------------------------------
@@ -37,14 +37,14 @@ public fun call_through_second(x: u64): u64 {
     pure_second(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_sum_helper(): u64 {
     let result = call_through_sum(5);
     ensures(result == 5);
     result
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_second_helper(): u64 {
     let result = call_through_second(5);
     ensures(result == 4);
@@ -73,7 +73,7 @@ public fun call_through_pair_sum(x: u64): u64 {
     pure_pair_sum(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_pair_sum_helper(): u64 {
     let result = call_through_pair_sum(3);
     ensures(result == 7);
@@ -100,7 +100,7 @@ public fun call_through_triple_sum(x: u64): u64 {
     pure_triple_sum(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_triple_sum_helper(): u64 {
     let result = call_through_triple_sum(7);
     ensures(result == 7);

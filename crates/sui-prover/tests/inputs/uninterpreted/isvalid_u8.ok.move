@@ -9,7 +9,7 @@ fun apply() {
     assert!(sub1(1) <= 255, 1);
 }
 
-#[spec(prove, uninterpreted = sub1)]
+#[mode(spec), ext(spec(prove, uninterpreted = sub1))]
 fun apply_spec() {
     apply()
 }

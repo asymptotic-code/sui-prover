@@ -10,7 +10,7 @@ public fun test_skip_basic(v: vector<u64>, n: u64): vector<u64> {
     vector::skip(v, n)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_take_skip_complement_spec() {
     let v = vector[0, 1, 2, 3, 4];
     let n = 2;
@@ -29,7 +29,7 @@ fun test_take_skip_complement_spec() {
     ensures(*vector::borrow(&skipped, 2) == 4);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_take_skip_zero_spec() {
     let v = vector[10, 20, 30];
     
@@ -44,7 +44,7 @@ fun test_take_skip_zero_spec() {
     ensures(*vector::borrow(&skipped, 2) == 30);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_take_skip_full_length_spec() {
     let v = vector[100, 200];
     let len = 2;

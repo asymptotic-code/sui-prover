@@ -12,6 +12,7 @@ pub mod access_path;
 pub mod access_path_trie;
 pub mod annotations;
 pub mod ast;
+pub mod attr_query;
 pub mod axiom_function_analysis;
 pub mod borrow_analysis;
 pub mod clean_and_optimize;

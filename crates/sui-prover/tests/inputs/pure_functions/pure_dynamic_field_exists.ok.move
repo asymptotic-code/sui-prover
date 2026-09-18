@@ -13,7 +13,7 @@ fun has_field(foo: &Foo): bool {
     dynamic_field::exists_with_type<u64, u8>(&foo.id, 10)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun has_field_spec(foo: &Foo): bool {
     requires(dynamic_field::exists_with_type<u64, u8>(&foo.id, 10));
     let r = has_field(foo);

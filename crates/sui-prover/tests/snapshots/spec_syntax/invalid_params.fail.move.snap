@@ -1,0 +1,82 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with bytecode transformation errors
+error: invalid #[ext(spec(...))] on 'invalid_params::assigned_spec': use either `spec` or `spec(<param>, ...)`
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:31:1
+   │
+31 │ fun assigned_spec(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(...))] on 'invalid_params::axiom_not_standalone': `axiom` must be the only parameter
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:37:1
+   │
+37 │ fun axiom_not_standalone(): bool { true }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::boogie_opt_not_a_bytestring': `boogie_opt` expects a bytestring, e.g. b"..."
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:25:1
+   │
+25 │ fun boogie_opt_not_a_bytestring(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::duplicate_extra_bpl': duplicated `extra_bpl` value
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:28:1
+   │
+28 │ fun duplicate_extra_bpl(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::focus_and_skip': cannot use both `focus` and `skip`
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:16:1
+   │
+16 │ fun focus_and_skip(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(...))] on 'invalid_params::inv_target_and_include': cannot combine `inv_target` with `include`
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:49:1
+   │
+49 │ fun inv_target_and_include(s: &S): bool { s.x > 0 }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(loop_inv(...)))] on 'invalid_params::loop_inv_label_not_a_number': `label` expects a number
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:46:1
+   │
+46 │ fun loop_inv_label_not_a_number(): bool { true }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(...))] on 'invalid_params::loop_inv_not_standalone': `loop_inv` must be the only parameter
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:40:1
+   │
+40 │ fun loop_inv_not_standalone(): bool { true }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(loop_inv(...)))] on 'invalid_params::loop_inv_without_target': missing required parameter `target`
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:43:1
+   │
+43 │ fun loop_inv_without_target(): bool { true }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::target_not_a_path': `target` expects a path, e.g. `0x42::m::f`
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:22:1
+   │
+22 │ fun target_not_a_path(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec_only(...))] on 'invalid_params::unknown_spec_only_param': unknown parameter 'unknown_param'; expected one of: axiom, inv_target, loop_inv(target = ..., label = ...), include, extra_bpl
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:34:1
+   │
+34 │ fun unknown_spec_only_param(): bool { true }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::unknown_spec_param': unknown parameter 'unknown_param'; expected one of: focus, prove, skip, no_opaque, ignore_abort, target, boogie_opt, timeout, run_on, include, extra_bpl, uninterpreted, interpreted
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:13:1
+   │
+13 │ fun unknown_spec_param(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: invalid #[ext(spec(...))] on 'invalid_params::zero_timeout': `timeout` must be greater than zero
+   ┌─ tests/inputs/spec_syntax/invalid_params.fail.move:19:1
+   │
+19 │ fun zero_timeout(): u64 { foo() }
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

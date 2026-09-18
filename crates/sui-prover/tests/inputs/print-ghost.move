@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 use prover::log;
 use prover::ghost;
@@ -9,7 +9,7 @@ public fun foo(x: bool) {
     ghost::set<u64, bool>(&x);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(x: bool) {
     ghost::declare_global_mut<u64, bool>();
     foo(x);

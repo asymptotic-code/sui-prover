@@ -6,7 +6,7 @@
 /// Expected: Should reach SMT verification and fail there (not at bytecode transformation).
 module 0x42::pure_conditional_smt;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires};
 
 // BUGGY pure function - has x - 10 instead of x - 1
@@ -26,7 +26,7 @@ public fun call_decrement_or_zero(x: u64): u64 {
 // This spec makes a claim that would be TRUE for correct implementation
 // but is FALSE for the buggy one.
 // Require x > 10 to avoid underflow in the buggy implementation.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_pure_conditional_spec(x: u64): u64 {
     requires(x > 10);
     let result = call_decrement_or_zero(x);

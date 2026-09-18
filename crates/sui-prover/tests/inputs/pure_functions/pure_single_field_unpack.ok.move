@@ -1,6 +1,6 @@
 module 0x42::pure_single_field_unpack;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{requires, val};
 
 public struct S(u8) has copy, drop;
@@ -15,7 +15,7 @@ public fun f(s: S): u8 {
     s.unwrap() + 1
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun f_spec(s: S): u8 {
     let s0 = val(&s);
     requires(s0.unwrap() < 255);

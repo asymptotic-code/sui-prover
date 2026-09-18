@@ -30,7 +30,8 @@ public fun active_ids(set: &MySet): vector<u64> {
     r
 }
 
-#[spec_only(loop_inv(target = active_ids)), ext(pure)]
+#[mode(spec), ext(spec_only(loop_inv(target = active_ids)), pure)]
+#[allow(unused_function)]
 fun active_ids_invariant(i: u64, len: u64, set: &MySet, r: &vector<u64>): bool {
        i <= len
     && len == set.validators.length()
@@ -45,7 +46,7 @@ fun mapped_to_i(j: u64, i: u64, v: &vector<Entry>, r: &vector<u64>): bool {
     (j >= i || r[j] == v[j].id)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun active_ids_spec(set: &MySet): vector<u64> {
    let r = active_ids(set);
    ensures(r == map!(&set.validators, |e| get_id(e)));

@@ -5,7 +5,7 @@
 /// Expected: Should reach SMT verification and fail there (not at bytecode transformation).
 module 0x42::pure_smt_verification;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 // Valid pure function - passes all syntactic checks:
@@ -27,7 +27,7 @@ public fun call_identity(x: u64): u64 {
 // This spec calls the pure function and makes a FALSE claim.
 // The pure function is valid, so this should reach SMT verification.
 // The SMT solver should catch that identity(5) = 5, not 6.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_pure_call_spec(): u64 {
     let result = call_identity(5);
     // This is FALSE: identity(5) = 5, not 6

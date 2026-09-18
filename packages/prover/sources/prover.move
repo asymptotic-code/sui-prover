@@ -1,28 +1,28 @@
 module prover::prover;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun requires(p: bool);
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun ensures(p: bool);
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun asserts(p: bool);
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun asserts_of(name: vector<u8>): bool;
 
 /// Emits `assume {:split_here} true;` — cuts the VC at this point.
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun boogie_split_here();
 
 /// Emits `assume {:focus} true;` — splits into "through here" vs "not through here" VCs.
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun boogie_focus();
 
 /// Annotates the next `if` with `{:allow_path_isolation}`.
 /// Use with `boogie_opt = b"{:isolate_paths}"` on the spec.
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun boogie_allow_path_isolation();
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public macro fun invariant($invariants: ||) {
     invariant_begin();
     $invariants();
@@ -33,14 +33,14 @@ public fun implies(p: bool, q: bool): bool {
     !p || q
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun invariant_begin();
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun invariant_end();
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun val<T>(x: &T): T;
-#[spec]
+#[mode(spec), ext(spec)]
 fun val_spec<T>(x: &T): T {
     let result = val(x);
 
@@ -49,9 +49,9 @@ fun val_spec<T>(x: &T): T {
     result
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun ref<T>(x: T): &T;
-#[spec]
+#[mode(spec), ext(spec)]
 fun ref_spec<T>(x: T): &T {
     let old_x = val(&x);
 
@@ -63,46 +63,46 @@ fun ref_spec<T>(x: T): &T {
     result
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun drop<T>(x: T);
-#[spec]
+#[mode(spec), ext(spec)]
 fun drop_spec<T>(x: T) {
     drop(x);
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public macro fun clone<$T>($x: &$T): &$T {
     ref(val($x))
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 native public fun fresh<T>(): T;
-#[spec]
+#[mode(spec), ext(spec)]
 fun fresh_spec<T>(): T {
     fresh()
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 #[allow(unused)]
 native fun type_inv<T>(x: &T): bool;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public native fun begin_forall_lambda<T>(): &T;
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public native fun end_forall_lambda(): bool;
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public native fun begin_exists_lambda<T>(): &T;
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public native fun end_exists_lambda(): bool;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public macro fun forall<$T>($f: |&$T| -> bool): bool {
     let x: &$T = begin_forall_lambda<$T>();
     let _ = $f(x);
     end_forall_lambda()
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public macro fun exists<$T>($f: |&$T| -> bool): bool {
     let x: &$T = begin_exists_lambda<$T>();
     let _ = $f(x);

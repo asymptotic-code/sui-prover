@@ -36,7 +36,7 @@ fun nested(n: u64, m: u64) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun nested_spec(n: u64, m: u64) {
     asserts(n <= 100 && (n == 0 || m <= 200));
     nested(n, m);

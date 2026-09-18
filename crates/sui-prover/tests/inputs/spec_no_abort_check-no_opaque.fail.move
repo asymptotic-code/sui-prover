@@ -6,7 +6,7 @@ fun foo(x: u64): u64 {
     x + 1
 }
 
-#[spec(prove, no_opaque)]
+#[mode(spec), ext(spec(prove, no_opaque))]
 fun foo_spec(x: u64): u64 {
     requires(x < 100);
     let res = foo(x);

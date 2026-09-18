@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::nested_pure_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{any, all, any_range, all_range, count, count_range, sum_map, sum_map_range, map, map_range, find_index, find_index_range, find, find_range, filter, filter_range, find_indices, find_indices_range};
 
 // Simple predicates
@@ -115,49 +115,49 @@ fun vec_find_even_indices_in_range(v: &vector<u64>, start: u64, end: u64): &vect
 }
 
 // Test: any
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_any() {
     let v = vector[1, 2, 3];
     ensures(vec_has_even(&v));
 }
 
 // Test: all
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_all() {
     let v = vector[2, 4, 6];
     ensures(vec_all_even(&v));
 }
 
 // Test: any_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_any_range() {
     let v = vector[1, 2, 3];
     ensures(vec_has_even_in_range(&v, 1, 2)); // range [1,2) contains 2
 }
 
 // Test: all_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_all_range() {
     let v = vector[1, 2, 4, 3];
     ensures(vec_all_even_in_range(&v, 1, 3)); // range [1,3) contains 2,4
 }
 
 // Test: count
-#[spec(prove, extra_bpl = b"nested_pure_count.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_count.bpl"))]
 fun test_count() {
     let v = vector[1, 2, 3, 4];
     ensures(vec_count_even(&v) == 2);
 }
 
 // Test: count_range
-#[spec(prove, extra_bpl = b"nested_pure_count.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_count.bpl"))]
 fun test_count_range() {
     let v = vector[1, 2, 3, 4];
     ensures(vec_count_even_in_range(&v, 0, 3) == 1); // range [0,3) has only 2
 }
 
 // Test: sum_map
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map() {
     let mut v = vector[1, 2, 3];
 
@@ -169,7 +169,7 @@ fun test_sum_map() {
 }
 
 // Test: sum_map_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_range() {
     let mut v = vector[1, 2, 3];
 
@@ -181,56 +181,56 @@ fun test_sum_map_range() {
 }
 
 // Test: map
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map() {
     let v = vector[1, 2, 3];
     ensures(*vec_doubled(&v) == vector[2, 4, 6]);
 }
 
 // Test: map_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map_range() {
     let v = vector[1, 2, 3];
     ensures(*vec_doubled_in_range(&v, 0, 2) == vector[2, 4]);
 }
 
 // Test: find_index
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index() {
     let v = vector[1, 2, 3];
     ensures(vec_find_even_idx(&v) == std::option::some(1)); // index 1 has 2
 }
 
 // Test: find_index_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index_range() {
     let v = vector[1, 3, 4, 5];
     ensures(vec_find_even_idx_in_range(&v, 1, 4) == std::option::some(2)); // index 2 has 4
 }
 
 // Test: find
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find() {
     let v = vector[1, 2, 3];
     ensures(vec_find_even(&v) == std::option::some(2)); // finds element 2
 }
 
 // Test: find_range
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_range() {
     let v = vector[1, 3, 4, 5];
     ensures(vec_find_even_in_range(&v, 1, 4) == std::option::some(4)); // finds element 4 in range [1,4)
 }
 
 // Test: filter
-#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_filter.bpl"))]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even(&v) == vector[2, 4]); // filters to only even elements
 }
 
 // Test: filter_range
-#[spec(prove, extra_bpl = b"nested_pure_filter.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_filter.bpl"))]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     ensures(*vec_filter_even_in_range(&v, 1, 4) == vector[2, 4]); // filters range [1,4) to even elements
@@ -241,14 +241,14 @@ fun test_filter_range() {
 // equality on concrete inputs isn't provable via unfolding alone; the
 // extra_bpl file nested_pure.ok.bpl supplies a single-trigger end-step
 // axiom for this helper instance so the exact result can be proved.
-#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_find_indices.bpl"))]
 fun test_find_indices() {
     let v = vector[11, 20, 31, 40];
     ensures(*vec_find_even_indices(&v) == vector[1, 3]);
 }
 
 // Test: find_indices_range
-#[spec(prove, extra_bpl = b"nested_pure_find_indices.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_find_indices.bpl"))]
 fun test_find_indices_range() {
     let v = vector[11, 20, 31, 40];
     ensures(*vec_find_even_indices_in_range(&v, 0, 2) == vector[1]);

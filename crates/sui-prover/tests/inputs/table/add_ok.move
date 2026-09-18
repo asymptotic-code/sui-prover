@@ -8,7 +8,7 @@ fun foo(t: &mut Table<u64, u8>) {
   t.add(10, 0);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(t: &mut Table<u64, u8>) {
   requires(!t.contains(10));
   let old_t = clone!(t);

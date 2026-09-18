@@ -8,7 +8,7 @@ fun foo(m: &mut vec_map::VecMap<u64, u8>) {
   m.insert(10, 0);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(m: &mut vec_map::VecMap<u64, u8>) {
   requires(!m.contains(&10));
   let old_m = clone!(m);

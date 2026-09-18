@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_count_split_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::range_count;
 
 #[ext(pure)]
@@ -16,7 +16,7 @@ fun is_even(x: u64): bool {
     x % 2 == 0
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_range_count_split(n: u64, k: u64) {
     requires(k <= n);
     ensures(
@@ -26,7 +26,7 @@ fun test_range_count_split(n: u64, k: u64) {
     );
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_range_count_split_three_way(n: u64, a: u64, b: u64) {
     requires(a <= b && b <= n);
     ensures(

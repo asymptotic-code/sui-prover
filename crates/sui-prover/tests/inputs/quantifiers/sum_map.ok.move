@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_sum_map_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{sum_map, sum_map_range};
 
 #[ext(pure)]
@@ -25,7 +25,7 @@ fun x_minus_5(x: &u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map() {
     let v = vector[10, 20, 10, 20];
 
@@ -39,7 +39,7 @@ fun test_sum_map() {
 }
 
 // Empty vector and empty-range cases: sum over nothing is zero.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_empty() {
     let empty: vector<u64> = vector[];
     ensures(sum_map!<u64, u64>(&empty, |x| x_plus_10(x)) == 0u64.to_int());

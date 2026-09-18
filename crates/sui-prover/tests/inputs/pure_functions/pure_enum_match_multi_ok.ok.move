@@ -1,6 +1,6 @@
 module 0x42::pure_enum_match_multi;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public enum Tag has copy, drop {
@@ -20,22 +20,22 @@ public fun first_byte(t: Tag): u8 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_alpha() {
     ensures(first_byte(Tag::Alpha) == 0)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_beta() {
     ensures(first_byte(Tag::Beta(42)) == 42)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_gamma() {
     ensures(first_byte(Tag::Gamma(7, 9)) == 7)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_delta() {
     ensures(first_byte(Tag::Delta) == 255)
 }

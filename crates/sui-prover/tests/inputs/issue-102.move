@@ -2,7 +2,7 @@ module 0x42::issue_102;
 
 use prover::prover::{ensures, requires, invariant};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 fun fib(n: u16): u16 {
     if (n <= 1) {
         1
@@ -28,7 +28,7 @@ fun fib_i(n: u16): u16 {
     b
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun fib_i_spec(n: u16): u16 {
     requires(n <= 100);
     let r = fib_i(n);

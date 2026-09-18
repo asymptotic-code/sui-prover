@@ -38,7 +38,7 @@ functions in the implementation module and call them with method syntax.
 ### Specification Structure
 
 ```move
-#[spec(prove, target = project::module::function)]
+#[mode(spec), ext(spec(prove, target = project::module::function))]
 fun function_spec<T>(args): ReturnType {
     // Preconditions on arguments
     
@@ -104,10 +104,10 @@ module amm_specs::simple_lp_specs;
 use amm::simple_lp::{LP, Pool};
 use sui::balance::Balance;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{clone, ensures, requires};
 
-#[spec(prove, target = amm::simple_lp::withdraw)]
+#[mode(spec), ext(spec(prove, target = amm::simple_lp::withdraw))]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
     requires(shares_in.value() <= pool.shares_value());
 

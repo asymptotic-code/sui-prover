@@ -14,10 +14,10 @@ module 0x42::dynamic_fields {
         field::borrow(&x.id, b"dfchild") == y
     }
 
-    #[spec_only]
+    #[mode(spec), ext(spec_only)]
     use prover::prover::requires;
 
-    #[spec(prove)]
+    #[mode(spec), ext(spec(prove))]
     fun foo_spec(x: &Parent, y: &DFChild): bool {
         requires(field::exists_with_type<vector<u8>, DFChild>(&x.id, b"dfchild"));
         foo(x, y)

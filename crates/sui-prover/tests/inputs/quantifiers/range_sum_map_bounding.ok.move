@@ -7,10 +7,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_sum_map_bounding_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::range_sum_map;
 
 #[ext(pure)]
@@ -18,7 +18,7 @@ fun identity(x: u64): u64 {
     x
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_range_sum_map_bounding_nested(n: u64, a: u64, b: u64) {
     requires(a <= b && b <= n);
     ensures(

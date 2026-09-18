@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures};
 
 public enum Color has drop, copy {
@@ -25,7 +25,7 @@ fun reset_color(color_ref: &mut Color) {
     };
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun reset_color_spec(color_ref: &mut Color) {
     let before = *color_ref;
     reset_color(color_ref);
@@ -70,7 +70,7 @@ fun reset(col: &mut ColorEnum) {
     }
 }
 
-#[spec(focus)]
+#[mode(spec), ext(spec(focus))]
 fun reset_spec(col: &mut ColorEnum) {
     reset(col);
     match (col) {

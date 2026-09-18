@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_find_index_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{find, find_index};
 
 #[ext(pure)]
@@ -22,7 +22,7 @@ fun x_is_greater_than_100(x: &u64): bool {
     *x > 100
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find() {
     let v = vector[10, 20, 10, 30];
 
@@ -43,7 +43,7 @@ fun test_find() {
     ensures(option::is_none(result4));
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index() {
     let v = vector[10, 20, 10, 30];
 

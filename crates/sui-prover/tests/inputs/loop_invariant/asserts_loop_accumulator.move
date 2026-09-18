@@ -28,7 +28,7 @@ fun bounded_sum(n: u64): u64 {
     sum
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bounded_sum_spec(n: u64): u64 {
     asserts(n <= MAX_N);
     let result = bounded_sum(n);

@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public fun foo(x: u64): u64 {
@@ -11,7 +11,7 @@ public fun foo(x: u64): u64 {
   }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(a: u64): u64 {
   let result = foo(a);
 

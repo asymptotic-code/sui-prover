@@ -10,7 +10,7 @@ fun double_wrap(x: u64): u64 {
     add_wrap(x, x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun double_wrap_spec(x: u64): u64 {
     let result = double_wrap(x);
     ensures(result == x.to_int().mul((2u8).to_int()).to_u64());

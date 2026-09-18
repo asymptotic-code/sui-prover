@@ -9,7 +9,7 @@ fun foo(ghost_ref: &mut bool) {
   *ghost_ref = true;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun ghost_borrow_mut_spec() {
   ghost::declare_global_mut<GhostStruct, bool>();
   let ghost_ref = ghost::borrow_mut<GhostStruct, bool>();

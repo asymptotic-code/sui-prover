@@ -2,7 +2,7 @@
 /// This spec makes a FALSE claim to verify the early return is not dropped.
 module 0x42::pure_early_return_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 #[ext(pure)]
@@ -18,7 +18,7 @@ public fun check_positive(x: u64): bool {
 }
 
 // This spec makes a FALSE claim: is_positive(5) should be true, not false.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_is_positive_wrong(): bool {
     let result = check_positive(5);
     ensures(result == false);

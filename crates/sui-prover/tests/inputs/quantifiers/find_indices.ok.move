@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_indices_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{find_indices, find_indices_range};
 
 #[ext(pure)]
@@ -18,7 +18,7 @@ fun x_is_even(x: &u64): bool {
 }
 
 // Test that all indices in result are valid (within bounds of source)
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -34,7 +34,7 @@ fun test_find_indices_valid_indices() {
 }
 
 // Test that result length is bounded by source length
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_length_bounded() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -43,7 +43,7 @@ fun test_find_indices_length_bounded() {
 }
 
 // Test that indices are sorted (using simple two-element comparison)
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_sorted_simple() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -58,7 +58,7 @@ fun test_find_indices_sorted_simple() {
 }
 
 // Test find_indices_range length is bounded by range size
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_range_length_bounded() {
     let v = vector[10, 20, 10, 30, 10, 40];
     let result = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
@@ -70,7 +70,7 @@ fun test_find_indices_range_length_bounded() {
 // Test that range indices are within the specified range. The completeness
 // axiom guarantees length >= 1 (v[2] == 10 matches x_is_10 in range [1,4)),
 // so the borrow is safe without a guard.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_range_valid_indices() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices_range!<u64>(&v, 1, 4, |x| x_is_10(x));
@@ -81,7 +81,7 @@ fun test_find_indices_range_valid_indices() {
 }
 
 // Empty vector and empty-range cases.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_indices_empty() {
     let empty: vector<u64> = vector[];
     let indices = find_indices!<u64>(&empty, |x| x_is_10(x));

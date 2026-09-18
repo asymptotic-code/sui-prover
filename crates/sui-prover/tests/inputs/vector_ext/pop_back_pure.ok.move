@@ -1,13 +1,13 @@
 #[allow(unused)]
 module 0x42::vector_ext_pop_back_pure_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use std::vector::pop_back_pure;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_pop_back_matches(v: &mut vector<u64>) {
     requires(!v.is_empty());
     let old_v = clone!(v);

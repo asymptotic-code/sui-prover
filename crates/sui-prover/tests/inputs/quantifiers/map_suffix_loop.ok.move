@@ -35,7 +35,7 @@ fun map_doubles(v: &vector<u64>): vector<u64> {
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun map_doubles_spec(v: &vector<u64>): vector<u64> {
     let r = map_doubles(v);
     ensures(r == *map!(v, |x| double(x)));

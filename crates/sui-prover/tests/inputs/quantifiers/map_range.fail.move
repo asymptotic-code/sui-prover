@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_map_range_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::map_range;
 
 #[ext(pure)]
@@ -16,7 +16,7 @@ fun x_plus_10(x: &u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map_range_wrong_result() {
     let v = vector[10, 20, 10, 30];
     
@@ -24,7 +24,7 @@ fun test_map_range_wrong_result() {
     ensures(map_range!<u64, u64>(&v, 0, 1, |x| x_plus_10(x)) == vector[30]); // FAIL: should be [20]
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map_range_wrong_subrange() {
     let v = vector[10, 20, 10, 30];
     

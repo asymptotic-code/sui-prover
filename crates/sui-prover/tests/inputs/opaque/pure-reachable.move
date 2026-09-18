@@ -20,7 +20,7 @@ fun get_value(b: &Box): u64 {
 }
 
 // The skip attribute makes get_value only "reachable" (not "inlined")
-#[spec(skip, target = get_value)]
+#[mode(spec), ext(spec(skip, target = get_value))]
 fun get_value_spec(b: &Box): u64 {
     let result = get_value(b);
     ensures(result == b.value);
@@ -31,7 +31,7 @@ fun set_value(b: &mut Box, v: u64) {
     b.value = v;
 }
 
-#[spec(prove, target = set_value)]
+#[mode(spec), ext(spec(prove, target = set_value))]
 fun set_value_spec(b: &mut Box, v: u64) {
     set_value(b, v);
     // This ensures relies on get_value$pure having a body that resolves

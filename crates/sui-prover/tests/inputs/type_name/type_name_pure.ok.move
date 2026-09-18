@@ -4,7 +4,7 @@
 module 0x42::type_name_pure;
 
 use std::type_name;
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public struct MyCoin has drop {}
@@ -45,28 +45,28 @@ public fun use_original_id(): address {
     get_original_id()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun use_type_name_spec(): type_name::TypeName {
     let result = use_type_name();
     ensures(result == get_type_name());
     result
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun use_original_type_name_spec(): type_name::TypeName {
     let result = use_original_type_name();
     ensures(result == get_original_type_name());
     result
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun use_defining_id_spec(): address {
     let result = use_defining_id();
     ensures(result == get_defining_id());
     result
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun use_original_id_spec(): address {
     let result = use_original_id();
     ensures(result == get_original_id());

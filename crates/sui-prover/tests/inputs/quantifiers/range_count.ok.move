@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_count_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::range_count;
 
 #[ext(pure)]
@@ -22,7 +22,7 @@ fun is_10(x: u64): bool {
     x == 10
 }
 
-#[spec(prove, extra_bpl = b"range_count.ok.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"range_count.ok.bpl"))]
 fun test_range_count() {
     // Count even numbers in range [0, 4) = {0, 1, 2, 3} -> evens: 0, 2 = 2
     ensures(range_count!(0, 4, |x| is_even(x)) == 2u64.to_int());
@@ -43,7 +43,7 @@ fun test_range_count() {
     ensures(range_count!(5, 3, |x| is_even(x)) == 0u64.to_int());
 }
 
-#[spec(prove, extra_bpl = b"range_count_specific_value.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"range_count_specific_value.bpl"))]
 fun test_range_count_specific_value() {
     // Count occurrences of 10 in range [0, 15) -> exactly 1
     ensures(range_count!(0, 15, |x| is_10(x)) == 1u64.to_int());

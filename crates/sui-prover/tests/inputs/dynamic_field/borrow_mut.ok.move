@@ -12,7 +12,7 @@ fun foo(x: &mut Foo) {
     *(dynamic_field::borrow_mut<u64, u8>(&mut x.id, 10)) = 0;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(x: &mut Foo) {
     requires(dynamic_field::exists_with_type<u64, u8>(&x.id, 10));
     foo(x);

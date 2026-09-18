@@ -12,7 +12,7 @@ fun search(needle: u64, limit: u64): u64 {
     }
 }
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 fun search_spec(needle: u64, limit: u64): u64 {
     search(needle, limit)
 }

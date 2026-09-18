@@ -25,7 +25,7 @@ fun doubles_up_to(n: u64): vector<u64> {
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun doubles_up_to_spec(n: u64): vector<u64> {
     let r = doubles_up_to(n);
     ensures(r == range_map!<u64>(0, n, |k| double(k)));

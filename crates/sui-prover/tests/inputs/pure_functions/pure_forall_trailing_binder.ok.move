@@ -6,7 +6,7 @@
 /// the predicate's trailing `int` parameter and Boogie rejected it.
 module 0x42::pure_forall_trailing_binder;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, forall};
 
 #[ext(pure)]
@@ -19,7 +19,7 @@ fun equal_range(u: &vector<u64>, v: &vector<u64>, i: u64, j: u64): bool {
     forall!(|k| equal_in_range(u, v, i, j, *k))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun verify_equal_range(): bool {
     let u = vector[1u64, 2u64, 3u64];
     let v = vector[1u64, 2u64, 3u64];

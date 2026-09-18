@@ -1,6 +1,6 @@
 module 0x42::recursion_simple_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public fun factorial(x: u64): u64 {
@@ -11,7 +11,7 @@ public fun factorial(x: u64): u64 {
   }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun my_spec_simple() {
   ensures(factorial(5) == 120);
 }

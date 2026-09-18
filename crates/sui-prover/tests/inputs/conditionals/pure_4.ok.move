@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures};
 
 #[ext(pure)]
@@ -25,7 +25,7 @@ public fun foobar(x: u64): u64 {
     foobar_impl(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foobar_spec(x: u64): u64 {
     let result = foobar(x);
     ensures(result <= 10);

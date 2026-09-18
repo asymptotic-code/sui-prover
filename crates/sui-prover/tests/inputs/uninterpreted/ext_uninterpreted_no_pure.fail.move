@@ -11,7 +11,7 @@ fun foo(): u64 {
     bar()
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(): u64 {
     let result = foo();
     ensures(result == bar());

@@ -4,7 +4,7 @@ use sui::ecdsa_r1::{
     secp256r1_ecrecover, secp256r1_verify,
 };
 
-#[spec(target = sui::ecdsa_r1::secp256r1_ecrecover)]
+#[mode(spec), ext(spec(target = sui::ecdsa_r1::secp256r1_ecrecover))]
 public fun secp256r1_ecrecover_spec(
     signature: &vector<u8>,
     msg: &vector<u8>,
@@ -13,7 +13,7 @@ public fun secp256r1_ecrecover_spec(
     secp256r1_ecrecover(signature, msg, hash)
 }
 
-#[spec(target = sui::ecdsa_r1::secp256r1_verify)]
+#[mode(spec), ext(spec(target = sui::ecdsa_r1::secp256r1_verify))]
 public fun secp256r1_verify_spec(
     signature: &vector<u8>,
     public_key: &vector<u8>,

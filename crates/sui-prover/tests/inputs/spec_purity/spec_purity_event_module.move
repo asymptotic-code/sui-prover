@@ -14,10 +14,10 @@ module 0x42::dynamic_fields {
         event::emit(TestEvent { value: x });
     }
 
-    #[spec_only]
+    #[mode(spec), ext(spec_only)]
     use prover::prover::ensures;
 
-    #[spec(prove)]
+    #[mode(spec), ext(spec(prove))]
     fun sqrt_spec(x: u128): u64 {
         let x_int = x.to_int();
 

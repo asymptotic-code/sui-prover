@@ -27,7 +27,7 @@ All macros have `_range!` variants: `all_range!(&vec, start, end, |x| ...)`. The
 
 Example:
 ```move
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun vector_spec() {
     let v = vector[2, 4, 6, 8];
     ensures(all!<u64>(&v, |x| is_even(x)));
@@ -43,17 +43,17 @@ Ghost variables are spec-only globals for propagating information between specif
 Ghost variables are declared with two type-level arguments: a key type and a value type. The key is usually a user struct or a spec-only struct:
 
 ```move
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 public struct MyGhostKey {}
 ```
 
 ### Declaring and Reading
 
 ```move
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::ghost::{declare_global, global};
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun ghost_example_spec() {
     // Declare a ghost variable keyed by type pair
     declare_global<MyKey, bool>();
@@ -66,10 +66,10 @@ fun ghost_example_spec() {
 ### Mutable Ghost Variables
 
 ```move
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::ghost::{declare_global_mut, borrow_mut, global};
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun ghost_mut_example_spec() {
     declare_global_mut<MyKey, u64>();
     let ghost_ref = borrow_mut<MyKey, u64>();
@@ -87,7 +87,7 @@ Arbitrary-precision integers. Convert from primitives using `.to_int()`:
 ```move
 use std::integer::Integer;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun integer_example_spec() {
     let a: Integer = 42u64.to_int();
     let b: Integer = 10u64.to_int();
@@ -121,7 +121,7 @@ Arbitrary-precision real numbers. Convert using `.to_real()`:
 ```move
 use std::real::Real;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun real_example_spec() {
     let x: Real = 16u64.to_real();
     ensures(x.sqrt() == 4u64.to_real());
@@ -147,7 +147,7 @@ Signed fixed-point types with 32, 64, or 128 fractional bits. Import from `std::
 ```move
 use std::q64::Q64;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun fixed_point_example_spec(a: u64, b: u64) {
     requires(b > 0);
     let ratio: Q64 = Q64::quot(a.to_int(), b.to_int());
@@ -178,13 +178,15 @@ fun fixed_point_example_spec(a: u64, b: u64) {
 
 ## Attributes Reference
 
-### `#[spec(...)]` - Specification Functions
+### `#[mode(spec), ext(spec(...))]` - Specification Functions
 
-Marks a function as a specification.
+Marks a function as a specification. Spec code carries the compiler mode `#[mode(spec)]`, so it is compiled only for the prover, plus an `ext(spec(...))` entry saying what it is. The two always go together: `#[mode(spec)]` requires `ext(spec...)` or `ext(spec_only...)`, and vice versa. An item has a single `ext(...)` list, so other flags go in the same list, e.g. `ext(spec_only, pure)`.
+
+> **Deprecated:** `#[spec(...)]` and `#[spec_only(...)]` still work but produce a deprecation warning. They take the same parameters: `#[spec(prove, target = f)]` becomes `#[mode(spec), ext(spec(prove, target = f))]`, and `#[spec_only(axiom)]` becomes `#[mode(spec), ext(spec_only(axiom))]`. Using both syntaxes on the same item is an error.
 
 **External target**: Every spec for an implementation function must use `target = <implementation-path>` because the spec lives in a sibling package.
 
-**Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it.
+**Without `prove`**: The spec is not verified itself, but is used when proving other functions that depend on it. A bare `ext(spec)` is such a spec.
 
 **With `prove`**: The spec is verified by the prover.
 
@@ -193,23 +195,29 @@ Marks a function as a specification.
 | Parameter | Description |
 |-----------|-------------|
 | `prove` | Verify this specification |
-| `skip` | Skip verification |
+| `skip` / `skip = b"<reason>"` | Skip verification (cannot be combined with `focus`) |
 | `focus` | Mark as focused (verify only focused specs). Can be used on multiple specs simultaneously. |
 | `target = <PATH>` | Target external function (e.g., `target = 0x42::module::func`) |
 | `include = <PATH>` | Include another spec's behavior |
 | `ignore_abort` | Don't check abort conditions. Allows omitting `asserts` for aborts. |
 | `no_opaque` | Include actual implementations of called functions instead of using their targeted specs as opaque summaries. |
 | `uninterpreted = <NAME>` | Treat pure function as uninterpreted |
+| `interpreted = <NAME>` | Interpret a globally `#[ext(uninterpreted)]` function in this spec |
 | `extra_bpl = b"<file>"` | Load extra Boogie code |
 | `boogie_opt = b"<opt>"` | Pass custom Boogie options |
+| `timeout = <N>` | Verification timeout in seconds (greater than zero) |
+| `run_on = b"<backend>"` | Where to run: `local`, `cloud`, `boogie`, or `lean` (requires `prove`) |
+
+Entry names in one `ext(...)` list must be unique. To give `include`, `extra_bpl`, `uninterpreted` or `interpreted` several values, use the parameterized form with arbitrary unique inner keys: `extra_bpl(a = b"x.bpl", b = b"y.bpl")`.
 
 Examples:
 ```move
-#[spec(prove, target = 0x42::foo::bar)]
-#[spec(prove, focus, target = 0x42::foo::bar)]
-#[spec(prove, ignore_abort, target = 0x42::foo::bar)]
-#[spec(prove, no_opaque, target = 0x42::foo::bar)]
-#[spec(prove, target = 0x42::foo::bar, include = 0x42::specs::helper_spec)]
+#[mode(spec), ext(spec_only(prove, target = 0x42::foo::bar))]
+#[mode(spec), ext(spec_only(prove, focus, target = 0x42::foo::bar))]
+#[mode(spec), ext(spec_only(prove, ignore_abort, target = 0x42::foo::bar))]
+#[mode(spec), ext(spec_only(prove, no_opaque, target = 0x42::foo::bar))]
+#[mode(spec), ext(spec_only(prove, target = 0x42::foo::bar, include = 0x42::specs::helper_spec))]
+#[mode(spec), ext(spec_only(prove, target = 0x42::foo::bar, uninterpreted(a = 0x42::m::f, b = 0x42::m::g)))]
 ```
 
 ### `#[ext(...)]` - Function Characteristics
@@ -243,9 +251,9 @@ public fun get_field_name(self: &MyStruct): u64 {
 }
 ```
 
-### `#[spec_only(...)]` - Specification Attributes
+### `#[mode(spec), ext(spec_only(...))]` - Spec-Only Code
 
-Use parameterized `spec_only` attributes for axioms, datatype invariants, loop invariants, spec inclusion, and extra Boogie files.
+Mark spec-only helpers (functions, modules, structs, constants and `use` declarations) with `#[mode(spec), ext(spec_only)]`. Parameterized spec-only attributes (axioms, datatype invariants, loop invariants, spec inclusion, and extra Boogie files) go inside `ext(spec_only(...))`. As in the deprecated `#[spec_only(...)]`, `axiom` and `loop_inv(...)` must be the only parameter, `loop_inv` requires `target`, and `inv_target` cannot be combined with `include`.
 
 | Parameter | Description |
 |-----------|-------------|
@@ -254,21 +262,23 @@ Use parameterized `spec_only` attributes for axioms, datatype invariants, loop i
 | `(loop_inv(target = <FUNC>))` | External loop invariant |
 | `(loop_inv(target = <FUNC>, label = N))` | Loop invariant with label |
 | `(include = <PATH>)` | Include spec module |
+| `(include(a = <PATH>, b = <PATH>))` | Include multiple spec modules (inner keys arbitrary but unique) |
 | `(extra_bpl = b"<file>")` | Load extra Boogie code |
+| `(extra_bpl(a = b"<file>", b = b"<file>"))` | Load multiple extra Boogie files (inner keys arbitrary but unique) |
 
 Examples:
 ```move
 use project::numbers::PositiveNumber;
 
-#[spec_only(axiom)]
+#[mode(spec), ext(spec_only(axiom))]
 fun sqrt_axiom(x: u64): u64 { ... }
 
-#[spec_only(inv_target = project::numbers::PositiveNumber)]
+#[mode(spec), ext(spec_only(inv_target = project::numbers::PositiveNumber))]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
     self.value() > 0
 }
 
-#[spec_only(loop_inv(target = my_func_spec))]
+#[mode(spec), ext(spec_only(loop_inv(target = my_func_spec)))]
 fun loop_inv_for_my_func() { }
 ```
 
@@ -281,7 +291,7 @@ Loop invariants are required when a spec has conditions over variables modified 
 Use the `invariant!` macro directly before a loop:
 
 ```move
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun sum_to_n_spec(n: u64): u128 {
     let mut sum: u128 = 0;
     let mut i: u64 = 0;
@@ -302,16 +312,15 @@ fun sum_to_n_spec(n: u64): u128 {
 
 ### External Loop Invariants
 
-Alternatively, define loop invariants as separate functions with `#[spec_only(loop_inv(target = ...))]`. The invariant function returns a boolean conjunction of all conditions.
+Alternatively, define loop invariants as separate functions with `#[mode(spec), ext(spec_only(loop_inv(target = ...)))]`. The invariant function returns a boolean conjunction of all conditions.
 
 ```move
-#[spec_only(loop_inv(target = sum_to_n_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = sum_to_n_spec)), no_abort)]
 fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
     i <= n && sum == (i as u128) * ((i as u128) + 1) / 2
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun sum_to_n_spec(n: u64): u128 {
     let mut sum: u128 = 0;
     let mut i: u64 = 0;
@@ -332,12 +341,10 @@ fun sum_to_n_spec(n: u64): u128 {
 - For multiple loops, use `label = N` (0-indexed):
 
 ```move
-#[spec_only(loop_inv(target = my_spec, label = 0))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = my_spec, label = 0)), no_abort)]
 fun first_loop_inv(...): bool { ... }
 
-#[spec_only(loop_inv(target = my_spec, label = 1))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = my_spec, label = 1)), no_abort)]
 fun second_loop_inv(...): bool { ... }
 ```
 
@@ -364,7 +371,7 @@ module project_specs::number_specs;
 
 use project::numbers::PositiveNumber;
 
-#[spec_only(inv_target = project::numbers::PositiveNumber)]
+#[mode(spec), ext(spec_only(inv_target = project::numbers::PositiveNumber))]
 public fun PositiveNumber_inv(self: &PositiveNumber): bool {
     self.value() > 0
 }
@@ -413,7 +420,7 @@ fun is_10(x: &u64): bool {
 ### Basic usage
 
 ```move
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun quantifier_example_spec() {
     // All u64 values are >= 0 (trivially true)
     ensures(forall!<u64>(|x| is_gte_0(x)));
@@ -434,7 +441,7 @@ fun is_greater_or_equal(a: u64, x: u64, b: u64): bool {
     x >= a && x >= b
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun extra_args_spec(a: u64, b: u64) {
     // For some x: x >= a AND x >= b
     ensures(exists!<u64>(|x| is_greater_or_equal(a, *x, b)));
@@ -454,7 +461,7 @@ fun invariant_expression(j: u64, i: u64, u: &vector<u8>, v: &vector<u8>): bool {
     j <= i && j < u.length() && i < v.length() && u[j] > v[i]
 }
 
-#[spec(prove, target = project::vectors::vec_leq)]
+#[mode(spec), ext(spec(prove, target = project::vectors::vec_leq))]
 fun vec_leq_spec(i: u64): bool {
     requires(i < 4);
 

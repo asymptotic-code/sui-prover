@@ -9,7 +9,7 @@ fun foo(m: vec_map::VecMap<u64, u8>): vec_map::VecMap<u64, u8> {
   vec_map::from_keys_values(keys, values)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(m: vec_map::VecMap<u64, u8>): vec_map::VecMap<u64, u8> {
   let old_m = clone!(&m);
   let result = foo(m);

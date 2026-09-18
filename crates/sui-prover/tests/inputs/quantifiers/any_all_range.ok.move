@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_any_all_range_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{any_range, all_range};
 
 #[ext(pure)]
@@ -22,7 +22,7 @@ fun x_is_greater_than_15(x: &u64): bool {
     *x > 15
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_any_all_range() {
     let v = vector[10, 20, 10, 30];
 

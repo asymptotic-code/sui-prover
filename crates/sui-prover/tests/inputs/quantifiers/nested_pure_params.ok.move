@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::nested_pure_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{any, all, any_range, all_range, count, count_range, sum_map, sum_map_range, map, map_range, find_index, find_index_range, find, find_range, filter, filter_range, find_indices, find_indices_range};
 
 #[ext(pure)]
@@ -163,7 +163,7 @@ fun vec_find_divisible_indices_in_range(v: &vector<u64>, start: u64, end: u64, d
 }
 
 // Test: any with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_any() {
     let v = vector[1, 2, 3];
     let divisor = 2;
@@ -171,7 +171,7 @@ fun test_any() {
 }
 
 // Test: all with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_all() {
     let v = vector[2, 4, 6];
     let divisor = 2;
@@ -179,7 +179,7 @@ fun test_all() {
 }
 
 // Test: all with range check using multiple context params
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_all_range_check() {
     let v = vector[5, 7, 9];
     let min = 5;
@@ -188,7 +188,7 @@ fun test_all_range_check() {
 }
 
 // Test: any_range with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_any_range() {
     let v = vector[1, 2, 3];
     let divisor = 2;
@@ -196,7 +196,7 @@ fun test_any_range() {
 }
 
 // Test: all_range with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_all_range() {
     let v = vector[1, 2, 4, 3];
     let divisor = 2;
@@ -204,7 +204,7 @@ fun test_all_range() {
 }
 
 // Test: count with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl"))]
 fun test_count() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -212,7 +212,7 @@ fun test_count() {
 }
 
 // Test: count_range with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_count_divisible.bpl"))]
 fun test_count_range() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -220,7 +220,7 @@ fun test_count_range() {
 }
 
 // Test: sum_map with factor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map() {
     let mut v = vector[1, 2, 3];
 
@@ -233,7 +233,7 @@ fun test_sum_map() {
 }
 
 // Test: sum_map_range with factor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_range() {
     let mut v = vector[1, 2, 3];
 
@@ -246,7 +246,7 @@ fun test_sum_map_range() {
 }
 
 // Test: sum_map with multiple context parameters
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_multi_param() {
     let v = vector[1, 2, 3];
     let addend = 5;
@@ -255,7 +255,7 @@ fun test_sum_map_multi_param() {
 }
 
 // Test: map with factor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map() {
     let v = vector[1, 2, 3];
     let factor = 2;
@@ -263,7 +263,7 @@ fun test_map() {
 }
 
 // Test: map_range with factor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map_range() {
     let v = vector[1, 2, 3];
     let factor = 2;
@@ -271,7 +271,7 @@ fun test_map_range() {
 }
 
 // Test: map with multiple context parameters
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_map_multi_param() {
     let v = vector[1, 2, 3];
     let addend = 10;
@@ -280,7 +280,7 @@ fun test_map_multi_param() {
 }
 
 // Test: find_index with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index() {
     let v = vector[1, 2, 3];
     let divisor = 2;
@@ -288,7 +288,7 @@ fun test_find_index() {
 }
 
 // Test: find_index_range with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index_range() {
     let v = vector[1, 3, 4, 5];
     let divisor = 2;
@@ -296,7 +296,7 @@ fun test_find_index_range() {
 }
 
 // Test: find with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find() {
     let v = vector[1, 2, 3];
     let divisor = 2;
@@ -304,7 +304,7 @@ fun test_find() {
 }
 
 // Test: find_range with divisor from context
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_range() {
     let v = vector[1, 3, 4, 5];
     let divisor = 2;
@@ -312,7 +312,7 @@ fun test_find_range() {
 }
 
 // Test: filter with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl"))]
 fun test_filter() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -320,7 +320,7 @@ fun test_filter() {
 }
 
 // Test: filter_range with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_filter_divisible.bpl"))]
 fun test_filter_range() {
     let v = vector[1, 2, 3, 4];
     let divisor = 2;
@@ -328,7 +328,7 @@ fun test_filter_range() {
 }
 
 // Test: filter with multiple context parameters
-#[spec(prove, extra_bpl = b"nested_pure_params_filter_in_range.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_filter_in_range.bpl"))]
 fun test_filter_range_check() {
     let v = vector[1, 5, 10, 15];
     ensures(*vec_filter_in_range(&v) == vector[5, 10, 15]); // filters to elements in [5,15]
@@ -337,7 +337,7 @@ fun test_filter_range_check() {
 // Test: find_indices with divisor from context. The per-spec extra_bpl
 // supplies a single-trigger end-step axiom for this helper instance so
 // the exact concrete result can be proved.
-#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl"))]
 fun test_find_indices() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;
@@ -345,7 +345,7 @@ fun test_find_indices() {
 }
 
 // Test: find_indices_range with divisor from context
-#[spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_pure_params_find_indices.bpl"))]
 fun test_find_indices_range() {
     let v = vector[10, 20, 30, 40];
     let divisor = 20;

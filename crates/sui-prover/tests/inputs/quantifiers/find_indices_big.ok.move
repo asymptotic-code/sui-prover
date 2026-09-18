@@ -12,10 +12,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_indices_big_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::find_indices;
 
 #[ext(pure)]
@@ -23,7 +23,7 @@ fun is_even(x: &u64): bool {
     *x % 2 == 0
 }
 
-#[spec(prove, extra_bpl = b"find_indices_big.ok.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"find_indices_big.ok.bpl"))]
 fun test_find_indices_big() {
     let v = vector[1u64, 2, 3, 4, 5, 6, 7, 8];
     // Even elements are at indices 1, 3, 5, 7.

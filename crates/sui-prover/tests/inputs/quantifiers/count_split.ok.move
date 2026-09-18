@@ -6,10 +6,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_count_split_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{count, count_range};
 
 #[ext(pure)]
@@ -17,7 +17,7 @@ fun is_even(x: &u64): bool {
     (*x) % 2 == 0
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_count_split(v: &vector<u64>, k: u64) {
     let n = vector::length(v);
     requires(k <= n);
@@ -28,7 +28,7 @@ fun test_count_split(v: &vector<u64>, k: u64) {
     );
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_count_split_three_way(v: &vector<u64>, a: u64, b: u64) {
     let n = vector::length(v);
     requires(a <= b && b <= n);

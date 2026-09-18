@@ -28,7 +28,7 @@ public fun set_fee(config: &mut GlobalConfig, amount: u64, ctx: &mut TxContext) 
     *coin_fee = amount;
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun set_fee_spec(config: &mut GlobalConfig, amount: u64, ctx: &mut TxContext) {
     set_fee(config, amount, ctx);
 }

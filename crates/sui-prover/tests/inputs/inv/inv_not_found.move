@@ -15,12 +15,12 @@ module 0x42::inv_foo {
         bar.set_value(150);
     }
 
-    #[spec_only]
+    #[mode(spec), ext(spec_only)]
     public fun foo_inv(bar: &Bar): bool {
         bar.x < 150
     }
 
-    #[spec(prove)]
+    #[mode(spec), ext(spec(prove))]
     public fun increment_spec(bar: &mut Bar) {
         bar.increment();
     }

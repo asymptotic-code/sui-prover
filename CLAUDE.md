@@ -163,14 +163,14 @@ let struct_env = module_env.get_struct(struct_id);
 let target = targets.get_target(&func_env, &FunctionVariant::Baseline);
 ```
 
-**PackageTargets** (move-stackless-bytecode): Selects which functions to verify based on `#[spec(prove)]`
+**PackageTargets** (move-stackless-bytecode): Selects which functions to verify based on `#[mode(spec), ext(spec(prove))]`
 
 **Options** (move-prover-boogie-backend): All configuration (prover, boogie, filtering, remote)
 
 ### Specification Syntax
-Functions to verify are marked with `#[spec(prove)]`:
+Functions to verify are marked with `#[mode(spec), ext(spec(prove))]`:
 ```move
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun my_function_spec(args): ReturnType {
     requires(precondition);
     let result = my_function(args);
@@ -226,4 +226,4 @@ The prover requires external tools (assumed to be installed):
 - **Never disable tests** - all tests must pass
 - **Update snapshots** when changing Boogie output - don't leave `.snap.new` files
 - **Timeout issues** - verification can be slow; use `--timeout` flag
-- **Spec annotations** - only functions with `#[spec(prove)]` are verified
+- **Spec annotations** - only functions with `#[mode(spec), ext(spec(prove))]` are verified

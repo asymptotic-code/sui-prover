@@ -1,7 +1,7 @@
 #[allow(unused)]
 module 0x42::quantifiers_complex_usage;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{exists, ensures, requires, invariant};
 use prover::vector_iter::map;
 
@@ -16,7 +16,7 @@ fun vec_leq(i: u64): bool { // for any i exists j <= i such that u[j] > v[j]
    exists!<u64>(|j| invariant_expression(*j, i, &u, &v))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun vec_leq_spec(i: u64): bool {
     requires(i < 4);
     let res = vec_leq(i);

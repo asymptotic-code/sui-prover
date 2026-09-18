@@ -3,10 +3,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_sum_map_big_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::sum_map;
 
 #[ext(pure)]
@@ -18,7 +18,7 @@ fun double(x: &u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_big() {
     let v = vector[1, 2, 3, 4, 5, 6, 7, 8];
     // Sum of doubles: 2 * (1+2+...+8) = 2 * 36 = 72

@@ -1,13 +1,13 @@
 #[allow(unused)]
 module 0x42::vector_ext_append_pure_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, clone};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use std::vector::append_pure;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_append_matches(v1: &mut vector<u64>, v2: vector<u64>) {
     let old_v1 = clone!(v1);
     let old_v2 = clone!(&v2);

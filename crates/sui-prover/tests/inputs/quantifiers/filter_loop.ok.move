@@ -23,7 +23,7 @@ fun filter_odd(v: &vector<u64>): vector<u64> {
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun filter_odd_spec(v: &vector<u64>): vector<u64> {
     let r = filter_odd(v);
     ensures(r == filter!(v, |j| is_odd(j)));

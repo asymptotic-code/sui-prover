@@ -1,6 +1,6 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures};
 
 public enum ColorType has drop, copy {
@@ -27,7 +27,7 @@ fun reset_to_low(data: &mut ColorStruct) {
     }
 }
 
-#[spec(focus)]
+#[mode(spec), ext(spec(focus))]
 fun reset_to_low_spec(cn: &mut ColorStruct) {
     reset_to_low(cn);
     ensures(

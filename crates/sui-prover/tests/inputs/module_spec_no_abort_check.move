@@ -6,7 +6,7 @@ fun foo(x: u64): u64 {
     x + 1
 }
 
-#[spec]
+#[mode(spec), ext(spec)]
 fun foo_spec(x: u64): u64 {
     let result = foo(x);
     ensures(result == x + 1);
@@ -17,7 +17,7 @@ fun bar(x: u64): u64 {
     x + 2
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(x: u64): u64 {
     requires(x <= 10);
     let result = bar(x);

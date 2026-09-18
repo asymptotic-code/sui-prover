@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_nested_helpers_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{count, filter, map, sum_map, find_index};
 
 #[ext(pure)]
@@ -31,7 +31,7 @@ fun double(x: &u64): u64 {
 }
 
 // count over a filtered vector.
-#[spec(prove, extra_bpl = b"nested_helpers_filter_count.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_helpers_filter_count.bpl"))]
 fun test_count_of_filter() {
     let v = vector[0, 1, 2, 3, 4, 5];
     // Filter to evens [0, 2, 4], then count positives [2, 4] -> 2.
@@ -39,7 +39,7 @@ fun test_count_of_filter() {
 }
 
 // sum_map over a filtered vector.
-#[spec(prove, extra_bpl = b"nested_helpers.ok.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_helpers.ok.bpl"))]
 fun test_sum_map_of_filter() {
     let v = vector[1, 2, 3, 4];
     // Filter to evens [2, 4], then double -> [4, 8], sum = 12.
@@ -47,7 +47,7 @@ fun test_sum_map_of_filter() {
 }
 
 // find_index into a mapped vector.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_find_index_of_map() {
     let v = vector[1, 2, 3, 4];
     // Map to doubles [2, 4, 6, 8], first even is at index 0.
@@ -55,7 +55,7 @@ fun test_find_index_of_map() {
 }
 
 // count over a mapped vector.
-#[spec(prove, extra_bpl = b"nested_helpers_count.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"nested_helpers_count.bpl"))]
 fun test_count_of_map() {
     let v = vector[0, 1, 2, 3];
     // Map to doubles [0, 2, 4, 6], count positives -> 3.

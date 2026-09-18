@@ -1,6 +1,7 @@
 module 0x42::loop_invariant_external_aborts_fail;
 
-#[spec_only(loop_inv(target=bar)), ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target=bar)), no_abort)]
+#[allow(unused_function)]
 fun bar_loop_inv(i: u64, stop: u64, v__3: &vector<u8>): bool {
     i <= stop && v__3.length() == stop - i
 }
@@ -37,7 +38,7 @@ public fun bar(v: vector<u8>): vector<u8> {
     v.map!(|_x| 0)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(v: vector<u8>): vector<u8> {
     bar(v)
 }

@@ -40,10 +40,10 @@ If the user provides arguments like `$ARGUMENTS`, pass them to `sui-prover` dire
 
 ## Writing Specifications
 
-Write specification modules in a sibling Move package that depends on the implementation package. To verify an implementation function, write a specification function annotated with `#[spec(prove, target = ...)]`. The spec has the same signature as the function under test and follows this structure:
+Write specification modules in a sibling Move package that depends on the implementation package. To verify an implementation function, write a specification function annotated with `#[mode(spec), ext(spec(prove, target = ...))]`. The spec has the same signature as the function under test and follows this structure:
 
 ```move
-#[spec(prove, target = project::example::my_function)]
+#[mode(spec), ext(spec(prove, target = project::example::my_function))]
 fun my_function_spec(args): ReturnType {
     // 1. Preconditions assumed on arguments
     requires(precondition);
@@ -77,7 +77,7 @@ Use `target` to spec an implementation function from the sibling spec package:
 ```move
 module project_specs::foo_spec;
 
-#[spec(prove, target = project::foo::inc)]
+#[mode(spec), ext(spec(prove, target = project::foo::inc))]
 public fun inc_spec(x: u64): u64 {
     let res = project::foo::inc(x);
     ensures(res == x + 1);
@@ -92,7 +92,7 @@ To access private members/functions from a cross-module spec, add `#[test_only]`
 Specs must comprehensively describe when a function aborts. For an implementation function that aborts unless `x < y`, use `asserts` in its external spec:
 
 ```move
-#[spec(prove, target = project::math::foo)]
+#[mode(spec), ext(spec(prove, target = project::math::foo))]
 fun foo_spec(x: u64, y: u64): u64 {
     asserts(x < y);  // foo aborts unless x < y
     let res = project::math::foo(x, y);
@@ -103,7 +103,7 @@ fun foo_spec(x: u64, y: u64): u64 {
 For **overflow aborts**, cast to a wider type in the assertion:
 
 ```move
-#[spec(prove, target = project::math::add)]
+#[mode(spec), ext(spec(prove, target = project::math::add))]
 fun add_spec(x: u64, y: u64): u64 {
     asserts((x as u128) + (y as u128) <= u64::max_value!() as u128);
     let res = project::math::add(x, y);
@@ -114,7 +114,7 @@ fun add_spec(x: u64, y: u64): u64 {
 To **skip abort checking** entirely, use `ignore_abort`:
 
 ```move
-#[spec(prove, ignore_abort, target = project::math::add)]
+#[mode(spec), ext(spec(prove, ignore_abort, target = project::math::add))]
 fun add_spec(x: u64, y: u64): u64 {
     let res = project::math::add(x, y);
     ensures(res == x + y);
@@ -191,10 +191,10 @@ module amm_specs::simple_lp_specs;
 use amm::simple_lp::{LP, Pool};
 use sui::balance::Balance;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{clone, ensures, requires};
 
-#[spec(prove, target = amm::simple_lp::withdraw)]
+#[mode(spec), ext(spec(prove, target = amm::simple_lp::withdraw))]
 fun withdraw_spec<T>(pool: &mut Pool<T>, shares_in: Balance<LP<T>>): Balance<T> {
     requires(shares_in.value() <= pool.shares_value());
 
@@ -337,8 +337,7 @@ while (i < n) {
 
 **External loop invariants** - Define as separate functions (alternative to inline):
 ```move
-#[spec_only(loop_inv(target = sum_to_n_spec))]
-#[ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target = sum_to_n_spec)), no_abort)]
 fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
     i <= n && sum == (i as u128) * ((i as u128) + 1) / 2
 }
@@ -348,7 +347,7 @@ fun sum_loop_inv(i: u64, n: u64, sum: u128): bool {
 
 **`boogie_opt` for complex specs** - For specs with many calculations, add `boogie_opt=b"vcsSplitOnEveryAssert"` to improve performance:
 ```move
-#[spec(prove, target=project::example::complex_func, boogie_opt=b"vcsSplitOnEveryAssert")]
+#[mode(spec), ext(spec(prove, target=project::example::complex_func, boogie_opt=b"vcsSplitOnEveryAssert"))]
 ```
 
 **Prefer `asserts` over `requires`** where possible. Use `requires` only for preconditions that truly constrain inputs.
@@ -362,23 +361,23 @@ ensures(module::get_value(storage, key) == value);
 
 **Extra BPL prelude files** - When the prover fails with `use of undeclared function: $X_module_native_func$pure`, create a `.bpl` prelude file with the missing function definition:
 ```move
-#[spec_only(extra_bpl = b"mymodule_prelude.bpl")]
+#[mode(spec), ext(spec_only(extra_bpl = b"mymodule_prelude.bpl"))]
 module project_specs::mymodule;
 ```
 Place the BPL file in the same directory as the spec module.
 
 **Targeting external functions**:
 ```move
-#[spec(prove, target = 0x2::transfer::public_transfer)]
+#[mode(spec), ext(spec(prove, target = 0x2::transfer::public_transfer))]
 fun public_transfer_spec<T: key + store>(obj: T, recipient: address) { ... }
 ```
 
 **Ghost variables for `transfer::public_transfer`** - When a spec involves `transfer::public_transfer` (directly or indirectly), declare ghost variables:
 ```move
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use specs::transfer_spec::{SpecTransferAddress, SpecTransferAddressExists};
 
-#[spec(prove, target = project::example::func_that_transfers)]
+#[mode(spec), ext(spec(prove, target = project::example::func_that_transfers))]
 fun func_spec<T>(...) {
     ghost::declare_global_mut<SpecTransferAddress, address>();
     ghost::declare_global_mut<SpecTransferAddressExists, bool>();
@@ -456,7 +455,7 @@ When verification fails, follow these steps in order:
 
 ### 2. Use Focus for Iterative Development
 ```move
-#[spec(prove, focus, target = project::example::func)]  // Only verify this spec
+#[mode(spec), ext(spec(prove, focus, target = project::example::func))]  // Only verify this spec
 ```
 Always use `focus` when developing a spec. Full suite takes very long.
 

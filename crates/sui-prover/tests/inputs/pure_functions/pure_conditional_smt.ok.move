@@ -5,7 +5,7 @@
 /// Expected: Should reach SMT verification and pass.
 module 0x42::pure_conditional_smt_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 // Valid pure function with conditional - passes all syntactic checks:
@@ -30,7 +30,7 @@ public fun call_decrement_or_zero(x: u64): u64 {
 // This spec calls the pure function and makes a TRUE claim.
 // The pure function is valid, so this should reach SMT verification and pass.
 // decrement_or_zero(5) = 4, which is correct.
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_pure_conditional_spec(): u64 {
     let result = call_decrement_or_zero(5);
     // This is TRUE: decrement_or_zero(5) = 4

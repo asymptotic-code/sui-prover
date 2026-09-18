@@ -5,13 +5,13 @@
 #[allow(unused)]
 module 0x42::vector_ext_borrow_or_unknown_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use std::vector::borrow_or_unknown;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_out_of_range_not_specific() {
     let v = vector[10u64, 20, 30];
     // FAIL: for i=5 (out of range), the result is uninterpreted —

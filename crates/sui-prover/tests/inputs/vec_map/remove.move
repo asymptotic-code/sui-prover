@@ -8,7 +8,7 @@ fun foo(m: &mut vec_map::VecMap<u64, u8>) {
   m.remove(&10);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(m: &mut vec_map::VecMap<u64, u8>) {
   requires(m.contains(&10));
   foo(m);

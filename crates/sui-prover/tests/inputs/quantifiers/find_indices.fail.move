@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_find_indices_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::find_indices;
 
 #[ext(pure)]
@@ -18,7 +18,7 @@ fun x_is_even(x: &u64): bool {
 }
 
 // This should fail - wrong count
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_wrong_count() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -28,7 +28,7 @@ fun test_wrong_count() {
 }
 
 // This should fail - wrong index value
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_wrong_index() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -38,7 +38,7 @@ fun test_wrong_index() {
 }
 
 // This should fail - claiming a non-existent index
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_wrong_contains() {
     let v = vector[10, 20, 10, 30];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -48,7 +48,7 @@ fun test_wrong_contains() {
 }
 
 // This should fail - assuming wrong order
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_wrong_order() {
     let v = vector[10, 20, 10, 30, 10];
     let indices = find_indices!<u64>(&v, |x| x_is_10(x));
@@ -58,7 +58,7 @@ fun test_wrong_order() {
 }
 
 // This should fail - wrong predicate count assumption
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_wrong_predicate() {
     let v = vector[10, 20, 30, 40];
     let indices = find_indices!<u64>(&v, |x| x_is_even(x));

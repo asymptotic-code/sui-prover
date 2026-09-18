@@ -1,13 +1,13 @@
 module 0x42::foo;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ ensures, asserts, requires };
 
 public fun foo(a: u8) {
   assert!(true);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(a: u8) {
   ensures(true);
 

@@ -1,6 +1,6 @@
 module 0x42::recursion_mutual_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public fun factorial_helper(x: u64): u64 {
@@ -15,7 +15,7 @@ public fun factorial_complex(x: u64): u64 {
   }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun my_spec_complex() {
   ensures(factorial_complex(5) == 120);
 }

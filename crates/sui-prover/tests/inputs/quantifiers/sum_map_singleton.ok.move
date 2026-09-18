@@ -5,10 +5,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_sum_map_singleton_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::sum_map_range;
 
 #[ext(pure)]
@@ -20,7 +20,7 @@ fun plus_one(x: &u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_singleton(v: &vector<u64>, i: u64) {
     requires(i < vector::length(v));
     ensures(

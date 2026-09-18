@@ -24,7 +24,7 @@ public fun add_whitelist<Coin>(pools: &mut Pools) {
 }
 
 
-#[spec(prove, ignore_abort)]
+#[mode(spec), ext(spec(prove, ignore_abort))]
 public fun add_whitelist_spec<Coin>(pools: &mut Pools) {
     add_whitelist<Coin>(pools)
 }

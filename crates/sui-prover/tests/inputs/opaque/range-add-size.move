@@ -16,7 +16,7 @@ fun add_size<T, U>(r1: &Range<T>, r2: &Range<U>): u64 {
     size(r1) + size(r2)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun add_size_spec<T, U>(r1: &Range<T>, r2: &Range<U>): u64 {
     requires(r1.x <= r1.y);
     requires(r2.x <= r2.y);

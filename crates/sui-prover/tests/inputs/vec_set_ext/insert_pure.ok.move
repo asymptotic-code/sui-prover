@@ -3,13 +3,13 @@ module 0x42::vec_set_ext_insert_pure_ok;
 
 use sui::vec_set;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::{ensures, requires, clone};
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use sui::vec_set::insert_pure;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_insert_matches(s: &mut vec_set::VecSet<u64>, k: u64) {
     requires(!s.contains(&k));
     let old_s = clone!(s);

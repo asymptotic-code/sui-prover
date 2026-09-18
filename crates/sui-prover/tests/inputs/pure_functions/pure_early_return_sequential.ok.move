@@ -2,7 +2,7 @@
 /// Each condition is checked in order; the first match returns.
 module 0x42::pure_early_return_sequential;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 #[ext(pure)]
@@ -18,35 +18,35 @@ public fun call_bucket(x: u64): u64 {
     bucket(x)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_bucket_1(): u64 {
     let r = call_bucket(5);
     ensures(r == 1);
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_bucket_2(): u64 {
     let r = call_bucket(15);
     ensures(r == 2);
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_bucket_3(): u64 {
     let r = call_bucket(25);
     ensures(r == 3);
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_bucket_4(): u64 {
     let r = call_bucket(35);
     ensures(r == 4);
     r
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_bucket_5(): u64 {
     let r = call_bucket(99);
     ensures(r == 5);

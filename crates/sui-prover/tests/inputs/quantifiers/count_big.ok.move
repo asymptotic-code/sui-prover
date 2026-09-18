@@ -4,10 +4,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_count_big_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::count;
 
 #[ext(pure)]
@@ -20,7 +20,7 @@ fun is_positive(x: &u64): bool {
     *x > 0
 }
 
-#[spec(prove, extra_bpl = b"count_big.ok.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"count_big.ok.bpl"))]
 fun test_count_big() {
     let v = vector[1, 2, 3, 4, 5, 6, 7, 8];
     // 4 evens: 2, 4, 6, 8

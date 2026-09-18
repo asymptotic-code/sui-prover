@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_sum_map_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::range_sum_map;
 
 #[ext(pure)]
@@ -21,7 +21,7 @@ fun double(x: u64): u64 {
     }
 }
 
-#[spec(prove, extra_bpl = b"range_sum_map.ok.bpl")]
+#[mode(spec), ext(spec(prove, extra_bpl = b"range_sum_map.ok.bpl"))]
 fun test_range_sum_map() {
     // Sum of i for i in [0, 4) = 0 + 1 + 2 + 3 = 6
     ensures(range_sum_map!<u64>(0, 4, |x| identity(x)) == 6u64.to_int());

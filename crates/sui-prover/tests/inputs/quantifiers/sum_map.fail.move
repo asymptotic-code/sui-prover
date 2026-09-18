@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_sum_map_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{sum_map, sum_map_range};
 
 #[ext(pure)]
@@ -16,7 +16,7 @@ fun x_plus_10(x: &u64): u64 {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_fail() {
     let v = vector[10, 20, 30, 40];
 
@@ -24,7 +24,7 @@ fun test_sum_map_fail() {
     ensures(sum_map!<u64, u64>(&v, |x| x_plus_10(x)) == 100u64.to_int());
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_sum_map_range_fail() {
     let v = vector[100, 200, 300, 400];
 

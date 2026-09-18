@@ -7,12 +7,12 @@ public fun foo(x: u64): u64 {
   x + 1
 }
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 fun show_real(the_real: std::real::Real): std::real::Real {
   the_real
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 public fun foo_spec(x: u64): u64 {
   requires(x < std::u64::max_value!());
   let res = foo(x);

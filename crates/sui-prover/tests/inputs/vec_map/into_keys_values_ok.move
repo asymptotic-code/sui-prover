@@ -4,7 +4,7 @@ use prover::prover::{requires, ensures};
 
 use sui::vec_map;
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun foo_spec(m: vec_map::VecMap<u64, u8>) {
   requires(m.contains(&10));
   requires(m[&10] == 0);
@@ -14,7 +14,7 @@ fun foo_spec(m: vec_map::VecMap<u64, u8>) {
   ensures(values[idx] == 0);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun bar_spec(m: vec_map::VecMap<u64, u8>) {
   requires(!m.contains(&10));
   let (keys, _values) = m.into_keys_values();

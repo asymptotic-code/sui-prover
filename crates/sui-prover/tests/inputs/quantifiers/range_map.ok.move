@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_range_map_ok;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::range_map;
 
 #[ext(pure)]
@@ -30,12 +30,12 @@ fun x_plus_10_plus_n(x: u64, n: u64): u64 {
 }
 
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_spec_r() {
     ensures(range_map!<u64>(1, 2, |x| x_plus_10_plus_n(x, 3)) == vector[14]);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_spec() {
     ensures(range_map!<u64>(0, 0, |x| x_plus_10(x)) == vector[]);
     ensures(range_map!<u64>(4, 7, |x| x_plus_10(x)) == vector[14, 15, 16]);
@@ -57,7 +57,7 @@ fun fn_range_map(start: u64, end: u64): &vector<u64> {
     range_map!<u64>(start, end, |x| double(x))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_range_map() {
     ensures(fn_range_map(0, 2) == vector[0, 2]);
 }

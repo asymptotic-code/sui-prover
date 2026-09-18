@@ -5,7 +5,7 @@
 /// Expected: Should pass verification.
 module 0x42::pure_multiple_returns;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 // Pure function with 2 return values
@@ -33,7 +33,7 @@ public fun call_triple(x: u64): (u64, u64, u64) {
 }
 
 // Verify swap function works correctly
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_swap_spec(): (u64, u64) {
     let (a, b) = call_swap(5, 10);
     // swap(5, 10) should return (10, 5)
@@ -43,7 +43,7 @@ fun test_swap_spec(): (u64, u64) {
 }
 
 // Verify triple function works correctly
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_triple_spec(): (u64, u64, u64) {
     let (x, y, z) = call_triple(7);
     // triple(7) should return (7, 8, 9)

@@ -22,7 +22,7 @@ fun double_and_sum(n: u64): u64 {
     sum
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun double_and_sum_spec(n: u64): u64 {
     asserts(n <= 1000);
     let result = double_and_sum(n);

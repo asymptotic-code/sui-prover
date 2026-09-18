@@ -1,6 +1,6 @@
 module 0x42::pure_enum_reordered;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
 public enum Op has copy, drop {
@@ -31,32 +31,32 @@ public fun is_unary(o: Op): bool {
     }
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_arity_add() {
     ensures(arity(Op::Add) == 2)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_arity_neg() {
     ensures(arity(Op::Neg) == 1)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_arity_mul() {
     ensures(arity(Op::Mul) == 2)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_arity_sub() {
     ensures(arity(Op::Sub) == 2)
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_unary_neg() {
     ensures(is_unary(Op::Neg))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_unary_add() {
     ensures(!is_unary(Op::Add))
 }

@@ -1,10 +1,10 @@
 #[allow(unused)]
 module 0x42::quantifiers_count_fail;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::prover::ensures;
 
-#[spec_only]
+#[mode(spec), ext(spec_only)]
 use prover::vector_iter::{count, count_range};
 
 #[ext(pure)]
@@ -12,7 +12,7 @@ fun x_is_10(x: &u64): bool {
     *x == 10
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_count_fail() {
     let v = vector[10, 20, 10, 30];
 
@@ -20,7 +20,7 @@ fun test_count_fail() {
     ensures(count!<u64>(&v, |x| x_is_10(x)) == 3);
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun test_count_range_fail() {
     let v = vector[10, 20, 10, 30];
 

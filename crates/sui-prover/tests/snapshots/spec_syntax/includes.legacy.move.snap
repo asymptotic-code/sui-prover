@@ -1,0 +1,40 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+Verification successful
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:39:7
+   │
+39 │     #[spec(prove, target = 0x42::fb::bar, extra_bpl = b"includes.fn_a.bpl", extra_bpl = b"includes.fn_b.bpl")]
+   │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:36:7
+   │
+36 │     #[spec_only]
+   │       ^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:33:7
+   │
+33 │     #[spec_only]
+   │       ^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:29:7
+   │
+29 │     #[spec_only]
+   │       ^^^^^^^^^
+
+warning: #[spec_only(...)] is deprecated; use #[mode(spec), ext(spec_only(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:23:3
+   │
+23 │ #[spec_only(include = 0x42::foo_specs::foo_spec, extra_bpl = b"includes.module.bpl")]
+   │   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: #[spec(...)] is deprecated; use #[mode(spec), ext(spec(...))] with the same parameters
+   ┌─ tests/inputs/spec_syntax/includes.legacy.move:15:7
+   │
+15 │     #[spec(prove, target = 0x42::fb::foo)]
+   │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

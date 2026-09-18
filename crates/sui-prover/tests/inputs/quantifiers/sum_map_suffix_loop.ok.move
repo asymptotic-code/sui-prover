@@ -32,7 +32,7 @@ fun count_odd_via_sum_suffix(v: &vector<u64>): u64 {
     s
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun count_odd_via_sum_suffix_spec(v: &vector<u64>): u64 {
     let r = count_odd_via_sum_suffix(v);
     ensures(r.to_int() == sum_map!(v, |j| odd_to_int(j)));

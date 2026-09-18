@@ -10,7 +10,8 @@ fun is_small(x: &u64): bool {
     *x <= 256
 }
 
-#[spec_only(loop_inv(target=all_small)), ext(no_abort)]
+#[mode(spec), ext(spec_only(loop_inv(target=all_small)), no_abort)]
+#[allow(unused_function)]
 fun all_small_invariant(v: &vector<u64>, i: u64): bool {
     all_range!(v, 0, i, |j| is_small(j))
 }
@@ -19,7 +20,7 @@ fun all_small(v: &vector<u64>): bool {
     v.all!(|j| is_small(j))
 }
 
-#[spec(prove)]
+#[mode(spec), ext(spec(prove))]
 fun all_small_spec(v: &vector<u64>): bool {
     let r = all_small(v);
     ensures(r == all!(v, |j| is_small(j)));
