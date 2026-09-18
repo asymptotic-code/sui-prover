@@ -15,11 +15,7 @@ fn test_runner(path: &Path) -> datatest_stable::Result<()> {
         paths: vec![path.to_str().unwrap().to_string()],
         named_address_map: std::collections::BTreeMap::<String, _>::new(),
     }];
-    let env = run_model_builder(
-        targets,
-        vec![],
-        Some(unused_for_test_filter_scope()),
-    )?;
+    let env = run_model_builder(targets, vec![], Some(unused_for_test_filter_scope()))?;
     let diags = if env.diag_count(Severity::Warning) > 0 {
         let mut writer = Buffer::no_color();
         env.report_diag(&mut writer, Severity::Warning);
