@@ -513,8 +513,11 @@ impl FunctionTargetProcessor for BorrowAnalysisProcessor {
                 .get_funs_and_variants()
                 .flat_map(|(fun_id, variant)| targets.get_data(&fun_id, &variant))
                 .filter(|data| {
-                    let verification_info = data.annotations.get::<VerificationInfo>().unwrap();
-                    verification_info.accessible()
+                    // without verification analysis in the pipeline no target has been
+                    // pruned, so every target is considered accessible.
+                    data.annotations
+                        .get::<VerificationInfo>()
+                        .map_or(true, VerificationInfo::accessible)
                 })
                 .flat_map(|data| {
                     data.annotations
@@ -907,30 +910,29 @@ impl TransferFunctions for BorrowAnalysis<'_> {
                                     &callee_qid,
                                 )
                                 .unwrap_or(&callee_qid);
-                            if fun_qid_with_info != &self.func_target.func_env.get_qualified_id() {
-                                match self
-                                    .targets
+                            let data_with_info = if fun_qid_with_info
+                                != &self.func_target.func_env.get_qualified_id()
+                            {
+                                // `None` if the spec function was removed by a previous
+                                // processor.
+                                self.targets
                                     .get_data(fun_qid_with_info, &FunctionVariant::Baseline)
-                                {
-                                    Some(data) => spec_global_variable_analysis::get_info(data)
-                                        .instantiate(targs)
-                                        .unwrap()
-                                        .all_vars()
-                                        .cloned()
-                                        .collect_vec(),
-                                    None => {
-                                        // Spec function was removed by a previous processor
-                                        // Skip the spec variable checking for this call
-                                        vec![]
-                                    }
-                                }
                             } else {
-                                spec_global_variable_analysis::get_info(self.func_target.data)
+                                Some(self.func_target.data)
+                            };
+                            // skip the spec variable checking for this call if there is no
+                            // target, or if spec global variable analysis did not run on it
+                            // (e.g. in pipelines that do not include that analysis).
+                            match data_with_info
+                                .and_then(spec_global_variable_analysis::get_info_opt)
+                            {
+                                Some(info) => info
                                     .instantiate(targs)
                                     .unwrap()
                                     .all_vars()
                                     .cloned()
-                                    .collect_vec()
+                                    .collect_vec(),
+                                None => vec![],
                             }
                         };
                         for var in spec_vars {

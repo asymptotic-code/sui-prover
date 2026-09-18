@@ -228,11 +228,13 @@ fn collect_df_qids(env: &GlobalEnv) -> DfQids {
         env.dynamic_field_add_qid(),
         env.dynamic_field_borrow_mut_qid(),
         env.dynamic_field_remove_qid(),
+        env.dynamic_field_remove_opt_qid(),
         env.dynamic_field_remove_if_exists_qid(),
         // dynamic object field operations
         env.dynamic_object_field_add_qid(),
         env.dynamic_object_field_borrow_mut_qid(),
         env.dynamic_object_field_remove_qid(),
+        env.dynamic_object_field_remove_opt_qid(),
     ]
     .into_iter()
     .flatten()
@@ -240,8 +242,10 @@ fn collect_df_qids(env: &GlobalEnv) -> DfQids {
     let name_only = vec![
         // dynamic field operations
         env.dynamic_field_exists_qid(),
+        env.dynamic_field_exists_deprecated_qid(),
         // dynamic object field operations
         env.dynamic_object_field_exists_qid(),
+        env.dynamic_object_field_exists_deprecated_qid(),
     ]
     .into_iter()
     .flatten()

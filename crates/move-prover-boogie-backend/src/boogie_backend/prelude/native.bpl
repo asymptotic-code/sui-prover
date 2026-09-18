@@ -1074,9 +1074,9 @@ procedure {:inline 2} {{impl.fun_remove}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{
 }
 {%- endif %}
 
-{%- if impl.fun_remove_if_exists != "" %}
-// remove_if_exists: removes the dynamic field if it exists, otherwise no-op
-procedure {:inline 2} {{impl.fun_remove_if_exists}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: $1_option_Option'{{instance.1.suffix}}', m': $Mutation({{Type}})) {
+{%- for fun_remove_opt in impl.fun_remove_opt %}
+// remove_opt (formerly remove_if_exists): removes the dynamic field if it exists, otherwise no-op
+procedure {:inline 2} {{fun_remove_opt}}{{DF_S}}(m: $Mutation ({{Type}}), k: {{K}}) returns (v: $1_option_Option'{{instance.1.suffix}}', m': $Mutation({{Type}})) {
     var enc_k: int;
     var t: {{Type}};
     var val: {{V}};
@@ -1092,7 +1092,7 @@ procedure {:inline 2} {{impl.fun_remove_if_exists}}{{DF_S}}(m: $Mutation ({{Type
         v := $1_option_Option{{SV}}(EmptyVec());
     }
 }
-{%- endif %}
+{%- endfor %}
 
 {%- if impl.fun_exists_with_type != "" %}
 function {:inline} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}): bool {
@@ -1100,7 +1100,7 @@ function {:inline} {{impl.fun_exists_with_type}}{{DF_S}}(t: ({{Type}}), k: {{K}}
 }
 {%- endif %}
 
-{%- if impl.fun_exists != "" %}
+{%- if impl.fun_exists_inner != "" %}
 axiom (forall t: {{Type}}, k: {{K}} :: {({{impl.fun_exists_inner}}{{SK}}(t, k))}
    ContainsTable(t->$dynamic_fields{{S}}, {{ENC}}(k)) ==> {{impl.fun_exists_inner}}{{SK}}(t, k));
 {%- endif %}
@@ -1626,13 +1626,16 @@ axiom (forall {{QP}}, a: int, b: int ::
 {%- set S = "'" ~ instance.suffix ~ "'" -%}
 {%- set DF_S = "'" ~ instance.suffix ~ "_" ~ impl.struct_name ~ "'" -%}
 
-{%- if impl.fun_exists != "" %}
+{%- if impl.fun_exists_inner != "" %}
 function {{impl.fun_exists_inner}}{{DF_S}}(t: ({{Type}}), k: {{T}}): bool;
+{%- endif %}
 
-function {:inline} {{impl.fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}): bool {
+{%- for fun_exists in impl.fun_exists %}
+
+function {:inline} {{fun_exists}}{{DF_S}}(t: {{Type}}, k: {{T}}): bool {
     {{impl.fun_exists_inner}}{{DF_S}}(t, k)
 }
-{%- endif %}
+{%- endfor %}
 
 {% endmacro dynamic_field_key_module %}
 

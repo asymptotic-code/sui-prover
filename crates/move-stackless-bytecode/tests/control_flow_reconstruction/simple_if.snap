@@ -63,6 +63,18 @@ fun test::simple_if($t0|x: u64): u64 {
  18: return $t11
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `control_flow_reconstruction` ================
 
 [variant baseline]
@@ -103,51 +115,71 @@ fun test::simple_if($t0|x: u64): u64 {
 }
 
 
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
+
 ============ Control Flow Reconstruction ================
 
 [variant baseline]
 fun test::if_then_only
-[
-    Basic {
-        lower: 0,
-        upper: 1,
-    },
-    IfThenElse {
-        cond_at: 2,
-        then_branch: Basic {
-            lower: 3,
-            upper: 5,
-        },
-        else_branch: None,
-    },
-    Basic {
-        lower: 6,
-        upper: 7,
-    },
-]
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 2,
+            },
+            IfThenElse {
+                cond_at: 2,
+                then_branch: Basic {
+                    lower: 3,
+                    upper: 5,
+                },
+                else_branch: None,
+            },
+            Basic {
+                lower: 6,
+                upper: 7,
+            },
+        ],
+    ),
+)
 
 [variant baseline]
 fun test::simple_if
-[
-    Basic {
-        lower: 0,
-        upper: 1,
-    },
-    IfThenElse {
-        cond_at: 2,
-        then_branch: Basic {
-            lower: 3,
-            upper: 5,
-        },
-        else_branch: Some(
+Some(
+    Seq(
+        [
             Basic {
-                lower: 7,
-                upper: 9,
+                lower: 0,
+                upper: 2,
             },
-        ),
-    },
-    Basic {
-        lower: 10,
-        upper: 11,
-    },
-]
+            IfThenElse {
+                cond_at: 2,
+                then_branch: Basic {
+                    lower: 3,
+                    upper: 6,
+                },
+                else_branch: Some(
+                    Basic {
+                        lower: 7,
+                        upper: 9,
+                    },
+                ),
+            },
+            Basic {
+                lower: 10,
+                upper: 11,
+            },
+        ],
+    ),
+)

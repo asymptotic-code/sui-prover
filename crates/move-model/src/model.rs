@@ -1493,6 +1493,20 @@ impl GlobalEnv {
             })
     }
 
+    /// Like `get_fun_qid_opt`, but only returns the id if the module actually
+    /// defines a function with that name. Used for framework functions that
+    /// were renamed, so that either spelling may be missing depending on the
+    /// framework version in use.
+    fn get_existing_fun_qid_opt(
+        &self,
+        module_name: &str,
+        fun_name: &str,
+    ) -> Option<QualifiedId<FunId>> {
+        let module_env = self.find_module_by_name(self.symbol_pool().make(module_name))?;
+        let fun_env = module_env.find_function(self.symbol_pool().make(fun_name))?;
+        Some(fun_env.get_qualified_id())
+    }
+
     fn get_struct_qid_opt(
         &self,
         module_name: &str,
@@ -1742,7 +1756,12 @@ impl GlobalEnv {
     const DYNAMIC_FIELD_BORROW_FUNCTION_NAME: &'static str = "borrow";
     const DYNAMIC_FIELD_BORROW_MUT_FUNCTION_NAME: &'static str = "borrow_mut";
     const DYNAMIC_FIELD_REMOVE_FUNCTION_NAME: &'static str = "remove";
-    const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists_";
+    const DYNAMIC_FIELD_EXISTS_FUNCTION_NAME: &'static str = "exists";
+    const DYNAMIC_FIELD_REMOVE_OPT_FUNCTION_NAME: &'static str = "remove_opt";
+    // Deprecated names, kept by the framework as wrappers around the renamed
+    // functions above (`exists_` -> `exists`, `remove_if_exists` -> `remove_opt`).
+    // Older frameworks only have these, and user code may still call them.
+    const DYNAMIC_FIELD_EXISTS_DEPRECATED_FUNCTION_NAME: &'static str = "exists_";
     const DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME: &'static str = "remove_if_exists";
     const DYNAMIC_FIELD_EXISTS_WITH_TYPE_FUNCTION_NAME: &'static str = "exists_with_type";
 
@@ -2809,15 +2828,33 @@ impl GlobalEnv {
         .collect()
     }
 
+    /// `sui::dynamic_field::exists` (the new name of `exists_`).
     pub fn dynamic_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
+        self.get_existing_fun_qid_opt(
             Self::DYNAMIC_FIELD_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
         )
     }
 
+    /// `sui::dynamic_field::exists_` (deprecated, renamed to `exists`).
+    pub fn dynamic_field_exists_deprecated_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_existing_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_DEPRECATED_FUNCTION_NAME,
+        )
+    }
+
+    /// `sui::dynamic_field::remove_opt` (the new name of `remove_if_exists`).
+    pub fn dynamic_field_remove_opt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_existing_fun_qid_opt(
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_OPT_FUNCTION_NAME,
+        )
+    }
+
+    /// `sui::dynamic_field::remove_if_exists` (deprecated, renamed to `remove_opt`).
     pub fn dynamic_field_remove_if_exists_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
+        self.get_existing_fun_qid_opt(
             Self::DYNAMIC_FIELD_MODULE_NAME,
             Self::DYNAMIC_FIELD_REMOVE_IF_EXISTS_FUNCTION_NAME,
         )
@@ -2858,10 +2895,28 @@ impl GlobalEnv {
         )
     }
 
+    /// `sui::dynamic_object_field::exists` (the new name of `exists_`).
     pub fn dynamic_object_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {
-        self.get_fun_qid_opt(
+        self.get_existing_fun_qid_opt(
             Self::DYNAMIC_OBJECT_MODULE_NAME,
             Self::DYNAMIC_FIELD_EXISTS_FUNCTION_NAME,
+        )
+    }
+
+    /// `sui::dynamic_object_field::exists_` (deprecated, renamed to `exists`).
+    pub fn dynamic_object_field_exists_deprecated_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_existing_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_EXISTS_DEPRECATED_FUNCTION_NAME,
+        )
+    }
+
+    /// `sui::dynamic_object_field::remove_opt` (added alongside the
+    /// `sui::dynamic_field::remove_if_exists` -> `remove_opt` rename).
+    pub fn dynamic_object_field_remove_opt_qid(&self) -> Option<QualifiedId<FunId>> {
+        self.get_existing_fun_qid_opt(
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+            Self::DYNAMIC_FIELD_REMOVE_OPT_FUNCTION_NAME,
         )
     }
 
@@ -4174,9 +4229,11 @@ impl GlobalEnv {
                 self.object_table_contains_qid(),
                 // sui::dynamic_field existence-check functions
                 self.dynamic_field_exists_qid(),
+                self.dynamic_field_exists_deprecated_qid(),
                 self.dynamic_field_exists_with_type_qid(),
                 // sui::dynamic_object_field existence-check functions
                 self.dynamic_object_field_exists_qid(),
+                self.dynamic_object_field_exists_deprecated_qid(),
                 self.dynamic_object_field_exists_with_type_qid(),
                 // sui::address native functions
                 self.sui_address_to_u256_qid(),
@@ -4293,13 +4350,17 @@ impl GlobalEnv {
             self.dynamic_field_borrow_mut_qid(),
             self.dynamic_field_remove_qid(),
             self.dynamic_field_exists_qid(),
+            self.dynamic_field_exists_deprecated_qid(),
+            self.dynamic_field_remove_opt_qid(),
             self.dynamic_field_remove_if_exists_qid(),
             self.dynamic_field_exists_with_type_qid(),
             self.dynamic_object_field_add_qid(),
             self.dynamic_object_field_borrow_qid(),
             self.dynamic_object_field_borrow_mut_qid(),
             self.dynamic_object_field_remove_qid(),
+            self.dynamic_object_field_remove_opt_qid(),
             self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_exists_deprecated_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
             self.table_ext_borrow_or_unknown_qid(),
             self.object_table_ext_borrow_or_unknown_qid(),
@@ -4446,8 +4507,10 @@ impl GlobalEnv {
             self.object_table_ext_remove_pure_qid(),
             // dynamic_field and dynamic_object_field existence-check functions
             self.dynamic_field_exists_qid(),
+            self.dynamic_field_exists_deprecated_qid(),
             self.dynamic_field_exists_with_type_qid(),
             self.dynamic_object_field_exists_qid(),
+            self.dynamic_object_field_exists_deprecated_qid(),
             self.dynamic_object_field_exists_with_type_qid(),
             self.dynamic_field_ext_borrow_or_unknown_qid(),
             self.dynamic_object_field_ext_borrow_or_unknown_qid(),
@@ -4491,10 +4554,12 @@ impl GlobalEnv {
             compiled_module
                 .address_identifiers
                 .push(AccountAddress::ZERO);
-            // Use a valid identifier for stub module handle name; "<SELF>" is disallowed.
+            // name the self module handle after the stub module itself, so that the
+            // bytecode's `self_id()` (0x0::<name>) agrees with the `ModuleName` registered
+            // below and `find_module_by_language_storage_id` can resolve the stub.
             compiled_module
                 .identifiers
-                .push(Identifier::new("SELF").unwrap());
+                .push(Identifier::new(self.symbol_pool.string(module_symbol).as_str()).unwrap());
             // inject a placeholder function so the stub passes
             // `find_module_by_name`'s `get_function_count() > 0` filter.
             // without this, callers like `env.global_qid()` /

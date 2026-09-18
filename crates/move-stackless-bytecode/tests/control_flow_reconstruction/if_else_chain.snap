@@ -145,6 +145,18 @@ fun test::nested_if_else($t0|x: u64, $t1|y: u64): u64 {
  46: return $t26
 }
 
+
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
 ============ after pipeline `control_flow_reconstruction` ================
 
 [variant baseline]
@@ -241,140 +253,160 @@ fun test::nested_if_else($t0|x: u64, $t1|y: u64): u64 {
 }
 
 
+[variant baseline]
+native fun prover::__stub_placeholder();
+
+
+[variant baseline]
+native fun ghost::__stub_placeholder();
+
+
+[variant baseline]
+native fun log::__stub_placeholder();
+
+
 ============ Control Flow Reconstruction ================
 
 [variant baseline]
 fun test::if_else_if_chain
-[
-    Basic {
-        lower: 0,
-        upper: 1,
-    },
-    IfThenElse {
-        cond_at: 2,
-        then_branch: Basic {
-            lower: 3,
-            upper: 5,
-        },
-        else_branch: Some(
-            Seq(
-                [
-                    Basic {
-                        lower: 7,
-                        upper: 9,
-                    },
-                    IfThenElse {
-                        cond_at: 10,
-                        then_branch: Basic {
-                            lower: 11,
-                            upper: 13,
-                        },
-                        else_branch: Some(
-                            Seq(
-                                [
-                                    Basic {
-                                        lower: 15,
-                                        upper: 17,
-                                    },
-                                    IfThenElse {
-                                        cond_at: 18,
-                                        then_branch: Basic {
-                                            lower: 19,
-                                            upper: 21,
-                                        },
-                                        else_branch: Some(
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 2,
+            },
+            IfThenElse {
+                cond_at: 2,
+                then_branch: Basic {
+                    lower: 3,
+                    upper: 6,
+                },
+                else_branch: Some(
+                    Seq(
+                        [
+                            Basic {
+                                lower: 7,
+                                upper: 10,
+                            },
+                            IfThenElse {
+                                cond_at: 10,
+                                then_branch: Basic {
+                                    lower: 11,
+                                    upper: 14,
+                                },
+                                else_branch: Some(
+                                    Seq(
+                                        [
                                             Basic {
-                                                lower: 23,
-                                                upper: 25,
+                                                lower: 15,
+                                                upper: 18,
                                             },
-                                        ),
-                                    },
-                                    Basic {
-                                        lower: 26,
-                                        upper: 27,
-                                    },
-                                ],
-                            ),
-                        ),
-                    },
-                    Basic {
-                        lower: 28,
-                        upper: 29,
-                    },
-                ],
-            ),
-        ),
-    },
-    Basic {
-        lower: 30,
-        upper: 31,
-    },
-]
+                                            IfThenElse {
+                                                cond_at: 18,
+                                                then_branch: Basic {
+                                                    lower: 19,
+                                                    upper: 22,
+                                                },
+                                                else_branch: Some(
+                                                    Basic {
+                                                        lower: 23,
+                                                        upper: 25,
+                                                    },
+                                                ),
+                                            },
+                                            Basic {
+                                                lower: 26,
+                                                upper: 27,
+                                            },
+                                        ],
+                                    ),
+                                ),
+                            },
+                            Basic {
+                                lower: 28,
+                                upper: 29,
+                            },
+                        ],
+                    ),
+                ),
+            },
+            Basic {
+                lower: 30,
+                upper: 31,
+            },
+        ],
+    ),
+)
 
 [variant baseline]
 fun test::nested_if_else
-[
-    Basic {
-        lower: 0,
-        upper: 1,
-    },
-    IfThenElse {
-        cond_at: 2,
-        then_branch: Seq(
-            [
-                Basic {
-                    lower: 3,
-                    upper: 5,
-                },
-                IfThenElse {
-                    cond_at: 6,
-                    then_branch: Basic {
-                        lower: 7,
-                        upper: 8,
-                    },
-                    else_branch: Some(
+Some(
+    Seq(
+        [
+            Basic {
+                lower: 0,
+                upper: 2,
+            },
+            IfThenElse {
+                cond_at: 2,
+                then_branch: Seq(
+                    [
                         Basic {
-                            lower: 10,
-                            upper: 11,
+                            lower: 3,
+                            upper: 6,
                         },
-                    ),
-                },
-                Basic {
-                    lower: 12,
-                    upper: 13,
-                },
-            ],
-        ),
-        else_branch: Some(
-            Seq(
-                [
-                    Basic {
-                        lower: 15,
-                        upper: 17,
-                    },
-                    IfThenElse {
-                        cond_at: 18,
-                        then_branch: Basic {
-                            lower: 19,
-                            upper: 20,
-                        },
-                        else_branch: Some(
-                            Basic {
-                                lower: 22,
-                                upper: 24,
+                        IfThenElse {
+                            cond_at: 6,
+                            then_branch: Basic {
+                                lower: 7,
+                                upper: 9,
                             },
-                        ),
-                    },
-                    Basic {
-                        lower: 25,
-                        upper: 26,
-                    },
-                ],
-            ),
-        ),
-    },
-    Basic {
-        lower: 27,
-        upper: 28,
-    },
-]
+                            else_branch: Some(
+                                Basic {
+                                    lower: 10,
+                                    upper: 11,
+                                },
+                            ),
+                        },
+                        Basic {
+                            lower: 12,
+                            upper: 14,
+                        },
+                    ],
+                ),
+                else_branch: Some(
+                    Seq(
+                        [
+                            Basic {
+                                lower: 15,
+                                upper: 18,
+                            },
+                            IfThenElse {
+                                cond_at: 18,
+                                then_branch: Basic {
+                                    lower: 19,
+                                    upper: 21,
+                                },
+                                else_branch: Some(
+                                    Basic {
+                                        lower: 22,
+                                        upper: 24,
+                                    },
+                                ),
+                            },
+                            Basic {
+                                lower: 25,
+                                upper: 26,
+                            },
+                        ],
+                    ),
+                ),
+            },
+            Basic {
+                lower: 27,
+                upper: 28,
+            },
+        ],
+    ),
+)

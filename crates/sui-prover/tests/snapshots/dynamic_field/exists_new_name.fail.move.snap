@@ -1,0 +1,12 @@
+---
+source: crates/sui-prover/tests/integration.rs
+expression: output
+---
+exiting with verification errors
+error: prover::ensures does not hold
+   ┌─ tests/inputs/dynamic_field/exists_new_name.fail.move:19:5
+   │
+19 │     ensures(!dynamic_field::exists(&x.id, ELIDEDu64));
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │
+   =     at tests/inputs/dynamic_field/exists_new_name.fail.move:16: foo_spec

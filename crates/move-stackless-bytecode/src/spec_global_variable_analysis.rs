@@ -184,7 +184,13 @@ impl SpecGlobalVariableInfo {
 
 // Get the information computed by this analysis.
 pub fn get_info(data: &FunctionData) -> &SpecGlobalVariableInfo {
-    data.annotations.get::<SpecGlobalVariableInfo>().unwrap()
+    get_info_opt(data).unwrap()
+}
+
+// Get the information computed by this analysis, or `None` if the analysis has not
+// been run on this function (e.g. in a pipeline that does not include it).
+pub fn get_info_opt(data: &FunctionData) -> Option<&SpecGlobalVariableInfo> {
+    data.annotations.get::<SpecGlobalVariableInfo>()
 }
 
 pub fn collect_spec_global_variable_info(

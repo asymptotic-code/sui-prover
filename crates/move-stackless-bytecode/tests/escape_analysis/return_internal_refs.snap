@@ -290,7 +290,7 @@ native fun ghost::__stub_placeholder();
 native fun log::__stub_placeholder();
 
 ============ Diagnostics ================
-warning: unable to determine principal type for literal
+warning: unable to determine literal's type
    ┌─ tests/escape_analysis/return_internal_refs.move:26:21
    │
 26 │         let mut i = 0;
