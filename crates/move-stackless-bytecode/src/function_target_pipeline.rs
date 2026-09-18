@@ -789,8 +789,12 @@ impl FunctionTargetsHolder {
     /// Remove all variants of a function from targets
     pub fn remove_target(&mut self, id: &QualifiedId<FunId>) {
         self.targets.remove(id);
+        // Trim only the pair where the removed function is the spec side.
+        // The target side must stay mapped: a spec that never calls its
+        // target leaves the target unreachable (so it gets pruned here),
+        // and SpecPurityAnalysis still needs the association to report
+        // "should call target function".
         self.function_specs.remove_by_left(id);
-        self.function_specs.remove_by_right(id);
     }
 
     /// Sets function data for a function's variant.
