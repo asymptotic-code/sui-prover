@@ -1,9 +1,9 @@
 ---
-source: crates/move-prover/tests/integration.rs
+source: crates/sui-prover/tests/integration.rs
 expression: output
 ---
 exiting with model building errors
-error: mutable ownership violated
+error: mutable borrow rule violated
    ┌─ tests/inputs/ghost_borrow_mut/borrow_mut_ref_move_fail.move:14:20
    │
 13 │   let ghost_ref_0 = ghost_ref;

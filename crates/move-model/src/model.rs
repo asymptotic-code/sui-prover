@@ -1735,7 +1735,7 @@ impl GlobalEnv {
     // object function names
     const OBJECT_BORROW_UID_FUNCTION_NAME: &'static str = "borrow_uid";
     const OBJECT_DELETE_FUNCTION_NAME: &'static str = "delete_impl";
-    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid";
+    const OBJECT_RECORD_NEW_UID_FUNCTION_NAME: &'static str = "record_new_uid_from_hash";
 
     // dynamic_field function names
     const DYNAMIC_FIELD_ADD_FUNCTION_NAME: &'static str = "add";
@@ -2789,6 +2789,24 @@ impl GlobalEnv {
             Self::DYNAMIC_FIELD_MODULE_NAME,
             Self::DYNAMIC_FIELD_REMOVE_FUNCTION_NAME,
         )
+    }
+
+    /// Module ids of the framework's dynamic-field APIs.
+    ///
+    /// Functions defined *in* these modules receive the parent as a bare
+    /// `&UID` by construction, so trying to resolve a concrete parent object
+    /// type inside their bodies can never succeed. They are framework
+    /// plumbing rather than user code, and must not be taken as evidence that
+    /// the parent type is unknowable in the program being verified.
+    pub fn dynamic_field_api_module_ids(&self) -> Vec<ModuleId> {
+        [
+            Self::DYNAMIC_FIELD_MODULE_NAME,
+            Self::DYNAMIC_OBJECT_MODULE_NAME,
+        ]
+        .into_iter()
+        .filter_map(|name| self.find_module_by_name(self.symbol_pool().make(name)))
+        .map(|module_env| module_env.get_id())
+        .collect()
     }
 
     pub fn dynamic_field_exists_qid(&self) -> Option<QualifiedId<FunId>> {

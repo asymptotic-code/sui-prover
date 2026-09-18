@@ -143,3 +143,12 @@ native fun ghost::__stub_placeholder();
 
 [variant baseline]
 native fun log::__stub_placeholder();
+
+============ Diagnostics ================
+warning: operation always errors
+   ┌─ tests/conditional_merge_insertion/10_with_function_calls.move:13:36
+   │
+13 │             ratio = helper(ratio, (val as u64), shift);
+   │                                    ^^^^^^^^^^ The 'u128' value '79236085330515764027303304731' is outside the range of 'u64'. This operation always errors at runtime
+   │
+   = This warning can be suppressed with '#[allow(always_errors)]' applied to the 'module' or module member ('const', 'fun', or 'struct')

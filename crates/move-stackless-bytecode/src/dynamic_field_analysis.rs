@@ -275,6 +275,12 @@ fn collect_dynamic_field_info(
 ) -> DynamicFieldInfo {
     let env = builder.fun_env.module_env.env;
     let df_qids = collect_df_qids(env);
+    // Inside the dynamic-field API itself the parent really is a bare `&UID`,
+    // so the UID fallback below is correct there and warning about it would be
+    // noise pointing at framework source the user cannot act on.
+    let in_df_api = env
+        .dynamic_field_api_module_ids()
+        .contains(&builder.fun_env.module_env.get_id());
     let uid_type = env
         .uid_qid()
         .map(|qid| Type::Datatype(qid.module_id, qid.id, vec![]));
@@ -305,12 +311,13 @@ fn collect_dynamic_field_info(
                     }
                     // UID fallback: emit warning when parent is unknown
                     let uid_qid = env.uid_qid()?;
-                    if verified_or_inlined
-                        || builder
-                            .fun_env
-                            .get_return_types()
-                            .iter()
-                            .any(|x| x.is_mutable_reference())
+                    if !in_df_api
+                        && (verified_or_inlined
+                            || builder
+                                .fun_env
+                                .get_return_types()
+                                .iter()
+                                .any(|x| x.is_mutable_reference()))
                     {
                         let loc = builder.get_loc(bc.get_attr_id());
                         env.add_diag(
@@ -666,12 +673,19 @@ impl FunctionTargetProcessor for DynamicFieldAnalysisProcessor {
             return;
         }
         let df_qids = collect_df_qids(env);
+        // The dynamic-field API functions themselves always take a bare `&UID`,
+        // so scanning their bodies would always report an unresolvable parent
+        // and force `use_uid` for the whole program. Skip them.
+        let df_api_modules = env.dynamic_field_api_module_ids();
 
         // Check if any accessible function has a df call where the parent
         // object type can't be resolved locally. When that happens, fall back
         // to UID type for ALL df operations for consistency.
         let mut use_uid = false;
         for fun_id in targets.get_funs().collect_vec() {
+            if df_api_modules.contains(&fun_id.module_id) {
+                continue;
+            }
             let fun_env = env.get_function(fun_id);
             if fun_env.is_native() || fun_env.is_intrinsic() {
                 continue;
