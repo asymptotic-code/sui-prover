@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use termcolor::Buffer;
 
 use crate::{
-    legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps,
+    legacy_builder::ModelBuilderLegacy, prove::BuildConfig, system_dependencies::implicit_deps_for,
 };
 
 pub fn build_model(
@@ -28,7 +28,7 @@ pub fn build_model(
         Some(&rerooted_path),
     )?;
 
-    move_build_config.implicit_dependencies = implicit_deps();
+    move_build_config.implicit_dependencies = implicit_deps_for(&rerooted_path);
 
     move_model_for_package_legacy(move_build_config, &rerooted_path)
 }
@@ -100,7 +100,7 @@ pub fn build_model_with_target(
     let mut move_build_config =
         resolve_lock_file_path(BuildConfig::default().into(), Some(&rerooted_path))?;
 
-    move_build_config.implicit_dependencies = implicit_deps();
+    move_build_config.implicit_dependencies = implicit_deps_for(&rerooted_path);
 
     let model = move_model_for_package_legacy(move_build_config, &rerooted_path)?;
 
