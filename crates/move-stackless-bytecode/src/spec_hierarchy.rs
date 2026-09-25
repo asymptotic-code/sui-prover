@@ -109,7 +109,8 @@ fn write_spec_log_file(
     output_dir: &Path,
     excluded_addresses: &[BigUint],
 ) {
-    let log_file_path = output_dir.join(format!("{}{}", spec_name, LOG_FILE_EXTENSION));
+    let safe_spec_name = spec_name.replace("::", "__");
+    let log_file_path = output_dir.join(format!("{}{}", safe_spec_name, LOG_FILE_EXTENSION));
 
     let mut content = String::new();
     let mut displayed = BTreeSet::new();

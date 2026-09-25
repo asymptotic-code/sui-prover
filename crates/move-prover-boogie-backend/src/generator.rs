@@ -803,7 +803,10 @@ pub async fn verify_boogie(
     run_on: Option<String>,
     loc: Loc,
 ) -> anyhow::Result<()> {
-    let file_name = format!("{}/{}.bpl", options.output_path, target_name);
+    // Windows dosya adlarinda ':' gecersizdir (ERROR_INVALID_NAME); target_name genelde
+    // "pkg::module::fun" bicimindedir, bu yuzden dosya yolu icin guvenli hale getiriyoruz.
+    let safe_target_name = target_name.replace("::", "__");
+    let file_name = format!("{}/{}.bpl", options.output_path, safe_target_name);
 
     debug!("writing boogie to `{}`", &file_name);
 
